@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Join {{ invitation.organization.name }} - Brightbean</title>
+    <title>Join {{ invitation.organization.name }} - {{ brand_short_name }}</title>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -79,11 +79,11 @@
 </head>
 <body>
     <div class="card">
-        <div class="logo">Brightbean</div>
+        <div class="logo">{{ brand_short_name }}</div>
 
         <h1>Join {{ invitation.organization.name }}</h1>
         <p class="subtitle">
-            {{ invitation.invited_by.display_name }} invited you to join their team on Brightbean.
+            {{ invitation.invited_by.display_name }} invited you to join their team on {{ brand_short_name }}.
         </p>
 
         {% if error %}

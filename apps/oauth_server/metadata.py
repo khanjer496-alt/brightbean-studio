@@ -39,6 +39,6 @@ def protected_resource_metadata() -> dict:
         "resource": f"{settings.MCP_PUBLIC_BASE_URL}/api/v1/mcp",
         "authorization_servers": [settings.MCP_OAUTH_ISSUER_URL],
         "scopes_supported": ["mcp"],
-        "resource_name": "BrightBean Studio MCP",
+        "resource_name": f"{settings.BRAND_NAME} MCP",
         "resource_documentation": f"{settings.MCP_PUBLIC_BASE_URL}/api/v1/docs",
     }

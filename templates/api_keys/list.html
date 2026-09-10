@@ -1,5 +1,5 @@
 {% extends "layouts/settings.html" %}
-{% block title %}API Keys - Settings - Brightbean{% endblock %}
+{% block title %}API Keys - Settings - {{ brand_short_name }}{% endblock %}
 {% block content %}
 <div x-data="{ showIssueModal: false, showRevealModal: {% if reveal_token %}true{% else %}false{% endif %} }">
     <div class="flex items-start justify-between mb-8 gap-6">

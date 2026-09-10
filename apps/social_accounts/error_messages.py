@@ -35,6 +35,10 @@ PUBLISH_TEMPORARY_MESSAGE = "The platform was temporarily unavailable. We'll ret
 PUBLISH_RATE_LIMIT_MESSAGE = "The platform's rate limit was reached. We'll retry shortly."
 PUBLISH_REJECTED_MESSAGE = "The platform rejected this post."
 PUBLISH_GENERIC_MESSAGE = "Publishing failed. Please try again."
+PUBLISH_AMBIGUOUS_MESSAGE = (
+    "The platform did not confirm whether this post was published. Automatic retries were stopped to avoid a duplicate. "
+    "Check the social account before retrying."
+)
 # The two messages above promise a retry, which is true only while attempts
 # remain. Once the budget is spent the post is permanently failed and the
 # composer must not keep telling the user to sit tight.

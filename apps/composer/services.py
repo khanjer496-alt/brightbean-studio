@@ -248,7 +248,7 @@ def transition_platform_post(
     # MCP transition tool, the composer's HTMX `transition_platform_post`
     # view) is covered.
     if target_status == "scheduled":
-        _require_approval_gate_passes(platform_post.post.workspace)
+        _require_approval_gate_passes(platform_post.post.workspace, platform_post)
 
     with transaction.atomic():
         platform_post.transition_to(target_status)
@@ -353,15 +353,21 @@ def clone_post(post, *, author=None):
 _APPROVAL_MODES_BLOCKING_DIRECT_SCHEDULE = frozenset({"required_internal", "required_internal_and_client"})
 
 
-def _require_approval_gate_passes(workspace) -> None:
+def _require_approval_gate_passes(workspace, platform_post=None) -> None:
     """Raise ``ValueError`` if the workspace forbids direct scheduling.
 
     Drafts are always allowed (they're explicit save-for-later);
     scheduling implies "ready to publish," which is exactly what the
     approval workflow gates.
     """
-    if getattr(workspace, "approval_workflow_mode", "none") in _APPROVAL_MODES_BLOCKING_DIRECT_SCHEDULE:
-        raise ValueError(
-            "Workspace requires approval before scheduling; create the post as a "
-            "draft and route it through the approval workflow."
-        )
+    if getattr(workspace, "approval_workflow_mode", "none") not in _APPROVAL_MODES_BLOCKING_DIRECT_SCHEDULE:
+        return
+    if platform_post is not None:
+        from apps.approvals.policy import approval_allows_publish
+
+        if approval_allows_publish(platform_post):
+            return
+    raise ValueError(
+        "Workspace requires approval before scheduling; create the post as a "
+        "draft and route it through the approval workflow."
+    )

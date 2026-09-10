@@ -36,7 +36,7 @@ from ninja.security import HttpBearer
 
 from apps.api.limits import is_failed_auth_ip_blocked, record_failed_auth
 from apps.api_keys.models import ApiKey
-from apps.api_keys.services import TOKEN_PREFIX, touch_last_used, verify_token
+from apps.api_keys.services import touch_last_used, verify_token
 
 LOG = logging.getLogger(__name__)
 
@@ -338,7 +338,7 @@ class McpAuth(ApiKeyAuth):
     """
 
     def authenticate(self, request: HttpRequest, token: str):  # type: ignore[override]
-        if token.startswith(TOKEN_PREFIX):
+        if token.startswith(settings.API_TOKEN_PREFIX):
             return super().authenticate(request, token)
 
         # OAuth path — reuse the key path's pre-auth defenses (IP throttle +

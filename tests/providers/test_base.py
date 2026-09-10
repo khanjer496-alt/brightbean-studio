@@ -1,9 +1,13 @@
 """Tests for the provider base class and registry."""
 
+from unittest.mock import patch
+
+import httpx
 import pytest
 
 from providers import PROVIDER_REGISTRY, get_provider
 from providers.base import SocialProvider
+from providers.exceptions import APIError
 from providers.types import AuthType, PostType
 
 
@@ -110,6 +114,37 @@ class TestSocialProviderInterface:
         # With no real token, this should return False (not raise)
         result = provider.validate_token("invalid_token")
         assert result is False
+
+    def test_mutating_5xx_is_marked_ambiguous(self):
+        provider = get_provider("facebook")
+        request = httpx.Request("POST", "https://graph.facebook.com/test")
+        response = httpx.Response(503, request=request, json={"error": "temporary"})
+        with patch("httpx.Client.request", return_value=response), pytest.raises(APIError) as caught:
+            provider._request("POST", str(request.url))
+        assert caught.value.status_code == 503
+        assert caught.value.ambiguous_write is True
+
+    def test_read_5xx_is_not_marked_ambiguous(self):
+        provider = get_provider("facebook")
+        request = httpx.Request("GET", "https://graph.facebook.com/test")
+        response = httpx.Response(503, request=request, json={"error": "temporary"})
+        with patch("httpx.Client.request", return_value=response), pytest.raises(APIError) as caught:
+            provider._request("GET", str(request.url))
+        assert caught.value.ambiguous_write is False
+
+    def test_mutating_transport_failure_is_marked_ambiguous(self):
+        provider = get_provider("facebook")
+        request = httpx.Request("POST", "https://graph.facebook.com/test")
+        with (
+            patch(
+                "httpx.Client.request",
+                side_effect=httpx.ReadTimeout("timed out", request=request),
+            ),
+            pytest.raises(APIError) as caught,
+        ):
+            provider._request("POST", str(request.url))
+        assert caught.value.status_code is None
+        assert caught.value.ambiguous_write is True
 
 
 class TestProviderMetadata:

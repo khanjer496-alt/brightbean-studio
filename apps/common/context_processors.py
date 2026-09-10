@@ -1,6 +1,25 @@
 """Context processors for sidebar and global template data."""
 
+from django.conf import settings
 from django.db.models import Count, Q
+
+
+def brand_context(request):
+    """Expose deployment branding on authenticated and public templates."""
+    return {
+        "brand_name": settings.BRAND_NAME,
+        "brand_short_name": settings.BRAND_SHORT_NAME,
+        "brand_legal_name": settings.BRAND_LEGAL_NAME,
+        "brand_website_url": settings.BRAND_WEBSITE_URL,
+        "brand_terms_url": settings.BRAND_TERMS_URL,
+        "brand_privacy_url": settings.BRAND_PRIVACY_URL,
+        "brand_support_email": settings.BRAND_SUPPORT_EMAIL,
+        "brand_logo_static": settings.BRAND_LOGO_STATIC,
+        "brand_favicon_static": settings.BRAND_FAVICON_STATIC,
+        "brand_favicon_ico_static": settings.BRAND_FAVICON_ICO_STATIC,
+        "brand_apple_touch_icon_static": settings.BRAND_APPLE_TOUCH_ICON_STATIC,
+        "brand_manifest_static": settings.BRAND_MANIFEST_STATIC,
+    }
 
 
 def sidebar_context(request):

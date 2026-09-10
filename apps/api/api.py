@@ -35,12 +35,12 @@ class NoncedSwagger(Swagger):
 
 
 api = NinjaAPI(
-    title="Brightbean Agent API",
+    title=f"{settings.BRAND_NAME} Agent API",
     version="1.0.0",
     description=(
         "Programmatic access for external AI agents. Authentication is via "
         "scoped bearer tokens; create one from the Organization → API Keys "
-        "page in the Brightbean Studio settings.\n\n"
+        f"page in the {settings.BRAND_NAME} settings.\n\n"
         "**Rate limits.** Per-key write rate is 120/min, read 300/min, "
         "with a 1000/min aggregate cap per workspace. Limits are enforced "
         "as HTTP 429 with a JSON body that includes `tier`, `limit`, "

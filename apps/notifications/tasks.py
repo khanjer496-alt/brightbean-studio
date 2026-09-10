@@ -45,6 +45,8 @@ def send_daily_digests():
             "user": user,
             "date": timezone.now(),
             "app_url": getattr(settings, "APP_URL", "http://localhost:8000"),
+            "brand_name": settings.BRAND_NAME,
+            "brand_short_name": settings.BRAND_SHORT_NAME,
         }
 
         try:

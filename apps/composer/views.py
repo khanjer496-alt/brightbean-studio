@@ -655,6 +655,12 @@ def _transition_post_children(post, target, *, allow_via_draft=True, only=None):
             moved.append(pp)
             continue
         try:
+            if target == "scheduled":
+                from apps.composer.services import transition_platform_post as transition_service
+
+                transition_service(pp, "scheduled", scheduled_at=pp.scheduled_at or post.scheduled_at)
+                moved.append(pp)
+                continue
             if pp.can_transition_to(target):
                 pp.transition_to(target)
             elif allow_via_draft and pp.can_transition_to("draft") and target != "draft":
@@ -688,10 +694,13 @@ def _revert_approved_to_review(post):
     plain saves/autosaves.) Returns the reverted children.
     """
     reverted = []
+    from apps.approvals.policy import clear_final_approval
+
     for pp in post.platform_posts.all():
         if pp.status == "approved" and pp.can_transition_to("pending_review"):
             pp.transition_to("pending_review")
             pp.save(update_fields=["status", "published_at", "updated_at"])
+            clear_final_approval(pp)
             reverted.append(pp)
     return reverted
 
@@ -756,6 +765,14 @@ def save_post(request, workspace_id, post_id=None):
     """Save or update a post (draft, schedule, or publish action)."""
     workspace = _get_workspace(request, workspace_id)
     action = request.POST.get("action", "save_draft")
+
+    if not post_id and action in {"schedule", "publish_now", "add_to_queue", "add_to_queue_priority"}:
+        from apps.composer.services import _require_approval_gate_passes
+
+        try:
+            _require_approval_gate_passes(workspace)
+        except ValueError as exc:
+            return JsonResponse({"errors": {"approval": str(exc)}}, status=400)
 
     if post_id:
         post = get_object_or_404(Post, id=post_id, workspace=workspace)
@@ -1085,6 +1102,11 @@ def transition_platform_post(request, workspace_id, post_id, platform_post_id):
         return JsonResponse({"ok": True, "status": pp.status, "noop": True})
 
     try:
+        if target == "scheduled":
+            from apps.composer.services import transition_platform_post as transition_service
+
+            transition_service(pp, "scheduled", scheduled_at=pp.scheduled_at or pp.post.scheduled_at)
+            return JsonResponse({"ok": True, "status": pp.status, "platform_post_id": str(pp.id)})
         pp.transition_to(target)
     except ValueError as exc:
         return JsonResponse({"error": str(exc)}, status=400)
@@ -3652,7 +3674,7 @@ def _fetch_feed_events_for_workspace(feeds):
 
     headers = {
         "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.1",
-        "User-Agent": "Brightbean RSS Reader/1.0",
+        "User-Agent": f"{settings.BRAND_SHORT_NAME} RSS Reader/1.0",
     }
     all_events = []
     for feed in feeds:
@@ -3756,7 +3778,7 @@ def _validate_rss_url(rss_url):
     """Validate that a URL points to a reachable RSS/Atom XML feed."""
     headers = {
         "Accept": "application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, */*;q=0.1",
-        "User-Agent": "Brightbean RSS Validator/1.0",
+        "User-Agent": f"{settings.BRAND_SHORT_NAME} RSS Validator/1.0",
     }
     response, _final_url = _safe_fetch_feed(rss_url, headers)
     if response is None:

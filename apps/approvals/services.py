@@ -20,6 +20,7 @@ from apps.notifications.engine import notify
 from apps.notifications.models import EventType
 
 from .models import ApprovalAction, ApprovalReminder
+from .policy import clear_final_approval, mark_final_approval
 
 logger = logging.getLogger(__name__)
 
@@ -102,6 +103,7 @@ def submit_for_review(target, user, workspace):
     with transaction.atomic():
         for pp in targets:
             if _transition_or_skip(pp, "pending_review"):
+                clear_final_approval(pp)
                 moved.append(pp)
         if not moved:
             return moved
@@ -153,6 +155,11 @@ def approve_post(target, user, workspace, comment=""):
             moved.append(pp)
             if two_stage and from_pending_review and _transition_or_skip(pp, "pending_client"):
                 advanced_to_client = True
+            else:
+                # required_internal reaches final approval here; in two-stage
+                # mode only the second approval (pending_client -> approved)
+                # reaches this branch.
+                mark_final_approval(pp)
 
         if not moved:
             return moved
@@ -200,6 +207,7 @@ def request_changes(target, user, workspace, comment):
     with transaction.atomic():
         for pp in targets:
             if _transition_or_skip(pp, "changes_requested"):
+                clear_final_approval(pp)
                 moved.append(pp)
         if not moved:
             return moved
@@ -236,6 +244,7 @@ def reject_post(target, user, workspace, comment):
     with transaction.atomic():
         for pp in targets:
             if _transition_or_skip(pp, "rejected"):
+                clear_final_approval(pp)
                 moved.append(pp)
         if not moved:
             return moved
@@ -326,6 +335,7 @@ def resubmit_post(target, user, workspace):
     with transaction.atomic():
         for pp in targets:
             if _transition_or_skip(pp, "pending_review"):
+                clear_final_approval(pp)
                 moved.append(pp)
         if not moved:
             return moved

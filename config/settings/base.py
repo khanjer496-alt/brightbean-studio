@@ -22,6 +22,24 @@ DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 APP_URL = env("APP_URL")
 
+# Deployment brand. Defaults preserve upstream self-hosting behavior; the
+# PostDelegate spike supplies these through .env.postdelegate.example.
+BRAND_NAME = env("BRAND_NAME", default="BrightBean Studio")
+BRAND_SHORT_NAME = env("BRAND_SHORT_NAME", default="Brightbean")
+BRAND_LEGAL_NAME = env("BRAND_LEGAL_NAME", default="")
+BRAND_WEBSITE_URL = env("BRAND_WEBSITE_URL", default=APP_URL).rstrip("/")
+BRAND_TERMS_URL = env("BRAND_TERMS_URL", default=f"{BRAND_WEBSITE_URL}/terms")
+BRAND_PRIVACY_URL = env("BRAND_PRIVACY_URL", default=f"{BRAND_WEBSITE_URL}/privacy")
+BRAND_SUPPORT_EMAIL = env("BRAND_SUPPORT_EMAIL", default="")
+BRAND_LOGO_STATIC = env("BRAND_LOGO_STATIC", default="img/brightbean-studio-logo.webp")
+BRAND_FAVICON_STATIC = env("BRAND_FAVICON_STATIC", default="favicon/favicon.svg")
+BRAND_FAVICON_ICO_STATIC = env("BRAND_FAVICON_ICO_STATIC", default="favicon/favicon.ico")
+BRAND_APPLE_TOUCH_ICON_STATIC = env("BRAND_APPLE_TOUCH_ICON_STATIC", default="favicon/apple-touch-icon.png")
+BRAND_MANIFEST_STATIC = env("BRAND_MANIFEST_STATIC", default="favicon/site.webmanifest")
+MCP_SERVER_NAME = env("MCP_SERVER_NAME", default="brightbean-studio")
+API_TOKEN_PREFIX = env("API_TOKEN_PREFIX", default="bb_studio_")
+REGISTRATION_OPEN = env.bool("REGISTRATION_OPEN", default=True)
+
 # Application definition
 
 DJANGO_APPS = [
@@ -111,6 +129,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "apps.common.context_processors.brand_context",
                 "apps.notifications.context_processors.unread_notification_count",
                 "apps.common.context_processors.sidebar_context",
                 "apps.onboarding.context_processors.onboarding_checklist",
@@ -214,6 +233,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 # Sites framework
 SITE_ID = 1
+SITE_DOMAIN = urlparse(APP_URL).netloc or APP_URL
+SITE_NAME = BRAND_NAME
 
 # django-allauth
 ACCOUNT_LOGIN_METHODS = {"email"}
@@ -221,6 +242,7 @@ ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*"]
 ACCOUNT_EMAIL_VERIFICATION = "none"
 ACCOUNT_EMAIL_SUBJECT_PREFIX = ""
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None
+ACCOUNT_ADAPTER = "apps.accounts.adapters.AccountAdapter"
 LOGIN_REDIRECT_URL = "/"
 ACCOUNT_LOGOUT_REDIRECT_URL = "/accounts/login/"
 
@@ -490,7 +512,7 @@ MCP_PUBLIC_BASE_URL = env("MCP_PUBLIC_BASE_URL", default=APP_URL).rstrip("/")
 MCP_OAUTH_ISSUER_URL = env("MCP_OAUTH_ISSUER_URL", default=APP_URL).rstrip("/")
 
 OAUTH2_PROVIDER = {
-    "SCOPES": {"mcp": "Call BrightBean Studio MCP tools on your behalf"},
+    "SCOPES": {"mcp": f"Call {BRAND_NAME} MCP tools on your behalf"},
     "DEFAULT_SCOPES": ["mcp"],
     "PKCE_REQUIRED": True,
     # Restrict ``code_challenge_method`` to ``S256``. django-oauth-toolkit

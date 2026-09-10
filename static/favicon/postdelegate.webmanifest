@@ -1,0 +1,14 @@
+{
+  "name": "PostDelegate",
+  "short_name": "PostDelegate",
+  "icons": [
+    {
+      "src": "postdelegate-apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ],
+  "theme_color": "#080A0F",
+  "background_color": "#080A0F",
+  "display": "standalone"
+}

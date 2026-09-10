@@ -1,1 +1,1 @@
-{% autoescape off %}Confirm your email for Brightbean{% endautoescape %}
+{% autoescape off %}Confirm your email for {{ brand_name }}{% endautoescape %}

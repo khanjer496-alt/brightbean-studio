@@ -4,12 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Brightbean{% endblock %}</title>
-    <link rel="icon" href="{% static 'favicon/favicon.ico' %}" sizes="any">
-    <link rel="icon" type="image/svg+xml" href="{% static 'favicon/favicon.svg' %}">
+    <title>{% block title %}{{ brand_name }}{% endblock %}</title>
+    <link rel="icon" href="{% static brand_favicon_ico_static %}" sizes="any">
+    <link rel="icon" type="image/svg+xml" href="{% static brand_favicon_static %}">
     <link rel="icon" type="image/png" sizes="96x96" href="{% static 'favicon/favicon-96x96.png' %}">
-    <link rel="apple-touch-icon" sizes="180x180" href="{% static 'favicon/apple-touch-icon.png' %}">
-    <link rel="manifest" href="{% static 'favicon/site.webmanifest' %}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{% static brand_apple_touch_icon_static %}">
+    <link rel="manifest" href="{% static brand_manifest_static %}">
     <link rel="stylesheet" href="{% static 'css/dist/styles.css' %}">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
     <script nonce="{{ request.csp_nonce }}">
@@ -307,7 +307,7 @@
                     <span class="flex-1 font-bold text-[0.9375rem] tracking-tight text-stone-900 truncate" x-show="!sidebarCollapsed" x-cloak>{{ sidebar_workspaces.0.name }}</span>
                     {% else %}
                     <div class="sidebar-logo-mark flex-shrink-0">P</div>
-                    <span class="flex-1 font-bold text-[0.9375rem] tracking-tight text-stone-900 truncate" x-show="!sidebarCollapsed" x-cloak>Brightbean</span>
+                    <span class="flex-1 font-bold text-[0.9375rem] tracking-tight text-stone-900 truncate" x-show="!sidebarCollapsed" x-cloak>{{ brand_short_name }}</span>
                     {% endif %}
                     {% endwith %}
                     <svg class="w-4 h-4 text-stone-400 flex-shrink-0 transition-transform" :class="wsOpen && 'rotate-180'" x-show="!sidebarCollapsed" x-cloak fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
@@ -869,7 +869,7 @@
                     <span class="text-sm font-semibold text-stone-800 truncate max-w-[160px]">{{ current_ws.name }}</span>
                     {% else %}
                     <div class="w-7 h-7 rounded-md flex items-center justify-center text-white text-[11px] font-bold" style="background: var(--primary);">P</div>
-                    <span class="text-sm font-semibold text-stone-800">Brightbean</span>
+                    <span class="text-sm font-semibold text-stone-800">{{ brand_short_name }}</span>
                     {% endif %}
                     {% endwith %}
                 </div>

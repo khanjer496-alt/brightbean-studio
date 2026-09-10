@@ -53,7 +53,12 @@ class APIError(ProviderError):
         self,
         message: str,
         status_code: int | None = None,
+        ambiguous_write: bool = False,
         **kwargs,
     ):
         self.status_code = status_code
+        # True when a mutating request may have reached the platform but the
+        # client could not prove whether it committed. The publisher must not
+        # blindly retry these errors or it can create duplicate live posts.
+        self.ambiguous_write = ambiguous_write
         super().__init__(message, **kwargs)

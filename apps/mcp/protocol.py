@@ -24,13 +24,15 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any
 
+from django.conf import settings
+
 #: Wire protocol revision we implement. The official MCP versions are
 #: date-stamped; the 2025-03-26 revision is what most current clients
 #: target. Server-side we accept any client revision and always reply
 #: with this one — newer clients gracefully degrade.
 MCP_PROTOCOL_VERSION = "2025-03-26"
 
-SERVER_NAME = "brightbean-studio"
+SERVER_NAME = settings.MCP_SERVER_NAME
 SERVER_VERSION = "1.0.0"
 
 

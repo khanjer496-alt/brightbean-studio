@@ -301,19 +301,33 @@ class SocialProvider(ABC):
         if headers:
             req_headers.update(headers)
 
-        with httpx.Client(timeout=timeout) as client:
-            # httpx uses `content` for raw bytes, `data` for form mappings
-            request_kwargs: dict = {
-                "headers": req_headers,
-                "params": params,
-                "json": json,
-                "files": files,
-            }
-            if isinstance(data, bytes):
-                request_kwargs["content"] = data
-            else:
-                request_kwargs["data"] = data
-            response = client.request(method, url, **request_kwargs)
+        method_upper = method.upper()
+        is_mutating = method_upper not in {"GET", "HEAD", "OPTIONS"}
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                # httpx uses `content` for raw bytes, `data` for form mappings
+                request_kwargs: dict = {
+                    "headers": req_headers,
+                    "params": params,
+                    "json": json,
+                    "files": files,
+                }
+                if isinstance(data, bytes):
+                    request_kwargs["content"] = data
+                else:
+                    request_kwargs["data"] = data
+                response = client.request(method, url, **request_kwargs)
+        except httpx.TransportError as exc:
+            # A timeout/disconnect after a POST/PUT/PATCH/DELETE leaves the
+            # remote outcome unknown: the platform may have committed before
+            # the response was lost. Preserve that fact for the publish engine
+            # instead of treating it as an ordinary transient failure.
+            raise APIError(
+                f"{self.platform_name} request failed before a response was received",
+                status_code=None,
+                platform=self.platform_name,
+                ambiguous_write=is_mutating,
+            ) from exc
 
         if response.status_code == 429:
             retry_after = response.headers.get("Retry-After")
@@ -331,6 +345,10 @@ class SocialProvider(ABC):
                 status_code=response.status_code,
                 platform=self.platform_name,
                 raw_response=self._safe_json(response),
+                # A 5xx response to a mutating request does not prove the
+                # platform rolled the write back. Treat it as ambiguous so a
+                # retry cannot silently duplicate a live post.
+                ambiguous_write=is_mutating and response.status_code >= 500,
             )
 
         return response

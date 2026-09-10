@@ -456,6 +456,11 @@ class PlatformPost(models.Model):
     )
     publish_error = models.TextField(blank=True, default="")
     published_at = models.DateTimeField(blank=True, null=True)
+    # Durable proof that the *current publishable payload* completed the
+    # workspace's approval workflow. The publisher validates the fingerprint
+    # immediately before dispatch, so a stray status update cannot bypass review.
+    approval_completed_at = models.DateTimeField(blank=True, null=True)
+    approval_fingerprint = models.CharField(max_length=64, blank=True, default="")
 
     # First-comment outcome. Kept in dedicated columns rather than in
     # ``platform_extra``: that field is an *input* channel — the publish engine

@@ -1,10 +1,44 @@
+from allauth.account.adapter import DefaultAccountAdapter
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
+from django.conf import settings
 
 from apps.accounts.models import OAuthConnection
 
 
+def _signup_allowed(request) -> bool:
+    if settings.REGISTRATION_OPEN:
+        return True
+    token = getattr(request, "session", {}).get("pending_invite_token")
+    if not token:
+        return False
+    from apps.members.models import Invitation
+
+    invitation = Invitation.objects.filter(token=token, accepted_at__isnull=True).first()
+    return bool(invitation and not invitation.is_expired)
+
+
+class AccountAdapter(DefaultAccountAdapter):
+    """Close public registration while keeping explicit invitation signup working."""
+
+    def is_open_for_signup(self, request):
+        return _signup_allowed(request)
+
+    def send_mail(self, template_prefix, email, context):
+        branded = {
+            **context,
+            "brand_name": settings.BRAND_NAME,
+            "brand_short_name": settings.BRAND_SHORT_NAME,
+            "brand_terms_url": settings.BRAND_TERMS_URL,
+            "brand_privacy_url": settings.BRAND_PRIVACY_URL,
+        }
+        return super().send_mail(template_prefix, email, branded)
+
+
 class SocialAccountAdapter(DefaultSocialAccountAdapter):
     """Custom adapter that syncs Google social logins to OAuthConnection."""
+
+    def is_open_for_signup(self, request, sociallogin):
+        return _signup_allowed(request)
 
     def populate_user(self, request, sociallogin, data):
         """Set user.name from Google profile (custom User model has 'name', not first/last)."""

@@ -304,6 +304,136 @@ class NonRetryableFailureTest(TestCase):
         self.assertIsNotNone(self.platform_post.next_retry_at)
         self.assertEqual(PublishLog.objects.filter(platform_post=self.platform_post).count(), 1)
 
+    def test_ambiguous_remote_write_is_never_retried(self):
+        from apps.composer.models import PlatformPost
+        from apps.social_accounts.error_messages import PUBLISH_AMBIGUOUS_MESSAGE
+        from providers.exceptions import APIError
+
+        engine = PublishEngine()
+        error = APIError(
+            "Facebook API error 503",
+            status_code=503,
+            platform="Facebook",
+            ambiguous_write=True,
+        )
+        with patch.object(PublishEngine, "_dispatch_to_provider", side_effect=error):
+            result = engine._publish_platform_post(self.platform_post)
+
+        self.assertFalse(result["success"])
+        self.platform_post.refresh_from_db()
+        self.assertEqual(self.platform_post.status, PlatformPost.Status.FAILED)
+        self.assertEqual(self.platform_post.retry_count, 0)
+        self.assertIsNone(self.platform_post.next_retry_at)
+        self.assertEqual(self.platform_post.publish_error, PUBLISH_AMBIGUOUS_MESSAGE)
+        self.assertEqual(PublishLog.objects.filter(platform_post=self.platform_post).count(), 1)
+
+
+class ApprovalChokepointTest(TestCase):
+    """The worker must not trust a scheduled/publishing status as approval proof."""
+
+    def setUp(self):
+        from apps.accounts.models import User
+        from apps.composer.models import PlatformPost, Post
+        from apps.organizations.models import Organization
+        from apps.social_accounts.models import SocialAccount
+        from apps.workspaces.models import Workspace
+
+        self.user = User.objects.create_user("reviewer@example.com", "pass12345")
+        self.org = Organization.objects.create(name="Org")
+        self.workspace = Workspace.objects.create(
+            organization=self.org,
+            name="WS",
+            approval_workflow_mode="required_internal",
+        )
+        self.account = SocialAccount.objects.create(
+            workspace=self.workspace,
+            platform="linkedin_personal",
+            account_platform_id="li-approval-1",
+            account_name="LI",
+            connection_status=SocialAccount.ConnectionStatus.CONNECTED,
+        )
+        self.post = Post.objects.create(workspace=self.workspace, author=self.user, caption="approved bytes")
+        self.pp = PlatformPost.objects.create(
+            post=self.post,
+            social_account=self.account,
+            status=PlatformPost.Status.DRAFT,
+        )
+
+    def test_manipulated_scheduled_status_cannot_publish_without_approval_proof(self):
+        from apps.composer.models import PlatformPost
+
+        PlatformPost.objects.filter(pk=self.pp.pk).update(status=PlatformPost.Status.PUBLISHING)
+        self.pp.refresh_from_db()
+        engine = PublishEngine()
+        with patch.object(PublishEngine, "_dispatch_to_provider") as dispatch:
+            result = engine._publish_platform_post(self.pp)
+        self.assertFalse(result["success"])
+        dispatch.assert_not_called()
+        self.pp.refresh_from_db()
+        self.assertEqual(self.pp.status, PlatformPost.Status.FAILED)
+        self.assertIn("approval", self.pp.publish_error.lower())
+
+    def test_final_internal_approval_can_schedule_and_publish(self):
+        from apps.approvals import services as approval_services
+        from apps.composer.models import PlatformPost
+        from apps.composer.services import transition_platform_post
+
+        approval_services.submit_for_review(self.pp, self.user, self.workspace)
+        self.pp.refresh_from_db()
+        approval_services.approve_post(self.pp, self.user, self.workspace)
+        self.pp.refresh_from_db()
+        self.assertEqual(self.pp.status, PlatformPost.Status.APPROVED)
+        self.assertTrue(self.pp.approval_fingerprint)
+        transition_platform_post(self.pp, PlatformPost.Status.SCHEDULED, scheduled_at=timezone.now())
+        self.pp.refresh_from_db()
+        self.pp.status = PlatformPost.Status.PUBLISHING
+        self.pp.save(update_fields=["status", "updated_at"])
+        engine = PublishEngine()
+        success = {"success": True, "platform_post_id": "remote-1", "status_code": 200, "response": {}}
+        with patch.object(PublishEngine, "_dispatch_to_provider", return_value=success) as dispatch:
+            result = engine._publish_platform_post(self.pp)
+        self.assertTrue(result["success"])
+        dispatch.assert_called_once()
+        self.pp.refresh_from_db()
+        self.assertEqual(self.pp.status, PlatformPost.Status.PUBLISHED)
+
+    def test_content_change_after_approval_invalidates_worker_proof(self):
+        from apps.approvals import services as approval_services
+        from apps.composer.models import PlatformPost
+
+        approval_services.submit_for_review(self.pp, self.user, self.workspace)
+        self.pp.refresh_from_db()
+        approval_services.approve_post(self.pp, self.user, self.workspace)
+        self.pp.refresh_from_db()
+        self.post.caption = "changed after approval"
+        self.post.save(update_fields=["caption", "updated_at"])
+        PlatformPost.objects.filter(pk=self.pp.pk).update(status=PlatformPost.Status.PUBLISHING)
+        self.pp.refresh_from_db()
+        engine = PublishEngine()
+        with patch.object(PublishEngine, "_dispatch_to_provider") as dispatch:
+            result = engine._publish_platform_post(self.pp)
+        self.assertFalse(result["success"])
+        dispatch.assert_not_called()
+
+    def test_two_stage_marks_proof_only_after_client_approval(self):
+        from apps.approvals import services as approval_services
+        from apps.composer.models import PlatformPost
+
+        self.workspace.approval_workflow_mode = "required_internal_and_client"
+        self.workspace.save(update_fields=["approval_workflow_mode"])
+        approval_services.submit_for_review(self.pp, self.user, self.workspace)
+        self.pp.refresh_from_db()
+        approval_services.approve_post(self.pp, self.user, self.workspace)
+        self.pp.refresh_from_db()
+        self.assertEqual(self.pp.status, PlatformPost.Status.PENDING_CLIENT)
+        self.assertIsNone(self.pp.approval_completed_at)
+        self.assertEqual(self.pp.approval_fingerprint, "")
+        approval_services.approve_post(self.pp, self.user, self.workspace)
+        self.pp.refresh_from_db()
+        self.assertEqual(self.pp.status, PlatformPost.Status.APPROVED)
+        self.assertIsNotNone(self.pp.approval_completed_at)
+        self.assertTrue(self.pp.approval_fingerprint)
+
 
 class PublishedPostLeavesQueueTest(TestCase):
     """A successful publish drops the post's QueueEntry, freeing the slot."""

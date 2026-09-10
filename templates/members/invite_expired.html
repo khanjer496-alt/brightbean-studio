@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Invitation Expired - Brightbean</title>
+    <title>Invitation Expired - {{ brand_short_name }}</title>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
         body {
@@ -42,7 +42,7 @@
 </head>
 <body>
     <div class="card">
-        <div class="logo">Brightbean</div>
+        <div class="logo">{{ brand_short_name }}</div>
         <div class="icon">
             <svg width="48" height="48" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="display: inline-block;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
         </div>
@@ -50,7 +50,7 @@
         <p class="message">
             This invitation link is no longer valid. It may have expired or already been used. Please contact your organization admin to request a new invitation.
         </p>
-        <a href="/" class="link">Go to Brightbean</a>
+        <a href="/" class="link">Go to {{ brand_short_name }}</a>
     </div>
 </body>
 </html>

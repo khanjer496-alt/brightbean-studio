@@ -16,6 +16,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from ninja import Router
 
@@ -26,7 +27,6 @@ from apps.mcp.protocol import (
     INVALID_REQUEST,
     MCP_PROTOCOL_VERSION,
     PARSE_ERROR,
-    SERVER_NAME,
     SERVER_VERSION,
     JsonRpcError,
     dispatch,
@@ -56,7 +56,7 @@ def _initialize(params: dict, context: dict[str, Any]) -> dict:
             # Static tool catalog; we don't send listChanged notifications.
             "tools": {"listChanged": False},
         },
-        "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION},
+        "serverInfo": {"name": settings.MCP_SERVER_NAME, "version": SERVER_VERSION},
     }
 
 

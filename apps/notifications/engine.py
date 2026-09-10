@@ -246,6 +246,8 @@ def _dispatch_email(delivery: NotificationDelivery) -> None:
         "notification": notification,
         "user": user,
         "app_url": getattr(settings, "APP_URL", "http://localhost:8000"),
+        "brand_name": settings.BRAND_NAME,
+        "brand_short_name": settings.BRAND_SHORT_NAME,
     }
 
     text_content = render_to_string("notifications/email/notification.txt", context)

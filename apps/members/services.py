@@ -375,9 +375,10 @@ def _send_invite_email(invitation):
         "org_name": invitation.organization.name,
         "invited_by": invitation.invited_by,
         "app_url": app_url,
+        "brand_name": settings.BRAND_NAME,
     }
 
-    subject = f"You've been invited to join {invitation.organization.name} on Brightbean"
+    subject = f"You've been invited to join {invitation.organization.name} on {settings.BRAND_NAME}"
     text_content = render_to_string("members/email/invite.txt", context)
     html_content = render_to_string("members/email/invite.html", context)
 

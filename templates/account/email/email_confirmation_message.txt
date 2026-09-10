@@ -1,10 +1,10 @@
 {% load account %}{% autoescape off %}{% user_display user as user_display %}Hi {{ user_display }},
 
-Please confirm this email address for your Brightbean Studio account by clicking the link below:
+Please confirm this email address for your {{ brand_name }} account by clicking the link below:
 
 {{ activate_url }}
 
 If you didn't add this email, you can safely ignore this message.
 
-- The Brightbean team
+- The {{ brand_name }} team
 {% endautoescape %}

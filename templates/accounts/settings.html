@@ -1,5 +1,5 @@
 {% extends "layouts/settings.html" %}
-{% block title %}Profile - Settings - Brightbean{% endblock %}
+{% block title %}Profile - Settings - {{ brand_short_name }}{% endblock %}
 {% block content %}
 <div class="max-w-2xl">
     <h2 class="text-xl font-semibold mb-8" style="color: var(--text-primary);">Profile</h2>
@@ -141,7 +141,7 @@
             <div>
                 <h3 class="text-base font-semibold mb-1" style="color: var(--text-primary);">Delete your account</h3>
                 <p class="text-sm" style="color: var(--text-secondary); max-width: 480px;">
-                    When you delete your account, you lose access to Brightbean Studio account services, and we permanently delete your personal data.
+                    When you delete your account, you lose access to {{ brand_name }} account services, and we permanently delete your personal data.
                 </p>
             </div>
 
@@ -175,7 +175,7 @@
                     <!-- Body -->
                     <div class="px-6 py-5">
                         <p class="text-sm" style="color: var(--text-secondary);">
-                            Are you sure you want to delete your account? This action is permanent and cannot be undone. You will lose access to all Brightbean Studio services, and your personal data will be permanently deleted.
+                            Are you sure you want to delete your account? This action is permanent and cannot be undone. You will lose access to all {{ brand_name }} services, and your personal data will be permanently deleted.
                         </p>
                     </div>
 

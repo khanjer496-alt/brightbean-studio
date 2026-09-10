@@ -28,10 +28,12 @@ from django.db.models import F
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
+from apps.approvals.policy import approval_allows_publish
 from apps.composer.models import PlatformPost
 from apps.credentials.models import resolve_platform_credentials
 from apps.social_accounts.error_messages import (
     FIRST_COMMENT_GENERIC_MESSAGE,
+    PUBLISH_AMBIGUOUS_MESSAGE,
     PUBLISH_EXHAUSTED_MESSAGE,
     PUBLISH_GENERIC_MESSAGE,
     PUBLISH_RATE_LIMIT_MESSAGE,
@@ -39,7 +41,7 @@ from apps.social_accounts.error_messages import (
     friendly_publish_error,
 )
 from providers import get_provider
-from providers.exceptions import ProviderError, RateLimitError
+from providers.exceptions import APIError, ProviderError, RateLimitError
 from providers.types import PostType, PublishContent
 
 from .models import PublishLog, RateLimitState
@@ -304,6 +306,19 @@ class PublishEngine:
         start_time = time.monotonic()
         account = platform_post.social_account
 
+        # Final approval chokepoint. Status is not proof: another route or a
+        # direct DB update could accidentally place unreviewed content in the
+        # scheduled/publishing state. Approval-required workspaces must have a
+        # fingerprint of the exact payload that received final approval.
+        if not approval_allows_publish(platform_post):
+            self._fail_permanently(
+                platform_post,
+                "approval proof missing or content changed after approval",
+                user_message="This post was not published because its current content has not completed approval.",
+                reason="approval proof failed at publish chokepoint",
+            )
+            return {"success": False, "error": "approval required"}
+
         # Check rate limits
         rate_state = RateLimitState.objects.filter(
             social_account=account,
@@ -400,7 +415,18 @@ class PublishEngine:
             )
 
             user_message = friendly_publish_error(e)
-            if getattr(e, "retryable", True):
+            if isinstance(e, APIError) and e.ambiguous_write:
+                # A mutating request timed out or returned 5xx. The platform
+                # may have accepted the post before the response was lost, so
+                # blindly retrying can create a duplicate. Park it as failed
+                # for explicit operator review instead.
+                self._fail_permanently(
+                    platform_post,
+                    error_msg,
+                    user_message=PUBLISH_AMBIGUOUS_MESSAGE,
+                    reason="ambiguous remote write outcome",
+                )
+            elif getattr(e, "retryable", True):
                 self._schedule_retry(platform_post, error_msg, user_message=user_message)
             else:
                 self._fail_permanently(platform_post, error_msg, user_message=user_message)

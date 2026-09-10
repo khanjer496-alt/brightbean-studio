@@ -31,7 +31,10 @@ from django.utils import timezone
 
 from apps.api_keys.models import ApiKey
 
-TOKEN_PREFIX = "bb_studio_"
+# Deployment-configurable customer-facing prefix.  Upstream keeps its original
+# default; PostDelegate sets ``postdelegate_`` without changing the token
+# entropy, lookup or HMAC-at-rest design.
+TOKEN_PREFIX = settings.API_TOKEN_PREFIX  # compatibility export for existing imports
 LOOKUP_LEN = 8
 REVOCATION_CACHE_TTL = 30  # seconds
 
@@ -97,9 +100,10 @@ def parse_token(raw: str) -> ParsedToken | None:
     plausible secret length. Anything else is treated as an unparseable
     token (caller turns this into 401).
     """
-    if not isinstance(raw, str) or not raw.startswith(TOKEN_PREFIX):
+    token_prefix = settings.API_TOKEN_PREFIX
+    if not isinstance(raw, str) or not raw.startswith(token_prefix):
         return None
-    body = raw[len(TOKEN_PREFIX) :]
+    body = raw[len(token_prefix) :]
     # secrets.token_urlsafe() emits A-Z, a-z, 0-9, '-' and '_' — so the
     # secret itself may contain underscores. Split only on the LAST '_'
     # so the lookup suffix is always isolated correctly.
@@ -197,7 +201,7 @@ def issue_api_key(
     random_part = secrets.token_urlsafe(32)
     lookup = _make_lookup(random_part)
     token_hash = _hmac_hex(random_part)
-    plaintext = f"{TOKEN_PREFIX}{random_part}_{lookup}"
+    plaintext = f"{settings.API_TOKEN_PREFIX}{random_part}_{lookup}"
 
     api_key = ApiKey.objects.create(
         workspace=workspace,
