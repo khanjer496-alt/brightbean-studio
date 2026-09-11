@@ -25,7 +25,6 @@ services:
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.production
       DATABASE_URL: postgres://postdelegate:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD required}@postgres:5432/postdelegate
-      REGISTRATION_OPEN: "false"
     depends_on:
       migrate:
         condition: service_completed_successfully

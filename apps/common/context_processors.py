@@ -19,6 +19,10 @@ def brand_context(request):
         "brand_favicon_ico_static": settings.BRAND_FAVICON_ICO_STATIC,
         "brand_apple_touch_icon_static": settings.BRAND_APPLE_TOUCH_ICON_STATIC,
         "brand_manifest_static": settings.BRAND_MANIFEST_STATIC,
+        "google_auth_enabled": bool(
+            getattr(settings, "GOOGLE_AUTH_CLIENT_ID", "")
+            and getattr(settings, "GOOGLE_AUTH_CLIENT_SECRET", "")
+        ),
     }
 
 
