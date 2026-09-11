@@ -262,6 +262,15 @@ def transition_platform_post(
             if scheduled_at is not None:
                 platform_post.scheduled_at = scheduled_at
                 update_fields.add("scheduled_at")
+            # A committed child schedule supersedes any draft-stage proposed
+            # publish time even when no concrete child timestamp is supplied.
+            # The per-account composer chip relies on the parent fallback for
+            # due-time selection, so clear only the proposal here; do not call
+            # sync_post_scheduled_at until after this row is persisted.
+            post = platform_post.post
+            if post.proposed_publish_at is not None:
+                post.proposed_publish_at = None
+                post.save(update_fields=["proposed_publish_at", "updated_at"])
         elif target_status == "draft":
             if platform_post.scheduled_at is not None:
                 platform_post.scheduled_at = None
