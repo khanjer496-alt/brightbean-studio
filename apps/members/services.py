@@ -5,6 +5,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.core.mail import EmailMultiAlternatives
+from django.db import transaction
 from django.template.loader import render_to_string
 from django.utils import timezone
 
@@ -139,6 +140,7 @@ def create_invitation(org, email, org_role, workspace_assignments, invited_by, *
     return invitation
 
 
+@transaction.atomic
 def accept_invitation(invitation, user, *, require_email_match=True):
     """Accept an invitation: create org + workspace memberships.
 
@@ -155,6 +157,22 @@ def accept_invitation(invitation, user, *, require_email_match=True):
         ValueError: If the invitation is expired, already accepted, or the
             user's email does not match (when require_email_match is True).
     """
+    # Reload and lock: a previously fetched instance must not bypass revocation,
+    # token rotation, or another acceptance. Memberships and consumption commit
+    # together, so partial assignments cannot survive a failure.
+    try:
+        invitation = Invitation.objects.select_for_update().get(pk=invitation.pk, token=invitation.token)
+    except Invitation.DoesNotExist as exc:
+        raise ValueError("This invitation is no longer valid.") from exc
+    workspace_ids = [assignment["workspace_id"] for assignment in invitation.workspace_assignments]
+    valid_ids = {
+        str(pk)
+        for pk in Workspace.objects.filter(
+            pk__in=workspace_ids, organization_id=invitation.organization_id, is_archived=False
+        ).values_list("pk", flat=True)
+    }
+    if any(str(pk) not in valid_ids for pk in workspace_ids):
+        raise ValueError("An invited workspace is no longer available in this organization.")
     if invitation.is_expired:
         raise ValueError("This invitation has expired.")
     if invitation.is_accepted:
@@ -234,6 +252,14 @@ def remove_member(org, membership, removed_by):
     Raises:
         ValueError: If trying to remove the last owner or yourself.
     """
+    if membership.organization_id != org.id:
+        raise ValueError("Membership does not belong to this organization.")
+    caller_level = _inviter_org_level(removed_by, org)
+    if caller_level < ORG_ROLE_LEVEL[OrgMembership.OrgRole.ADMIN]:
+        raise ValueError("Only organization admins can remove members.")
+    if caller_level < ORG_ROLE_LEVEL.get(membership.org_role, 0):
+        raise ValueError("You cannot remove a member whose role is higher than your own.")
+
     if membership.user_id == removed_by.id:
         raise ValueError("You cannot remove yourself from the organization.")
 

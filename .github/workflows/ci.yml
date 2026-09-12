@@ -114,11 +114,27 @@ jobs:
       - name: pytest
         run: pytest --cov=apps --cov-report=term-missing
 
+  frontend-test:
+    name: Frontend interaction tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - name: Set up Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Test inline template actions
+        run: node --test tests/frontend/template-actions.test.cjs
+
   build:
     name: Docker build
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [lint, typecheck, test]
+    needs: [lint, typecheck, test, frontend-test]
     steps:
       - name: Checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
@@ -133,7 +149,7 @@ jobs:
         with:
           context: .
           push: false
-          tags: brightbean:latest
+          tags: postdelegate:ci
           cache-from: type=gha
           cache-to: type=gha,mode=max
 

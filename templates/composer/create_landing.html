@@ -11,15 +11,15 @@
     .create-tab {
         padding: 10px 16px; border-radius: 0;
         font-size: 13px; font-weight: 600;
-        color: #78716C; background: transparent;
+        color: var(--text-secondary); background: transparent;
         border: none; cursor: pointer;
         transition: all 150ms ease;
         position: relative;
         border-bottom: 2px solid transparent;
         margin-bottom: -1px;
     }
-    .create-tab:hover { color: #1C1917; border-bottom-color: #D6D3D1; }
-    .create-tab.active { color: #C2410C; border-bottom-color: #F97316; }
+    .create-tab:hover { color: var(--text-primary); border-bottom-color: var(--border); }
+    .create-tab.active { color: var(--primary); border-bottom-color: var(--primary); }
 
     /* Kanban board */
     .kanban-column {
@@ -28,7 +28,7 @@
         flex-shrink: 0;
         display: flex;
         flex-direction: column;
-        background: #F5F5F4;
+        background: var(--surface-2);
         border-radius: 12px;
         min-height: 50vh;
         max-height: calc(100vh - 200px);
@@ -43,8 +43,8 @@
         min-height: 60px;
     }
     .kanban-cards.drag-over {
-        background: #FFF7ED;
-        outline: 2px dashed #FDBA74;
+        background: var(--surface-2);
+        outline: 2px dashed var(--primary);
         border-radius: 8px;
         margin: 0 4px 4px;
         padding: 0 4px 4px;
@@ -52,15 +52,15 @@
 
     /* Idea card */
     .idea-card {
-        background: white;
-        border: 1px solid #E7E5E4;
+        background: var(--surface-1);
+        border: 1px solid var(--border);
         border-radius: 10px;
         padding: 12px 14px;
         cursor: grab;
         transition: all 150ms ease;
     }
     .idea-card:hover {
-        border-color: #D6D3D1;
+        border-color: var(--border);
         box-shadow: 0 2px 8px rgba(0,0,0,0.06);
     }
     .idea-card.dragging {
@@ -73,9 +73,9 @@
         opacity: 0.4;
     }
     .kanban-column.column-drag-over {
-        outline: 2px dashed #FDBA74;
+        outline: 2px dashed var(--primary);
         outline-offset: -2px;
-        background: #FFF7ED;
+        background: var(--surface-2);
     }
 
     /* New idea inline */
@@ -86,13 +86,13 @@
         padding: 8px 12px;
         font-size: 13px;
         font-weight: 500;
-        color: #A8A29E;
+        color: var(--text-secondary);
         cursor: pointer;
         border-radius: 8px;
         transition: all 150ms ease;
     }
     .new-idea-inline:hover {
-        color: #57534E;
+        color: var(--text-secondary);
         background: rgba(0,0,0,0.04);
     }
 
@@ -101,16 +101,16 @@
         display: inline-flex; align-items: center; gap: 4px;
         padding: 4px 10px; border-radius: 9999px;
         font-size: 11px; font-weight: 600;
-        background: #FFF7ED; color: #C2410C;
-        border: 1px solid #FED7AA;
+        background: var(--surface-2); color: var(--primary);
+        border: 1px solid var(--border);
     }
     .tag-chip button {
         width: 14px; height: 14px; border-radius: 50%;
         display: flex; align-items: center; justify-content: center;
         background: transparent; border: none; cursor: pointer;
-        color: #EA580C; font-size: 10px;
+        color: var(--primary); font-size: 10px;
     }
-    .tag-chip button:hover { background: #FFEDD5; }
+    .tag-chip button:hover { background: var(--surface-2); }
 
     /* Modal overlay */
     .idea-modal-overlay {
@@ -120,7 +120,7 @@
         z-index: 100;
     }
     .idea-modal {
-        background: white;
+        background: var(--surface-1);
         border-radius: 16px;
         width: 100%;
         max-width: 640px;
@@ -219,7 +219,7 @@
         position: absolute;
         top: calc(100% + 6px);
         right: 0;
-        background: white;
+        background: var(--surface-1);
         border-radius: 10px;
         box-shadow: 0 8px 30px rgba(0,0,0,0.12);
         border: 1px solid var(--border);
@@ -337,16 +337,16 @@
         border-radius: 9999px;
         font-size: 0.6875rem;
         font-weight: 600;
-        background: var(--primary-soft, #FFF7ED);
-        color: var(--primary, #C2410C);
-        border: 1px solid var(--primary-muted, #FED7AA);
+        background: var(--primary-soft, var(--surface-2));
+        color: var(--primary, var(--primary));
+        border: 1px solid var(--primary-muted, var(--border));
     }
     /* Emoji picker */
     .emoji-picker-popup {
         position: absolute;
         bottom: calc(100% + 8px);
         left: 0;
-        background: white;
+        background: var(--surface-1);
         border-radius: 12px;
         box-shadow: 0 8px 30px rgba(0,0,0,0.15);
         border: 1px solid var(--border);

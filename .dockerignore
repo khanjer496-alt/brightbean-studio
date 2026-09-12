@@ -19,3 +19,15 @@ node_modules
 **/node_modules
 .DS_Store
 .env.postdelegate.local
+
+# Local tunnel credentials must never be committed or copied into an image.
+.cloudflared-preview-token
+**/.cloudflared-preview-token
+
+# Runtime data and nested credentials are never application source.
+media
+staticfiles
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.postdelegate.example

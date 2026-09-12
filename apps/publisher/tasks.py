@@ -1,6 +1,7 @@
 """Background tasks for the publishing engine."""
 
 import logging
+from pathlib import Path
 
 from background_task import background
 
@@ -19,5 +20,7 @@ def run_publish_cycle():
 
     engine = PublishEngine()
     published = engine.poll_and_publish()
+    # Container health observes completed cycles, not merely a live process.
+    Path("/tmp/postdelegate-publisher-heartbeat").touch()
     if published:
         logger.info("Publish cycle completed - %d post(s) published", published)

@@ -28,7 +28,7 @@ def portal_auth_required(view_func):
             return redirect("client_portal:magic_link_expired")
 
         try:
-            workspace = Workspace.objects.get(id=workspace_id)
+            workspace = Workspace.objects.get(id=workspace_id, is_archived=False)
         except Workspace.DoesNotExist:
             return redirect("client_portal:magic_link_expired")
 
@@ -37,6 +37,8 @@ def portal_auth_required(view_func):
             WorkspaceMembership.objects.filter(
                 user=request.user,
                 workspace=workspace,
+                user__is_active=True,
+                workspace_role=WorkspaceMembership.WorkspaceRole.CLIENT,
             )
             .select_related("custom_role")
             .first()

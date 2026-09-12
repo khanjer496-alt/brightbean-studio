@@ -8,7 +8,7 @@ Context: previews (list of dicts with account, title, caption, first_comment, ch
     <div class="preview-card" style="animation: slideUp 200ms {{ forloop.counter0|add:0 }}50ms cubic-bezier(0.16,1,0.3,1) both">
 
         <!-- Platform label + char badge -->
-        <div class="px-3.5 py-2 border-b flex items-center gap-2" style="border-color: #E7E5E4;">
+        <div class="px-3.5 py-2 border-b flex items-center gap-2" style="border-color: var(--border);">
             {% include "partials/_platform_icon.html" with platform=p.account.platform size="sm" %}
             <span class="text-[11px] font-semibold text-stone-500 flex-1">{{ p.account.platform|title }} Preview</span>
             <span class="text-[10px] font-semibold tabular-nums px-2 py-0.5 rounded-full
@@ -17,6 +17,7 @@ Context: previews (list of dicts with account, title, caption, first_comment, ch
             </span>
         </div>
 
+        <div data-platform-preview style="color: #1C1917;">
         {% if p.account.platform == "youtube" %}
         {# ─── YouTube ─── video-first layout like a YouTube upload preview #}
         <div class="bg-white">
@@ -547,6 +548,7 @@ Context: previews (list of dicts with account, title, caption, first_comment, ch
             </div>
         </div>
         {% endif %}
+        </div>
 
         {% if p.is_over_limit %}
         <div class="px-3 py-2 border-t border-red-100 bg-red-50/50 flex items-center gap-1.5 text-[11px] font-medium text-red-500">

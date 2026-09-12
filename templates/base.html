@@ -1,6 +1,6 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="en" style="{% block html_style %}{% endblock %}">
+<html lang="en" data-theme="postdelegate" style="{% block html_style %}{% endblock %}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -59,7 +59,7 @@
             z-index: 200;
         }
         .idea-modal {
-            background: white; border-radius: 16px; width: 100%; max-width: 640px;
+            background: var(--surface-0); border-radius: 16px; width: 100%; max-width: 640px;
             box-shadow: 0 20px 60px rgba(0,0,0,0.15);
             display: flex; flex-direction: column; max-height: calc(100vh - 80px); position: relative;
             margin: 0 1rem;
@@ -105,7 +105,7 @@
         }
         .idea-pill-btn:hover { background: var(--neutral-50); }
         .idea-pill-dropdown {
-            position: absolute; top: calc(100% + 6px); right: 0; background: white;
+            position: absolute; top: calc(100% + 6px); right: 0; background: var(--surface-0);
             border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,0.12); border: 1px solid var(--border);
             min-width: 180px; max-height: 240px; overflow-y: auto; z-index: 210; padding: 4px;
         }
@@ -188,7 +188,7 @@
             width: 12px; height: 12px; border: none; background: none; cursor: pointer; color: inherit; padding: 0;
         }
         .emoji-picker-popup {
-            position: absolute; bottom: calc(100% + 8px); left: 0; background: white;
+            position: absolute; bottom: calc(100% + 8px); left: 0; background: var(--surface-0);
             border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.15); border: 1px solid var(--border);
             width: 280px; z-index: 220; overflow: hidden;
         }
@@ -204,8 +204,9 @@
         .emoji-picker-item:hover { background: var(--neutral-100); }
     </style>
     {% block extra_head %}{% endblock %}
+    <link rel="stylesheet" href="{% static 'css/postdelegate.css' %}">
 </head>
-<body class="text-gray-900 min-h-screen" style="background: var(--surface-page);">
+<body class="min-h-screen" style="background: var(--surface-page);">
     {% csrf_token %}
     <script nonce="{{ request.csp_nonce }}">
         document.body.addEventListener('htmx:configRequest', function(event) {
@@ -285,6 +286,10 @@
                x-init="$el.classList.remove('sidebar-initial'); document.documentElement.classList.remove('sidebar-is-collapsed'); $nextTick(() => $el.classList.add('transition-all', 'duration-200'))"
                @click="if (window.innerWidth < 1024 && $event.target.closest('a')) { mobileMenuOpen = false }">
 
+            <a href="{% url 'dashboard' %}" class="pd-workspace-brand" aria-label="{{ brand_name }} home">
+                <img src="{% static brand_logo_static %}" alt="" width="28" height="28">
+                <span class="sidebar-nav-label">{{ brand_name }}</span>
+            </a>
             <!-- Workspace switcher (top of sidebar) -->
             <div class="relative border-b border-stone-100" x-data="{ wsOpen: false }">
                 <button @click="wsOpen = !wsOpen"
@@ -876,7 +881,7 @@
                 <div class="w-9"></div>
             </div>
             <!-- Main content -->
-            <main class="lg:border lg:border-stone-200 lg:m-2.5 bg-white lg:rounded-xl flex-1 p-3 sm:p-4 lg:p-6 overflow-y-auto flex flex-col">
+            <main class="pd-main lg:border lg:border-stone-200 lg:m-2.5 bg-white lg:rounded-xl flex-1 p-3 sm:p-4 lg:p-6 overflow-y-auto flex flex-col">
                 {% block page_header %}{% endblock %}
                 {% if messages %}
                 <div class="mb-4 space-y-2">
@@ -975,7 +980,7 @@
                 data = JSON.parse(canvas.dataset.series || '[]');
                 labels = JSON.parse(canvas.dataset.labels || '[]');
             } catch (e) { return; }
-            var color = '#F97316';
+            var color = '#a58aff';
             if (window._bbHeroChart) { window._bbHeroChart.destroy(); }
             var ctx = canvas.getContext('2d');
             var gradient = ctx.createLinearGradient(0, 0, 0, 260);
@@ -1010,8 +1015,8 @@
                         tooltip: { mode: 'index', intersect: false },
                     },
                     scales: {
-                        x: { grid: { display: false }, ticks: { maxTicksLimit: 6, color: '#78716C' } },
-                        y: { beginAtZero: true, grid: { color: '#F5F5F4' }, ticks: { color: '#78716C' } },
+                        x: { grid: { display: false }, ticks: { maxTicksLimit: 6, color: '#929bad' } },
+                        y: { beginAtZero: true, grid: { color: '#2a2e3c' }, ticks: { color: '#929bad' } },
                     },
                 },
             });

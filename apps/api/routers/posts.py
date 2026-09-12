@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import uuid
 
+from django.db import transaction
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
 from ninja import Router
@@ -227,51 +228,44 @@ def create(request, payload: CreatePostRequest):
             release_idempotent_claim(api_key=request.api_key, idempotency_key=idempotency_key)
             raise
 
-    # Single try/except covers every step from create_post through
-    # finalize_idempotent_response. Codex review found that earlier
-    # code committed the Post + PlatformPost via create_post and then
-    # built the response / wrote the audit / called finalize OUTSIDE
-    # the release path — so a transient DB error during response build
-    # or finalize left the idempotency slot wedged in PENDING forever
-    # while the work had already succeeded. Folding everything under
-    # one ``try / except / release`` closes that window: any exception
-    # after the claim releases the slot, the agent can retry, and the
-    # retry will reach create_post fresh (or replay if finalize did
-    # commit before the failure).
+    # Commit the post and replayable response together. If response construction
+    # or finalization fails, rollback the post before releasing the claim; a
+    # retry must not create a second post after a partially committed request.
     try:
-        post = create_post(
-            workspace=request.api_key.workspace,
-            social_account=social_account,
-            caption=payload.caption,
-            media_asset_ids=payload.media_asset_ids,
-            title=payload.title,
-            first_comment=payload.first_comment,
-            internal_notes=payload.internal_notes,
-            scheduled_at=payload.scheduled_at,
-            # A scheduled post carries a real time, not a proposal — ignore any
-            # proposed_publish_at when scheduling so the two never coexist.
-            proposed_publish_at=None if payload.action == "schedule" else payload.proposed_publish_at,
-            author=request.user if not request.user.is_anonymous else None,
-            status="scheduled" if payload.action == "schedule" else "draft",
-            platform_overrides=platform_overrides,
-        )
-        body = _post_to_response(request, post)
-        status_code = 201
-        log_audit_entry(
-            request,
-            action=f"post.create.{payload.action}",
-            target_id=post.id,
-            status_code=status_code,
-        )
-        # ``model_dump(mode='json')`` yields JSON-safe primitives
-        # (UUID→str, datetime→ISO-8601 str) so the response_body
-        # JSONField round-trips cleanly through psycopg's jsonb adapter.
-        finalize_idempotent_response(
-            api_key=request.api_key,
-            idempotency_key=idempotency_key,
-            status_code=status_code,
-            body=body.model_dump(mode="json"),
-        )
+        with transaction.atomic():
+            post = create_post(
+                workspace=request.api_key.workspace,
+                social_account=social_account,
+                caption=payload.caption,
+                media_asset_ids=payload.media_asset_ids,
+                title=payload.title,
+                first_comment=payload.first_comment,
+                internal_notes=payload.internal_notes,
+                scheduled_at=payload.scheduled_at,
+                # A scheduled post carries a real time, not a proposal — ignore any
+                # proposed_publish_at when scheduling so the two never coexist.
+                proposed_publish_at=None if payload.action == "schedule" else payload.proposed_publish_at,
+                author=request.user if not request.user.is_anonymous else None,
+                status="scheduled" if payload.action == "schedule" else "draft",
+                platform_overrides=platform_overrides,
+            )
+            body = _post_to_response(request, post)
+            status_code = 201
+            log_audit_entry(
+                request,
+                action=f"post.create.{payload.action}",
+                target_id=post.id,
+                status_code=status_code,
+            )
+            # ``model_dump(mode='json')`` yields JSON-safe primitives
+            # (UUID→str, datetime→ISO-8601 str) so the response_body
+            # JSONField round-trips cleanly through psycopg's jsonb adapter.
+            finalize_idempotent_response(
+                api_key=request.api_key,
+                idempotency_key=idempotency_key,
+                status_code=status_code,
+                body=body.model_dump(mode="json"),
+            )
     except ValueError as exc:
         # Use the *effective* idempotency key (header fallback applied)
         # so a header-only client's claim is released too — Codex PR #53
@@ -397,7 +391,7 @@ def update(request, post_id: uuid.UUID, payload: UpdatePostRequest):
     return _post_to_response(request, post)
 
 
-@router.post("/{post_id}/schedule", response=PostResponse, summary="Schedule a draft")
+@router.post("/{post_id}/schedule", response=PostResponse, summary="Schedule a draft or approved post")
 def schedule(request, post_id: uuid.UUID, payload: ScheduleRequest):
     enforce_http_rate_limits(request, is_write=True)
     # Same ``publish_directly`` contract as the create-with-schedule
@@ -407,17 +401,17 @@ def schedule(request, post_id: uuid.UUID, payload: ScheduleRequest):
     _require_perm(request, "publish_directly")
     post = _get_workspace_post(request, post_id)
 
-    # Schedule every draft child; a single-account key produces one child,
+    # Schedule every draft or approved child; a single-account key produces one child,
     # but defensively we apply the transition to all draft children so we
     # don't half-schedule.
-    drafts = list(post.platform_posts.filter(status="draft"))
-    if not drafts:
-        raise HttpError(409, "No draft platform posts to schedule.")
+    schedulable = list(post.platform_posts.filter(status__in=["draft", "approved"]))
+    if not schedulable:
+        raise HttpError(409, "No draft or approved platform posts to schedule.")
 
     # Quota check is per-account, so we evaluate it once per child before
     # we touch any state. Doing the checks first means an over-quota
     # account fails the whole route with 429 — no partial commit.
-    for pp in drafts:
+    for pp in schedulable:
         check_platform_quota(pp.social_account)
 
     # Wrap the per-child transitions in a single outer atomic so a
@@ -429,7 +423,7 @@ def schedule(request, post_id: uuid.UUID, payload: ScheduleRequest):
     from django.db import transaction
 
     with transaction.atomic():
-        for pp in drafts:
+        for pp in schedulable:
             try:
                 transition_platform_post(pp, "scheduled", scheduled_at=payload.scheduled_at)
             except ValueError as exc:

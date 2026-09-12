@@ -12,14 +12,16 @@
     </div>
 
     <!-- Copyable link -->
-    <div style="display: flex; gap: 8px; align-items: center;" x-data="{ copied: false }">
+    <div style="display: flex; flex-wrap: wrap; gap: 8px; align-items: center;" x-data="{ copied: false, copyError: false }">
         <input
             type="text"
             value="{{ link_url }}"
             readonly
             id="connection-link-url"
+            aria-label="Client connection link"
+            x-ref="connectionLink"
             style="
-                flex: 1;
+                flex: 1; min-width: 0;
                 padding: 9px 12px;
                 font-size: 0.8125rem; font-family: var(--font-mono);
                 border: 1.5px solid var(--border);
@@ -30,7 +32,8 @@
             "
         >
         <button
-            @click="navigator.clipboard.writeText('{{ link_url }}'); copied = true; setTimeout(() => copied = false, 2000)"
+            type="button"
+            @click="copied = false; copyError = false; Promise.resolve().then(() => navigator.clipboard.writeText($refs.connectionLink.value)).then(() => { copied = true; setTimeout(() => copied = false, 2000); }).catch(() => { copyError = true; $refs.connectionLink.focus(); $refs.connectionLink.select(); })"
             style="
                 padding: 9px 14px;
                 font-size: 0.8125rem; font-weight: 600;
@@ -41,8 +44,9 @@
             "
         >
             <span x-show="!copied">Copy</span>
-            <span x-show="copied" x-cloak style="color: var(--success-700);">Copied!</span>
+            <span x-show="copied" role="status" x-cloak style="color: var(--success-700);">Copied!</span>
         </button>
+        <span x-show="copyError" x-cloak role="alert" style="font-size:0.75rem;color:var(--error-500);">Copy failed. Select the link and copy it manually.</span>
     </div>
 
     <p style="font-size: 0.75rem; color: var(--text-tertiary); margin-top: 8px;">

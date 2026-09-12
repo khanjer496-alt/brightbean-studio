@@ -1,0 +1,66 @@
+/* PostDelegate shared interface layer. Native social post previews keep their own palette. */
+@font-face {
+  font-family: Manrope;
+  src: url('../fonts/manrope-latin.woff2') format('woff2');
+  font-style: normal;
+  font-weight: 200 800;
+  font-display: swap;
+}
+html[data-theme="postdelegate"] { color-scheme: dark; }
+body { color: var(--text-primary); font-family: var(--font-body); }
+button, input, textarea, select { font: inherit; }
+button, a, input, textarea, select, summary { -webkit-tap-highlight-color: transparent; }
+:where(button, a, input, textarea, select, summary):focus-visible {
+  outline: 2px solid #c8ff4d;
+  outline-offset: 3px;
+}
+::selection { color: #f8f7f2; background: #49346c; }
+.pd-workspace-brand {
+  display: flex; align-items: center; gap: 10px; min-height: 62px;
+  padding: 16px; color: #f8f7f2; text-decoration: none;
+  font-size: 17px; font-weight: 800; letter-spacing: -.6px;
+}
+.pd-workspace-brand img { flex-shrink: 0; }
+.sidebar-collapsed .pd-workspace-brand { padding: 16px; }
+.sidebar-nav-item.active { color: #d4c9ff; box-shadow: inset 2px 0 #a58aff; }
+.sidebar-section-label { color: #929bad; }
+.sidebar-logo-mark:not(img) { background: #2d2349; color: #d4c9ff; border: 1px solid #49346c; }
+aside.sidebar-initial, aside.sidebar-collapsed { background: #080a0f; }
+/* Legacy utility classes on menus, settings forms and dialogs use the same tokens. */
+html[data-theme="postdelegate"] :where(.bg-white):not([data-platform-preview], [data-platform-preview] *) { background-color: var(--surface-0); }
+html[data-theme="postdelegate"] :where(.bg-gray-50,.bg-stone-50,.bg-slate-50):not([data-platform-preview], [data-platform-preview] *) { background-color: var(--surface-1); }
+html[data-theme="postdelegate"] :where(.bg-gray-100,.bg-stone-100,.bg-slate-100):not([data-platform-preview], [data-platform-preview] *) { background-color: var(--surface-2); }
+html[data-theme="postdelegate"] :where(.text-gray-900,.text-gray-800,.text-stone-900,.text-stone-800,.text-slate-900):not([data-platform-preview], [data-platform-preview] *) { color: var(--text-primary); }
+html[data-theme="postdelegate"] :where(.text-gray-700,.text-gray-600,.text-stone-700,.text-stone-600,.text-slate-600):not([data-platform-preview], [data-platform-preview] *) { color: var(--text-secondary); }
+html[data-theme="postdelegate"] :where(.text-gray-500,.text-gray-400,.text-stone-500,.text-stone-400):not([data-platform-preview], [data-platform-preview] *) { color: var(--text-tertiary); }
+html[data-theme="postdelegate"] :where(.border-gray-200,.border-gray-100,.border-stone-200,.border-slate-200):not([data-platform-preview], [data-platform-preview] *) { border-color: var(--border); }
+html[data-theme="postdelegate"] :where(.hover\:bg-gray-50,.hover\:bg-gray-100,.hover\:bg-stone-100):hover:not([data-platform-preview], [data-platform-preview] *) { background-color: var(--surface-2); }
+.flatpickr-calendar { background: var(--surface-0); border: 1px solid var(--border); box-shadow: 0 20px 60px #0008; }
+.flatpickr-day, .flatpickr-weekday, .flatpickr-months .flatpickr-month, .flatpickr-current-month .flatpickr-monthDropdown-months { color: var(--text-primary); background: transparent; }
+.flatpickr-day.prevMonthDay, .flatpickr-day.nextMonthDay { color: var(--text-tertiary); }
+.flatpickr-day:hover { background: var(--surface-2); border-color: var(--border); }
+.flatpickr-day.selected, .flatpickr-day.selected:hover { background: var(--primary); border-color: var(--primary); color: white; }
+.flatpickr-months svg { fill: var(--text-secondary); }
+@media (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]), textarea, select { font-size: 16px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; }
+}
+/* Tailwind's default border follows text color; set a quiet dark-theme divider. */
+html[data-theme="postdelegate"] :where(.divide-y > *):not([data-platform-preview], [data-platform-preview] *) { border-color: var(--border); }
+html[data-theme="postdelegate"] :where(.border,.border-b,.border-t,.border-l,.border-r):not([data-platform-preview], [data-platform-preview] *) { border-color: var(--border); }
+html[data-theme="postdelegate"] :where(.bg-orange-50,.bg-orange-100):not([data-platform-preview], [data-platform-preview] *) { background-color: var(--primary-soft); }
+html[data-theme="postdelegate"] :where(.bg-orange-500,.bg-orange-600):not([data-platform-preview], [data-platform-preview] *) { background-color: var(--primary); }
+html[data-theme="postdelegate"] :where(.text-orange-500,.text-orange-600,.text-orange-700):not([data-platform-preview], [data-platform-preview] *) { color: #c3b5ff; }
+html[data-theme="postdelegate"] :where(.border-orange-100,.border-orange-200,.border-orange-300):not([data-platform-preview], [data-platform-preview] *) { border-color: var(--primary-ring); }
+html[data-theme="postdelegate"] :where(.hover\:bg-orange-50,.hover\:bg-orange-100):hover:not([data-platform-preview], [data-platform-preview] *) { background-color: var(--primary-muted); }
+.pd-main { border-color: var(--border); }
+html[data-theme="postdelegate"] textarea:not([data-platform-preview] *) { background-color: var(--surface-1); color: var(--text-primary); border-color: var(--border); }
+html[data-theme="postdelegate"] textarea::placeholder { color: var(--text-tertiary); opacity: 1; }
+html[data-theme="postdelegate"] :where(.bg-red-50,.bg-red-100):not([data-platform-preview], [data-platform-preview] *) { background-color: var(--error-50); }
+html[data-theme="postdelegate"] :where(.text-red-500,.text-red-600,.text-red-700,.text-red-800):not([data-platform-preview], [data-platform-preview] *) { color: var(--error-700); }
+html[data-theme="postdelegate"] :where(.bg-green-50,.bg-green-100):not([data-platform-preview], [data-platform-preview] *) { background-color: var(--success-50); }
+html[data-theme="postdelegate"] :where(.text-green-600,.text-green-700,.text-green-800):not([data-platform-preview], [data-platform-preview] *) { color: var(--success-700); }
+html[data-theme="postdelegate"] :where(.bg-blue-50,.bg-blue-100):not([data-platform-preview], [data-platform-preview] *) { background-color: var(--info-50); }
+html[data-theme="postdelegate"] :where(.text-blue-600,.text-blue-700,.text-blue-800):not([data-platform-preview], [data-platform-preview] *) { color: var(--info-700); }

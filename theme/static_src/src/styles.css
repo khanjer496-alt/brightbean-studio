@@ -13,85 +13,40 @@
    ═══════════════════════════════════════════════════════════════ */
 
 :root {
-  /* Brand Tokens - BrightBean Orange */
-  --brand-50:  #FFF7ED;
-  --brand-100: #FFEDD5;
-  --brand-200: #FED7AA;
-  --brand-300: #FDBA74;
-  --brand-400: #FB923C;
-  --brand-500: #F97316;
-  --brand-600: #EA580C;
-  --brand-700: #C2410C;
-  --brand-800: #9A3412;
-  --brand-900: #7C2D12;
-
-  /* Brand Tokens - BrightBean Green (the bean in the logo) — used for
-     selection controls (checkboxes, toggle switches) */
-  --brand-green-100: #EFF2DC;
-  --brand-green-200: #DDE4B9;
-  --brand-green-500: #94A43F;
-  --brand-green-600: #7B8A33;
-
-  --brand-font-display: Georgia, 'Times New Roman', serif;
-  --brand-font-body: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --brand-font-mono: ui-monospace, SFMono-Regular, 'Cascadia Code', 'Consolas', monospace;
-
-  /* Semantic Tokens */
-  --primary:       var(--brand-500);
-  --primary-hover: var(--brand-600);
-  --primary-soft:  var(--brand-50);
-  --primary-muted: var(--brand-100);
-  --primary-ring:  var(--brand-200);
-
-  /* Neutrals - warm stone */
-  --neutral-950: #171412;
-  --neutral-900: #1C1917;
-  --neutral-800: #292524;
-  --neutral-700: #44403C;
-  --neutral-600: #57534E;
-  --neutral-500: #78716C;
-  --neutral-400: #A8A29E;
-  --neutral-300: #D6D3D1;
-  --neutral-200: #E7E5E4;
-  --neutral-100: #F5F5F4;
-  --neutral-50:  #FAFAF9;
-
-  /* Surfaces */
-  --surface-0: #FFFFFF;
-  --surface-page: rgb(247, 246, 242);
-  --surface-1: var(--neutral-50);
-  --surface-2: var(--neutral-100);
-  --surface-3: var(--neutral-200);
-  --border:    var(--neutral-200);
-  --border-hover: var(--neutral-300);
-
-  /* Text */
-  --text-primary:   var(--neutral-900);
-  --text-secondary: var(--neutral-600);
-  --text-tertiary:  var(--neutral-500);
-  --text-ghost:     var(--neutral-400);
-  --text-inverse:   #FFFFFF;
-
-  /* Illustrations */
-  --color-illustration-border: var(--neutral-200);
-  --color-illustration-card: #FFFFFF;
-  --color-illustration-element: var(--neutral-200);
-  --color-illustration-secondary-element: var(--neutral-100);
-  --color-illustration-accent: var(--brand-500);
-
-  /* Status */
-  --success-500: #22C55E; --success-50: #F0FDF4; --success-700: #15803D;
-  --warning-500: #EAB308; --warning-50: #FEFCE8; --warning-700: #A16207;
-  --error-500:   #EF4444; --error-50:   #FEF2F2; --error-700:   #B91C1C;
-  --info-500:    #3B82F6; --info-50:    #EFF6FF; --info-700:    #1D4ED8;
-
-  /* Accent palette */
-  --accent-teal:    #14B8A6; --accent-teal-soft:    #F0FDFA;
-  --accent-sky:     #0EA5E9; --accent-sky-soft:     #F0F9FF;
-  --accent-rose:    #F43F5E; --accent-rose-soft:    #FFF1F2;
-  --accent-amber:   #F59E0B; --accent-amber-soft:   #FFFBEB;
-  --accent-indigo:  #6366F1; --accent-indigo-soft:  #EEF2FF;
-  --accent-emerald: #10B981; --accent-emerald-soft: #ECFDF5;
+  /* PostDelegate: shared palette with the public website. */
+  color-scheme: dark;
+  --brand-50: #201a39; --brand-100: #2d2349; --brand-200: #49346c;
+  --brand-300: #bdaaff; --brand-400: #a58aff; --brand-500: #7357ff;
+  --brand-600: #6545ed; --brand-700: #c3b5ff; --brand-800: #ded5ff; --brand-900: #efeaff;
+  --brand-green-100: #202b17; --brand-green-200: #495f2d;
+  --brand-green-500: #c8ff4d; --brand-green-600: #b5eb3c;
+  --brand-font-display: 'Manrope', system-ui, sans-serif;
+  --brand-font-body: 'Manrope', system-ui, -apple-system, sans-serif;
+  --brand-font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+  --primary: var(--brand-500); --primary-hover: var(--brand-600);
+  --primary-soft: var(--brand-50); --primary-muted: var(--brand-100); --primary-ring: var(--brand-200);
+  --neutral-950: #ffffff; --neutral-900: #f8f7f2; --neutral-800: #e4e5ed;
+  --neutral-700: #c5c9d5; --neutral-600: #b0b6c7; --neutral-500: #929bad;
+  --neutral-400: #858ea2; --neutral-300: #3b4355; --neutral-200: #2a2e3c;
+  --neutral-100: #1b1f2b; --neutral-50: #151823;
+  --surface-0: #11131b; --surface-page: #080a0f;
+  --surface-1: #151823; --surface-2: #1b1f2b; --surface-3: #252b3a;
+  --border: #2a2e3c; --border-hover: #495169;
+  --text-primary: #f8f7f2; --text-secondary: #b0b6c7; --text-tertiary: #929bad;
+  --text-ghost: #858ea2; --text-inverse: #ffffff;
+  --color-illustration-border: #343b4d; --color-illustration-card: #171b27;
+  --color-illustration-element: #353c50; --color-illustration-secondary-element: #242a3b;
+  --color-illustration-accent: #a58aff;
+  --success-500: #4ade80; --success-50: #12291e; --success-700: #86efac;
+  --warning-500: #facc15; --warning-50: #30270e; --warning-700: #fde047;
+  --error-500: #f87171; --error-50: #341b24; --error-700: #fda4af;
+  --info-500: #60a5fa; --info-50: #172840; --info-700: #93c5fd;
+  --accent-teal: #2dd4bf; --accent-teal-soft: #13302f;
+  --accent-sky: #38bdf8; --accent-sky-soft: #142b3c;
+  --accent-rose: #fb7185; --accent-rose-soft: #341b2a;
+  --accent-amber: #fbbf24; --accent-amber-soft: #30270e;
+  --accent-indigo: #a5b4fc; --accent-indigo-soft: #242443;
+  --accent-emerald: #34d399; --accent-emerald-soft: #143127;
 
   /* Shadows */
   --shadow-xs:  0 1px 2px rgba(23,20,18,0.05);
@@ -99,7 +54,7 @@
   --shadow-md:  0 4px 6px rgba(23,20,18,0.06), 0 2px 4px rgba(23,20,18,0.04);
   --shadow-lg:  0 10px 15px rgba(23,20,18,0.08), 0 4px 6px rgba(23,20,18,0.04);
   --shadow-xl:  0 20px 25px rgba(23,20,18,0.08), 0 8px 10px rgba(23,20,18,0.04);
-  --shadow-primary: 0 4px 14px rgba(249,115,22,0.28);
+  --shadow-primary: 0 4px 14px rgba(115,87,255,0.24);
 
   /* Radii */
   --radius-sm:   0.25rem;
@@ -132,7 +87,7 @@ body {
 .auth-bg {
   background-color: var(--surface-1);
   background-image:
-    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(249,115,22,0.08), transparent),
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(115,87,255,0.12), transparent),
     radial-gradient(ellipse 60% 40% at 100% 100%, rgba(20,184,166,0.04), transparent);
 }
 
@@ -153,7 +108,7 @@ body {
   text-decoration: none;
 }
 .sidebar-nav-item:hover {
-  background: rgba(0, 0, 0, 0.04);
+  background: var(--surface-2);
   color: var(--text-primary);
 }
 .sidebar-nav-item.active {

@@ -3111,6 +3111,54 @@ def use_template(request, workspace_id, template_id):
 # ---------------------------------------------------------------------------
 
 
+_CSV_MEDIA_MESSAGE = (
+    "CSV media URLs are not supported yet. Upload files to Media Library, remove the media columns, "
+    "and import without a date so you can attach the files before scheduling. No posts were imported."
+)
+
+
+def _reject_csv_media(request, workspace, csv_data, mapping=None):
+    """Fail visibly rather than silently stripping attachments from a CSV import.
+
+    URL ingestion needs a bounded downloader pinned to a validated public IP;
+    the existing feed fetcher does not provide that protection. Never fetch here.
+    This also rejects legacy session mappings and manually submitted mappings.
+    """
+    media_columns = [
+        index
+        for index, header in enumerate(csv_data.get("headers", []))
+        if re.fullmatch(
+            r"(?:media|image|video|photo|attachment)(?:_?urls?)?(?:_?\d+)?s?",
+            re.sub(r"[\s-]+", "_", str(header).strip().lower()),
+        )
+    ]
+    errors = [
+        {"row": number, "errors": [_CSV_MEDIA_MESSAGE]}
+        for number, row in enumerate(csv_data.get("rows", []), start=2)
+        if any(index < len(row) and str(row[index]).strip() for index in media_columns)
+    ]
+    if not errors and any(
+        field in (mapping or {}) and mapping[field] not in (None, "")
+        for field in ("media_url", "media_urls", "image_url", "video_url")
+    ):
+        errors = [{"row": 1, "errors": [_CSV_MEDIA_MESSAGE]}]
+    if not errors:
+        return None
+    request.session.pop(f"csv_import_{workspace.id}", None)
+    request.session.pop(f"csv_mapping_{workspace.id}", None)
+    return render(
+        request,
+        "composer/partials/csv_validation.html",
+        {
+            "workspace": workspace,
+            "total_rows": len(csv_data.get("rows", [])),
+            "valid_count": 0,
+            "errors": errors[:50],
+            "has_more_errors": len(errors) > 50,
+        },
+    )
+
+
 @login_required
 @require_permission("create_posts")
 def csv_upload(request, workspace_id):
@@ -3121,6 +3169,8 @@ def csv_upload(request, workspace_id):
         import csv
         import io
 
+        request.session.pop(f"csv_import_{workspace.id}", None)
+        request.session.pop(f"csv_mapping_{workspace.id}", None)
         csv_file = request.FILES["csv_file"]
         if csv_file.size and csv_file.size > MAX_CSV_UPLOAD_BYTES:
             return render(
@@ -3140,6 +3190,9 @@ def csv_upload(request, workspace_id):
             )
 
         headers = rows[0]
+        media_error = _reject_csv_media(request, workspace, {"headers": headers, "rows": rows[1:]})
+        if media_error is not None:
+            return media_error
         preview_rows = rows[1:6]  # First 5 data rows
 
         # Auto-detect column mapping
@@ -3148,7 +3201,6 @@ def csv_upload(request, workspace_id):
             "time": ["time", "publish_time", "scheduled_time"],
             "platforms": ["platform", "platforms", "channel", "channels"],
             "caption": ["caption", "text", "content", "message", "body"],
-            "media_url": ["media_url", "media", "image_url", "image", "video_url"],
             "category": ["category", "content_category", "type"],
             "tags": ["tags", "labels", "tag"],
             "first_comment": ["first_comment", "comment"],
@@ -3199,9 +3251,23 @@ def csv_preview(request, workspace_id):
     if not csv_data:
         return HttpResponse("No CSV data found. Please upload again.", status=400)
 
-    # Parse column mapping from POST
+    media_error = _reject_csv_media(
+        request,
+        workspace,
+        csv_data,
+        {
+            "media_url": request.POST.get("map_media_url"),
+            "media_urls": request.POST.get("map_media_urls"),
+            "image_url": request.POST.get("map_image_url"),
+            "video_url": request.POST.get("map_video_url"),
+        },
+    )
+    if media_error is not None:
+        return media_error
+
+    # Parse supported column mapping from POST.
     mapping = {}
-    for field in ["date", "time", "platforms", "caption", "media_url", "category", "tags", "first_comment"]:
+    for field in ["date", "time", "platforms", "caption", "category", "tags", "first_comment"]:
         col_idx = request.POST.get(f"map_{field}", "")
         if col_idx != "":
             import contextlib
@@ -3215,7 +3281,7 @@ def csv_preview(request, workspace_id):
 
     from apps.social_accounts.models import SocialAccount
 
-    valid_platforms = {p[0].lower() for p in SocialAccount.Platform.choices}
+    valid_platforms = {p[0].lower() for p in SocialAccount._meta.get_field("platform").choices}
     connected_accounts = set(
         SocialAccount.objects.for_workspace(workspace.id)
         .filter(connection_status=SocialAccount.ConnectionStatus.CONNECTED)
@@ -3280,13 +3346,17 @@ def csv_preview(request, workspace_id):
 @require_permission("create_posts")
 @require_POST
 def csv_confirm_import(request, workspace_id):
-    """Kick off the CSV import as a background job."""
+    """Import supported CSV rows, committing each complete row atomically."""
     workspace = _get_workspace(request, workspace_id)
     csv_data = request.session.get(f"csv_import_{workspace.id}")
     mapping = request.session.get(f"csv_mapping_{workspace.id}")
 
     if not csv_data or not mapping:
         return HttpResponse("No CSV data found. Please upload again.", status=400)
+
+    media_error = _reject_csv_media(request, workspace, csv_data, mapping)
+    if media_error is not None:
+        return media_error
 
     from apps.social_accounts.models import SocialAccount
 
@@ -3296,81 +3366,84 @@ def csv_confirm_import(request, workspace_id):
 
     for row in rows:
         try:
-            caption = row[mapping["caption"]].strip() if "caption" in mapping and mapping["caption"] < len(row) else ""
-            if not caption:
-                error_count += 1
-                continue
+            with transaction.atomic():
+                caption = (
+                    row[mapping["caption"]].strip() if "caption" in mapping and mapping["caption"] < len(row) else ""
+                )
+                if not caption:
+                    error_count += 1
+                    continue
 
-            post = Post(
-                workspace=workspace,
-                author=request.user,
-                caption=caption,
-            )
-            initial_pp_status = "draft"
+                post = Post(
+                    workspace=workspace,
+                    author=request.user,
+                    caption=caption,
+                )
+                initial_pp_status = "draft"
 
-            # Date + time
-            if "date" in mapping and mapping["date"] < len(row):
-                date_str = row[mapping["date"]].strip()
-                time_str = ""
-                if "time" in mapping and mapping["time"] < len(row):
-                    time_str = row[mapping["time"]].strip()
+                # Date + time
+                if "date" in mapping and mapping["date"] < len(row):
+                    date_str = row[mapping["date"]].strip()
+                    time_str = ""
+                    if "time" in mapping and mapping["time"] < len(row):
+                        time_str = row[mapping["time"]].strip()
 
-                if date_str:
-                    import zoneinfo
+                    if date_str:
+                        import zoneinfo
 
-                    ws_tz = workspace.effective_timezone or "UTC"
-                    tz = zoneinfo.ZoneInfo(ws_tz)
-                    from datetime import time as time_cls
+                        ws_tz = workspace.effective_timezone or "UTC"
+                        tz = zoneinfo.ZoneInfo(ws_tz)
+                        from datetime import time as time_cls
 
-                    d = datetime.strptime(date_str, "%Y-%m-%d").date()
-                    t = datetime.strptime(time_str, "%H:%M").time() if time_str else time_cls(9, 0)
-                    naive_dt = datetime.combine(d, t)
-                    post.scheduled_at = naive_dt.replace(tzinfo=tz)
-                    initial_pp_status = "scheduled"
+                        d = datetime.strptime(date_str, "%Y-%m-%d").date()
+                        t = datetime.strptime(time_str, "%H:%M").time() if time_str else time_cls(9, 0)
+                        naive_dt = datetime.combine(d, t)
+                        post.scheduled_at = naive_dt.replace(tzinfo=tz)
+                        initial_pp_status = "scheduled"
 
-            # First comment
-            if "first_comment" in mapping and mapping["first_comment"] < len(row):
-                post.first_comment = row[mapping["first_comment"]].strip()
+                # First comment
+                if "first_comment" in mapping and mapping["first_comment"] < len(row):
+                    post.first_comment = row[mapping["first_comment"]].strip()
 
-            # Tags
-            if "tags" in mapping and mapping["tags"] < len(row):
-                tags_raw = row[mapping["tags"]].strip()
-                if tags_raw:
-                    post.tags = [t.strip() for t in tags_raw.split(",") if t.strip()]
+                # Tags
+                if "tags" in mapping and mapping["tags"] < len(row):
+                    tags_raw = row[mapping["tags"]].strip()
+                    if tags_raw:
+                        post.tags = [t.strip() for t in tags_raw.split(",") if t.strip()]
 
-            # Category
-            if "category" in mapping and mapping["category"] < len(row):
-                cat_name = row[mapping["category"]].strip()
-                if cat_name:
-                    cat, _ = ContentCategory.objects.get_or_create(
-                        workspace=workspace,
-                        name=cat_name,
-                        defaults={"color": "#3B82F6"},
-                    )
-                    post.category = cat
-
-            post.save()
-
-            # Platforms
-            if "platforms" in mapping and mapping["platforms"] < len(row):
-                platforms_str = row[mapping["platforms"]].strip()
-                if platforms_str:
-                    for p in platforms_str.split(","):
-                        p = p.strip().lower()
-                        accounts = SocialAccount.objects.filter(
+                # Category
+                if "category" in mapping and mapping["category"] < len(row):
+                    cat_name = row[mapping["category"]].strip()
+                    if cat_name:
+                        cat, _ = ContentCategory.objects.get_or_create(
                             workspace=workspace,
-                            platform=p,
-                            connection_status=SocialAccount.ConnectionStatus.CONNECTED,
+                            name=cat_name,
+                            defaults={"color": "#3B82F6"},
                         )
-                        for acc in accounts:
-                            PlatformPost.objects.get_or_create(
-                                post=post,
-                                social_account=acc,
-                                defaults={
-                                    "status": initial_pp_status,
-                                    "scheduled_at": post.scheduled_at,
-                                },
+                        post.category = cat
+
+                post.save()
+
+                # Platforms
+                if "platforms" in mapping and mapping["platforms"] < len(row):
+                    platforms_str = row[mapping["platforms"]].strip()
+                    if platforms_str:
+                        for p in platforms_str.split(","):
+                            p = p.strip().lower()
+                            accounts = SocialAccount.objects.filter(
+                                workspace=workspace,
+                                platform=p,
+                                connection_status=SocialAccount.ConnectionStatus.CONNECTED,
                             )
+                            for acc in accounts:
+                                PlatformPost.objects.get_or_create(
+                                    post=post,
+                                    social_account=acc,
+                                    defaults={
+                                        "status": initial_pp_status,
+                                        "scheduled_at": post.scheduled_at,
+                                    },
+                                )
 
             created_count += 1
         except Exception:

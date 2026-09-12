@@ -488,3 +488,72 @@ class TestProposedPublishAtMcp:
         )
         # A tz-less value is interpreted as UTC and serialized with a Z suffix.
         assert created["proposed_publish_at"] == "2027-09-01T09:00:00Z"
+
+
+@pytest.mark.django_db
+class TestAgentLaunchWorkflows:
+    @pytest.mark.parametrize("transport", ["rest", "mcp"])
+    @pytest.mark.parametrize("proof", ["valid", "missing", "changed"])
+    def test_schedule_approved_post_enforces_exact_approval(
+        self, client_with_token, user, workspace, social_account, transport, proof
+    ):
+        from apps.approvals.policy import mark_final_approval
+
+        workspace.approval_workflow_mode = "required_internal"
+        workspace.save(update_fields=["approval_workflow_mode"])
+        post = Post.objects.create(workspace=workspace, author=user, caption="Human approved this")
+        child = PlatformPost.objects.create(post=post, social_account=social_account, status="approved")
+        if proof != "missing":
+            mark_final_approval(child)
+        if proof == "changed":
+            post.caption = "Changed after approval"
+            post.save(update_fields=["caption"])
+        when = (timezone.now() + timedelta(hours=2)).isoformat()
+        if transport == "rest":
+            response = client_with_token.post(
+                f"/api/v1/posts/{post.id}/schedule",
+                data=json.dumps({"scheduled_at": when}),
+                content_type="application/json",
+            )
+            assert response.status_code == (200 if proof == "valid" else 422), response.content
+        else:
+            response = client_with_token.post(
+                MCP_URL,
+                data=json.dumps(
+                    _rpc(
+                        "tools/call",
+                        {"name": "schedule_draft", "arguments": {"post_id": str(post.id), "scheduled_at": when}},
+                    )
+                ),
+                content_type="application/json",
+            )
+            body = response.json()
+            assert ("error" not in body) == (proof == "valid"), body
+        child.refresh_from_db()
+        assert child.status == ("scheduled" if proof == "valid" else "approved")
+        assert Post.objects.filter(workspace=workspace).count() == 1
+
+    def test_finalize_failure_rolls_back_post_before_idempotent_retry(
+        self, client_with_token, workspace, social_account
+    ):
+        from unittest.mock import patch
+
+        client_with_token.raise_request_exception = False
+        payload = {
+            "social_account_id": str(social_account.id),
+            "caption": "Retry-safe draft",
+            "action": "draft",
+            "idempotency_key": "synthetic-finalization-failure",
+        }
+        with patch(
+            "apps.api.routers.posts.finalize_idempotent_response", side_effect=RuntimeError("synthetic failure")
+        ):
+            failed = client_with_token.post("/api/v1/posts/", data=json.dumps(payload), content_type="application/json")
+        assert failed.status_code == 500
+        assert Post.objects.filter(workspace=workspace).count() == 0
+        retry = client_with_token.post("/api/v1/posts/", data=json.dumps(payload), content_type="application/json")
+        assert retry.status_code == 201, retry.content
+        replay = client_with_token.post("/api/v1/posts/", data=json.dumps(payload), content_type="application/json")
+        assert replay.status_code == 201, replay.content
+        assert replay.json()["id"] == retry.json()["id"]
+        assert Post.objects.filter(workspace=workspace).count() == 1

@@ -1,9 +1,12 @@
 # Build PostDelegate's Tailwind assets without carrying Node into production.
-FROM node:20-slim AS frontend
+FROM node:22-slim AS frontend
 WORKDIR /src/theme/static_src
 COPY theme/static_src/package*.json ./
 RUN npm ci
 COPY theme/static_src/ ./
+# Tailwind source paths resolve against /src/theme/static_src/src/styles.css.
+COPY templates/ /src/templates/
+COPY apps/ /src/apps/
 RUN npm run build
 
 # Install Python packages into a relocatable prefix. No compiler is needed for
@@ -20,6 +23,7 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PORT=8000
 WORKDIR /app
+RUN groupadd --gid 10001 app && useradd --uid 10001 --gid app --create-home app
 
 # ffmpeg/ffprobe are required for video validation and metadata extraction.
 # Keep build tools, Node, linters, type-checkers and test frameworks out of the
@@ -29,11 +33,15 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=python-deps /install /usr/local
-COPY . .
-COPY --from=frontend /src/theme/static/css/dist/styles.css /app/theme/static/css/dist/styles.css
+COPY --chown=app:app . .
+COPY --from=frontend --chown=app:app /src/theme/static/css/dist/styles.css /app/theme/static/css/dist/styles.css
+
+RUN chown app:app /app
+USER app
 
 RUN DJANGO_SETTINGS_MODULE=config.settings.production \
-    SECRET_KEY=build-placeholder \
+    SECRET_KEY="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" \
+    ENCRYPTION_KEY_SALT="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" \
     DATABASE_URL=sqlite:///tmp/build.db \
     python manage.py collectstatic --noinput
 

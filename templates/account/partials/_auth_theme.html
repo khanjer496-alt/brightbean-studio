@@ -1,0 +1,45 @@
+<style>
+  /* Auth-only PostDelegate palette; workspace tokens are managed separately. */
+  .auth-bg {
+    --font-body: Manrope, system-ui, sans-serif;
+    --text-ghost: #9299aa;
+    --success-50: #1e291b;
+    --info-50: #211b38;
+    --info-500: #b4a4ff;
+    --surface-0: #11131b;
+    --surface-1: #191d29;
+    --text-primary: #f7f7f2;
+    --text-secondary: #a6adbe;
+    --text-tertiary: #9299aa;
+    --border: #2a2f3b;
+    --primary: #a18dff;
+    --primary-hover: #b4a4ff;
+    --primary-soft: #211b38;
+    --error-500: #ff8797;
+    --success-500: #c8ff4d;
+    background: #080a0f;
+    color: var(--text-primary);
+    font-family: Manrope, var(--font-body), sans-serif;
+    color-scheme: dark;
+  }
+  .auth-bg .auth-card { background: #11131b; border: 1px solid #2a2f3b; box-shadow: 0 24px 70px #04050966; }
+  .auth-bg .form-input-styled { background: #080a0f; color: #f7f7f2; border-color: #353c4c; }
+  .auth-bg .form-input-styled.is-error { border-color: #ff8797; }
+  .auth-bg .form-input-styled::placeholder { color: #9299aa; }
+  .auth-bg .form-input-styled:focus { border-color: #a18dff; box-shadow: 0 0 0 3px #7357ff33; }
+  .auth-bg .btn-brand { background: #7357ff; color: #f7f7f2; box-shadow: none; }
+  .auth-bg .btn-brand:hover { background: #6043f2; transform: none; }
+  .auth-bg .btn-social { background: #191d29; border: 1px solid #353c4c; color: #f7f7f2; }
+  .auth-bg .btn-social:hover { background: #242936; border-color: #a18dff; }
+  .auth-bg .divider-text { color: #9299aa; }
+  .auth-bg .divider-text::before, .auth-bg .divider-text::after { background: #2a2f3b; }
+  .auth-bg .alert-error { background: #301923; color: #ffacb7; border-color: #71313f; }
+  .auth-bg .alert-success { background: #1e291b; color: #d5f59b; border-color: #475e32; }
+  .auth-bg .alert-info { background: #211b38; color: #cfc4ff; border-color: #493a75; }
+  .auth-bg :is(a, button, input, select, textarea):focus-visible { outline: 2px solid #c8ff4d; outline-offset: 3px; }
+  .auth-bg input[type="checkbox"] { accent-color: #7357ff; }
+  @media (max-width: 520px) {
+    .auth-bg { padding: 20px 12px; }
+    .auth-bg .form-input-styled { font-size: 16px; }
+  }
+</style>

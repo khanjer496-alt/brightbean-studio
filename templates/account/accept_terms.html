@@ -11,6 +11,7 @@
     <link rel="apple-touch-icon" sizes="180x180" href="{% static brand_apple_touch_icon_static %}">
     <link rel="manifest" href="{% static brand_manifest_static %}">
     <link rel="stylesheet" href="{% static 'css/dist/styles.css' %}">
+{% include "account/partials/_auth_theme.html" %}
 </head>
 <body>
 <main class="auth-bg min-h-screen flex items-center justify-center py-12 px-4" style="font-family: var(--font-body);">
@@ -18,7 +19,7 @@
         <!-- Logo & Header -->
         <div class="text-center mb-8">
             <div class="inline-flex items-center justify-center w-12 h-12 mb-4">
-                <img src="{% static brand_logo_static %}" alt="{{ brand_name }} logo" class="w-12 h-12 object-contain">
+                <img src="{% if brand_name == 'PostDelegate' %}{% static 'img/postdelegate-mark.svg' %}{% else %}{% static brand_logo_static %}{% endif %}" alt="{{ brand_name }} logo" class="w-12 h-12 object-contain">
             </div>
             <h1 class="text-2xl font-bold tracking-tight" style="color: var(--text-primary);">
                 Almost there

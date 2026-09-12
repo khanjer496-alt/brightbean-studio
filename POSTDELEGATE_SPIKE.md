@@ -1,13 +1,13 @@
 # PostDelegate on BrightBean Studio — migration spike
 
 Upstream baseline: `d85fce192e687d20e8fd7e9449a40ad7952ec7c3` from
-`brightbeanxyz/brightbean-studio`, licensed AGPL-3.0. This spike does not replace
-or modify the current Postiz-based PostDelegate `main`.
+`brightbeanxyz/brightbean-studio`, licensed AGPL-3.0. BrightBean is the selected PostDelegate application base. The separate Postiz-derived
+repository now supplies the public website; its legacy application is not the launch target.
 
 ## Goal
 
-Prove that the lighter Django/PostgreSQL worker architecture can preserve the
-PostDelegate launch requirements before we choose a production base.
+Prepare the selected Django/PostgreSQL application for launch on a small Hetzner
+server with Cloudflare and R2. Hosting setup remains deferred by the owner.
 
 ## Safety additions in this spike
 

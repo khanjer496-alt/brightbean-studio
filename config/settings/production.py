@@ -1,6 +1,26 @@
+from django.core.exceptions import ImproperlyConfigured
+
 from .base import *  # noqa: F401, F403
+from .base import ENCRYPTION_KEY_SALT, SECRET_KEY
 
 DEBUG = False
+
+# Encryption derives from these values, so a placeholder or missing salt would
+# compromise both sessions and stored platform credentials before the first user.
+for _name, _value in (("SECRET_KEY", SECRET_KEY), ("ENCRYPTION_KEY_SALT", ENCRYPTION_KEY_SALT)):
+    _text = _value.decode("utf-8") if isinstance(_value, bytes) else str(_value or "")
+    if len(_text) < 32 or any(
+        marker in _text.lower()
+        for marker in (
+            "generate_",
+            "placeholder",
+            "change-me",
+            "changeme",
+            "django-insecure",
+        )
+    ):
+        raise ImproperlyConfigured(f"{_name} must contain a generated secret of at least 32 characters")
+
 
 # Security
 SECURE_SSL_REDIRECT = True

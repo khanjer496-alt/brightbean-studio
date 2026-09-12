@@ -205,6 +205,7 @@ class PublishEngine:
         return list(
             PlatformPost.objects.filter(
                 status=PlatformPost.Status.SCHEDULED,
+                retry_count=0,
             )
             .annotate(effective_at=Coalesce("scheduled_at", "post__scheduled_at"))
             .filter(effective_at__lte=now)
@@ -239,25 +240,47 @@ class PublishEngine:
                 return
 
             due_ids = {pp.id for pp in due_pps}
-            platform_posts = [pp for pp in locked if pp.id in due_ids and pp.status == PlatformPost.Status.SCHEDULED]
+            now = timezone.now()
+            platform_posts = [
+                pp
+                for pp in locked
+                if pp.id in due_ids
+                and pp.status == PlatformPost.Status.SCHEDULED
+                and (
+                    (
+                        pp.retry_count == 0
+                        and (pp.scheduled_at or pp.post.scheduled_at)
+                        and (pp.scheduled_at or pp.post.scheduled_at) <= now
+                    )
+                    or (0 < pp.retry_count <= MAX_RETRIES and pp.next_retry_at and pp.next_retry_at <= now)
+                )
+            ]
 
             if not platform_posts:
                 return
 
             PlatformPost.objects.filter(id__in=[pp.id for pp in platform_posts]).update(
-                status=PlatformPost.Status.PUBLISHING
+                status=PlatformPost.Status.PUBLISHING, updated_at=now
             )
 
         # Publish in parallel
         results = {}
-        with ThreadPoolExecutor(max_workers=min(len(platform_posts), 5)) as executor:
-            futures = {executor.submit(self._publish_platform_post, pp): pp for pp in platform_posts}
-            for future in as_completed(futures):
-                pp = futures[future]
-                try:
-                    results[pp.id] = future.result()
-                except Exception as e:
-                    results[pp.id] = {"success": False, "error": str(e)}
+        if len(platform_posts) == 1:
+            # A single-channel retry needs no extra thread or DB connection.
+            pp = platform_posts[0]
+            try:
+                results[pp.id] = self._publish_platform_post(pp)
+            except Exception as e:
+                results[pp.id] = {"success": False, "error": str(e)}
+        else:
+            with ThreadPoolExecutor(max_workers=min(len(platform_posts), 5)) as executor:
+                futures = {executor.submit(self._publish_platform_post, pp): pp for pp in platform_posts}
+                for future in as_completed(futures):
+                    pp = futures[future]
+                    try:
+                        results[pp.id] = future.result()
+                    except Exception as e:
+                        results[pp.id] = {"success": False, "error": str(e)}
 
         # Reflect the aggregate onto Post.published_at so dashboards that
         # display "last published" don't need to query every child.
@@ -332,6 +355,7 @@ class PublishEngine:
             self._schedule_retry(platform_post, error_msg, user_message=PUBLISH_RATE_LIMIT_MESSAGE)
             return {"success": False, "error": error_msg}
 
+        remote_succeeded = False
         try:
             # Get the provider for this platform
             result = self._dispatch_to_provider(platform_post)
@@ -339,6 +363,7 @@ class PublishEngine:
             duration_ms = int((time.monotonic() - start_time) * 1000)
 
             if result["success"]:
+                remote_succeeded = True
                 platform_post.platform_post_id = result.get("platform_post_id", "")
                 response_extra = result.get("response")
                 if isinstance(response_extra, dict) and response_extra:
@@ -404,6 +429,19 @@ class PublishEngine:
                 return result
 
         except Exception as e:
+            if remote_succeeded:
+                # The external write already happened. Local persistence/logging
+                # errors must never put this post back on the retry queue.
+                logger.exception("Local recording failed after remote publish for %s", platform_post.id)
+                try:
+                    PlatformPost.objects.filter(pk=platform_post.pk).exclude(
+                        status=PlatformPost.Status.PUBLISHED
+                    ).update(status=PlatformPost.Status.FAILED, publish_error=PUBLISH_AMBIGUOUS_MESSAGE)
+                except Exception:
+                    logger.exception(
+                        "Could not record ambiguous outcome for %s; operator review required", platform_post.id
+                    )
+                return result
             duration_ms = int((time.monotonic() - start_time) * 1000)
             error_msg = str(e)
 
@@ -581,13 +619,28 @@ class PublishEngine:
                 post_type.value,
                 len(media_files),
             )
-            result = provider.publish_post(access_token, content)
-            return {
-                "success": True,
-                "platform_post_id": result.platform_post_id,
-                "url": result.url,
-                "response": result.extra,
-            }
+            try:
+                result = provider.publish_post(access_token, content)
+                return {
+                    "success": True,
+                    "platform_post_id": result.platform_post_id,
+                    "url": result.url,
+                    "response": result.extra,
+                }
+            except ProviderError:
+                # Preserve explicit provider classifications (e.g. rejected 429,
+                # expired token, known permanent error, or ambiguous API write).
+                raise
+            except Exception as exc:
+                # Once inside publish_post, an unclassified error may follow a
+                # committed mutation: JSON decoding, missing response IDs, or
+                # even adapting a malformed success result. Retrying is unsafe.
+                # Preparation errors above this boundary still use normal retry.
+                raise APIError(
+                    "The provider publish outcome could not be confirmed.",
+                    platform=platform,
+                    ambiguous_write=True,
+                ) from exc
         finally:
             # Clean up temp files regardless of success/failure
             for path in temp_files:
@@ -703,15 +756,10 @@ class PublishEngine:
         )
 
         for pp in retry_posts:
-            if pp.post.platform_posts.filter(status=PlatformPost.Status.ON_HOLD).exists():
-                continue
             try:
-                pp.status = PlatformPost.Status.PUBLISHING
-                pp.save(update_fields=["status", "updated_at"])
-                result = self._publish_platform_post(pp)
-                if result.get("success"):
-                    self._sync_parent_published_at(pp.post)
-                    self._maybe_schedule_first_comment(pp)
+                # Share the scheduled path's atomic claim and sibling-hold lock.
+                # A competing worker that already claimed or deferred it wins.
+                self._publish_post_group(pp.post, [pp])
             except Exception:
                 logger.exception("Error retrying PlatformPost %s", pp.id)
 

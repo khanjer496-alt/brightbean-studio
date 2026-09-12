@@ -219,3 +219,12 @@ theme/static/css/dist/
 /seed_ad_analytics.py
 /seed_ad_calendar.py
 .env.postdelegate.local
+
+# Local tunnel credentials must never be committed or copied into an image.
+.cloudflared-preview-token
+**/.cloudflared-preview-token
+
+# Production environment variants contain runtime credentials.
+.env.*
+!.env.example
+!.env.postdelegate.example

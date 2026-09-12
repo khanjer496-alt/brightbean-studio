@@ -250,7 +250,7 @@ register_tool(
         name="create_draft",
         description=(
             "Create a draft post against a connected account. The draft is saved but not "
-            "queued for publishing; call schedule_post or the schedule tool later to publish. "
+            "queued for publishing; call schedule_draft with the returned post id later. "
             "Optionally record a non-binding proposed_publish_at suggestion."
         ),
         input_schema={
@@ -561,7 +561,7 @@ register_tool(
 
 
 def _schedule_draft(args: dict, context: dict[str, Any]) -> dict:
-    """Promote every draft child of an existing post to ``scheduled``.
+    """Promote draft or finally approved children of an existing post to ``scheduled``.
 
     Mirrors the REST ``POST /api/v1/posts/{post_id}/schedule`` route.
     Closes the asymmetry where MCP previously had no way to transition
@@ -584,13 +584,13 @@ def _schedule_draft(args: dict, context: dict[str, Any]) -> dict:
 
     api_key = context["api_key"]
     post = _get_post_for_key(api_key, args["post_id"])
-    drafts = [pp for pp in post.platform_posts.all() if pp.status == "draft"]
-    if not drafts:
-        raise JsonRpcError(INVALID_PARAMS, "No draft platform posts to schedule")
+    schedulable = [pp for pp in post.platform_posts.all() if pp.status in {"draft", "approved"}]
+    if not schedulable:
+        raise JsonRpcError(INVALID_PARAMS, "No draft or approved platform posts to schedule")
 
     # Per-platform 24h quota check, one per child, BEFORE we mutate
     # anything — over-quota fails the whole call with no partial commit.
-    for pp in drafts:
+    for pp in schedulable:
         try:
             check_platform_quota(pp.social_account)
         except HttpError as exc:
@@ -605,7 +605,7 @@ def _schedule_draft(args: dict, context: dict[str, Any]) -> dict:
     # approval-mode rejection from ``transition_platform_post``) rolls
     # back any earlier ``scheduled`` commits.
     with transaction.atomic():
-        for pp in drafts:
+        for pp in schedulable:
             try:
                 transition_platform_post(pp, "scheduled", scheduled_at=scheduled_at)
             except ValueError as exc:
@@ -618,10 +618,10 @@ register_tool(
     Tool(
         name="schedule_draft",
         description=(
-            "Schedule an EXISTING draft post — transitions every draft child to scheduled "
+            "Schedule an EXISTING draft or approved post — transitions eligible children to scheduled "
             "at the given UTC timestamp. Use this for the two-step flow "
             "'create_draft now, schedule_draft later'. For one-shot create-and-schedule, "
-            "use schedule_post instead. Requires both create_posts and publish_directly."
+            "use schedule_post instead. Approval-required workspaces must complete human approval first. Requires both create_posts and publish_directly."
         ),
         input_schema={
             "type": "object",

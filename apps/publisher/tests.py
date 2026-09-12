@@ -334,6 +334,7 @@ class ApprovalChokepointTest(TestCase):
     def setUp(self):
         from apps.accounts.models import User
         from apps.composer.models import PlatformPost, Post
+        from apps.members.models import WorkspaceMembership
         from apps.organizations.models import Organization
         from apps.social_accounts.models import SocialAccount
         from apps.workspaces.models import Workspace
@@ -345,6 +346,9 @@ class ApprovalChokepointTest(TestCase):
             name="WS",
             approval_workflow_mode="required_internal",
         )
+        WorkspaceMembership.objects.create(user=self.user, workspace=self.workspace, workspace_role="manager")
+        self.client_user = User.objects.create_user("client-reviewer@example.com", "pass12345")
+        WorkspaceMembership.objects.create(user=self.client_user, workspace=self.workspace, workspace_role="client")
         self.account = SocialAccount.objects.create(
             workspace=self.workspace,
             platform="linkedin_personal",
@@ -428,7 +432,7 @@ class ApprovalChokepointTest(TestCase):
         self.assertEqual(self.pp.status, PlatformPost.Status.PENDING_CLIENT)
         self.assertIsNone(self.pp.approval_completed_at)
         self.assertEqual(self.pp.approval_fingerprint, "")
-        approval_services.approve_post(self.pp, self.user, self.workspace)
+        approval_services.approve_post(self.pp, self.client_user, self.workspace)
         self.pp.refresh_from_db()
         self.assertEqual(self.pp.status, PlatformPost.Status.APPROVED)
         self.assertIsNotNone(self.pp.approval_completed_at)

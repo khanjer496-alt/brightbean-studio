@@ -4,6 +4,14 @@
 x-postdelegate-app: &postdelegate-app
   image: postdelegate-app:${POSTDELEGATE_IMAGE_TAG:-spike}
   build: .
+  init: true
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
   env_file:
     - ${POSTDELEGATE_ENV_FILE:-.env.postdelegate}
   environment:
@@ -29,6 +37,12 @@ services:
       migrate:
         condition: service_completed_successfully
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.Request('http://127.0.0.1:8000/health/', headers={'Host': __import__('os').environ['ALLOWED_HOSTS'].split(',')[0]}); urllib.request.urlopen(r, timeout=5).close()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
   worker:
     <<: *postdelegate-app
@@ -37,6 +51,12 @@ services:
       migrate:
         condition: service_completed_successfully
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import os,time; assert time.time()-os.path.getmtime('/tmp/postdelegate-publisher-heartbeat') < 1200"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
 
   postgres:
     image: postgres:16-alpine

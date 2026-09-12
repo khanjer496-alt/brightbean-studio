@@ -296,7 +296,7 @@ def _resolve_oauth_actor(token: str) -> OAuthMcpActor | None:
         # bounded by the IP throttle; logging it louder invites flooding.
         LOG.info("Bearer auth rejected: no OAuth access token matches the presented bearer.")
         return None
-    if tok.user_id is None:
+    if tok.user_id is None or not tok.user.is_active:
         # WARNING: a token row with no user is a data anomaly, not normal traffic.
         LOG.warning("Bearer auth rejected: OAuth access token %s is not bound to a user.", tok.pk)
         return None

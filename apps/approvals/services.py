@@ -30,6 +30,38 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
+def _approval_membership(target, user, workspace):
+    """Resolve current authority at the service boundary, including portal calls."""
+    post = target.post if isinstance(target, PlatformPost) else target
+    if post.workspace_id != workspace.pk:
+        raise ValueError("Post does not belong to this workspace.")
+    membership = (
+        WorkspaceMembership.objects.select_related("custom_role", "workspace")
+        .filter(
+            user_id=getattr(user, "pk", None),
+            workspace_id=workspace.pk,
+            user__is_active=True,
+            workspace__is_archived=False,
+        )
+        .first()
+    )
+    if not membership or not membership.effective_permissions.get("approve_posts", False):
+        raise ValueError("Current workspace approval permission is required.")
+    return membership
+
+
+def _review_states(membership):
+    # Client sign-off is a separate stage; neither an internal reviewer nor a
+    # client may perform both stages by calling the other HTTP endpoint.
+    if membership.workspace_role == WorkspaceMembership.WorkspaceRole.CLIENT:
+        return (
+            {"pending_client"}
+            if membership.workspace.approval_workflow_mode == "required_internal_and_client"
+            else set()
+        )
+    return {"pending_review"}
+
+
 def _resolve_targets(target, *, eligible_from_states=None):
     """Normalise *target* into ``(post, [platform_posts], is_bundled)``.
 
@@ -40,12 +72,20 @@ def _resolve_targets(target, *, eligible_from_states=None):
     siblings.
     """
     if isinstance(target, PlatformPost):
-        return target.post, [target], False
+        rows = PlatformPost.objects.select_related("post", "social_account")
+        if transaction.get_connection().in_atomic_block:
+            rows = rows.select_for_update()
+        current = rows.get(pk=target.pk)
+        eligible = eligible_from_states is None or current.status in eligible_from_states
+        return current.post, [current] if eligible else [], False
 
     if not isinstance(target, Post):
         raise TypeError(f"Expected Post or PlatformPost, got {type(target).__name__}")
 
-    children = list(target.platform_posts.select_related("social_account"))
+    rows = target.platform_posts.select_related("social_account")
+    if transaction.get_connection().in_atomic_block:
+        rows = rows.select_for_update()
+    children = list(rows)
     if eligible_from_states is not None:
         children = [pp for pp in children if pp.status in eligible_from_states]
     return target, children, True
@@ -133,6 +173,7 @@ def submit_for_review(target, user, workspace):
     return post
 
 
+@transaction.atomic
 def approve_post(target, user, workspace, comment=""):
     """Approve a post or single platform post.
 
@@ -140,9 +181,9 @@ def approve_post(target, user, workspace, comment=""):
     out of ``pending_review``, the target hops to ``approved`` and then to
     ``pending_client`` (the same behaviour as before, just per-target).
     """
-    post, targets, is_bundled = _resolve_targets(
-        target, eligible_from_states={"pending_review", "pending_client", "draft", "rejected", "changes_requested"}
-    )
+    membership = _approval_membership(target, user, workspace)
+    workspace = membership.workspace
+    post, targets, is_bundled = _resolve_targets(target, eligible_from_states=_review_states(membership))
 
     two_stage = workspace.approval_workflow_mode == "required_internal_and_client"
     moved = []
@@ -196,12 +237,15 @@ def approve_post(target, user, workspace, comment=""):
     return post
 
 
+@transaction.atomic
 def request_changes(target, user, workspace, comment):
     """Request changes on a post or single platform post. Comment is required."""
     if not comment.strip():
         raise ValueError("A comment is required when requesting changes.")
 
-    post, targets, is_bundled = _resolve_targets(target, eligible_from_states={"pending_review", "pending_client"})
+    membership = _approval_membership(target, user, workspace)
+    workspace = membership.workspace
+    post, targets, is_bundled = _resolve_targets(target, eligible_from_states=_review_states(membership))
 
     moved = []
     with transaction.atomic():
@@ -233,12 +277,15 @@ def request_changes(target, user, workspace, comment):
     return post
 
 
+@transaction.atomic
 def reject_post(target, user, workspace, comment):
     """Reject a post or single platform post. Comment is required."""
     if not comment.strip():
         raise ValueError("A comment is required when rejecting a post.")
 
-    post, targets, is_bundled = _resolve_targets(target, eligible_from_states={"pending_review", "pending_client"})
+    membership = _approval_membership(target, user, workspace)
+    workspace = membership.workspace
+    post, targets, is_bundled = _resolve_targets(target, eligible_from_states=_review_states(membership))
 
     moved = []
     with transaction.atomic():
@@ -270,6 +317,7 @@ def reject_post(target, user, workspace, comment):
     return post
 
 
+@transaction.atomic
 def request_hold(target, user, workspace, comment):
     """Client requests a hold on an already-approved post. Comment is required.
 
@@ -280,6 +328,7 @@ def request_hold(target, user, workspace, comment):
     if not comment.strip():
         raise ValueError("A comment is required when requesting a hold.")
 
+    _approval_membership(target, user, workspace)
     post, targets, is_bundled = _resolve_targets(target, eligible_from_states={"approved"})
 
     moved = []
@@ -300,12 +349,16 @@ def request_hold(target, user, workspace, comment):
     return post
 
 
+@transaction.atomic
 def resume_hold(target, user, workspace):
     """Lift a client-requested hold — move an ``on_hold`` post back to ``approved``.
 
     Reviewer-side counterpart to :func:`request_hold`, so a held post is never a
     dead end for the team.
     """
+    membership = _approval_membership(target, user, workspace)
+    if membership.workspace_role == WorkspaceMembership.WorkspaceRole.CLIENT:
+        raise ValueError("An internal reviewer must lift this hold.")
     post, targets, is_bundled = _resolve_targets(target, eligible_from_states={"on_hold"})
 
     moved = []

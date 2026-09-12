@@ -614,6 +614,8 @@ It reports the token's granted scopes (a missing `pages_manage_engagement` is wh
 
 ## API & MCP for Agents
 
+For the PostDelegate deployment, start with the [agent connection and first-draft guide](docs/agents/getting-started.md).
+
 BrightBean Studio ships a REST API and an MCP (Model Context Protocol) server so agents and scripts can read analytics, manage media, and create or schedule posts. Both share the same authentication, permission model, rate limits, and audit log. Pick whichever protocol fits your client.
 
 **Base URL:** `{APP_URL}/api/v1/` (e.g. `https://your-studio.example.com/api/v1/`)

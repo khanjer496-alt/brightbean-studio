@@ -7,6 +7,8 @@ from django.db.models import Count, Q
 def brand_context(request):
     """Expose deployment branding on authenticated and public templates."""
     return {
+        "agent_mcp_url": f"{settings.MCP_PUBLIC_BASE_URL}/api/v1/mcp",
+        "agent_api_docs_url": f"{settings.MCP_PUBLIC_BASE_URL}/api/v1/docs",
         "brand_name": settings.BRAND_NAME,
         "brand_short_name": settings.BRAND_SHORT_NAME,
         "brand_legal_name": settings.BRAND_LEGAL_NAME,
@@ -20,8 +22,7 @@ def brand_context(request):
         "brand_apple_touch_icon_static": settings.BRAND_APPLE_TOUCH_ICON_STATIC,
         "brand_manifest_static": settings.BRAND_MANIFEST_STATIC,
         "google_auth_enabled": bool(
-            getattr(settings, "GOOGLE_AUTH_CLIENT_ID", "")
-            and getattr(settings, "GOOGLE_AUTH_CLIENT_SECRET", "")
+            getattr(settings, "GOOGLE_AUTH_CLIENT_ID", "") and getattr(settings, "GOOGLE_AUTH_CLIENT_SECRET", "")
         ),
     }
 

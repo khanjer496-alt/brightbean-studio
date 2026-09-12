@@ -36,6 +36,8 @@ class ApprovalWorkflowBase(TestCase):
         self.ws = Workspace.objects.create(organization=self.org, name="WS")
         self.reviewer = _make_user("reviewer@example.com")
         self.author = _make_user("author@example.com")
+        self.client_reviewer = _make_user("client-reviewer@example.com")
+        WorkspaceMembership.objects.create(user=self.client_reviewer, workspace=self.ws, workspace_role="client")
         OrgMembership.objects.create(user=self.reviewer, organization=self.org, org_role="owner")
         WorkspaceMembership.objects.create(user=self.reviewer, workspace=self.ws, workspace_role="manager")
         WorkspaceMembership.objects.create(user=self.author, workspace=self.ws, workspace_role="contributor")
@@ -120,7 +122,7 @@ class ActionViewContractTests(ApprovalWorkflowBase):
 class HoldTests(ApprovalWorkflowBase):
     def test_request_hold_then_resume(self):
         post = self._post("approved")
-        services.request_hold(post, self.author, self.ws, "Legal wants to check the figures")
+        services.request_hold(post, self.client_reviewer, self.ws, "Legal wants to check the figures")
         self.assertEqual(post.platform_posts.get().status, "on_hold")
         self.assertTrue(ApprovalAction.objects.filter(post=post, action="held").exists())
 
@@ -130,7 +132,7 @@ class HoldTests(ApprovalWorkflowBase):
     def test_request_hold_requires_comment(self):
         post = self._post("approved")
         with self.assertRaises(ValueError):
-            services.request_hold(post, self.author, self.ws, "   ")
+            services.request_hold(post, self.client_reviewer, self.ws, "   ")
         self.assertEqual(post.platform_posts.get().status, "approved")
 
     def test_on_hold_is_not_publishable(self):
@@ -163,10 +165,10 @@ class TwoStageFlowTests(ApprovalWorkflowBase):
         services.approve_post(post, self.reviewer, self.ws)  # internal → client stage
         self.assertEqual(post.platform_posts.get().status, "pending_client")
 
-        services.approve_post(post, self.author, self.ws)  # client sign-off
+        services.approve_post(post, self.client_reviewer, self.ws)  # client sign-off
         self.assertEqual(post.platform_posts.get().status, "approved")
 
-        services.request_hold(post, self.author, self.ws, "Hold for a sec")
+        services.request_hold(post, self.client_reviewer, self.ws, "Hold for a sec")
         self.assertEqual(post.platform_posts.get().status, "on_hold")
 
     def test_two_stage_defers_approved_notification_to_client_signoff(self):
@@ -183,7 +185,7 @@ class TwoStageFlowTests(ApprovalWorkflowBase):
         self.assertFalse(Notification.objects.filter(user=self.author, event_type=EventType.POST_APPROVED).exists())
 
         # Client sign-off reaches approved — now the author is notified.
-        services.approve_post(post, self.reviewer, self.ws)
+        services.approve_post(post, self.client_reviewer, self.ws)
         self.assertEqual(post.platform_posts.get().status, "approved")
         self.assertTrue(Notification.objects.filter(user=self.author, event_type=EventType.POST_APPROVED).exists())
 

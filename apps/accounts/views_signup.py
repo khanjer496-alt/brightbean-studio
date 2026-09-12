@@ -26,6 +26,16 @@ class InvitePrefillSignupView(SignupView):
             initial["email"] = email
         return initial
 
+    def get_form(self, form_class=None):
+        form = super().get_form(form_class)
+        email = self._invited_email()
+        if email:
+            # Django's disabled field uses initial data during cleaning, so a
+            # tampered POST cannot replace the invited address.
+            form.fields["email"].disabled = True
+            form.initial["email"] = email
+        return form
+
     def get_context_data(self, **kwargs):
         ctx = super().get_context_data(**kwargs)
         ctx["invited_email_locked"] = bool(self._invited_email())
