@@ -855,13 +855,20 @@ def compose(request, workspace_id, post_id=None):
             elif asset.file:
                 url = asset.file.url
             asset_url_map[str(asset.id)] = url
+    # An id that no longer resolves here (deleted, or outside this workspace's
+    # library) is dropped so the form doesn't resubmit it: the editor shows no
+    # image for it and save_post would reject it.
     for _acc_id, extra in platform_extras.items():
         tid = extra.get("thumbnail_asset_id")
         if tid and tid in asset_url_map:
             extra["thumbnail_url"] = asset_url_map[tid]
+        elif tid:
+            extra["thumbnail_asset_id"] = None
         cid = extra.get("cover_image_asset_id")
         if cid and cid in asset_url_map:
             extra["cover_image_url"] = asset_url_map[cid]
+        elif cid:
+            extra["cover_image_asset_id"] = None
 
     context = {
         "workspace": workspace,

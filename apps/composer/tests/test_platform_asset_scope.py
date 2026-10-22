@@ -132,3 +132,28 @@ class PlatformAssetScopeTests(TestCase):
         assert response.status_code in (200, 204, 302)
         pp = PlatformPost.objects.get(social_account=self.pinterest)
         assert pp.platform_extra["cover_image_asset_id"] == str(asset.id)
+
+    def test_editor_drops_saved_ids_it_cannot_resolve(self):
+        # A post saved before scoping may hold another tenant's or a deleted
+        # asset id. The editor must not resubmit it, or the post could never
+        # be saved again (YouTube's panel has no Remove button without a URL).
+        post = Post.objects.create(workspace=self.workspace, author=self.user, caption="c")
+        PlatformPost.objects.create(
+            post=post,
+            social_account=self.youtube,
+            platform_extra={"thumbnail_asset_id": str(self.foreign_asset.id)},
+        )
+        PlatformPost.objects.create(
+            post=post,
+            social_account=self.pinterest,
+            platform_extra={"board_id": "board-1", "cover_image_asset_id": str(uuid.uuid4())},
+        )
+
+        response = self.client.get(
+            reverse("composer:compose_edit", kwargs={"workspace_id": self.workspace.id, "post_id": post.id})
+        )
+
+        assert response.status_code == 200
+        extras = response.context["platform_extras"]
+        assert extras[str(self.youtube.id)]["thumbnail_asset_id"] is None
+        assert extras[str(self.pinterest.id)]["cover_image_asset_id"] is None
