@@ -214,8 +214,18 @@ class TestTrustedProxyClientIp:
 
         settings.BB_TRUSTED_PROXIES = ("10.0.0.1",)
         req = RequestFactory().get("/", HTTP_X_FORWARDED_FOR="8.8.8.8, 10.0.0.1", REMOTE_ADDR="10.0.0.1")
-        # The proxy is trusted, so XFF is honoured; the leftmost
+        # The proxy is trusted, so XFF is honoured; the rightmost
         # untrusted hop is the originating client.
+        assert _client_ip(req) == "8.8.8.8"
+
+    def test_client_written_hops_are_ignored_behind_a_trusted_proxy(self, settings):
+        from django.test import RequestFactory
+
+        settings.BB_TRUSTED_PROXIES = ("10.0.0.1",)
+        # The client sent "X-Forwarded-For: 1.1.1.1"; the proxy appended the
+        # peer it actually saw. Taking the leftmost hop would let the client
+        # pick its own throttle bucket.
+        req = RequestFactory().get("/", HTTP_X_FORWARDED_FOR="1.1.1.1, 8.8.8.8", REMOTE_ADDR="10.0.0.1")
         assert _client_ip(req) == "8.8.8.8"
 
 

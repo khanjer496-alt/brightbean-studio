@@ -60,3 +60,17 @@ class TestSignupModeDefault:
 
         assert result.returncode != 0
         assert "CUSTOM_SIGNUP_URL points at Studio's own signup page" in result.stderr
+
+
+class TestRateLimitCacheFlag:
+    def test_set_without_redis(self):
+        result = _production(print_setting="RATE_LIMIT_CACHE_IS_PROCESS_LOCAL", REDIS_URL="")
+
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "True"
+
+    def test_clear_with_redis(self):
+        result = _production(print_setting="RATE_LIMIT_CACHE_IS_PROCESS_LOCAL", REDIS_URL="redis://localhost:6379/0")
+
+        assert result.returncode == 0, result.stderr
+        assert result.stdout.strip() == "False"

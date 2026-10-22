@@ -75,7 +75,12 @@ class AuthRateLimitMiddleware:
 
     @staticmethod
     def _get_client_ip(request):
-        x_forwarded_for = request.META.get("HTTP_X_FORWARDED_FOR")
-        if x_forwarded_for:
-            return x_forwarded_for.split(",")[0].strip()
-        return request.META.get("REMOTE_ADDR", "")
+        """The Agent API's proxy-aware client IP (``BB_TRUSTED_PROXIES``).
+
+        This used to take the first ``X-Forwarded-For`` value as given, so a
+        client could put a fresh address there on every attempt and never
+        reach the limit.
+        """
+        from apps.api.limits import _client_ip as _canonical
+
+        return _canonical(request) or ""

@@ -3,7 +3,7 @@ import os
 from django.core.exceptions import ImproperlyConfigured
 
 from .base import *  # noqa: F401, F403
-from .base import ENCRYPTION_KEY_SALT, SECRET_KEY, _refuse_signup_redirect_loop
+from .base import ENCRYPTION_KEY_SALT, REDIS_URL, SECRET_KEY, _refuse_signup_redirect_loop
 
 DEBUG = False
 
@@ -32,6 +32,11 @@ for _name, _value in (("SECRET_KEY", SECRET_KEY), ("ENCRYPTION_KEY_SALT", ENCRYP
     ):
         raise ImproperlyConfigured(f"{_name} must contain a generated secret of at least 32 characters")
 
+# Without REDIS_URL the default cache is a LocMemCache inside each process, so
+# every rate limit that counts in it (login/signup attempts, django-ratelimit,
+# the Agent API throttle) is per gunicorn worker and resets on restart.
+# AccountsConfig.ready() logs a warning at startup when this is True.
+RATE_LIMIT_CACHE_IS_PROCESS_LOCAL = not REDIS_URL
 
 # Security
 SECURE_SSL_REDIRECT = True
