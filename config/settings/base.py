@@ -22,15 +22,23 @@ DEBUG = env("DEBUG")
 ALLOWED_HOSTS = env("ALLOWED_HOSTS")
 APP_URL = env("APP_URL")
 
-# Deployment brand. Defaults preserve upstream self-hosting behavior; the
-# PostDelegate spike supplies these through .env.postdelegate.example.
+# Deployment brand. Names and assets default to upstream's so self-hosting
+# behaves as before; the PostDelegate deployment supplies them through
+# .env.postdelegate.example. The legal pages and support address default to
+# PostDelegate's, which publishes this fork.
 BRAND_NAME = env("BRAND_NAME", default="BrightBean Studio")
 BRAND_SHORT_NAME = env("BRAND_SHORT_NAME", default="Brightbean")
 BRAND_LEGAL_NAME = env("BRAND_LEGAL_NAME", default="")
 BRAND_WEBSITE_URL = env("BRAND_WEBSITE_URL", default=APP_URL).rstrip("/")
-BRAND_TERMS_URL = env("BRAND_TERMS_URL", default=f"{BRAND_WEBSITE_URL}/terms")
-BRAND_PRIVACY_URL = env("BRAND_PRIVACY_URL", default=f"{BRAND_WEBSITE_URL}/privacy")
-BRAND_SUPPORT_EMAIL = env("BRAND_SUPPORT_EMAIL", default="")
+BRAND_TERMS_URL = env("BRAND_TERMS_URL", default="https://postdelegate.com/terms")
+BRAND_PRIVACY_URL = env("BRAND_PRIVACY_URL", default="https://postdelegate.com/privacy")
+BRAND_SUPPORT_EMAIL = env("BRAND_SUPPORT_EMAIL", default="support@postdelegate.com")
+# Sidebar "leave a review" card. Off unless a review page is configured.
+REVIEW_BANNER_URL = env("REVIEW_BANNER_URL", default="")
+# AGPL-3.0 §13: users interacting over the network are offered the source of
+# the running fork, and the upstream it is built on is credited.
+SOURCE_CODE_URL = env("SOURCE_CODE_URL", default="https://github.com/khanjer496-alt/brightbean-studio")
+UPSTREAM_SOURCE_URL = "https://github.com/brightbeanxyz/brightbean-studio"
 BRAND_LOGO_STATIC = env("BRAND_LOGO_STATIC", default="img/brightbean-studio-logo.webp")
 BRAND_FAVICON_STATIC = env("BRAND_FAVICON_STATIC", default="favicon/favicon.svg")
 BRAND_FAVICON_ICO_STATIC = env("BRAND_FAVICON_ICO_STATIC", default="favicon/favicon.ico")

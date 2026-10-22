@@ -19,6 +19,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from django.conf import settings
 from django.db.models import Exists, OuterRef
 from ninja.errors import HttpError
 
@@ -1154,7 +1155,7 @@ register_tool(
             "and follower growth. Each metric is returned as ``{value, delta, series, kind}`` "
             "where ``delta`` is the percent change vs. the prior equal-length window and "
             "``series`` is the daily sparkline. Metrics with ``calculated_by_brightbean: true`` (the "
-            "engagement rate, daily averages, estimates) and every ``delta`` are calculated by BrightBean, "
+            f"engagement rate, daily averages, estimates) and every ``delta`` are calculated by {settings.BRAND_NAME}, "
             "not reported by the platform; say so when showing them to a user. Includes ``captured_at`` and ``next_sync_eta`` "
             "YouTube uses native period reports, separate raw count cards, ``engagement: null``, Pacific reporting-period metadata "
             "and ``comparison_available``. Missing numeric metrics are omitted and daily gaps remain null. "

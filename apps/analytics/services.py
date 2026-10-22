@@ -14,6 +14,7 @@ from datetime import date as dt_date
 from datetime import timedelta
 from typing import Any, NamedTuple
 
+from django.conf import settings
 from django.db import connections
 from django.utils import timezone
 from django.utils.text import get_text_list
@@ -458,7 +459,8 @@ def calculated_metrics_note(
     calculated.append("% changes vs. the previous period")
     listed = get_text_list(calculated, "and")
     return (
-        f"Underlying data comes from {platform}. The {listed} are calculated by BrightBean, not reported by {platform}."
+        f"Underlying data comes from {platform}. The {listed} are calculated by {settings.BRAND_NAME}, "
+        f"not reported by {platform}."
     )
 
 

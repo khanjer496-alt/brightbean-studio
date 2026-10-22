@@ -15,6 +15,7 @@ import datetime as dt
 import uuid
 from typing import TYPE_CHECKING, Literal
 
+from django.conf import settings
 from ninja import Field, Schema
 from pydantic import field_serializer
 
@@ -490,7 +491,7 @@ class DerivedMetricResponse(Schema):
     delta: float = Field(
         ...,
         description=(
-            "Percent change vs. the previous equal-length window, calculated by BrightBean. "
+            f"Percent change vs. the previous equal-length window, calculated by {settings.BRAND_NAME}. "
             "``0.0`` when there is no prior baseline."
         ),
     )
@@ -504,16 +505,18 @@ class DerivedMetricResponse(Schema):
     calculated_by_brightbean: bool = Field(
         False,
         description=(
-            "``true`` when BrightBean calculated ``value`` rather than the platform reporting it: the "
+            f"``true`` when {settings.BRAND_NAME} calculated ``value`` rather than the platform reporting it: the "
             "engagement rate, daily averages, and estimates on supported platforms. "
             "Disclosure does not permit prohibited derived metrics. YouTube values are native reports."
         ),
     )
-    averaged: bool = Field(False, description="``value`` is BrightBean's average of the platform's daily figures.")
+    averaged: bool = Field(
+        False, description=f"``value`` is {settings.BRAND_NAME}'s average of the platform's daily figures."
+    )
     estimated: bool = Field(
         False,
         description=(
-            "``value`` was estimated by BrightBean from other counts — summed per-post deltas when the "
+            f"``value`` was estimated by {settings.BRAND_NAME} from other counts — summed per-post deltas when the "
             "platform's account-level analytics weren't available or were older, or differences between "
             "follower totals."
         ),
@@ -544,7 +547,7 @@ class EngagementCardResponse(Schema):
     rate: DerivedMetricResponse = Field(
         ...,
         description=(
-            "Engagement rate = sum(parts) / denom * 100, calculated by BrightBean. The denom is the "
+            f"Engagement rate = sum(parts) / denom * 100, calculated by {settings.BRAND_NAME}. The denom is the "
             "first of ``views, reach, impressions, plays`` with data, falling back to the follower count."
         ),
     )

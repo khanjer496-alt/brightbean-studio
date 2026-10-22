@@ -321,7 +321,9 @@ def test_engagement_rate_built_from_estimated_parts_is_marked_estimated():
     assert [p["derived"].estimated for p in card["parts"]] == [True, False, False]
 
 
-def test_calculated_note_with_only_the_change_chips():
+def test_calculated_note_with_only_the_change_chips(settings):
+    # The note names the deployment's brand (BRAND_NAME).
+    settings.BRAND_NAME = "BrightBean"
     from apps.analytics.services import calculated_metrics_note
 
     note = calculated_metrics_note(SocialAccount(platform="bluesky"), cards=[], engagement=None)
@@ -332,7 +334,9 @@ def test_calculated_note_with_only_the_change_chips():
     )
 
 
-def test_calculated_note_names_estimates_and_follower_growth():
+def test_calculated_note_names_estimates_and_follower_growth(settings):
+    # The note names the deployment's brand (BRAND_NAME).
+    settings.BRAND_NAME = "BrightBean"
     from apps.analytics.derive import DerivedMetric
     from apps.analytics.services import calculated_metrics_note
 

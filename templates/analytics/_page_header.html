@@ -82,7 +82,7 @@
                         {% if active_account.platform == "youtube" %}New subscribers{% else %}New followers{% endif %}
                     </div>
                     <div style="display: flex; align-items: center; gap: 7px;">
-                        <span class="a-mono" style="font-size: 0.9375rem; font-weight: 700; color: var(--text-primary);"{% if follower_growth.estimated %} title="Calculated by BrightBean from the change in follower totals"{% endif %}>+{{ follower_growth.value|floatformat:0 }}</span>
+                        <span class="a-mono" style="font-size: 0.9375rem; font-weight: 700; color: var(--text-primary);"{% if follower_growth.estimated %} title="Calculated by {{ brand_name }} from the change in follower totals"{% endif %}>+{{ follower_growth.value|floatformat:0 }}</span>
                         {% if follower_growth.comparison_available %}{% include "analytics/_delta_chip.html" with delta=follower_growth.delta %}{% endif %}
                     </div>
                 </div>

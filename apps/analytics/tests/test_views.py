@@ -204,8 +204,9 @@ def test_pages_never_leak_raw_template_tags(owner_client, workspace, platform):
 
 
 @pytest.mark.django_db
-def test_youtube_dashboard_ignores_legacy_account_estimates(owner_client, workspace):
+def test_youtube_dashboard_ignores_legacy_account_estimates(owner_client, workspace, settings):
     """Legacy rows cannot supply native YouTube cards or engagement rates."""
+    settings.BRAND_NAME = "BrightBean"
     account = _account(workspace, "youtube", "Tube")
     today = timezone.now().date()
     for offset in range(14):
@@ -235,8 +236,9 @@ def test_youtube_dashboard_ignores_legacy_account_estimates(owner_client, worksp
 
 
 @pytest.mark.django_db
-def test_youtube_daily_counts_are_not_reconstructed_from_lifetime_snapshots(owner_client, workspace):
+def test_youtube_daily_counts_are_not_reconstructed_from_lifetime_snapshots(owner_client, workspace, settings):
     """Missing native daily reports stay unavailable despite lifetime snapshots."""
+    settings.BRAND_NAME = "BrightBean"
     from apps.analytics.models import PostInsightsSnapshot
     from apps.composer.models import PlatformPost, Post
 
