@@ -20,6 +20,7 @@ import os
 import tempfile
 import threading
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta
 
@@ -376,6 +377,45 @@ def _platform_executor(shared, group_size):
 
     with ThreadPoolExecutor(max_workers=min(group_size, _max_concurrent_platform_publishes())) as own:
         yield own
+
+
+def _resolve_extra_asset(platform_post, asset_id, label):
+    """Look up a media asset named in ``platform_extra`` (thumbnail, cover).
+
+    The id was written from a composer form, so it is honoured only when the
+    asset belongs to the post's workspace or its organization's shared
+    library. Anything else would let one tenant publish another tenant's file,
+    so it fails the platform post rather than publishing without it.
+
+    Returns ``None`` when the asset no longer exists at all (deleted since the
+    post was saved): that keeps the old behaviour of publishing without it.
+    """
+    from apps.media_library.models import MediaAsset
+
+    try:
+        asset_uuid = uuid.UUID(str(asset_id))
+    except ValueError:
+        logger.warning("%s asset id %r is not a valid id", label, asset_id)
+        return None
+
+    workspace = platform_post.post.workspace
+    asset = (
+        MediaAsset.objects.for_workspace_with_shared(workspace.id, workspace.organization_id)
+        .filter(id=asset_uuid)
+        .first()
+    )
+    if asset is not None:
+        return asset
+    # Existence only, never read: tells a deleted asset apart from one this
+    # workspace may not use.
+    if MediaAsset.objects.filter(id=asset_uuid).exists():
+        raise PublishError(
+            f"The {label.lower()} image is not in this workspace's media library.",
+            platform=platform_post.social_account.get_platform_display(),
+            retryable=False,
+        )
+    logger.warning("%s asset %s not found", label, asset_id)
+    return None
 
 
 class PublishEngine:
@@ -889,34 +929,26 @@ class PublishEngine:
             # need to upload a custom thumbnail (YouTube).
             thumb_asset_id = extra.pop("thumbnail_asset_id", None)
             if thumb_asset_id:
-                from apps.media_library.models import MediaAsset
-
-                try:
-                    thumb_asset = MediaAsset.objects.get(id=thumb_asset_id)
-                    if thumb_asset.file:
-                        suffix = os.path.splitext(thumb_asset.filename)[1] or ".jpg"
-                        tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)  # noqa: SIM115
-                        tmp.close()
-                        temp_files.append(tmp.name)
-                        download_to_path(thumb_asset.file, tmp.name)
-                        extra["thumbnail_file"] = tmp.name
-                except MediaAsset.DoesNotExist:
-                    logger.warning("Thumbnail asset %s not found", thumb_asset_id)
+                thumb_asset = _resolve_extra_asset(platform_post, thumb_asset_id, "Thumbnail")
+                if thumb_asset is not None and thumb_asset.file:
+                    suffix = os.path.splitext(thumb_asset.filename)[1] or ".jpg"
+                    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)  # noqa: SIM115
+                    tmp.close()
+                    temp_files.append(tmp.name)
+                    download_to_path(thumb_asset.file, tmp.name)
+                    extra["thumbnail_file"] = tmp.name
 
             # Resolve cover_image_asset_id → temp file (Pinterest video pins)
             cover_asset_id = extra.pop("cover_image_asset_id", None)
             if cover_asset_id:
-                try:
-                    cover_asset = MediaAsset.objects.get(id=cover_asset_id)
-                    if cover_asset.file:
-                        suffix = os.path.splitext(cover_asset.filename)[1] or ".jpg"
-                        tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)  # noqa: SIM115
-                        tmp.close()
-                        temp_files.append(tmp.name)
-                        download_to_path(cover_asset.file, tmp.name)
-                        extra["cover_image_file"] = tmp.name
-                except MediaAsset.DoesNotExist:
-                    logger.warning("Cover image asset %s not found", cover_asset_id)
+                cover_asset = _resolve_extra_asset(platform_post, cover_asset_id, "Cover")
+                if cover_asset is not None and cover_asset.file:
+                    suffix = os.path.splitext(cover_asset.filename)[1] or ".jpg"
+                    tmp = tempfile.NamedTemporaryFile(suffix=suffix, delete=False)  # noqa: SIM115
+                    tmp.close()
+                    temp_files.append(tmp.name)
+                    download_to_path(cover_asset.file, tmp.name)
+                    extra["cover_image_file"] = tmp.name
 
             post_type = self._resolve_post_type(
                 platform=platform,

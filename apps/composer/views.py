@@ -384,6 +384,43 @@ def _validate_pinterest_board_selection(request, post, workspace):
     return None
 
 
+# Per-account form fields that name a media asset, by the platform that reads them.
+_PLATFORM_ASSET_FIELDS = {
+    "youtube": "yt_thumbnail_asset_id_",
+    "pinterest": "pin_cover_image_asset_id_",
+}
+
+
+def _validate_platform_asset_selection(request, workspace):
+    """Thumbnail/cover ids must name an asset this workspace may use.
+
+    They are stored in ``platform_extra`` as-is and resolved at publish time,
+    so an id from another workspace would publish someone else's file.
+    """
+    selected_ids = _parse_selected_account_ids(request.POST.get("selected_accounts", ""))
+    if not selected_ids:
+        return None
+
+    accounts = SocialAccount.objects.filter(
+        id__in=selected_ids, workspace=workspace, platform__in=_PLATFORM_ASSET_FIELDS
+    )
+    usable_assets = MediaAsset.objects.for_workspace_with_shared(workspace.id, workspace.organization_id)
+    for account in accounts:
+        asset_id = request.POST.get(f"{_PLATFORM_ASSET_FIELDS[account.platform]}{account.id}", "").strip()
+        if not asset_id:
+            continue
+        try:
+            asset_uuid = uuid.UUID(asset_id)
+        except ValueError:
+            asset_uuid = None
+        if asset_uuid is None or not usable_assets.filter(id=asset_uuid).exists():
+            return JsonResponse(
+                {"errors": {"media": f"The selected image for {account.account_name} is not in this media library."}},
+                status=400,
+            )
+    return None
+
+
 # Actions that commit a post to publishing. A draft may still be waiting for
 # its media, so saving one is never blocked on it.
 _PUBLISH_COMMITTING_ACTIONS = frozenset(
@@ -809,7 +846,9 @@ def compose(request, workspace_id, post_id=None):
     all_asset_ids = [aid for aid in thumb_ids + cover_ids if aid]
     asset_url_map = {}
     if all_asset_ids:
-        for asset in MediaAsset.objects.filter(id__in=all_asset_ids, workspace=workspace):
+        for asset in MediaAsset.objects.for_workspace_with_shared(workspace.id, workspace.organization_id).filter(
+            id__in=all_asset_ids
+        ):
             url = ""
             if asset.thumbnail:
                 url = asset.thumbnail.url
@@ -1035,6 +1074,10 @@ def save_post(request, workspace_id, post_id=None):
     pinterest_board_error = _validate_pinterest_board_selection(request, post, workspace)
     if pinterest_board_error is not None:
         return pinterest_board_error
+
+    asset_error = _validate_platform_asset_selection(request, workspace)
+    if asset_error is not None:
+        return asset_error
 
     media_error = _validate_required_media(request, post, workspace, action)
     if media_error is not None:
