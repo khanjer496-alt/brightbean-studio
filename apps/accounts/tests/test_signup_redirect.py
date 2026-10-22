@@ -115,6 +115,8 @@ class TestRedirectsWhenSignupNotAllowed:
     def test_existing_user_google_login_is_unaffected(self, settings, custom_signup_url, google, mode):
         settings.SIGNUP_MODE = mode
         user = User.objects.create_user(email="existing@gmail.com", password="pw-for-tests-only")
+        # Connecting by email needs a verified address (test_email_verification).
+        EmailAddress.objects.create(user=user, email="existing@gmail.com", verified=True, primary=True)
 
         response = _google_callback("existing@gmail.com")
 

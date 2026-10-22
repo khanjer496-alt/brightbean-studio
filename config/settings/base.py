@@ -277,7 +277,13 @@ SITE_NAME = BRAND_NAME
 # django-allauth
 ACCOUNT_LOGIN_METHODS = {"email"}
 ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*"]
-ACCOUNT_EMAIL_VERIFICATION = "none"
+# A password signup must prove it owns the address before it can sign in.
+# Without this anyone could register someone else's email first and keep the
+# password when the real owner later arrives through Google (pre-account
+# hijack). Invitees are already verified: the invite link reached their inbox
+# (``AccountAdapter.is_email_verified``). Accounts that had signed in before
+# this was switched on were marked verified by accounts/0006.
+ACCOUNT_EMAIL_VERIFICATION = "mandatory"
 ACCOUNT_EMAIL_SUBJECT_PREFIX = ""
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None
 ACCOUNT_ADAPTER = "apps.accounts.adapters.AccountAdapter"
@@ -302,13 +308,14 @@ if CUSTOM_SIGNUP_URL and (
 # Who may create an account. Applies to both the email form and social
 # logins; signing in with an existing account is never affected.
 #
-#   open    anyone can sign up (default — unchanged behaviour)
-#   invite  only visitors who followed a valid invitation link
+#   open    anyone can sign up (default here, for local development)
+#   invite  only visitors who followed a valid invitation link (the
+#           production default when neither variable below is set)
 #   closed  nobody; accounts are created in the Django admin
 #
 # A deployment reachable from the internet — which it has to be, so the
 # platforms can deliver OAuth callbacks and webhooks — is open to the world
-# on "open". Self-hosters usually want "invite".
+# on "open", which is why production.py falls back to "invite".
 # REGISTRATION_OPEN=false (the PostDelegate launch flag) keeps meaning invite-only
 # when SIGNUP_MODE is not set explicitly.
 SIGNUP_MODE = env("SIGNUP_MODE", default="open" if REGISTRATION_OPEN else "invite").strip().lower()
@@ -337,17 +344,18 @@ def _is_own_host(host):
     return False
 
 
-if (
-    SIGNUP_MODE != "open"
-    and _custom_signup.path.rstrip("/") == "/accounts/signup"
-    and _is_own_host(_custom_signup_host)
-):
-    from django.core.exceptions import ImproperlyConfigured
+def _refuse_signup_redirect_loop(mode):
+    """Also called by production.py, which may change the default mode afterwards."""
+    if mode != "open" and _custom_signup.path.rstrip("/") == "/accounts/signup" and _is_own_host(_custom_signup_host):
+        from django.core.exceptions import ImproperlyConfigured
 
-    raise ImproperlyConfigured(
-        f"CUSTOM_SIGNUP_URL points at Studio's own signup page, which redirects to "
-        f"CUSTOM_SIGNUP_URL when SIGNUP_MODE={SIGNUP_MODE}. Leave it empty or point it elsewhere."
-    )
+        raise ImproperlyConfigured(
+            f"CUSTOM_SIGNUP_URL points at Studio's own signup page, which redirects to "
+            f"CUSTOM_SIGNUP_URL when SIGNUP_MODE={mode}. Leave it empty or point it elsewhere."
+        )
+
+
+_refuse_signup_redirect_loop(SIGNUP_MODE)
 
 AUTHENTICATION_BACKENDS = [
     "django.contrib.auth.backends.ModelBackend",
@@ -369,10 +377,14 @@ SOCIALACCOUNT_PROVIDERS = {
         },
         "SCOPE": ["profile", "email"],
         "AUTH_PARAMS": {"access_type": "online"},
-        "VERIFIED_EMAIL": True,
+        # No "VERIFIED_EMAIL" override: allauth takes Google's own
+        # ``email_verified`` claim, which is what the adapter relies on below.
     },
 }
 
+# Signing in with Google as an existing user connects the two, but only when
+# that user has verified the address; ``SocialAccountAdapter`` enforces it,
+# along with auto-signup being reserved for provider-verified emails.
 SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
 SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
 SOCIALACCOUNT_AUTO_SIGNUP = True

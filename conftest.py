@@ -1,4 +1,5 @@
 import pytest
+from django.core.cache import cache
 from django.utils import timezone
 
 from apps.accounts.models import User
@@ -38,3 +39,15 @@ def _fresh_storage_client():
     reset_cached_client()
     yield
     reset_cached_client()
+
+
+@pytest.fixture(autouse=True)
+def _fresh_cache():
+    """Start every test with an empty default cache.
+
+    The test settings use one in-process LocMemCache for the whole run, and
+    ``AuthRateLimitMiddleware`` counts every login and signup POST from the
+    test client's single IP in it. Without this, the eleventh such POST of the
+    run — in whichever test happens to make it — gets a 429.
+    """
+    cache.clear()

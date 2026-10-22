@@ -1,4 +1,5 @@
 from allauth.account.adapter import DefaultAccountAdapter
+from allauth.account.models import EmailAddress
 from allauth.core.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
 from allauth.utils import build_absolute_uri
@@ -7,7 +8,7 @@ from django.db import transaction
 from django.shortcuts import redirect, render
 
 from apps.accounts.models import OAuthConnection
-from apps.accounts.signup_links import custom_signup_url, mark_invite_lapsed, signup_allowed
+from apps.accounts.signup_links import custom_signup_url, mark_invite_lapsed, pending_invite_email, signup_allowed
 from apps.common.mail import transactional
 
 
@@ -84,7 +85,17 @@ class AccountAdapter(DefaultAccountAdapter):
     ``ImmediateHttpResponse`` on the signup page and the provider callback.
     ``save_user`` makes the invite that allowed an invite-mode signup single-use
     (``create_account_under_invitation``).
+
+    ``is_email_verified`` treats the invited address as verified: the invite
+    link only reaches the session by being opened from that inbox, so an
+    invitee is not sent a second email to prove the same thing.
     """
+
+    def is_email_verified(self, request, email):
+        invited = pending_invite_email(request)
+        if invited and invited.lower() == email.lower():
+            return True
+        return super().is_email_verified(request, email)
 
     def is_open_for_signup(self, request):
         if signup_allowed(request):
@@ -126,7 +137,26 @@ class AccountAdapter(DefaultAccountAdapter):
 
 
 class SocialAccountAdapter(DefaultSocialAccountAdapter):
-    """Custom adapter that syncs Google social logins to OAuthConnection."""
+    """Syncs Google social logins to OAuthConnection, and only trusts verified emails.
+
+    A Google login whose email matches an existing account signs into it
+    (``SOCIALACCOUNT_EMAIL_AUTHENTICATION``) only when that account has
+    verified the address. Otherwise the account may have been registered by
+    someone else ahead of the real owner, and connecting would hand them the
+    owner's Google sign-in. allauth then offers the signup form instead, which
+    refuses the taken address. Auto-signup likewise needs an email the provider
+    itself vouches for; anything else goes through the form and verification.
+    """
+
+    def can_authenticate_by_email(self, login, email):
+        if not super().can_authenticate_by_email(login, email):
+            return False
+        return EmailAddress.objects.filter(email__iexact=email, verified=True).exists()
+
+    def is_auto_signup_allowed(self, request, sociallogin):
+        if not super().is_auto_signup_allowed(request, sociallogin):
+            return False
+        return any(address.verified for address in sociallogin.email_addresses)
 
     def populate_user(self, request, sociallogin, data):
         """Set user.name from Google profile (custom User model has 'name', not first/last)."""

@@ -1,9 +1,20 @@
+import os
+
 from django.core.exceptions import ImproperlyConfigured
 
 from .base import *  # noqa: F401, F403
-from .base import ENCRYPTION_KEY_SALT, SECRET_KEY
+from .base import ENCRYPTION_KEY_SALT, SECRET_KEY, _refuse_signup_redirect_loop
 
 DEBUG = False
+
+# base.py defaults SIGNUP_MODE to "open" so a fresh local checkout can sign up.
+# A production deployment is reachable from the whole internet, so unless the
+# operator chose a mode (SIGNUP_MODE, or the older REGISTRATION_OPEN flag) only
+# invited people may create accounts. Checked after base.py so a value from
+# .env counts as chosen.
+if "SIGNUP_MODE" not in os.environ and "REGISTRATION_OPEN" not in os.environ:
+    SIGNUP_MODE = "invite"
+    _refuse_signup_redirect_loop(SIGNUP_MODE)
 
 # Encryption derives from these values, so a placeholder or missing salt would
 # compromise both sessions and stored platform credentials before the first user.
