@@ -29,7 +29,8 @@ class AccountsConfig(AppConfig):
     def _sync_site_identity(sender, **kwargs):
         """Keep django.contrib.sites aligned with the deployment identity.
 
-        Upstream ships a historical data migration for studio.brightbean.xyz.
+        Upstream ships a historical data migration for studio.brightbean.xyz
+        (0004); 0006 replaces it from settings.
         Deployment branding is runtime configuration, so migrations cannot
         safely hard-code PostDelegate.  The migrate container runs on every
         deploy; syncing here keeps auth/OAuth helpers from ever depending on

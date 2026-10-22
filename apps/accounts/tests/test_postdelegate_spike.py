@@ -94,9 +94,31 @@ def test_login_surface_renders_postdelegate_brand(client):
     assert response.status_code == 200
     html = response.content.decode("utf-8")
     assert "PostDelegate" in html
-    assert "BrightBean" not in html
+    # The only upstream name left is the AGPL credit.
+    assert html.count("BrightBean") == html.count("BrightBean Studio</a> (AGPL-3.0)") == 1
     assert "Brightbean" not in html
     assert "postdelegate-mark.svg" in html
+
+
+@pytest.mark.django_db
+@override_settings(SOURCE_CODE_URL="https://github.com/khanjer496-alt/brightbean-studio")
+def test_public_pages_credit_upstream_and_link_the_source(client):
+    html = client.get(reverse("account_login")).content.decode("utf-8")
+
+    assert 'href="https://github.com/brightbeanxyz/brightbean-studio"' in html
+    assert 'href="https://github.com/khanjer496-alt/brightbean-studio"' in html
+    assert "(AGPL-3.0)" in html
+
+
+@pytest.mark.django_db
+def test_signed_in_pages_keep_the_source_credit(client):
+    user = User.objects.create_user(email="credit@example.com", password="pw", tos_accepted_at=timezone.now())
+    client.force_login(user)
+
+    html = client.get(reverse("accounts:settings")).content.decode("utf-8")
+
+    assert "(AGPL-3.0)" in html
+    assert 'href="https://github.com/brightbeanxyz/brightbean-studio"' in html
 
 
 @pytest.mark.django_db
@@ -133,6 +155,24 @@ def test_post_migrate_site_identity_uses_deployment_brand():
     from apps.accounts.apps import AccountsConfig
 
     AccountsConfig._sync_site_identity(None)
+    site = Site.objects.get(id=1)
+    assert site.domain == "app.postdelegate.com"
+    assert site.name == "PostDelegate"
+
+
+@pytest.mark.django_db
+@override_settings(SITE_DOMAIN="app.postdelegate.com", SITE_NAME="PostDelegate")
+def test_site_identity_migration_replaces_the_upstream_site():
+    import importlib
+
+    from django.apps import apps
+    from django.contrib.sites.models import Site
+
+    Site.objects.update_or_create(id=1, defaults={"domain": "studio.brightbean.xyz", "name": "Brightbean"})
+    migration = importlib.import_module("apps.accounts.migrations.0006_sync_site_identity")
+
+    migration.set_site(apps, None)
+
     site = Site.objects.get(id=1)
     assert site.domain == "app.postdelegate.com"
     assert site.name == "PostDelegate"
