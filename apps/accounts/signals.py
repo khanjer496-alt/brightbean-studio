@@ -1,6 +1,4 @@
 from allauth.account.signals import user_signed_up
-from django.conf import settings
-from django.core.exceptions import PermissionDenied
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.utils import timezone
@@ -70,19 +68,73 @@ def _set_org_timezone_from_browser(request, user):
         membership.organization.save(update_fields=["default_timezone"])
 
 
+def _join_invited_org(token, user):
+    """Put a just-signed-up user into the org of the invite in their session.
+
+    In invite mode the invite was already accepted while the account was being
+    created (``apps.accounts.adapters.create_account_under_invitation``, which
+    makes it single-use); otherwise it is accepted here. Either way the default
+    "My Organization" that post_save provisioned is then removed. Returns False
+    when the invite cannot be used, so the default org stays.
+    """
+    from apps.members.models import Invitation, OrgMembership
+    from apps.members.services import accept_invitation
+    from apps.workspaces.models import Workspace
+
+    invitation = Invitation.objects.filter(token=token).first()
+    if invitation is None:
+        return False
+    invited_org_id = invitation.organization_id
+
+    if invitation.accepted_at is None:
+        if invitation.is_expired:
+            return False
+        try:
+            # Skip the email-match check: the session token is proof of
+            # delivery, and social logins return a provider-controlled email
+            # that often differs from the invited address.
+            accept_invitation(invitation, user, require_email_match=False)
+        except ValueError:
+            return False  # Invite acceptance failed - keep default org
+    elif not OrgMembership.objects.filter(user=user, organization_id=invited_org_id).exists():
+        return False  # Accepted by someone else - keep default org
+
+    # Clean up the default org that post_save created, if it's different from
+    # the invited org.
+    default_memberships = OrgMembership.objects.filter(user=user).exclude(organization_id=invited_org_id)
+    for membership in default_memberships:
+        org = membership.organization
+        membership.delete()
+        # Only delete the org if it's the auto-provisioned one and has no
+        # other members.
+        if org.name == "My Organization" and not org.memberships.exists():
+            Workspace.objects.filter(organization=org).delete()
+            org.delete()
+    return True
+
+
 @receiver(user_signed_up)
 def create_organization_on_signup(sender, request, user, **kwargs):
-    """Finalize signup metadata after the adapter atomically provisions membership."""
-    if getattr(request, "_signup_membership_user_id", None) != user.pk:
-        # Unknown signup paths must never fall back to creating an owner
-        # organization when public registration is closed or an invite failed.
-        if not settings.REGISTRATION_OPEN or request.session.get("pending_invite_token"):
-            raise PermissionDenied("Signup membership was not established by a valid invitation.")
-        provision_organization_and_workspace(user)
+    """Handle allauth signup - create org + workspace.
+
+    If the user signed up via an invitation link, accept the invitation
+    instead of creating a default org. The invite token is stored in
+    the session by the accept_invite view.
+
+    By this point, post_save has already fired and provisioned a default
+    "My Organization". If invite acceptance succeeds, we clean up that
+    default org so the user only belongs to the invited org.
+    """
+    pending_token = request.session.pop("pending_invite_token", None)
+    if pending_token and _join_invited_org(pending_token, user):
+        return  # Done - user is now in the invited org only
+
+    # No invite or invite failed - ensure default provisioning happened.
+    # post_save already handled this, so this is a no-op (idempotent guard).
+    provision_organization_and_workspace(user)
 
     # Try to set the organization timezone from the browser cookie set during signup.
-    if not getattr(request, "_signup_invited", False):
-        _set_org_timezone_from_browser(request, user)
+    _set_org_timezone_from_browser(request, user)
 
     # Email signups see ToS text on the signup form, so auto-accept.
     # Social signups (Google OAuth) will be redirected to a dedicated ToS page.
@@ -93,6 +145,10 @@ def create_organization_on_signup(sender, request, user, **kwargs):
 
 @receiver(post_save, sender="accounts.User")
 def create_organization_on_user_create(sender, instance, created, **kwargs):
-    """Provision admin/shell users; signup adapters own their atomic provisioning."""
-    if created and not getattr(instance, "_signup_managed", False):
+    """Handle any user creation path (createsuperuser, admin, shell).
+
+    The allauth signal fires *after* post_save, so for normal signups
+    post_save runs first and the allauth handler is a no-op (idempotent guard).
+    """
+    if created:
         provision_organization_and_workspace(instance)

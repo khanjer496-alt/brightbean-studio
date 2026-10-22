@@ -1,74 +1,105 @@
 from allauth.account.adapter import DefaultAccountAdapter
+from allauth.core.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
+from allauth.utils import build_absolute_uri
 from django.conf import settings
-from django.core.exceptions import PermissionDenied
 from django.db import transaction
+from django.shortcuts import redirect, render
 
 from apps.accounts.models import OAuthConnection
+from apps.accounts.signup_links import custom_signup_url, mark_invite_lapsed, signup_allowed
+from apps.common.mail import transactional
 
 
-def _signup_invitation(request, *, email=None, lock=False):
-    """Resolve invitation policy again at save time, optionally locking the row."""
+def _signup_refused_response(request):
+    """What someone who may not sign up gets: ``CUSTOM_SIGNUP_URL``, else the closed notice."""
+    custom = custom_signup_url(request)
+    if custom:
+        return redirect(custom)
+    return render(request, "account/signup_closed.html")
+
+
+def create_account_under_invitation(request, save):
+    """Run ``save()``, which creates the account, as the single use of the visitor's invite.
+
+    In invite mode the gate (``is_open_for_signup``) only *reads* the invitation,
+    so two overlapping signups carrying the same token would both pass it before
+    either accepted the invite — one link, two accounts. Here the invitation row
+    is locked for the transaction that creates the account and accepted inside
+    it: a second request waits on the lock, then finds the invite used, and its
+    account is rolled back. ``apps.accounts.signals`` then only moves the new
+    user out of their auto-provisioned org.
+
+    Re-entrant, because a social signup through the form saves via both adapters.
+    """
+    if settings.SIGNUP_MODE != "invite" or getattr(request, "_creating_invited_account", False):
+        return save()
+
     from apps.members.models import Invitation
-
-    token = getattr(request, "session", {}).get("pending_invite_token")
-    if not token:
-        if settings.REGISTRATION_OPEN:
-            return None
-        raise PermissionDenied("Registration requires a valid invitation.")
-    invitations = Invitation.objects.all()
-    if lock:
-        invitations = invitations.select_for_update()
-    invitation = invitations.filter(token=token, accepted_at__isnull=True).first()
-    if not invitation or invitation.is_expired:
-        raise PermissionDenied("This invitation is no longer valid.")
-    if email is not None and email.strip().lower() != invitation.email.strip().lower():
-        raise PermissionDenied("Use the email address this invitation was sent to.")
-    return invitation
-
-
-def _signup_allowed(request, *, email=None) -> bool:
-    try:
-        _signup_invitation(request, email=email)
-    except PermissionDenied:
-        return False
-    return True
-
-
-def _finish_signup_membership(request, user, invitation):
-    from apps.accounts.signals import provision_organization_and_workspace
     from apps.members.services import accept_invitation
 
-    if invitation is None:
-        provision_organization_and_workspace(user)
-    else:
+    token = request.session.get("pending_invite_token")
+    with transaction.atomic():
+        invitation = (
+            Invitation.objects.select_for_update().filter(token=token, accepted_at__isnull=True).first()
+            if token
+            else None
+        )
+        if invitation is None or invitation.is_expired:
+            mark_invite_lapsed(request)
+            raise ImmediateHttpResponse(_signup_refused_response(request))
+        request._creating_invited_account = True
         try:
-            accept_invitation(invitation, user)
-        except ValueError as exc:
-            raise PermissionDenied("This invitation can no longer be accepted.") from exc
-    # The later allauth signal must not consume the same invitation twice.
-    request._signup_membership_user_id = user.pk
-    request._signup_invited = invitation is not None
-    request.session.pop("pending_invite_token", None)
+            user = save()
+        finally:
+            request._creating_invited_account = False
+        # Skip the email-match check: the session token is proof of delivery,
+        # and social logins return a provider-controlled email that often
+        # differs from the invited address.
+        accept_invitation(invitation, user, require_email_match=False)
+    return user
 
 
 class AccountAdapter(DefaultAccountAdapter):
-    """Close public registration while keeping explicit invitation signup working."""
+    """Marks allauth's own mail as transactional and applies ``SIGNUP_MODE``.
+
+    Password resets, email confirmations and login codes are mail a person is
+    sitting in front of waiting for. Without this they would carry the default
+    ``notification`` class and be subject to the per-recipient cap in
+    ``apps.common.mail`` — so a user who had already received their allowance of
+    publish-failure notices that hour could not reset their own password. The
+    global daily cap still applies; nothing bypasses that.
+
+    ``render_mail`` is the single seam every allauth email passes through, so
+    overriding it here covers all of them without touching a template. It also
+    points any ``signup_url`` in the context (the unknown-account email sent on
+    a password reset for an address with no account) at ``CUSTOM_SIGNUP_URL``.
+
+    ``is_open_for_signup`` gates both doors: the email form, and social signups,
+    because ``DefaultSocialAccountAdapter.is_open_for_signup`` delegates here.
+    That matters since ``SOCIALACCOUNT_AUTO_SIGNUP`` creates the account during
+    the provider callback, without the signup page ever rendering. Someone who
+    may not sign up is redirected to ``CUSTOM_SIGNUP_URL`` when it is set, and
+    otherwise shown ``account/signup_closed.html``; allauth handles the
+    ``ImmediateHttpResponse`` on the signup page and the provider callback.
+    ``save_user`` makes the invite that allowed an invite-mode signup single-use
+    (``create_account_under_invitation``).
+    """
 
     def is_open_for_signup(self, request):
-        return _signup_allowed(request)
+        if signup_allowed(request):
+            return True
+        custom = custom_signup_url(request)
+        if custom:
+            raise ImmediateHttpResponse(redirect(custom))
+        return False
 
-    @transaction.atomic
     def save_user(self, request, user, form, commit=True):
-        # A social form delegates user persistence here; the outer social
-        # adapter owns its invitation transaction and membership claim.
-        if not commit or getattr(user, "_social_signup_managed", False):
-            return super().save_user(request, user, form, commit=commit)
-        invitation = _signup_invitation(request, email=form.cleaned_data.get("email", ""), lock=True)
-        user._signup_managed = True
-        user = super().save_user(request, user, form, commit=True)
-        _finish_signup_membership(request, user, invitation)
-        return user
+        if not commit:
+            return super().save_user(request, user, form, commit=False)
+        return create_account_under_invitation(
+            request, lambda: super(AccountAdapter, self).save_user(request, user, form)
+        )
 
     def send_mail(self, template_prefix, email, context):
         branded = {
@@ -80,12 +111,22 @@ class AccountAdapter(DefaultAccountAdapter):
         }
         return super().send_mail(template_prefix, email, branded)
 
+    def render_mail(self, template_prefix, email, context, headers=None):
+        if "signup_url" in context:
+            request = context.get("request")
+            custom = custom_signup_url(request)
+            if custom:
+                context = {**context, "signup_url": build_absolute_uri(request, custom)}
+        return super().render_mail(
+            template_prefix,
+            email,
+            context,
+            headers={**(headers or {}), **transactional()},
+        )
+
 
 class SocialAccountAdapter(DefaultSocialAccountAdapter):
     """Custom adapter that syncs Google social logins to OAuthConnection."""
-
-    def is_open_for_signup(self, request, sociallogin):
-        return _signup_allowed(request, email=sociallogin.user.email or "")
 
     def populate_user(self, request, sociallogin, data):
         """Set user.name from Google profile (custom User model has 'name', not first/last)."""
@@ -97,16 +138,11 @@ class SocialAccountAdapter(DefaultSocialAccountAdapter):
             user.name = full_name
         return user
 
-    @transaction.atomic
     def save_user(self, request, sociallogin, form=None):
-        """Commit the user, social identity and invitation claim together."""
-        # The authenticated provider identity must match too: a form may not
-        # relabel a different social identity as the invited recipient.
-        invitation = _signup_invitation(request, email=sociallogin.user.email or "", lock=True)
-        sociallogin.user._signup_managed = True
-        sociallogin.user._social_signup_managed = True
-        user = super().save_user(request, sociallogin, form)
-        _finish_signup_membership(request, user, invitation)
+        """Create OAuthConnection after saving a new social signup."""
+        user = create_account_under_invitation(
+            request, lambda: super(SocialAccountAdapter, self).save_user(request, sociallogin, form)
+        )
         self._sync_oauth_connection(user, sociallogin)
         return user
 

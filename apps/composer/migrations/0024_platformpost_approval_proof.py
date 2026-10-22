@@ -2,7 +2,7 @@ from django.db import migrations, models
 
 
 class Migration(migrations.Migration):
-    dependencies = [("composer", "0020_platformpost_first_comment_state")]
+    dependencies = [("composer", "0023_platformpost_youtube_video_checked_at")]
 
     operations = [
         migrations.AddField(

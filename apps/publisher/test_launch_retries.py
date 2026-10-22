@@ -101,6 +101,9 @@ class PublishRetrySafetyTest(TransactionTestCase):
         provider = FacebookProvider()
         for malformed_json in (True, False):
             with self.subTest(malformed_json=malformed_json):
+                # The engine only settles rows it claimed into ``publishing``.
+                PlatformPost.objects.filter(pk=self.pp.pk).update(status=PlatformPost.Status.PUBLISHING)
+                self.pp.refresh_from_db()
                 response = Mock(status_code=200)
                 if malformed_json:
                     response.json.side_effect = ValueError("accepted response is not JSON")

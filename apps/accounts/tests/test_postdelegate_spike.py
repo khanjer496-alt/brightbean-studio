@@ -24,13 +24,13 @@ def _request(token=None):
 
 
 @pytest.mark.django_db
-@override_settings(REGISTRATION_OPEN=False)
+@override_settings(SIGNUP_MODE="invite")
 def test_public_email_signup_is_closed():
     assert AccountAdapter().is_open_for_signup(_request()) is False
 
 
 @pytest.mark.django_db
-@override_settings(REGISTRATION_OPEN=False)
+@override_settings(SIGNUP_MODE="invite")
 def test_public_social_signup_is_closed():
     sociallogin = SocialLogin(
         user=User(email="new@example.com"),
@@ -40,7 +40,7 @@ def test_public_social_signup_is_closed():
 
 
 @pytest.mark.django_db
-@override_settings(REGISTRATION_OPEN=False)
+@override_settings(SIGNUP_MODE="invite")
 def test_valid_invitation_allows_signup():
     inviter = User.objects.create(email="owner@example.com")
     org = Organization.objects.create(name="PostDelegate Test")
@@ -54,7 +54,7 @@ def test_valid_invitation_allows_signup():
 
 
 @pytest.mark.django_db
-@override_settings(REGISTRATION_OPEN=False)
+@override_settings(SIGNUP_MODE="invite")
 def test_expired_invitation_does_not_open_signup():
     inviter = User.objects.create(email="owner2@example.com")
     org = Organization.objects.create(name="PostDelegate Test 2")

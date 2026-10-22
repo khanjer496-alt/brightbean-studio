@@ -88,7 +88,7 @@ it as shell code, commit it or put it inside the Docker build directory. Set:
 | `ALLOWED_HOSTS` | `app.postdelegate.com` |
 | `POSTDELEGATE_DOMAIN` | `app.postdelegate.com` |
 | `POSTDELEGATE_HTTP_PORT` / `POSTDELEGATE_HTTPS_PORT` | `80` / `443` |
-| `REGISTRATION_OPEN` | `false` |
+| `SIGNUP_MODE` | `invite` |
 | `STORAGE_BACKEND` | `s3` |
 | `S3_ENDPOINT_URL` | The account's `https://<account-id>.r2.cloudflarestorage.com` |
 | `S3_BUCKET_NAME` | Verified private media bucket belonging to this deployment |
