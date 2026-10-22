@@ -1,0 +1,6 @@
+{% extends "layouts/settings.html" %}
+{% comment %}
+allauth.mfa's management pages (Settings > Security). They sit in the
+account settings layout rather than allauth's sign-in card.
+{% endcomment %}
+{% block title %}{% block head_title %}{% endblock %} - Settings - {{ brand_short_name }}{% endblock %}

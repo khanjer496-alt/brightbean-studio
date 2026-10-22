@@ -2,6 +2,7 @@ import logging
 import re
 from urllib.parse import urlsplit
 
+from allauth.account.decorators import secure_admin_login
 from django.conf import settings
 from django.contrib import admin
 from django.urls import include, path, re_path
@@ -12,6 +13,10 @@ from apps.api.api import api as agent_api
 from apps.oauth_server import views as oauth_views
 
 logger = logging.getLogger(__name__)
+
+# Staff sign in through allauth like everyone else, so the admin cannot be used
+# to skip the two-factor step: Django's own admin login form never asks for it.
+admin.site.login = secure_admin_login(admin.site.login)
 
 urlpatterns = [
     path("admin/", admin.site.urls),

@@ -31,7 +31,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
 
-    # 2FA fields
+    # Unused: two-factor authentication is allauth.mfa's (MFA_* in settings).
+    # Left in place rather than dropped, as no code reads or writes them.
     totp_secret = EncryptedTextField(blank=True, null=True)
     totp_recovery_codes = EncryptedJSONField(blank=True, null=True)
     totp_enabled = models.BooleanField(default=False)

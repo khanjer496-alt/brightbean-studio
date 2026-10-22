@@ -1,7 +1,7 @@
 {% load allauth %}
 {% if attrs.errors %}
 <div class="mb-1">
-    <ul class="text-xs" style="color: var(--error-500);">
+    <ul {% if attrs.id %}id="{{ attrs.id }}-error"{% endif %} class="text-xs" style="color: var(--error-500);">
         {% for error in attrs.errors %}<li>{{ error }}</li>{% endfor %}
     </ul>
 </div>
@@ -33,10 +33,11 @@
             {% slot label %}{% endslot %}
         </label>
     {% else %}
-        <label for="{{ attrs.id }}" class="block text-sm font-semibold mb-1.5" style="color: var(--text-primary);">
+        <label for="{{ attrs.id }}" class="block text-sm font-semibold mb-1.5 {% if attrs.unlabeled %}sr-only{% endif %}" style="color: var(--text-primary);">
             {% slot label %}{% endslot %}
         </label>
         <input class="form-input-styled {% if attrs.errors %}is-error{% endif %}"
+               {% if attrs.errors and attrs.id %}aria-invalid="true" aria-describedby="{{ attrs.id }}-error"{% endif %}
                {% if attrs.required %}required{% endif %}
                {% if attrs.disabled %}disabled{% endif %}
                {% if attrs.readonly %}readonly{% endif %}

@@ -1,0 +1,26 @@
+{% extends "mfa/base_manage.html" %}
+{% load i18n %}
+{% block head_title %}{% trans "Turn off authenticator app" %}{% endblock %}
+{% block content %}
+<div class="max-w-2xl">
+    <a href="{% url 'mfa_index' %}" class="text-sm font-medium hover:underline text-[var(--text-secondary)]">&larr; {% trans "Security" %}</a>
+    <h2 class="text-xl font-semibold mt-4 mb-2 text-[var(--text-primary)]">{% trans "Turn off two-factor authentication?" %}</h2>
+    <p class="text-sm mb-8 text-[var(--text-secondary)]">
+        {% blocktrans %}Signing in will only need your password or Google again, and your recovery codes stop working.{% endblocktrans %}
+    </p>
+    {% if form.non_field_errors %}
+    <div class="alert-error mb-4" role="alert">{{ form.non_field_errors.0 }}</div>
+    {% endif %}
+    <form method="POST" action="{% url 'mfa_deactivate_totp' %}" class="flex gap-3">
+        {% csrf_token %}
+        <a href="{% url 'mfa_index' %}"
+           class="btn-neutral px-5 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap bg-[var(--neutral-100)] text-[var(--text-primary)]">
+            {% trans "Cancel" %}
+        </a>
+        <button type="submit"
+                class="btn-danger-soft px-5 py-2 text-sm font-medium rounded-full transition-colors cursor-pointer whitespace-nowrap bg-[var(--error-50)] text-[var(--error-500)]">
+            {% trans "Turn off" %}
+        </button>
+    </form>
+</div>
+{% endblock %}

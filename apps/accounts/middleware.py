@@ -5,12 +5,16 @@ from django.http import HttpResponse
 from django.shortcuts import redirect
 from django.urls import reverse
 
-# Paths that are rate-limited for unauthenticated POST requests (auth flows)
+# Paths that are rate-limited for unauthenticated POST requests (auth flows).
+# The 2FA code step and reauthentication are guessable secrets too.
 AUTH_RATE_LIMITED_PATHS = (
     "/accounts/login/",
     "/accounts/signup/",
     "/accounts/password/reset/",
     "/accounts/password/reset/key/",
+    "/accounts/2fa/authenticate/",
+    "/accounts/2fa/reauthenticate/",
+    "/accounts/reauthenticate/",
 )
 
 # Rate limit: 10 POST requests per minute per IP for auth endpoints

@@ -69,3 +69,33 @@ def test_auth_page_displays_non_field_errors_and_associates_field_errors(name):
     for described_id in email["aria-describedby"].split():
         assert any(attrs.get("id") == described_id for _, attrs in elements)
     assert "never-echo-this-password" not in html
+
+
+def test_fields_element_renders_bound_fields():
+    """allauth's stock pages (2FA code, reauthenticate, third-party signup) render forms through it."""
+    templates = Path(__file__).resolve().parents[3] / "templates"
+    page = "{% load allauth %}{% element fields form=form unlabeled=True %}{% endelement %}"
+    engine = Engine(
+        dirs=[str(templates)],
+        loaders=[
+            ("django.template.loaders.locmem.Loader", {"page.html": page}),
+            "django.template.loaders.filesystem.Loader",
+        ],
+        libraries={"allauth": "allauth.templatetags.allauth"},
+    )
+    form = AuthForm({"email": "not-an-email", "password": "never-echo-this-password"})
+    assert not form.is_valid()
+
+    html = engine.get_template("page.html").render(Context({"form": form}))
+    elements = Elements(html).elements
+
+    inputs = {attrs["name"]: attrs for tag, attrs in elements if tag == "input"}
+    assert inputs["email"]["id"] == "id_email"
+    assert inputs["email"]["type"] == "email"
+    assert inputs["email"]["aria-invalid"] == "true"
+    assert any(attrs.get("id") == inputs["email"]["aria-describedby"] for _, attrs in elements)
+    assert inputs["password"]["type"] == "password"
+    labels = {attrs.get("for"): attrs for tag, attrs in elements if tag == "label"}
+    assert {"id_email", "id_password"} <= labels.keys()
+    assert "sr-only" in labels["id_email"]["class"]
+    assert "never-echo-this-password" not in html

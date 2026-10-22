@@ -56,6 +56,7 @@ DJANGO_APPS = [
 THIRD_PARTY_APPS = [
     "allauth",
     "allauth.account",
+    "allauth.mfa",
     "allauth.socialaccount",
     "allauth.socialaccount.providers.google",
     "django_htmx",
@@ -391,6 +392,13 @@ SOCIALACCOUNT_AUTO_SIGNUP = True
 SOCIALACCOUNT_LOGIN_ON_GET = False
 ACCOUNT_ADAPTER = "apps.accounts.adapters.AccountAdapter"
 SOCIALACCOUNT_ADAPTER = "apps.accounts.adapters.SocialAccountAdapter"
+
+# Two-factor authentication (allauth.mfa): an authenticator app plus recovery
+# codes, managed from Settings > Security (/accounts/2fa/). Once a user turns
+# it on, every login — password or Google — asks for a code. The unused
+# totp_* columns on accounts.User predate this and are not read.
+MFA_SUPPORTED_TYPES = ["totp", "recovery_codes"]
+MFA_TOTP_ISSUER = BRAND_NAME
 
 # Sessions
 SESSION_ENGINE = "django.contrib.sessions.backends.db"
