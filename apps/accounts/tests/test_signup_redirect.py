@@ -153,11 +153,11 @@ class TestInvitees:
 
     def test_invite_mode_invitee_google_signup(self, settings, custom_signup_url, google, invitation):
         settings.SIGNUP_MODE = "invite"
-        response = _google_callback("invitee@gmail.com", session={"pending_invite_token": invitation.token})
+        response = _google_callback("invitee@example.com", session={"pending_invite_token": invitation.token})
 
         assert response.status_code == 302
         assert response.url != CUSTOM
-        user = User.objects.get(email="invitee@gmail.com")
+        user = User.objects.get(email="invitee@example.com")
         assert OrgMembership.objects.filter(user=user, organization=invitation.organization).exists()
 
     def test_closed_mode_invitee_is_sent_to_custom_url(self, settings, client, custom_signup_url, invitation):

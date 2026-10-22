@@ -90,12 +90,9 @@ def _join_invited_org(token, user):
         if invitation.is_expired:
             return False
         try:
-            # Skip the email-match check: the session token is proof of
-            # delivery, and social logins return a provider-controlled email
-            # that often differs from the invited address.
-            accept_invitation(invitation, user, require_email_match=False)
+            accept_invitation(invitation, user)
         except ValueError:
-            return False  # Invite acceptance failed - keep default org
+            return False  # Expired, used, or for another address - keep default org
     elif not OrgMembership.objects.filter(user=user, organization_id=invited_org_id).exists():
         return False  # Accepted by someone else - keep default org
 

@@ -229,21 +229,20 @@ def _check_org_invite_budget(org) -> None:
 
 
 @transaction.atomic
-def accept_invitation(invitation, user, *, require_email_match=True):
+def accept_invitation(invitation, user):
     """Accept an invitation: create org + workspace memberships.
+
+    Only the invited address may accept, compared case-insensitively. The
+    token alone is not enough: it proves someone opened the link, and links
+    get forwarded or leak, so it must not let whoever holds it join.
 
     Args:
         invitation: The Invitation to accept.
         user: The User accepting.
-        require_email_match: When True (default), reject if the user's email
-            differs from the invitation's. The signup signal path passes
-            False because the session-bound token is itself proof of email
-            delivery (and social logins return whatever email the provider
-            owns, which often differs from the invited address).
 
     Raises:
-        ValueError: If the invitation is expired, already accepted, or the
-            user's email does not match (when require_email_match is True).
+        ValueError: If the invitation is expired, already accepted, or was
+            sent to a different email address.
     """
     # Reload and lock: a previously fetched instance must not bypass revocation,
     # token rotation, or another acceptance. Memberships and consumption commit
@@ -266,7 +265,7 @@ def accept_invitation(invitation, user, *, require_email_match=True):
     if invitation.is_accepted:
         raise ValueError("This invitation has already been accepted.")
 
-    if require_email_match and user.email.lower() != invitation.email.lower():
+    if user.email.lower() != invitation.email.lower():
         raise ValueError("This invitation was sent to a different email address.")
 
     # Create org membership (skip if exists, e.g. user was already added)

@@ -31,6 +31,10 @@ def create_account_under_invitation(request, save):
     account is rolled back. ``apps.accounts.signals`` then only moves the new
     user out of their auto-provisioned org.
 
+    The account must also be for the invited address. The token only proves
+    the link was opened, and links get forwarded; a Google signup under any
+    other email is refused and rolled back the same way.
+
     Re-entrant, because a social signup through the form saves via both adapters.
     """
     if settings.SIGNUP_MODE != "invite" or getattr(request, "_creating_invited_account", False):
@@ -54,10 +58,11 @@ def create_account_under_invitation(request, save):
             user = save()
         finally:
             request._creating_invited_account = False
-        # Skip the email-match check: the session token is proof of delivery,
-        # and social logins return a provider-controlled email that often
-        # differs from the invited address.
-        accept_invitation(invitation, user, require_email_match=False)
+        if user.email.lower() != invitation.email.lower():
+            raise ImmediateHttpResponse(
+                render(request, "account/signup_closed.html", {"invited_email": invitation.email})
+            )
+        accept_invitation(invitation, user)
     return user
 
 

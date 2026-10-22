@@ -46,7 +46,7 @@ class TestClaim:
         invitation = _invitation()
 
         user = create_account_under_invitation(
-            _request(invitation.token), lambda: User.objects.create_user(email="a@example.com", password="x")
+            _request(invitation.token), lambda: User.objects.create_user(email="invitee@example.com", password="x")
         )
 
         invitation.refresh_from_db()
@@ -130,8 +130,10 @@ def test_two_overlapping_signups_create_one_account(settings):
         finally:
             connection.close()
 
-    first = threading.Thread(target=signup, args=("first", "first@example.com", True))
-    second = threading.Thread(target=signup, args=("second", "second@example.com", False))
+    # Both for the invited address: a different one is refused anyway
+    # (test_invite_email_binding), which would hide what this is testing.
+    first = threading.Thread(target=signup, args=("first", "invitee@example.com", True))
+    second = threading.Thread(target=signup, args=("second", "invitee@example.com", False))
     first.start()
     assert first_inside.wait(10)
     second.start()
@@ -142,6 +144,4 @@ def test_two_overlapping_signups_create_one_account(settings):
     second.join(10)
 
     assert outcomes == {"first": "created", "second": "refused"}
-    assert list(
-        User.objects.filter(email__in=["first@example.com", "second@example.com"]).values_list("email", flat=True)
-    ) == ["first@example.com"]
+    assert User.objects.filter(email="invitee@example.com").count() == 1
