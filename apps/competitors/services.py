@@ -486,7 +486,9 @@ def trend_summary(chart: dict[str, Any]) -> str:
     parts = []
     for dataset in chart["datasets"]:
         known = [v for v in dataset["values"] if v is not None]
-        parts.append(f"{dataset['label']}: {known[-1]:+.1f}%" if known else f"{dataset['label']}: no data")
+        # Isolated (U+2068 … U+2069) so an Arabic profile name can't reorder the figures around it.
+        label = f"\u2068{dataset['label']}\u2069"
+        parts.append(f"{label}: {known[-1]:+.1f}%" if known else f"{label}: no data")
     return (
         f"{chart['label']} since {chart['labels'][0]}, indexed to each profile's first reading. "
         + "; ".join(parts)

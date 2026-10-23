@@ -1996,9 +1996,13 @@ def list_competitors(actor: Actor) -> CompetitorsListResponse:
 
     actor.require("view_analytics")
     rows = list(Competitor.objects.filter(workspace_id=actor.workspace_id))
-    latest = {}
-    for snap in CompetitorSnapshot.objects.filter(competitor__in=rows).order_by("date"):
-        latest[snap.competitor_id] = snap
+    # The newest snapshot per competitor only, not their whole history.
+    latest = {
+        snap.competitor_id: snap
+        for snap in CompetitorSnapshot.objects.filter(competitor__in=rows)
+        .order_by("competitor_id", "-date")
+        .distinct("competitor_id")
+    }
     limit = get_entitlements(actor.workspace.organization).max_competitors_per_network
     tracked: dict[str, int] = {}
     for row in rows:

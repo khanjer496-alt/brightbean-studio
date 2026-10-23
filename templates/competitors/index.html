@@ -77,7 +77,7 @@
                     <tbody>
                         {% for row in group.you %}
                         <tr class="border-t border-line bg-surface-2/40">
-                            <th scope="row" class="px-4 py-2.5 text-left font-medium text-ink">{{ row.label }} <span class="ml-1 rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">You</span>
+                            <th scope="row" class="px-4 py-2.5 text-left font-medium text-ink"><bdi>{{ row.label }}</bdi> <span class="ml-1 rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">You</span>
                                 {% if row.error %}<span class="block text-xs font-normal text-ink-3">{{ row.error }}</span>{% endif %}</th>
                             {% include "competitors/_figures.html" with row=row %}
                             {% if can_manage %}<td></td>{% endif %}
@@ -86,8 +86,8 @@
                         {% for row in group.competitors %}
                         <tr class="border-t border-line">
                             <th scope="row" class="px-4 py-2.5 text-left font-medium text-ink">
-                                {% if row.profile_url %}<a href="{{ row.profile_url }}" rel="noopener noreferrer" target="_blank" class="text-ink no-underline hover:underline">{{ row.label }}</a>{% else %}{{ row.label }}{% endif %}
-                                <span class="block text-xs font-normal text-ink-3">{{ row.handle }}{% if row.last_synced %} · read {{ row.last_synced|date:"M j" }}{% endif %}</span>
+                                {% if row.profile_url %}<a href="{{ row.profile_url }}" rel="noopener noreferrer" target="_blank" class="text-ink no-underline hover:underline"><bdi>{{ row.label }}</bdi></a>{% else %}<bdi>{{ row.label }}</bdi>{% endif %}
+                                <span class="block text-xs font-normal text-ink-3"><bdi dir="ltr">{{ row.handle }}</bdi>{% if row.last_synced %} · read {{ row.last_synced|date:"M j" }}{% endif %}</span>
                                 {% if row.error %}<span class="block text-xs font-normal text-warn">{{ row.error }}</span>{% endif %}
                             </th>
                             {% include "competitors/_figures.html" with row=row %}

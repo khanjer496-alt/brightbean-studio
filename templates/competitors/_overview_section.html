@@ -24,7 +24,7 @@
                 <tr class="border-t border-line">
                     <th scope="row" class="whitespace-nowrap px-4 py-2.5 text-left font-medium text-ink">{{ r.network.name }}<span class="ml-2 text-xs font-normal text-ink-3">{{ r.competitors }} tracked</span></th>
                     <td class="px-4 py-2.5 text-right font-mono text-ink-2">{% include "analytics/_figure.html" with value=r.your_followers kind="count" %}</td>
-                    <td class="px-4 py-2.5 text-ink-2">{% if r.top %}{{ r.top.label }} <span class="font-mono text-ink-3">{{ r.top.followers|fmt_metric:"count" }}</span>{% else %}<span class="text-ink-3">—</span>{% endif %}</td>
+                    <td class="px-4 py-2.5 text-ink-2">{% if r.top %}<bdi>{{ r.top.label }}</bdi> <span class="font-mono text-ink-3">{{ r.top.followers|fmt_metric:"count" }}</span>{% else %}<span class="text-ink-3">—</span>{% endif %}</td>
                     <td class="px-4 py-2.5 text-right font-mono text-ink-2">{% if r.your_growth is None %}<span class="text-ink-3">—</span>{% else %}{{ r.your_growth|fmt_signed }}{% endif %}</td>
                     <td class="px-4 py-2.5 text-right font-mono text-ink-2">{% if r.avg_growth is None %}<span class="text-ink-3">—</span>{% else %}{{ r.avg_growth|fmt_signed }}{% endif %}</td>
                 </tr>
