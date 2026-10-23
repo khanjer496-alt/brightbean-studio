@@ -33,6 +33,8 @@ from .types import (
     PublishResult,
     RateLimitConfig,
     ReplyResult,
+    ThreadCapability,
+    ThreadMode,
 )
 
 logger = logging.getLogger(__name__)
@@ -152,6 +154,8 @@ class YouTubeProvider(SocialProvider):
     """YouTube Data API v3 provider using Google OAuth 2.0."""
 
     media_rules = YOUTUBE_MEDIA_RULES
+    # Top-level comments on the video carry up to 10,000 characters.
+    thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=10000)
 
     # ------------------------------------------------------------------
     # Metadata

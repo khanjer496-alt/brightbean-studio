@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import replace
 from urllib.parse import urlencode
 
 from .base import SocialProvider
@@ -20,6 +21,8 @@ from .types import (
     PublishContent,
     PublishResult,
     RateLimitConfig,
+    ThreadCapability,
+    ThreadMode,
 )
 
 logger = logging.getLogger(__name__)
@@ -60,6 +63,8 @@ class ThreadsProvider(SocialProvider):
     """Threads API provider using OAuth 2.0."""
 
     media_rules = THREADS_MEDIA_RULES
+    # Each part is a reply to the one before it (``reply_to_id``).
+    thread = ThreadCapability(mode=ThreadMode.REPLY_CHAIN, max_parts=25, media_per_part=True)
 
     # Publishes from hosted URLs only — the platform fetches the media
     # itself, so ``PublishContent.media_files`` is never read and the engine
@@ -417,6 +422,9 @@ class ThreadsProvider(SocialProvider):
                 "media_type": "CAROUSEL",
                 "children": ",".join(children_ids),
                 "text": (content.text or "")[: self.max_caption_length],
+                # A carousel can be a reply too, which is how a thread part
+                # carrying several images joins its thread.
+                **({"reply_to_id": content.extra["reply_to_id"]} if content.extra.get("reply_to_id") else {}),
             },
         )
         carousel_body = carousel_resp.json()
@@ -442,6 +450,24 @@ class ThreadsProvider(SocialProvider):
         return PublishResult(
             platform_post_id=thread_id,
             extra=publish_body,
+        )
+
+    def publish_thread_part(
+        self,
+        access_token: str,
+        content: PublishContent,
+        *,
+        root: PublishResult,
+        parent: PublishResult,
+    ) -> PublishResult:
+        """Publish a thread part as a reply to the part before it.
+
+        Threads takes ``reply_to_id`` on any container, media or not, so a
+        part goes through ``publish_post`` and keeps its own media.
+        """
+        return self.publish_post(
+            access_token,
+            replace(content, extra={**content.extra, "reply_to_id": parent.platform_post_id}),
         )
 
     # ------------------------------------------------------------------

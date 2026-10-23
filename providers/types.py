@@ -217,6 +217,47 @@ class MediaRules:
     advisory: frozenset[str] = frozenset()
 
 
+class ThreadMode(enum.StrEnum):
+    """How a platform carries the parts of a thread after the first post."""
+
+    # Each part replies to the one before it, so the parts read as one thread
+    # on the author's profile (Bluesky, Threads, Mastodon).
+    REPLY_CHAIN = "reply_chain"
+    # The platform has no self-reply chain, so every later part is a comment on
+    # the first post (Facebook, Instagram, LinkedIn, YouTube).
+    COMMENTS = "comments"
+    # The platform can't carry a thread at all; a post with parts is refused
+    # before it is scheduled.
+    NONE = "none"
+
+
+@dataclass(frozen=True)
+class ThreadCapability:
+    """What a platform accepts as a thread, declared per provider.
+
+    Read off the provider class (``SocialProvider.thread``) by the composer,
+    the API and the publisher, so checking a thread never builds a provider or
+    touches credentials. Parts are published by the engine one at a time, as
+    their own scheduled tasks, so a delay between parts works the same on every
+    platform that takes a thread at all.
+    """
+
+    mode: ThreadMode = ThreadMode.NONE
+    # Most parts one thread may have, the first post included. A guardrail of
+    # ours rather than a platform limit: a thread this long is almost always a
+    # mistake, and each part spends one publish against the platform's quota.
+    max_parts: int = 1
+    # Characters one later part may carry. None means the same limit as the
+    # post itself (the account's ``char_limit``); a comment often has its own.
+    part_max_length: int | None = None
+    # Whether a later part can carry its own media. A comment is text only.
+    media_per_part: bool = False
+
+    @property
+    def supports_threads(self) -> bool:
+        return self.mode is not ThreadMode.NONE
+
+
 class UploadCache(Protocol):
     """Somewhere a provider can remember an upload between publish attempts.
 

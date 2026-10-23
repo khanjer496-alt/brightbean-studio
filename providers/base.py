@@ -29,6 +29,8 @@ from .types import (
     PublishStatus,
     RateLimitConfig,
     ReplyResult,
+    ThreadCapability,
+    ThreadMode,
 )
 
 logger = logging.getLogger(__name__)
@@ -166,6 +168,12 @@ class SocialProvider(ABC):
     # declares only what its platform documents.
     media_rules: ClassVar[dict[PostType, MediaRules]] = {}
 
+    # How this platform carries the later parts of a thread (see
+    # ``ThreadCapability``). The default takes no thread, so a provider has to
+    # opt in — and a post with parts is refused for it before scheduling
+    # rather than published as its first part alone.
+    thread: ClassVar[ThreadCapability] = ThreadCapability()
+
     # How many post ids a single ``get_post_metrics_batch`` call may carry. 1 —
     # the default — means the platform has no batch endpoint, so the analytics
     # sync keeps its one-call-per-post loop and one bad id can't abort the rest
@@ -232,6 +240,48 @@ class SocialProvider(ABC):
     def publish_comment(self, access_token: str, post_id: str, text: str) -> CommentResult:
         """Post a comment on an existing post (e.g. first comment)."""
         raise NotImplementedError(f"{self.platform_name} does not support comments")
+
+    def publish_thread_part(
+        self,
+        access_token: str,
+        content: PublishContent,
+        *,
+        root: PublishResult,
+        parent: PublishResult,
+    ) -> PublishResult:
+        """Publish one later part of a thread.
+
+        ``root`` is the thread's first post and ``parent`` the part just before
+        this one (the root itself for the second part); each carries the id and
+        response ``extra`` recorded when it was published. A ``COMMENTS``
+        platform posts the part's text as a comment on the root through
+        ``publish_comment``, the same call the first comment uses. A
+        ``REPLY_CHAIN`` provider overrides this to reply to ``parent``.
+        """
+        if self.thread.mode is ThreadMode.COMMENTS:
+            result = self.publish_comment(access_token, root.platform_post_id, content.text)
+            return PublishResult(platform_post_id=result.platform_comment_id, extra=result.extra)
+        raise NotImplementedError(f"{self.platform_name} does not publish threads")
+
+    def find_thread_part(
+        self,
+        access_token: str,
+        *,
+        root: PublishResult,
+        parent: PublishResult,
+        text: str,
+    ) -> str | None:
+        """Return the id of a part this account already published with ``text``.
+
+        The thread counterpart of ``find_own_comment``, for retrying a part
+        whose first attempt failed ambiguously. A ``COMMENTS`` platform answers
+        through ``find_own_comment`` on the root; anything that cannot answer
+        raises, and the caller must then treat an ambiguous failure as terminal
+        rather than risk posting the part twice.
+        """
+        if self.thread.mode is ThreadMode.COMMENTS:
+            return self.find_own_comment(access_token, root.platform_post_id, text)
+        raise NotImplementedError(f"{self.platform_name} cannot look up its own thread parts")
 
     # ------------------------------------------------------------------
     # Analytics (optional - override per provider)

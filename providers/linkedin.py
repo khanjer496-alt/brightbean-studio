@@ -28,6 +28,8 @@ from .types import (
     PublishResult,
     RateLimitConfig,
     ReplyResult,
+    ThreadCapability,
+    ThreadMode,
 )
 
 logger = logging.getLogger(__name__)
@@ -120,6 +122,8 @@ class LinkedInProvider(SocialProvider):
     """LinkedIn Marketing API v2 provider."""
 
     media_rules = LINKEDIN_MEDIA_RULES
+    # LinkedIn comments are capped at 1,250 characters.
+    thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=1250)
 
     # ------------------------------------------------------------------
     # Metadata

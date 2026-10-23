@@ -22,7 +22,7 @@ from .mastodon import MastodonProvider
 from .pinterest import PinterestProvider
 from .threads import ThreadsProvider
 from .tiktok import TikTokProvider
-from .types import MediaRules, PostType
+from .types import MediaRules, PostType, ThreadCapability
 from .youtube import YouTubeProvider
 
 if TYPE_CHECKING:
@@ -114,6 +114,19 @@ def media_rules_for(platform: str, post_type: PostType) -> MediaRules | None:
     if provider_cls is None:
         return None
     return provider_cls.media_rules.get(post_type)
+
+
+def thread_capability_for(platform: str) -> ThreadCapability:
+    """How ``platform`` carries a thread (``SocialProvider.thread``).
+
+    Read off the provider class like ``media_rules_for``, so the composer and
+    the API can check a thread without building a provider. An unknown
+    platform takes no thread.
+    """
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    if provider_cls is None:
+        return ThreadCapability()
+    return provider_cls.thread
 
 
 def get_provider(platform: str, credentials: dict | None = None) -> SocialProvider:

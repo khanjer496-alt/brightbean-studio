@@ -48,6 +48,8 @@ from .types import (
     PublishResult,
     RateLimitConfig,
     ReplyResult,
+    ThreadCapability,
+    ThreadMode,
 )
 
 logger = logging.getLogger(__name__)
@@ -99,6 +101,8 @@ class InstagramLoginProvider(SocialProvider):
     """
 
     media_rules = INSTAGRAM_MEDIA_RULES
+    # Instagram comments share the caption's 2,200-character limit.
+    thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=2200)
 
     # Publishes from hosted URLs only — the platform fetches the media
     # itself, so ``PublishContent.media_files`` is never read and the engine

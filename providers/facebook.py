@@ -34,6 +34,8 @@ from .types import (
     PublishResult,
     RateLimitConfig,
     ReplyResult,
+    ThreadCapability,
+    ThreadMode,
 )
 
 logger = logging.getLogger(__name__)
@@ -130,6 +132,8 @@ class FacebookProvider(SocialProvider):
     """Facebook Graph API v25.0 provider."""
 
     media_rules = FACEBOOK_MEDIA_RULES
+    # Comments on the Page post carry up to 8,000 characters.
+    thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=8000)
 
     # Publishes from hosted URLs only — the platform fetches the media
     # itself, so ``PublishContent.media_files`` is never read and the engine
