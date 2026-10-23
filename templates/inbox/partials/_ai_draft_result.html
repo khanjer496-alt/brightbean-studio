@@ -1,0 +1,18 @@
+{# A proposed reply. Nothing is sent: "Use draft" puts it in the reply box for the person to edit. #}
+<div class="inbox-ai-draft" data-ai-draft>
+    <p class="inbox-ai-draft-label">AI draft &middot; review before sending</p>
+    <p class="inbox-ai-draft-text">{{ text }}</p>
+    <div class="inbox-ai-draft-actions">
+        <button type="button"
+                class="btn-brand text-xs py-1.5 px-3"
+                data-text="{{ text }}"
+                @click="replyText = $el.dataset.text; $el.closest('[data-ai-draft]').remove(); document.getElementById('inbox-reply-body').focus()">
+            Use draft
+        </button>
+        <button type="button"
+                class="inbox-ghost-btn"
+                @click="$el.closest('[data-ai-draft]').remove()">
+            Dismiss
+        </button>
+    </div>
+</div>

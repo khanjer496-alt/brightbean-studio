@@ -1,0 +1,21 @@
+{# Polled every 20s while the tab is visible. Replaces itself; the list is never touched until the pill is clicked. #}
+<div id="inbox-poll"
+     class="inbox-poll"
+     hx-get="{% url 'inbox:poll' workspace_id=workspace.id %}?{{ poll_query }}"
+     hx-trigger="every 20s [!document.hidden], visibilitychange[!document.hidden] from:document"
+     hx-swap="outerHTML"
+     data-no-error-toast
+     role="status">
+    {% if new_count %}
+    <button type="button"
+            class="inbox-new-pill"
+            hx-get="{% url 'inbox:feed' workspace_id=workspace.id %}?{{ filter_query }}"
+            hx-target="#inbox-message-list"
+            hx-swap="innerHTML scroll:top">
+        {% if new_count_capped %}99+{% else %}{{ new_count }}{% endif %} new message{{ new_count|pluralize }}
+    </button>
+    {% endif %}
+</div>
+{% if oob_badge %}
+<span id="sidebar-inbox-badge" class="ml-auto" hx-swap-oob="true">{% if sidebar_unread_inbox_count %}<span class="sidebar-badge">{{ sidebar_unread_inbox_count }}</span>{% endif %}</span>
+{% endif %}

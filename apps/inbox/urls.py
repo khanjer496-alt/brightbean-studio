@@ -9,6 +9,8 @@ app_name = "inbox"
 urlpatterns = [
     # Main inbox feed
     path("", views.inbox_feed, name="feed"),
+    # Polled by the feed: "N new messages" + sidebar unread count
+    path("poll/", views.poll_new_messages, name="poll"),
     # Message detail + thread
     path("<uuid:message_id>/", views.message_detail, name="message_detail"),
     # Reply to message
@@ -23,10 +25,15 @@ urlpatterns = [
     path("<uuid:message_id>/assign/", views.assign_message, name="assign"),
     # Status changes
     path("<uuid:message_id>/status/", views.change_status, name="change_status"),
+    # Keyboard triage (one action, returns the updated row)
+    path("<uuid:message_id>/triage/", views.triage_message, name="triage"),
+    # AI reply draft
+    path("<uuid:message_id>/ai-draft/", views.ai_draft_reply, name="ai_draft_reply"),
     # Sentiment override
     path("<uuid:message_id>/sentiment/", views.change_sentiment, name="change_sentiment"),
     # Bulk actions
     path("bulk-action/", views.bulk_action, name="bulk_action"),
+    path("bulk-count/", views.bulk_count, name="bulk_count"),
     # Saved replies
     path("saved-replies/", views.saved_replies_list, name="saved_replies"),
     path("saved-replies/create/", views.saved_reply_create, name="saved_reply_create"),

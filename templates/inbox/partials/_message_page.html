@@ -1,0 +1,12 @@
+{% load humanize %}
+{% for msg in inbox_messages %}
+{% include "inbox/partials/_message_row.html" with message=msg %}
+{% endfor %}
+{% if load_more_query %}
+<div class="inbox-load-more"
+     hx-get="{% url 'inbox:feed' workspace_id=workspace.id %}?{{ load_more_query }}"
+     hx-trigger="intersect once, click"
+     hx-swap="outerHTML">
+    <button type="button" class="inbox-load-more-btn">Load more</button>
+</div>
+{% endif %}

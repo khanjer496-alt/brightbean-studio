@@ -1,14 +1,19 @@
 """Views for the Unified Social Inbox (F-3.1)."""
 
+import json
 import logging
+from urllib.parse import urlencode
 
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.db.models import Q
-from django.http import HttpResponse
+from django.http import HttpResponse, JsonResponse, QueryDict
 from django.shortcuts import get_object_or_404, redirect, render
-from django.views.decorators.http import require_POST
+from django.template.loader import render_to_string
+from django.views.decorators.http import require_GET, require_POST
 
+from apps.ai_writer import services as ai_services
+from apps.ai_writer.client import ai_available
+from apps.ai_writer.views import ai_action
 from apps.members.decorators import require_permission
 from apps.members.models import WorkspaceMembership
 from apps.notifications.engine import notify
@@ -16,6 +21,7 @@ from apps.notifications.models import EventType
 from apps.social_accounts.models import SocialAccount
 from apps.workspaces.models import Workspace
 
+from . import feed as inbox_feed_queries
 from . import services as inbox_services
 from .forms import (
     AssignForm,
@@ -26,6 +32,7 @@ from .forms import (
     SentimentForm,
     SLAConfigForm,
     StatusForm,
+    TriageForm,
 )
 from .models import (
     InboxMessage,
@@ -36,8 +43,6 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
-
-MESSAGES_PER_PAGE = 50
 
 
 def _detail_context(workspace, message, *, actor=None):
@@ -72,7 +77,19 @@ def _detail_context(workspace, message, *, actor=None):
         "status_choices": InboxMessage.Status.choices,
         "attachments": message.attachments,
         "reply_eligibility": inbox_services.reply_eligibility(message, origin="web_inbox", actor=actor),
+        "saved_reply_options": _saved_reply_options(saved_replies, message),
+        "ai_enabled": ai_available(workspace.organization),
     }
+
+
+def _saved_reply_options(saved_replies, message):
+    """Saved replies with their variables filled in for this message, for the ``/`` picker."""
+    variables = {
+        "sender_name": message.sender_name,
+        "account_name": message.social_account.account_name,
+        "post_url": getattr(message.related_post, "published_url", "") or "",
+    }
+    return [{"id": str(sr.id), "title": sr.title, "body": sr.render(variables)} for sr in saved_replies]
 
 
 def _get_workspace(request, workspace_id):
@@ -95,59 +112,21 @@ def _get_workspace(request, workspace_id):
 @login_required
 @require_permission("use_inbox")
 def inbox_feed(request, workspace_id):
-    """Main inbox feed with filtering, pagination, and split-panel layout."""
+    """Main inbox feed with filtering, cursor pagination, and split-panel layout."""
     workspace = _get_workspace(request, workspace_id)
 
-    qs = InboxMessage.objects.for_workspace(workspace.id).select_related("social_account", "assigned_to")
-
-    # View shortcuts
-    view = request.GET.get("view", "all")
-    if view == "mine":
-        qs = qs.filter(assigned_to=request.user)
-    elif view == "unassigned":
-        qs = qs.filter(assigned_to__isnull=True)
-
-    # Filters
-    platforms = request.GET.getlist("platform")
-    if platforms:
-        qs = qs.filter(social_account__platform__in=platforms)
-
-    accounts = request.GET.getlist("account")
-    if accounts:
-        qs = qs.filter(social_account_id__in=accounts)
-
-    types = request.GET.getlist("type")
-    if types:
-        qs = qs.filter(message_type__in=types)
-
-    statuses = request.GET.getlist("status")
-    if statuses:
-        qs = qs.filter(status__in=statuses)
-
-    assigned = request.GET.get("assigned")
-    if assigned:
-        qs = qs.filter(assigned_to__isnull=True) if assigned == "unassigned" else qs.filter(assigned_to_id=assigned)
-
-    sentiments = request.GET.getlist("sentiment")
-    if sentiments:
-        qs = qs.filter(sentiment__in=sentiments)
-
-    date_from = request.GET.get("date_from")
-    if date_from:
-        qs = qs.filter(received_at__date__gte=date_from)
-
-    date_to = request.GET.get("date_to")
-    if date_to:
-        qs = qs.filter(received_at__date__lte=date_to)
-
-    q = request.GET.get("q", "").strip()
-    if q:
-        qs = qs.filter(Q(body__icontains=q) | Q(sender_name__icontains=q) | Q(sender_handle__icontains=q))
-
-    messages = qs[:MESSAGES_PER_PAGE]
-
+    cursor = request.GET.get("cursor", "")
     # SLA config for countdown display
     sla_config = InboxSLAConfig.objects.filter(workspace=workspace, is_active=True).first()
+    context = {
+        "workspace": workspace,
+        "sla_config": sla_config,
+        **inbox_feed_queries.feed_page(workspace, request.GET, request.user, cursor),
+    }
+
+    # A cursor request is "Load more": just the next rows and their sentinel.
+    if cursor and request.htmx:
+        return render(request, "inbox/partials/_message_page.html", context)
 
     # Team members for assignment dropdown
     team_members = WorkspaceMembership.objects.filter(
@@ -160,32 +139,56 @@ def inbox_feed(request, workspace_id):
         connection_status=SocialAccount.ConnectionStatus.CONNECTED,
     )
 
-    context = {
-        "workspace": workspace,
-        "inbox_messages": messages,
-        "sla_config": sla_config,
-        "team_members": team_members,
-        "social_accounts": social_accounts,
-        "current_view": view,
-        "active_filters": {
-            "platform": platforms,
-            "account": accounts,
-            "type": types,
-            "status": statuses,
-            "assigned": assigned,
-            "sentiment": sentiments,
-            "date_from": date_from,
-            "date_to": date_to,
-            "q": q,
-        },
-    }
+    context.update(
+        {
+            "team_members": team_members,
+            "social_accounts": social_accounts,
+            "status_choices": InboxMessage.Status.choices,
+            "sentiment_choices": InboxMessage.Sentiment.choices,
+        }
+    )
 
     if request.htmx:
         return render(request, "inbox/partials/_message_list.html", context)
     return render(request, "inbox/feed.html", context)
 
 
-# --- Message Detail ---
+@login_required
+@require_permission("use_inbox")
+@require_GET
+def poll_new_messages(request, workspace_id):
+    """The "N new messages" pill and the sidebar's unread count, polled by the feed.
+
+    Counts messages matching the feed's filters that sort after the ``since``
+    cursor, so the list itself never moves under someone reading it.
+    """
+    workspace = _get_workspace(request, workspace_id)
+    since = request.GET.get("since", "")
+    count = inbox_feed_queries.new_message_count(workspace, request.GET, request.user, since)
+    pairs = inbox_feed_queries.filter_pairs(request.GET)
+    context = {
+        "workspace": workspace,
+        "new_count": count,
+        "new_count_capped": count >= inbox_feed_queries.NEW_MESSAGES_CAP,
+        "filter_query": urlencode(pairs),
+        "poll_query": urlencode([*pairs, ("since", since)]),
+        "oob_badge": True,
+        "sidebar_unread_inbox_count": inbox_feed_queries.unread_count(workspace),
+    }
+    # Rendered without ``request`` on purpose: this runs every 20 seconds per open
+    # tab, and the page-wide context processors (sidebar, channels...) are not
+    # needed by a fragment that only carries a pill and one badge.
+    return HttpResponse(render_to_string("inbox/partials/_poll.html", context))
+
+
+@login_required
+@require_permission("reply_from_inbox")
+@require_GET
+def bulk_count(request, workspace_id):
+    """How many messages match the feed's filters, for "select all matching"."""
+    workspace = _get_workspace(request, workspace_id)
+    qs, _active, _view = inbox_feed_queries.filtered_messages(workspace, request.GET, request.user)
+    return JsonResponse({"count": qs.order_by().count(), "limit": inbox_services.BULK_SELECT_ALL_MAX})
 
 
 @login_required
@@ -463,37 +466,98 @@ def change_sentiment(request, workspace_id, message_id):
 @require_permission("reply_from_inbox")
 @require_POST
 def bulk_action(request, workspace_id):
-    """Perform bulk actions on multiple messages."""
+    """Perform bulk actions on selected messages, or on every message matching the filters."""
     workspace = _get_workspace(request, workspace_id)
 
     form = BulkActionForm(request.POST)
     if not form.is_valid():
-        return HttpResponse("Invalid bulk action.", status=400)
+        return HttpResponse(" ".join(e for errors in form.errors.values() for e in errors), status=400)
 
-    message_ids = form.cleaned_data["message_ids"]
-    action = form.cleaned_data["action"]
-    value = form.cleaned_data.get("value", "")
+    data = form.cleaned_data
+    filters = QueryDict(data["filters"])
+    if data["select_all"]:
+        matching, _active, _view = inbox_feed_queries.filtered_messages(workspace, filters, request.user)
+        message_ids = list(matching.order_by().values_list("id", flat=True)[: inbox_services.BULK_SELECT_ALL_MAX + 1])
+        if len(message_ids) > inbox_services.BULK_SELECT_ALL_MAX:
+            return HttpResponse(
+                f"Too many messages match to act on at once (limit {inbox_services.BULK_SELECT_ALL_MAX}). Narrow the filters.",
+                status=400,
+            )
+        if len(message_ids) != data["expected_count"]:
+            return HttpResponse(
+                f"The inbox changed: {len(message_ids)} messages match now, not {data['expected_count']}. "
+                "Nothing was changed; review and try again.",
+                status=409,
+            )
+    else:
+        message_ids = data["message_ids"]
 
-    qs = InboxMessage.objects.filter(id__in=message_ids, workspace=workspace)
+    try:
+        changed = inbox_services.bulk_update(
+            workspace, message_ids, action=data["action"], value=data["value"], actor=request.user
+        )
+    except inbox_services.BulkActionError as exc:
+        return HttpResponse(str(exc), status=400)
 
-    if action == "mark_read":
-        qs.filter(status=InboxMessage.Status.UNREAD).update(status=InboxMessage.Status.OPEN)
-    elif action == "resolve":
-        qs.exclude(status=InboxMessage.Status.ARCHIVED).update(status=InboxMessage.Status.RESOLVED)
-    elif action == "archive":
-        qs.update(status=InboxMessage.Status.ARCHIVED)
-    elif action == "assign" and value:
-        membership = WorkspaceMembership.objects.filter(workspace=workspace, user_id=value).first()
-        if membership:
-            qs.update(assigned_to=membership.user)
+    # Re-render the list under the same filters the person was looking at.
+    context = {
+        "workspace": workspace,
+        "sla_config": InboxSLAConfig.objects.filter(workspace=workspace, is_active=True).first(),
+        **inbox_feed_queries.feed_page(workspace, filters, request.user),
+    }
+    response = render(request, "inbox/partials/_message_list.html", context)
+    response["HX-Trigger"] = json.dumps({"inboxBulkDone": {"count": changed}})
+    return response
 
-    # Re-fetch and return updated list
-    messages = InboxMessage.objects.for_workspace(workspace.id).select_related("social_account", "assigned_to")[
-        :MESSAGES_PER_PAGE
-    ]
 
-    context = {"workspace": workspace, "inbox_messages": messages}
-    return render(request, "inbox/partials/_message_list.html", context)
+# --- Keyboard triage ---
+
+
+@login_required
+@require_permission("reply_from_inbox")
+@require_POST
+def triage_message(request, workspace_id, message_id):
+    """Apply one keyboard-triage action and return the updated list row."""
+    workspace = _get_workspace(request, workspace_id)
+    message = get_object_or_404(
+        InboxMessage.objects.select_related("social_account", "assigned_to"), id=message_id, workspace=workspace
+    )
+
+    form = TriageForm(request.POST)
+    if not form.is_valid():
+        return HttpResponse("Invalid action.", status=400)
+
+    inbox_services.apply_triage(message, form.cleaned_data["action"], actor=request.user)
+    sla_config = InboxSLAConfig.objects.filter(workspace=workspace, is_active=True).first()
+    return render(
+        request,
+        "inbox/partials/_message_row.html",
+        {"workspace": workspace, "message": message, "sla_config": sla_config, "active_filters": {}},
+    )
+
+
+# --- AI reply draft ---
+
+
+@ai_action("reply_from_inbox")
+def ai_draft_reply(request, ctx, message_id):
+    """Propose a reply to a message, in the workspace's brand voice (never sent; the person edits it)."""
+    message = get_object_or_404(
+        InboxMessage.objects.select_related("social_account", "parent_message"),
+        id=message_id,
+        workspace=ctx.workspace,
+    )
+    thread = []
+    if message.parent_message_id:
+        parent = message.parent_message
+        thread.append(("customer", parent.sender_name, parent.body))
+    sent_replies = message.replies.filter(status=InboxReply.Status.SENT).select_related("author")
+    for reply in sent_replies:
+        thread.append(("brand", reply.author.display_name if reply.author else "Team", reply.body))
+    text = ai_services.draft_reply(
+        ctx, message.body, sender=message.sender_name, thread=thread, account=message.social_account
+    )
+    return render(request, "inbox/partials/_ai_draft_result.html", {"text": text})
 
 
 # --- Saved Replies ---

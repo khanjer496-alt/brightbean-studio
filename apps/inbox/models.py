@@ -3,6 +3,8 @@
 import uuid
 
 from django.conf import settings
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVector
 from django.db import models
 
 from apps.common.managers import WorkspaceScopedManager
@@ -114,6 +116,24 @@ class InboxMessage(models.Model):
             models.Index(
                 fields=["workspace", "social_account", "-received_at"],
                 name="inbox_msg_ws_account_recv",
+            ),
+            # Feed order with its tie-break, for the cursor pagination.
+            models.Index(
+                fields=["workspace", "-received_at", "-id"],
+                name="inbox_msg_ws_recv_id",
+            ),
+            models.Index(
+                fields=["workspace", "assigned_to", "-received_at"],
+                name="inbox_msg_ws_assign_recv",
+            ),
+            models.Index(
+                fields=["workspace", "sentiment", "-received_at"],
+                name="inbox_msg_ws_sent_recv",
+            ),
+            # Must match ``apps.inbox.feed.search_vector`` for the planner to use it.
+            GinIndex(
+                SearchVector("body", "sender_name", "sender_handle", config="simple"),
+                name="inbox_msg_search_gin",
             ),
         ]
 
