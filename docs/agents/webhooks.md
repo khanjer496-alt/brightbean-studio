@@ -22,6 +22,9 @@ them.
 | `comment.created` | Someone commented on a post (internal and client comments; see `visibility`) |
 | `inbox.message.received` | A new comment, mention, DM or review reached the inbox |
 | `account.disconnected` | A social account lost its connection, or a member removed it (`removed: true`). Sent once per break: removing an account that had already lost its connection sends nothing more |
+| `agent.action.executed` | The autonomy policy let an agent or automation act (publish, reply, recycle). `release_at` is when it can first go out |
+| `agent.action.held` | The policy held an agent's or automation's action as a draft for review; `reasons` says why |
+| `agent.action.blocked` | The policy refused an agent's or automation's action; `reasons` says why |
 | `webhook.test` | You pressed "Send test event" (never part of a subscription) |
 
 The `post.*` events (except approvals) are sent **once per account a post targets**: a post going to

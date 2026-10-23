@@ -28,6 +28,7 @@ Every row is a capability of the PostDelegate web app. **Before** is what REST a
 | Tags | none | `/tags` / `list_tags`, `create_tag`, `rename_tag`, `delete_tag`; rename and delete also update posts and ideas, and are refused when the tag is on posts outside the allowlist | read; `create_posts` |
 | Content categories | none | `/categories` / `list_categories`, `create_category`, `update_category`, `delete_category` | read; `create_posts` |
 | Hashtag sets, shared signatures (read) | REST read / none | REST read / `list_hashtag_sets`, `list_signatures` | read |
+| Autonomy policy and the agent audit trail | Settings > Autonomy; Activity page | `GET`/`PATCH /autonomy`, `GET /autonomy/actions` / `get_autonomy_policy`, `update_autonomy_policy`, `list_agent_actions`; a key can only tighten the policy | read policy: any key; update: `manage_workspace_settings`; actions: `create_posts` or `manage_workspace_settings` |
 | Brand voice | none | `GET`/`PATCH /brand-voice` / `get_brand_voice`, `update_brand_voice` | read: `create_posts` or `manage_workspace_settings`; update: `manage_workspace_settings` |
 | Billing: plan, limits, usage (read-only; org owners and admins) | none | `GET /usage` / `get_usage` | read |
 | Inbox, replies | yes / yes | unchanged | `use_inbox`, `reply_from_inbox` |

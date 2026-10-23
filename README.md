@@ -901,6 +901,8 @@ Don't poll faster than the data changes. Studio syncs the inbox every 5 minutes 
 | `GET` / `POST` / `PATCH` / `DELETE` | `/categories`, `/categories/{category_id}` | Content categories | reads open; writes `create_posts` |
 | `GET` / `POST` / `DELETE` | `/events`, `/events/{event_id}` | Custom calendar events (`date_from`/`date_to` filter) | reads open; writes `create_posts` |
 | `GET` / `PATCH` | `/brand-voice` | Read / update the brand voice the AI assistant writes in | read: `create_posts` or `manage_workspace_settings`; update: `manage_workspace_settings` |
+| `GET` / `PATCH` | `/autonomy` | Read the autonomy policy (any key) / tighten it (a key can lower levels, pause, add blocked phrases) | update: `manage_workspace_settings` |
+| `GET` | `/autonomy/actions` | The audit trail: who acted, the policy's decision (executed, held, blocked) and why | `create_posts` or `manage_workspace_settings` |
 | `GET` | `/usage` | Plan, limits and current usage (read-only) | — |
 | `GET` | `/members` | Workspace members with role and `@mention` handle (no emails) | — |
 | `GET` | `/hashtag-sets`, `/signatures` | Saved hashtag groups and shared sign-offs | — |
@@ -962,6 +964,7 @@ Tools added to close the coverage gaps (each is the twin of a REST route above a
 | `list_categories` / `create_category` / `update_category` / `delete_category` | Content categories | reads open; writes `create_posts` |
 | `list_calendar_events` / `create_calendar_event` / `delete_calendar_event` | Custom calendar events | reads open; writes `create_posts` |
 | `get_brand_voice` / `update_brand_voice` | The AI assistant's brand voice | read: `create_posts` or `manage_workspace_settings`; update: `manage_workspace_settings` |
+| `get_autonomy_policy` / `update_autonomy_policy` / `list_agent_actions` | What you may do on your own here, the audit trail, and tightening the policy | policy: any key; update: `manage_workspace_settings`; actions: `create_posts` or `manage_workspace_settings` |
 | `get_usage` | Plan, limits and usage | — |
 | `list_hashtag_sets` / `list_signatures` | Saved hashtag groups and shared sign-offs | — |
 
