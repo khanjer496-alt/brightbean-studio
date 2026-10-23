@@ -51,7 +51,7 @@
                 <p class="text-xs mb-3 text-[var(--text-tertiary)]">For example: {{ row.example }}</p>
                 <div class="flex flex-col gap-2">
                     {% for option in row.options %}
-                    <label class="flex items-start gap-3 rounded-lg border border-stone-200 p-3 cursor-pointer has-[:checked]:border-stone-800 has-[:checked]:bg-stone-50">
+                    <label class="flex items-start gap-3 rounded-lg border border-stone-200 p-3 cursor-pointer has-[:checked]:border-[var(--primary)] has-[:checked]:bg-[var(--primary-soft)]">
                         <input type="radio" name="{{ row.field }}" value="{{ option.value }}" class="mt-1" {% if row.value == option.value %}checked{% endif %} {% if not can_configure %}disabled{% endif %}>
                         <span>
                             <span class="block text-sm font-medium text-[var(--text-primary)]">{{ option.label }}</span>
