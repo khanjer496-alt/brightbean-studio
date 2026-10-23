@@ -17,3 +17,11 @@ def _isolate_failed_auth_throttle():
     cache.delete("agent_api:auth_fail:127.0.0.1")
     yield
     cache.delete("agent_api:auth_fail:127.0.0.1")
+
+
+@pytest.fixture
+def world(db):
+    """Two workspaces with keys of different reach; see ``apps.api.tests.world``."""
+    from apps.api.tests.world import build_world
+
+    return build_world()
