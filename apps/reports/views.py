@@ -57,6 +57,8 @@ def _nav(workspace) -> dict:
         "accounts": reverse("analytics:accounts", kwargs=kwargs),
         "compare": reverse("analytics:compare", kwargs=kwargs),
         "reports": reverse("reports:list", kwargs=kwargs),
+        "competitors": reverse("competitors:index", kwargs=kwargs),
+        "ai_visibility": reverse("ai_visibility:index", kwargs=kwargs),
     }
 
 

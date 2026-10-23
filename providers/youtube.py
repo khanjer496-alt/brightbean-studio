@@ -15,7 +15,7 @@ from .exceptions import (
     APIError,
     OAuthError,
     ProviderError,
-    PublicProfileNotFound,
+    PublicProfileNotFoundError,
     PublishError,
     QuotaExceededError,
     TokenExpiredError,
@@ -966,7 +966,7 @@ class YouTubeProvider(SocialProvider):
             .get("items", [])
         )
         if not items:
-            raise PublicProfileNotFound(f"No YouTube channel found for {handle}.", platform="YouTube")
+            raise PublicProfileNotFoundError(f"No YouTube channel found for {handle}.", platform="YouTube")
         channel = items[0]
         stats = channel.get("statistics") or {}
         followers = None if stats.get("hiddenSubscriberCount") else _int_or_none(stats.get("subscriberCount"))
@@ -980,9 +980,7 @@ class YouTubeProvider(SocialProvider):
                 access_token=access_token,
                 params={"part": "contentDetails", "playlistId": uploads, "maxResults": 25},
             ).json()
-            video_ids = [
-                i["contentDetails"]["videoId"] for i in playlist.get("items", []) if i.get("contentDetails")
-            ]
+            video_ids = [i["contentDetails"]["videoId"] for i in playlist.get("items", []) if i.get("contentDetails")]
             if video_ids:
                 self.last_call_quota_units += 1
                 videos = self._request(

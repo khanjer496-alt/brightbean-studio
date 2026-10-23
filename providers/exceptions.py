@@ -168,7 +168,7 @@ class WebhookChannelError(APIError):
         super().__init__(message, **kwargs)
 
 
-class PublicProfileNotFound(ProviderError):
+class PublicProfileNotFoundError(ProviderError):
     """The handle names no public profile this account is allowed to read.
 
     Permanent for that handle (``retryable=False``), unlike a rate limit.

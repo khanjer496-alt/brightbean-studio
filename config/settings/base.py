@@ -115,6 +115,8 @@ LOCAL_APPS = [
     "apps.mcp",
     "apps.oauth_server",
     "apps.analytics",
+    "apps.competitors",
+    "apps.ai_visibility",
     "apps.reports",
     "apps.linkinbio",
     "apps.billing",
@@ -840,6 +842,9 @@ ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
 # Seconds per provider call. The composer waits on it, so keep it short; the
 # SDK retries once on a timeout or 5xx before the user sees an error.
 AI_REQUEST_TIMEOUT = env.int("AI_REQUEST_TIMEOUT", default=45)
+# Which answer engines the "how AI describes your brand" report asks (see
+# apps.ai_visibility.engines). Names are registered engines; only "anthropic" exists today.
+AI_VISIBILITY_ENGINES = env.list("AI_VISIBILITY_ENGINES", default=["anthropic"])
 # Requests on an organization's own key don't count against the plan's daily
 # allowance, but this many a UTC day (answered or not) is a hard safety stop
 # for a runaway script or loop.

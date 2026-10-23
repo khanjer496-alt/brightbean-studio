@@ -15,7 +15,7 @@ from urllib.parse import urlencode
 from django.conf import settings
 
 from .base import SocialProvider
-from .exceptions import APIError, OAuthError, PublicProfileNotFound, PublishError
+from .exceptions import APIError, OAuthError, PublicProfileNotFoundError, PublishError
 from .types import (
     AccountProfile,
     AuthType,
@@ -642,10 +642,12 @@ class MastodonProvider(SocialProvider):
                 ).json()
         except APIError as exc:
             if exc.status_code in (404, 422):
-                raise PublicProfileNotFound(f"No Mastodon account found for {handle}.", platform="Mastodon") from exc
+                raise PublicProfileNotFoundError(
+                    f"No Mastodon account found for {handle}.", platform="Mastodon"
+                ) from exc
             raise
         if not account:
-            raise PublicProfileNotFound(f"No Mastodon account found for {handle}.", platform="Mastodon")
+            raise PublicProfileNotFoundError(f"No Mastodon account found for {handle}.", platform="Mastodon")
         engagement, stamps = [], []
         try:
             statuses = self._request(

@@ -15,7 +15,7 @@ from __future__ import annotations
 from datetime import datetime
 
 from .base import SocialProvider
-from .exceptions import APIError, PublicProfileNotFound
+from .exceptions import APIError, PublicProfileNotFoundError
 from .types import PublicProfileMetrics
 
 SAMPLE_POSTS = 25
@@ -38,14 +38,14 @@ def business_discovery_metrics(
     except APIError as exc:
         # Graph answers 400 (code 110 / 24) for a username it cannot discover.
         if exc.status_code == 400:
-            raise PublicProfileNotFound(
+            raise PublicProfileNotFoundError(
                 f"{handle} is not an Instagram business or creator account that can be read.",
                 platform=provider.platform_name,
             ) from exc
         raise
     found = data.get("business_discovery") or {}
     if not found:
-        raise PublicProfileNotFound(f"No Instagram professional account found for {handle}.", platform="Instagram")
+        raise PublicProfileNotFoundError(f"No Instagram professional account found for {handle}.", platform="Instagram")
     media = (found.get("media") or {}).get("data", [])
     stamps = []
     for item in media:

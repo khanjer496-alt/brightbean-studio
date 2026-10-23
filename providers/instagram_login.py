@@ -21,12 +21,12 @@ from urllib.parse import urlencode
 from .base import SocialProvider
 from .exceptions import APIError, OAuthError, ProviderError, PublishError
 from .instagram import INSTAGRAM_MEDIA_RULES
+from .instagram_discovery import business_discovery_metrics
 from .meta_comments import (
     fetch_instagram_comments,
     find_own_instagram_comment,
     resolve_comment_reply_target,
 )
-from .instagram_discovery import business_discovery_metrics
 from .meta_insights import fetch_insights_safe
 from .meta_messaging import (
     build_send_payload,

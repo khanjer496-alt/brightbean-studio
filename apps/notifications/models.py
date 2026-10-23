@@ -25,6 +25,7 @@ class EventType(models.TextChoices):
     CLIENT_CONNECTED_ACCOUNTS = "client_connected_accounts", "Client connected accounts"
     BILLING_PAYMENT_FAILED = "billing_payment_failed", "Subscription payment failed"
     WEBHOOK_DISABLED = "webhook_disabled", "Webhook endpoint turned off"
+    AI_VISIBILITY_REPORT = "ai_visibility_report", "AI visibility report ready"
 
 
 class Channel(models.TextChoices):

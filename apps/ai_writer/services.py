@@ -758,3 +758,15 @@ def save_posts_as_drafts(workspace, user, drafts: list[str], accounts) -> list:
                     )
                 )
     return posts
+
+
+# ---------------------------------------------------------------------------
+# For other apps that prompt through this pipeline (apps.ai_visibility)
+# ---------------------------------------------------------------------------
+
+# Same reservation, logging, plan allowance and delimiter escaping as the actions
+# above; named without the underscore because a second app uses them.
+reserve_run = _start
+run_prompt = _run
+escape_tags = _escape_tags
+brand_system_prompt = _system_prompt

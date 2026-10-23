@@ -11,7 +11,7 @@ import time
 from datetime import UTC, datetime
 
 from .base import SocialProvider
-from .exceptions import APIError, PublicProfileNotFound, PublishError
+from .exceptions import APIError, PublicProfileNotFoundError, PublishError
 from .types import (
     AccountProfile,
     AuthType,
@@ -280,7 +280,7 @@ class BlueskyProvider(SocialProvider):
             ).json()
         except APIError as exc:
             if exc.status_code == 400:
-                raise PublicProfileNotFound(f"No Bluesky profile found for {handle}.", platform="Bluesky") from exc
+                raise PublicProfileNotFoundError(f"No Bluesky profile found for {handle}.", platform="Bluesky") from exc
             raise
         engagement, stamps = [], []
         try:

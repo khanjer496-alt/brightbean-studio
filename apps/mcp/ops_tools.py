@@ -13,7 +13,7 @@ from collections.abc import Callable
 from typing import Any
 
 from apps.api import ops
-from apps.api.schemas import CreateBioLinkRequest, UpdateBioLinkRequest, UpdateBioPageRequest
+from apps.api.schemas import AddCompetitorRequest, CreateBioLinkRequest, UpdateBioLinkRequest, UpdateBioPageRequest
 from apps.mcp.handlers import (
     _PARTS_INPUT_SCHEMA,
     _POST_SETTINGS_INPUT_SCHEMA,
@@ -1079,6 +1079,99 @@ _tool(
     lambda a: {"_args": (_uuid_arg(a, "report_id", required=True),)},
     properties={"report_id": _uuid_prop("ID from list_reports.")},
     required=["report_id"],
+    read_only=True,
+)
+
+
+# ---------------------------------------------------------------------------
+# Competitor benchmarking and AI visibility
+# ---------------------------------------------------------------------------
+
+
+def _add_competitor_args(a: dict) -> dict[str, Any]:
+    from pydantic import ValidationError
+
+    try:
+        payload = AddCompetitorRequest.model_validate({"platform": a.get("platform"), "handle": a.get("handle")})
+    except ValidationError as exc:
+        err = exc.errors()[0]
+        raise JsonRpcError(INVALID_PARAMS, f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}") from exc
+    return {"_args": (payload,)}
+
+
+def _comparison_args(a: dict) -> dict[str, Any]:
+    days = a.get("days")
+    if days is not None and (not isinstance(days, int) or isinstance(days, bool) or not 1 <= days <= 366):
+        raise JsonRpcError(INVALID_PARAMS, "days must be an integer from 1 to 366")
+    return {"days": days, "start": _date_arg(a, "start"), "end": _date_arg(a, "end")}
+
+
+_tool(
+    "list_competitors",
+    (
+        "List the public competitor profiles this workspace tracks (latest followers, posting rate and average "
+        "engagement per post) and which networks can be benchmarked, with the limit per network on the plan. "
+        "Networks without an official way to read other profiles are listed as unsupported with the reason. "
+        "Needs view_analytics."
+    ),
+    ops.list_competitors,
+    lambda a: {},
+    read_only=True,
+)
+
+_tool(
+    "get_competitor_comparison",
+    (
+        "Compare the workspace's own accounts with the tracked competitors, per network: followers, follower "
+        "growth over the range (default last 30 days), posts per week and average engagements per post. Only "
+        "accounts the key may use are shown. Needs view_analytics."
+    ),
+    ops.get_competitor_comparison,
+    _comparison_args,
+    properties={
+        "days": {"type": "integer", "minimum": 1, "maximum": 366, "description": "Last N days (default 30)."},
+        "start": _text_prop("Range start, YYYY-MM-DD; pass with end."),
+        "end": _text_prop("Range end, YYYY-MM-DD; pass with start."),
+    },
+    read_only=True,
+)
+
+_tool(
+    "add_competitor",
+    (
+        "Track a public competitor profile. platform must be a supported network from list_competitors "
+        "(Instagram business/creator accounts, YouTube, Bluesky, Mastodon); handle is its username or profile link. "
+        "The profile is read once to confirm it exists. Refused beyond the plan's per-network limit or without a "
+        "connected account on that network the key may use. Needs manage_social_accounts."
+    ),
+    ops.add_competitor,
+    _add_competitor_args,
+    properties={
+        "platform": _text_prop("Network, e.g. 'bluesky'."),
+        "handle": _text_prop("Username or profile link.", max_length=300),
+    },
+    required=["platform", "handle"],
+)
+
+_tool(
+    "remove_competitor",
+    "Stop tracking a competitor and delete its history. Needs manage_social_accounts.",
+    ops.remove_competitor,
+    lambda a: {"_args": (_uuid_arg(a, "competitor_id", required=True),)},
+    properties={"competitor_id": _uuid_prop("ID from list_competitors.")},
+    required=["competitor_id"],
+)
+
+_tool(
+    "get_ai_visibility_report",
+    (
+        "Read the latest 'how AI describes your brand' report: the share of the workspace's category prompts for "
+        "which an AI model named the brand, per-prompt answers (position, tone, who else was named, web addresses), "
+        "the gaps and suggested post ideas. These are model answers on one day from training, not search rankings. "
+        "Needs view_analytics and a plan with the AI visibility report."
+    ),
+    ops.get_ai_visibility,
+    lambda a: {},
     read_only=True,
 )
 

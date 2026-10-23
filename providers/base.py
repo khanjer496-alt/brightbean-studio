@@ -537,7 +537,7 @@ class SocialProvider(ABC):
         ``using_account`` is the customer's connected ``SocialAccount`` on this
         network, whose token (``access_token``) authorises the call where the
         network requires one. Only called for a provider that sets
-        ``supports_public_profile_metrics``. Raises ``PublicProfileNotFound``
+        ``supports_public_profile_metrics``. Raises ``PublicProfileNotFoundError``
         when the handle has no readable public profile.
         """
         raise NotImplementedError(f"{self.platform_name} does not support public profile metrics")
