@@ -491,6 +491,9 @@
                                 </div>
                             </div>
                             {% endif %}
+                            {% if ai_enabled %}
+                            {% include "ai_writer/partials/composer_panel.html" %}
+                            {% endif %}
                             <button type="button"
                                     @click="showTemplatePicker = !showTemplatePicker; if (showTemplatePicker) $nextTick(() => htmx.trigger($refs.templatePicker, 'load-picker'))"
                                     class="text-xs font-semibold py-1.5 px-3 rounded-full border border-stone-200 text-stone-500 hover:border-stone-300 hover:text-stone-700 transition-colors flex items-center gap-1">
@@ -1190,6 +1193,7 @@
                             </div>
                         </template>
                         <textarea :name="'override_caption_' + accId"
+                                  x-model="overrideCaptions[accId]"
                                   class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all resize-none"
                                   style="font-family: system-ui, -apple-system, sans-serif;"
                                   :placeholder="'Custom ' + (charLimits[accId]?.caption_label || 'caption') + ' for this platform...'"
@@ -2058,6 +2062,9 @@ function composerApp() {
         selectedAccounts: JSON.parse(document.getElementById('composer-selected-accounts').textContent),
         charLimits: JSON.parse(document.getElementById('composer-char-limits').textContent),
         overrides: {},
+        // Per-account custom captions, bound to the override textareas so the
+        // AI assistant's "Adapt for each network" can fill them.
+        overrideCaptions: {},
         advancedOpen: {},
         platformExtras: JSON.parse(document.getElementById('composer-platform-extras').textContent) || {},
         showMediaPicker: false,
@@ -2282,6 +2289,34 @@ function composerApp() {
             this.$nextTick(() => {
                 this.triggerPreviewUpdate();
             });
+        },
+
+        // AI writing assistant (templates/ai_writer/partials/): results are
+        // applied to the form here and saved only when the post is.
+        applyAICaption(text) {
+            this.caption = text;
+            this.debouncedPreviewUpdate();
+        },
+        appendToCaption(text) {
+            const current = this.caption.replace(/\s+$/, '');
+            this.caption = current ? current + '\n\n' + text : text;
+            this.debouncedPreviewUpdate();
+        },
+        addHashtag(tag) {
+            if (this.caption.toLowerCase().split(/\s+/).includes(tag.toLowerCase())) return;
+            const current = this.caption.replace(/\s+$/, '');
+            const lastLine = current.split('\n').pop() || '';
+            // Keep hashtags together on one trailing line.
+            this.caption = lastLine.trim().startsWith('#') ? current + ' ' + tag : (current ? current + '\n\n' + tag : tag);
+            this.debouncedPreviewUpdate();
+        },
+        applyAIOverrides(captions) {
+            for (const [id, text] of Object.entries(captions)) {
+                if (!this.selectedAccounts.includes(id)) continue;
+                this.overrides[id] = true;
+                this.overrideCaptions[id] = text;
+            }
+            this.$nextTick(() => this.triggerPreviewUpdate());
         },
 
         debouncedPreviewUpdate() {

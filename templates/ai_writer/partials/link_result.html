@@ -1,0 +1,35 @@
+{% comment %}
+  Drafts written from a link. Each is editable here; "Use" puts one in the
+  caption, the save buttons post every ai_draft field to link_save.
+{% endcomment %}
+<div class="mt-3 space-y-2">
+    {% for draft in drafts %}
+    <div class="rounded-lg border border-stone-200 bg-stone-50 p-3">
+        <label for="ai-draft-{{ forloop.counter }}" class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1">Post {{ forloop.counter }}</label>
+        <textarea id="ai-draft-{{ forloop.counter }}" name="ai_draft" rows="4"
+                  class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all resize-y">{{ draft }}</textarea>
+        <button type="button" class="mt-1 text-xs font-semibold text-orange-600 hover:text-orange-700 cursor-pointer"
+                @click="applyAICaption($el.previousElementSibling.value); aiOpen = false">
+            Use in this post
+        </button>
+    </div>
+    {% endfor %}
+    <div class="flex flex-col sm:flex-row gap-2">
+        <button type="button" class="btn-brand text-xs py-1.5 px-3"
+                :disabled="aiBusy"
+                hx-post="{% url 'ai_writer:link_save' workspace_id=workspace.id %}"
+                hx-vals='{"ai_save_as": "ideas"}'
+                hx-swap="none">
+            Save as ideas
+        </button>
+        <button type="button"
+                class="text-xs font-semibold py-1.5 px-3 rounded-full border border-stone-200 text-stone-500 hover:border-stone-300 hover:text-stone-700 transition-colors"
+                :disabled="aiBusy || selectedAccounts.length === 0"
+                hx-post="{% url 'ai_writer:link_save' workspace_id=workspace.id %}"
+                hx-vals='{"ai_save_as": "drafts"}'
+                hx-swap="none">
+            Save as drafts
+        </button>
+    </div>
+    <p class="text-[11px] text-stone-400">Drafts are saved for each selected account.</p>
+</div>

@@ -24,6 +24,7 @@ from django.utils.html import strip_tags
 from django.utils.text import get_text_list
 from django.views.decorators.http import require_GET, require_POST
 
+from apps.ai_writer.views import composer_context as ai_composer_context
 from apps.billing.entitlements import (
     COUNTED_POST_STATUSES,
     PlanLimitError,
@@ -1107,6 +1108,8 @@ def compose(request, workspace_id, post_id=None):
         "failed_platform_posts": failed_platform_posts,
         "failed_first_comments": failed_first_comments,
         "unsplash_enabled": bool(settings.UNSPLASH_ACCESS_KEY),
+        # AI writing assistant panel; hidden unless a provider key is set.
+        **ai_composer_context(workspace.organization),
     }
     return render(request, "composer/compose.html", context)
 

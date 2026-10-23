@@ -1,0 +1,22 @@
+{# Suggested hashtags as chips; each adds itself to the caption's hashtag line. #}
+<div class="mt-3">
+    {% if tags %}
+    <div class="flex flex-wrap gap-1.5">
+        {% for tag in tags %}
+        <button type="button"
+                class="text-xs font-medium py-1 px-2.5 rounded-full border border-stone-200 bg-white text-stone-600 hover:border-orange-200 hover:bg-orange-50 hover:text-orange-700 transition-colors cursor-pointer"
+                data-tag="{{ tag }}"
+                @click="addHashtag($el.dataset.tag); $el.disabled = true"
+                :aria-label="'Add ' + $el.dataset.tag + ' to the caption'">
+            {{ tag }}
+        </button>
+        {% endfor %}
+    </div>
+    <button type="button" class="btn-brand text-xs py-1.5 px-3 mt-3"
+            @click="$el.parentElement.querySelectorAll('[data-tag]').forEach(b => { if (!b.disabled) { addHashtag(b.dataset.tag); b.disabled = true; } })">
+        Add all
+    </button>
+    {% else %}
+    <p class="text-xs text-stone-500">No new hashtags to suggest — the caption already covers it.</p>
+    {% endif %}
+</div>
