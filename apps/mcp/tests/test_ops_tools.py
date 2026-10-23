@@ -22,7 +22,7 @@ def names(items, key="name"):
 @pytest.mark.django_db
 class TestCatalog:
     NEW_TOOLS = {
-        "delete_post", "duplicate_post", "list_approvals", "approve_post", "request_post_changes", "reject_post",
+        "update_post", "delete_post", "duplicate_post", "list_approvals", "review_post", "list_members",
         "list_post_comments", "add_post_comment", "list_queues", "get_queue", "add_post_to_queue", "remove_from_queue",
         "list_posting_slots", "create_posting_slot", "update_posting_slot", "delete_posting_slot",
         "find_next_free_slot", "list_ideas", "get_idea", "create_idea", "update_idea", "delete_idea",
@@ -49,7 +49,8 @@ class TestCatalog:
     def test_permission_requirements_are_described(self):
         for name in self.NEW_TOOLS - {"list_queues", "get_queue", "list_posting_slots", "list_categories",
                                        "list_hashtag_sets", "list_signatures", "list_tags", "get_template",
-                                       "list_templates", "find_next_free_slot", "get_usage", "list_calendar_events"}:  # fmt: skip
+                                       "list_templates", "find_next_free_slot", "get_usage", "list_calendar_events",
+                                       "list_members"}:  # fmt: skip
             assert "Needs" in get_tool(name).description, name
 
     def test_unauthenticated_calls_are_401(self, world):
@@ -150,25 +151,51 @@ class TestApprovalTools:
         listed = tool_result(world.full, "list_approvals")
         assert len(listed["posts"]) == 4
         assert len(tool_result(world.narrow, "list_approvals")["posts"]) == 3
-        assert tool_result(world.full, "approve_post", {"post_id": str(a.id), "comment": "ok"})["status"] == "approved"
         assert (
-            tool_result(world.full, "request_post_changes", {"post_id": str(b.id), "comment": "fix"})["status"]
+            tool_result(world.full, "review_post", {"post_id": str(a.id), "decision": "approve", "comment": "ok"})[
+                "status"
+            ]
+            == "approved"
+        )
+        assert (
+            tool_result(
+                world.full, "review_post", {"post_id": str(b.id), "decision": "request_changes", "comment": "fix"}
+            )["status"]
             == "changes_requested"
         )
-        assert tool_result(world.full, "reject_post", {"post_id": str(c.id), "comment": "no"})["status"] == "rejected"
+        assert (
+            tool_result(world.full, "review_post", {"post_id": str(c.id), "decision": "reject", "comment": "no"})[
+                "status"
+            ]
+            == "rejected"
+        )
         assert len(tool_result(world.full, "list_approvals", {"status": "approved"})["posts"]) == 1
 
     def test_validation_scope_and_isolation(self, world):
         post = self.pending(world)
         outside = self.pending(world, world.account2)
         foreign = make_post(world.other_workspace, world.other_owner, [world.other_account], status="pending_review")
-        assert "approve_posts" in tool_error(world.bare, "approve_post", {"post_id": str(post.id)})
-        assert "comment is required" in tool_error(world.full, "reject_post", {"post_id": str(post.id), "comment": " "})
-        assert "comment" in tool_error(world.full, "request_post_changes", {"post_id": str(post.id)})
-        assert tool_error(world.narrow, "approve_post", {"post_id": str(outside.id)}) == "Post not found"
-        assert tool_error(world.full, "approve_post", {"post_id": str(foreign.id)}) == "Post not found"
+        assert "approve_posts" in tool_error(
+            world.bare, "review_post", {"post_id": str(post.id), "decision": "approve"}
+        )
+        assert "comment is required" in tool_error(
+            world.full, "review_post", {"post_id": str(post.id), "decision": "reject", "comment": " "}
+        )
+        assert "comment" in tool_error(
+            world.full, "review_post", {"post_id": str(post.id), "decision": "request_changes"}
+        )
+        assert (
+            tool_error(world.narrow, "review_post", {"post_id": str(outside.id), "decision": "approve"})
+            == "Post not found"
+        )
+        assert (
+            tool_error(world.full, "review_post", {"post_id": str(foreign.id), "decision": "approve"})
+            == "Post not found"
+        )
         draft = make_post(world.workspace, world.owner, [world.account1])
-        assert "Nothing to update" in tool_error(world.full, "approve_post", {"post_id": str(draft.id)})
+        assert "Nothing to update" in tool_error(
+            world.full, "review_post", {"post_id": str(draft.id), "decision": "approve"}
+        )
         assert "status" in tool_error(world.full, "list_approvals", {"status": "bogus"})
         assert "permission" in tool_error(world.bare, "list_approvals").lower()
 
@@ -378,9 +405,8 @@ class TestTemplateTagCategoryTools:
         )
         assert created["caption"] == "Hi"
         assert len(tool_result(world.full, "get_template", {"template_id": created["id"]})["platform_account_ids"]) == 2
-        assert tool_result(world.narrow, "get_template", {"template_id": created["id"]})["platform_account_ids"] == [
-            str(world.account1.id)
-        ]
+        # Aimed at an account outside the narrow key's allowlist: hidden from it, like a post.
+        assert tool_error(world.narrow, "get_template", {"template_id": created["id"]}) == "Template not found"
         updated = tool_result(
             world.full, "update_template", {"template_id": created["id"], "name": "Weekly 2", "tags": ["t"]}
         )

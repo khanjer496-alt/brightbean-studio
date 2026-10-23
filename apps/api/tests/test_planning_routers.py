@@ -152,17 +152,21 @@ class TestTemplates:
             str(world.account1.id),
             str(world.account2.id),
         ]
-        assert world.narrow.get(f"{self.URL}{tpl.id}").json()["platform_account_ids"] == [str(world.account1.id)]
+        # Same rule as posts: a template aimed at an account outside the allowlist is invisible to the key.
+        assert world.narrow.get(f"{self.URL}{tpl.id}").status_code == 404
+        assert str(tpl.id) not in [t["id"] for t in world.narrow.get(self.URL).json()["templates"]]
+        assert send(world.narrow, "patch", f"{self.URL}{tpl.id}", {"platform_account_ids": []}).status_code == 404
+        assert send(world.narrow, "delete", f"{self.URL}{tpl.id}").status_code == 404
+        mine = PostTemplate.objects.create(
+            workspace=world.workspace, name="Mine", template_data={"platform_account_ids": [str(world.account1.id)]}
+        )
+        assert world.narrow.get(f"{self.URL}{mine.id}").status_code == 200
         denied = send(world.narrow, "post", self.URL, {"name": "x", "platform_account_ids": [str(world.account2.id)]})
         assert denied.status_code == 403
         foreign = send(
             world.full, "post", self.URL, {"name": "x", "platform_account_ids": [str(world.other_account.id)]}
         )
         assert foreign.status_code == 403
-        # A narrower key replacing its accounts must not erase the ones it can't see.
-        send(world.narrow, "patch", f"{self.URL}{tpl.id}", {"platform_account_ids": []})
-        tpl.refresh_from_db()
-        assert tpl.template_data["platform_account_ids"] == [str(world.account2.id)]
 
     def test_validation_and_isolation(self, world):
         theirs = PostTemplate.objects.create(workspace=world.other_workspace, name="theirs")

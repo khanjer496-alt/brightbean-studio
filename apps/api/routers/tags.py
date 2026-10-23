@@ -42,6 +42,7 @@ def create_tag(request, payload: TagNameRequest):
         is_write=True,
         target_id=lambda t: t.id,
         status_code=201,
+        idempotent=True,
     )
     return 201, tag
 

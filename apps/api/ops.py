@@ -25,6 +25,7 @@ from typing import Any
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Exists, OuterRef, Q, QuerySet
 from django.db.models.functions import Coalesce
+from django.utils import timezone
 from ninja.errors import HttpError
 
 from apps.api.limits import check_platform_quota
@@ -44,6 +45,8 @@ from apps.api.schemas import (
     IdeaGroupsListResponse,
     IdeaResponse,
     IdeasListResponse,
+    MemberResponse,
+    MembersListResponse,
     NextFreeSlotsResponse,
     PostingSlotResponse,
     PostingSlotsListResponse,
@@ -53,12 +56,14 @@ from apps.api.schemas import (
     QueueEntryResponse,
     QueuesListResponse,
     QueueSummary,
+    RecurrenceSpec,
     SignaturesListResponse,
     SignatureSummary,
     TagResponse,
     TagsListResponse,
     TemplateResponse,
     TemplatesListResponse,
+    UpdatePostRequest,
     UsageMeterResponse,
     UsageResponse,
 )
@@ -68,6 +73,7 @@ from apps.approvals.models import PostComment
 from apps.calendar import services as calendar_services
 from apps.calendar.models import CustomCalendarEvent, PostingSlot, Queue
 from apps.common.validators import MAX_TAG_LENGTH, MAX_TAGS, is_valid_hex_color
+from apps.composer import services as composer_services
 from apps.composer.models import (
     ContentCategory,
     HashtagSet,
@@ -75,6 +81,7 @@ from apps.composer.models import (
     IdeaGroup,
     PlatformPost,
     Post,
+    PostMedia,
     PostTemplate,
     Signature,
     Tag,
@@ -362,6 +369,180 @@ def list_posts(
         qs = qs.filter(Q(caption__icontains=term) | Q(title__icontains=term))
     rows, next_cursor = _paginate(qs.order_by("-created_at", "id"), limit=limit, cursor=cursor)
     return PostsListResponse(posts=[post_response(actor, p) for p in rows], limit=limit, next_cursor=next_cursor)
+
+
+def check_recurrence(spec: RecurrenceSpec, *, workspace, scheduled_at: dt.datetime) -> None:
+    """Refuse a repeat that can't start at ``scheduled_at``; run before anything is written."""
+    import zoneinfo
+
+    ws_tz = zoneinfo.ZoneInfo(workspace.effective_timezone or "UTC")
+    try:
+        calendar_services.clean_recurrence(**spec.rule_fields(), start=scheduled_at.astimezone(ws_tz))
+    except ValueError as exc:
+        raise OpError(422, str(exc)) from exc
+
+
+def _post_settings_by_child(post: Post, settings: dict) -> dict:
+    """The ``platform_extra`` each child gets from an update's ``post_settings``.
+
+    Each child takes the keys its own platform declares, replaced as the
+    composer replaces them; a key no child's platform declares is refused, and
+    a scheduled child must stay publishable.
+    """
+    from providers import post_settings_error_for, post_settings_for
+
+    result = {}
+    used: set[str] = set()
+    for pp in post.platform_posts.select_related("social_account"):
+        platform = pp.social_account.platform
+        declared = {f.key for f in post_settings_for(platform)}
+        if not declared:
+            continue
+        mine = {key: value for key, value in settings.items() if key in declared}
+        used.update(mine)
+        try:
+            cleaned = composer_services.clean_post_settings(platform, mine)
+        except ValueError as exc:
+            raise OpError(422, str(exc)) from exc
+        platform_extra = composer_services.replace_post_settings(platform, pp.platform_extra, cleaned)
+        if pp.status == "scheduled":
+            reason = post_settings_error_for(platform, platform_extra)
+            if reason:
+                raise OpError(422, f"{pp.social_account.get_platform_display()}: {reason}")
+        result[pp] = platform_extra
+    unknown = sorted(set(settings) - used)
+    if unknown:
+        raise OpError(422, f"Unknown post setting(s) {unknown}: none of this post's accounts declare them.")
+    return result
+
+
+def update_post(actor: Actor, post_id: uuid.UUID, payload: UpdatePostRequest) -> PostResponse:
+    """Edit a post that hasn't gone out. Omitted (null) fields are left as they are.
+
+    Every reference is resolved and every input checked before anything is
+    written; the writes then happen in one transaction, so a refusal never
+    leaves a half-edited post.
+    """
+    actor.require("create_posts")  # the composer's create-or-edit permission
+    post = _get_visible_post(actor, post_id)
+    validate_post_taxonomy(actor, tags=payload.tags, category_id=payload.category_id)
+    if not post.is_editable:
+        raise OpError(409, f"Post is not editable in status {post.status}.")
+
+    # Re-timing a scheduled post is publish-budget behaviour (a past time fires
+    # it on the next poll), so it takes publish_directly like scheduling does.
+    has_scheduled = post.platform_posts.filter(status="scheduled").exists()
+    if payload.scheduled_at is not None and has_scheduled:
+        actor.require("publish_directly")
+
+    # Repeating hands each generated copy to the publisher too, so starting or
+    # changing a series takes the same permission; stopping one doesn't.
+    repeat = payload.recurrence if payload.recurrence and payload.recurrence.frequency != "never" else None
+    if payload.recurrence is not None and post.recurrence_source_id is not None:
+        raise OpError(
+            422,
+            f"This post is a copy in a repeating series; change the series on post {post.recurrence_source_id}.",
+        )
+    if repeat is not None:
+        actor.require("publish_directly")
+        first_at = payload.scheduled_at or post.scheduled_at
+        if first_at is None or not has_scheduled:
+            raise OpError(422, "Only a scheduled post can repeat; schedule it first.")
+        check_recurrence(repeat, workspace=post.workspace, scheduled_at=first_at)
+
+    wanted_media: list = []
+    resolved_assets: dict = {}
+    if payload.media_asset_ids is not None:
+        wanted_media = list(payload.media_asset_ids)
+        resolved_assets = {a.id: a for a in MediaAsset.objects.filter(id__in=wanted_media, workspace=post.workspace)}
+        missing = [i for i in wanted_media if i not in resolved_assets]
+        if missing:
+            raise OpError(422, f"Media asset(s) not in workspace: {missing}")
+        # A scheduled post may be edited, but not into one it can't publish.
+        reason = composer_services.media_change_blocker(
+            post,
+            media_types_after=composer_services.usable_media_types(resolved_assets[mid] for mid in wanted_media),
+            assets_after=[resolved_assets[mid] for mid in wanted_media],
+        )
+        if reason:
+            raise OpError(422, reason)
+
+    part_specs = None
+    part_assets: dict = {}
+    if payload.parts is not None:
+        part_specs = [part.to_spec() for part in payload.parts]
+        child_ids = {str(pp.social_account_id) for pp in post.platform_posts.all()}
+        foreign = {acc for spec in part_specs for acc in spec.caption_overrides if acc not in child_ids}
+        if foreign:
+            raise OpError(422, f"parts[*].platform_overrides name accounts this post doesn't target: {sorted(foreign)}")
+        try:
+            part_assets = composer_services.resolve_thread_part_assets(post.workspace, part_specs)
+        except ValueError as exc:
+            raise OpError(422, str(exc)) from exc
+    if payload.parts is not None or payload.first_comment is not None:
+        # Nor into a thread its platform would publish only the first part of,
+        # or a comments-mode thread that also carries a first comment.
+        reason = composer_services.thread_change_blocker(
+            post, part_specs, part_assets, first_comment=payload.first_comment
+        )
+        if reason:
+            raise OpError(422, reason)
+
+    settings_by_child: dict = {}
+    if payload.post_settings is not None:
+        settings_by_child = _post_settings_by_child(post, payload.post_settings)
+
+    with transaction.atomic():
+        update_fields: list[str] = []
+        for pp, platform_extra in settings_by_child.items():
+            pp.platform_extra = platform_extra
+            pp.save(update_fields=["platform_extra", "updated_at"])
+        for name in ("caption", "title", "first_comment", "internal_notes"):
+            value = getattr(payload, name)
+            if value is not None:
+                setattr(post, name, value)
+                update_fields.append(name)
+        if payload.scheduled_at is not None:
+            # Re-time any currently scheduled child; drafts are unaffected.
+            # ``update()`` bypasses ``auto_now``, hence the explicit updated_at.
+            post.platform_posts.filter(status="scheduled").update(
+                scheduled_at=payload.scheduled_at, updated_at=timezone.now()
+            )
+            post.scheduled_at = payload.scheduled_at
+            update_fields.append("scheduled_at")
+        if payload.proposed_publish_at is not None:
+            # Draft-stage suggestion; never reaches the publisher, so not gated on publish_directly.
+            post.proposed_publish_at = payload.proposed_publish_at
+            update_fields.append("proposed_publish_at")
+        if payload.media_asset_ids is not None:
+            post.media_attachments.all().delete()
+            PostMedia.objects.bulk_create(
+                [
+                    PostMedia(post=post, media_asset=resolved_assets[mid], position=position)
+                    for position, mid in enumerate(wanted_media)
+                ]
+            )
+        if part_specs is not None:
+            try:
+                composer_services.set_post_parts(post, part_specs, asset_map=part_assets)
+            except ValueError as exc:
+                raise OpError(409, str(exc)) from exc
+        if update_fields:
+            post.save(update_fields=[*update_fields, "updated_at"])
+        elif settings_by_child or part_specs is not None:
+            # Settings and parts are the post's content too; touch it so
+            # "modified since" readers see the change.
+            post.save(update_fields=["updated_at"])
+
+        composer_services.sync_post_scheduled_at(post)
+        apply_post_taxonomy(actor, post, tags=payload.tags, category_id=payload.category_id)
+
+        if repeat is not None:
+            calendar_services.save_recurrence(post, **repeat.rule_fields(), refresh=payload.scheduled_at is not None)
+        elif payload.recurrence is not None:
+            calendar_services.stop_recurrence(post)
+
+    return post_response(actor, _get_visible_post(actor, post_id))
 
 
 def delete_post(actor: Actor, post_id: uuid.UUID) -> DeletedResponse:
@@ -849,9 +1030,28 @@ def _template_response(actor: Actor, template: PostTemplate) -> TemplateResponse
     )
 
 
+def _visible_templates(actor: Actor) -> QuerySet[PostTemplate]:
+    """Templates this key may see: the post rule, applied to a template's target accounts.
+
+    A template aimed at any workspace account outside the allowlist is hidden,
+    so a narrow key never reads (or rewrites) content meant for another
+    account. Targets that no longer exist don't count against it.
+    """
+    foreign = [
+        str(i)
+        for i in SocialAccount.objects.for_workspace(actor.workspace_id)
+        .exclude(id__in=actor.allowed_account_ids)
+        .values_list("id", flat=True)
+    ]
+    qs = PostTemplate.objects.for_workspace(actor.workspace_id)
+    if foreign:
+        qs = qs.exclude(template_data__platform_account_ids__has_any_keys=foreign)
+    return qs
+
+
 def _get_template(actor: Actor, template_id: uuid.UUID) -> PostTemplate:
     try:
-        return PostTemplate.objects.for_workspace(actor.workspace_id).get(id=template_id)
+        return _visible_templates(actor).get(id=template_id)
     except PostTemplate.DoesNotExist as exc:
         raise OpError(404, "Template not found") from exc
 
@@ -859,7 +1059,7 @@ def _get_template(actor: Actor, template_id: uuid.UUID) -> PostTemplate:
 def list_templates(
     actor: Actor, *, search: str | None = None, limit: int = LIMIT_DEFAULT, cursor: str | None = None
 ) -> TemplatesListResponse:
-    qs = PostTemplate.objects.for_workspace(actor.workspace_id)
+    qs = _visible_templates(actor)
     if search and search.strip():
         qs = qs.filter(Q(name__icontains=search.strip()) | Q(description__icontains=search.strip()))
     rows, next_cursor = _paginate(qs.order_by("name", "id"), limit=limit, cursor=cursor)
@@ -950,9 +1150,7 @@ def update_template(
     if tags is not None:
         data["tags"] = _clean_tags(tags)
     if accounts is not None:
-        # Accounts this key can't see are kept: a narrower key must not wipe them.
-        hidden = [a for a in _uuid_list(data.get("platform_account_ids")) if a not in actor.allowed_account_ids]
-        data["platform_account_ids"] = [str(a) for a in [*accounts, *hidden]]
+        data["platform_account_ids"] = [str(a) for a in accounts]
     if media is not None:
         data["media_asset_ids"] = [str(m) for m in media]
     template.template_data = data
@@ -1002,13 +1200,33 @@ def create_tag(actor: Actor, *, name: str) -> TagResponse:
     return _tag_response(tag)
 
 
+def _require_tag_in_scope(actor: Actor, name: str) -> None:
+    """Refuse to rewrite a tag that sits on posts this key can't see.
+
+    Renaming or deleting a tag edits every post carrying it; a key scoped to
+    some accounts must not change posts for the others.
+    """
+    hidden = (
+        Post.objects.filter(workspace_id=actor.workspace_id, tags__contains=[name])
+        .exclude(id__in=visible_posts_qs(actor.api_key).values("id"))
+        .exists()
+    )
+    if hidden:
+        raise OpError(
+            403, "This tag is used on posts for accounts outside this key's allowlist, so this key can't change it."
+        )
+
+
 def _retag(actor: Actor, old: str, new: str | None) -> None:
     """Rename (or, with ``new=None``, remove) ``old`` in the tag lists of posts and ideas."""
+    now = timezone.now()
     for model in (Post, Idea):
-        for row in model.objects.filter(workspace_id=actor.workspace_id, tags__contains=[old]):
+        rows = list(model.objects.filter(workspace_id=actor.workspace_id, tags__contains=[old]))
+        for row in rows:
             names = [new if n == old else n for n in row.tags if not (n == old and new is None)]
             row.tags = list(dict.fromkeys(names))
-            row.save(update_fields=["tags", "updated_at"])
+            row.updated_at = now
+        model.objects.bulk_update(rows, ["tags", "updated_at"])
 
 
 def rename_tag(actor: Actor, tag_id: uuid.UUID, *, name: str) -> TagResponse:
@@ -1021,6 +1239,7 @@ def rename_tag(actor: Actor, tag_id: uuid.UUID, *, name: str) -> TagResponse:
     if cleaned != tag.name and Tag.objects.for_workspace(actor.workspace_id).filter(name=cleaned).exists():
         raise OpError(409, "A tag with that name already exists.")
     old = tag.name
+    _require_tag_in_scope(actor, old)
     with transaction.atomic():
         tag.name = cleaned
         tag.save(update_fields=["name"])
@@ -1033,6 +1252,7 @@ def delete_tag(actor: Actor, tag_id: uuid.UUID) -> DeletedResponse:
     """Delete a tag and remove it from the posts and ideas that carry it."""
     actor.require("create_posts")
     tag = _get_tag(actor, tag_id)
+    _require_tag_in_scope(actor, tag.name)
     with transaction.atomic():
         _retag(actor, tag.name, None)
         tag.delete()
@@ -1213,6 +1433,34 @@ def list_signatures(actor: Actor) -> SignaturesListResponse:
 
 
 # ---------------------------------------------------------------------------
+# Members (read)
+# ---------------------------------------------------------------------------
+
+
+def list_members(actor: Actor) -> MembersListResponse:
+    """The workspace's team, for assigning work and @mentioning in comments. No email addresses."""
+    memberships = (
+        WorkspaceMembership.objects.filter(workspace_id=actor.workspace_id, user__is_active=True)
+        .select_related("user", "custom_role")
+        .order_by("added_at", "id")
+    )
+    members = []
+    for m in memberships:
+        # The handle ``comments._notify_mentions`` resolves: the display name without spaces.
+        handle = m.user.display_name.lower().replace(" ", "")
+        members.append(
+            MemberResponse(
+                user_id=m.user_id,
+                display_name=m.user.display_name,
+                workspace_role=m.workspace_role,
+                custom_role=m.custom_role.name if m.custom_role else None,
+                mention=f"@{handle}" if comment_service.MENTION_REGEX.fullmatch(f"@{handle}") else None,
+            )
+        )
+    return MembersListResponse(members=members)
+
+
+# ---------------------------------------------------------------------------
 # Brand voice and usage
 # ---------------------------------------------------------------------------
 
@@ -1226,16 +1474,9 @@ def _brand_voice_response(workspace) -> BrandVoiceResponse:
     )
 
 
-def _fresh_workspace(actor: Actor):
-    """The workspace row as it is now: ``actor.workspace`` rides on a key cached for up to 30 seconds."""
-    from apps.workspaces.models import Workspace
-
-    return Workspace.objects.get(id=actor.workspace_id)
-
-
 def get_brand_voice(actor: Actor) -> BrandVoiceResponse:
     actor.require_any("create_posts", "manage_workspace_settings")
-    return _brand_voice_response(_fresh_workspace(actor))
+    return _brand_voice_response(actor.workspace)
 
 
 def update_brand_voice(
@@ -1248,7 +1489,7 @@ def update_brand_voice(
 ) -> BrandVoiceResponse:
     """Change the voice every AI prompt from this workspace carries. Omitted fields are left as they are."""
     actor.require("manage_workspace_settings")
-    workspace = _fresh_workspace(actor)
+    workspace = actor.workspace
     fields = {
         "brand_voice_tone": tone,
         "brand_voice_words_to_use": words_to_use,

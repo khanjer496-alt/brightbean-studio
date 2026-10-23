@@ -43,7 +43,7 @@ On a `comments` account a thread can't also carry a `first_comment` — both are
 
 ## Reviewing, queues and planning
 
-Beyond drafting and scheduling, an agent can run the review loop (`list_approvals`, `approve_post`, `request_post_changes`, `reject_post`, comments), keep an account on its rhythm (`list_queues`, `add_post_to_queue`, `find_next_free_slot`, posting slots), plan content (ideas, templates, tags, categories, calendar events), read or set the brand voice, and check plan usage. Each tool states the permission it needs. The full list, with the REST path for each, is in [capabilities.md](capabilities.md). Keys limited to some accounts only see and act on posts, queues, slots and templates for those accounts.
+Beyond drafting and scheduling, an agent can run the review loop (`list_approvals`, `review_post`, comments, `list_members` for @mentions), keep an account on its rhythm (`list_queues`, `add_post_to_queue`, `find_next_free_slot`, posting slots), plan content (ideas, templates, tags, categories, calendar events), read or set the brand voice, and check plan usage. Each tool states the permission it needs. The full list, with the REST path for each, is in [capabilities.md](capabilities.md). Keys limited to some accounts only see and act on posts, queues, slots and templates for those accounts. Create-like tools take an optional `idempotency_key` (REST: the `Idempotency-Key` header) so a retry after a timeout returns the first result instead of a duplicate.
 
 `DELETE /posts/{id}` (MCP `delete_post`) removes a draft, approved or scheduled post; a post that is publishing or already published is kept as a record and refused with `409`.
 

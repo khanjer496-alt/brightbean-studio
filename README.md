@@ -896,18 +896,19 @@ Don't poll faster than the data changes. Studio syncs the inbox every 5 minutes 
 | `GET` | `/slots`, `/slots/next-free` | List posting slots / find an account's next free slots | — |
 | `POST` / `PATCH` / `DELETE` | `/slots`, `/slots/{slot_id}` | Create, update (time, active) or delete a posting slot | `manage_social_accounts` |
 | `GET` / `POST` / `PATCH` / `DELETE` | `/ideas`, `/ideas/{idea_id}`, `/idea-groups` | Ideas kanban: ideas (move with `group_id`/`position`) and columns | `create_posts` |
-| `GET` / `POST` / `PATCH` / `DELETE` | `/templates`, `/templates/{template_id}` | Reusable post templates (target accounts limited to the allowlist) | reads open; writes `create_posts` |
-| `GET` / `POST` / `PATCH` / `DELETE` | `/tags`, `/tags/{tag_id}` | Tags; rename/delete also update posts and ideas | reads open; writes `create_posts` |
+| `GET` / `POST` / `PATCH` / `DELETE` | `/templates`, `/templates/{template_id}` | Reusable post templates (one aimed at an account outside the allowlist is hidden) | reads open; writes `create_posts` |
+| `GET` / `POST` / `PATCH` / `DELETE` | `/tags`, `/tags/{tag_id}` | Tags; rename/delete also update posts and ideas (refused if the tag is on posts outside the allowlist) | reads open; writes `create_posts` |
 | `GET` / `POST` / `PATCH` / `DELETE` | `/categories`, `/categories/{category_id}` | Content categories | reads open; writes `create_posts` |
 | `GET` / `POST` / `DELETE` | `/events`, `/events/{event_id}` | Custom calendar events (`date_from`/`date_to` filter) | reads open; writes `create_posts` |
 | `GET` / `PATCH` | `/brand-voice` | Read / update the brand voice the AI assistant writes in | read: `create_posts` or `manage_workspace_settings`; update: `manage_workspace_settings` |
 | `GET` | `/usage` | Plan, limits and current usage (read-only) | — |
+| `GET` | `/members` | Workspace members with role and `@mention` handle (no emails) | — |
 | `GET` | `/hashtag-sets`, `/signatures` | Saved hashtag groups and shared sign-offs | — |
 | `POST` | `/mcp` | JSON-RPC 2.0 endpoint for MCP clients | — |
 
 List endpoints take `limit` (default 50, max 100) and an opaque `cursor`; a non-null `next_cursor` means more remain. Failures use the same `{"error", "detail"}` envelope, count against the same rate limits and are written to the same audit log as the rest of the API.
 
-Post creation, media uploads, and inbox reply creation accept `idempotency_key` (or `Idempotency-Key` header) for safe retries.
+Post creation, media uploads, and inbox reply creation accept `idempotency_key` (or `Idempotency-Key` header) for safe retries; every other create route (a `POST` answering 201) honours the `Idempotency-Key` header, and the create-like MCP tools take an optional `idempotency_key` argument.
 
 For inbox reply creation, reuse the same key and request to replay the original response without creating or sending another reply. A failed create-and-send response is replayed too; retrieve the retained failed reply from the message thread and retry delivery via `/inbox/replies/{reply_id}/send`.
 
@@ -944,7 +945,9 @@ Tools added to close the coverage gaps (each is the twin of a REST route above a
 | Tool | Purpose | Permission |
 |---|---|---|
 | `list_approvals` | Posts waiting on a reviewer or the client (or any approval status) | `approve_posts` or `create_posts` |
-| `approve_post` / `request_post_changes` / `reject_post` | Decide a post under review (comment required to request changes or reject) | `approve_posts` |
+| `review_post` | Decide a post under review: `decision` approve, request_changes or reject (comment required unless approving) | `approve_posts` |
+| `update_post` | Edit a post, same rules as `PATCH /posts/{id}` | `create_posts` (+ `publish_directly` to re-time) |
+| `list_members` | Team members with role and `@mention` handle | — |
 | `list_post_comments` / `add_post_comment` | Read and write comment threads (clients see only `external`) | `create_posts` or `approve_posts` |
 | `list_queues` / `get_queue` | Publishing queues with next free slot and entries | — |
 | `add_post_to_queue` / `remove_from_queue` | Schedule a post into the next free slot / take it out | `create_posts` + `publish_directly` / `create_posts` |

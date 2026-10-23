@@ -64,6 +64,7 @@ def create_slot(request, payload: CreatePostingSlotRequest):
         is_write=True,
         target_id=lambda s: s.id,
         status_code=201,
+        idempotent=True,
     )
     return 201, slot
 

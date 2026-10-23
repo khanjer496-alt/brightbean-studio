@@ -1,7 +1,8 @@
 """``/api/v1/templates/*`` — reusable post templates.
 
-A template names the accounts it targets. Reads list only the ones this key may
-act on; writes naming an account outside the allowlist are refused with 403.
+A template names the accounts it targets. Like a post, a template aimed at any
+account outside the key's allowlist is invisible to it (404); writes naming an
+account outside the allowlist are refused with 403.
 """
 
 from __future__ import annotations
@@ -52,6 +53,7 @@ def create_template(request, payload: CreateTemplateRequest):
         is_write=True,
         target_id=lambda t: t.id,
         status_code=201,
+        idempotent=True,
     )
     return 201, template
 

@@ -12,7 +12,7 @@ from apps.api_keys.models import ApiKeyAuditLog
 
 NEW_PREFIXES = (
     "/approvals", "/queues", "/slots", "/ideas", "/idea-groups", "/templates", "/tags", "/categories", "/events",
-    "/brand-voice", "/usage",
+    "/brand-voice", "/usage", "/members",
 )  # fmt: skip
 SAMPLE = "00000000-0000-4000-8000-000000000001"
 

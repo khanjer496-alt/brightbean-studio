@@ -54,6 +54,7 @@ def create_event(request, payload: CreateCalendarEventRequest):
         is_write=True,
         target_id=lambda e: e.id,
         status_code=201,
+        idempotent=True,
     )
     return 201, event
 

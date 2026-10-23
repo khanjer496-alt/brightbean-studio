@@ -54,6 +54,7 @@ def add_entry(request, queue_id: uuid.UUID, payload: AddToQueueRequest):
         is_write=True,
         target_id=payload.post_id,
         status_code=201,
+        idempotent=True,
     )
     return 201, entry
 

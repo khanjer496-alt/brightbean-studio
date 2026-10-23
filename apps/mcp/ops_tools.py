@@ -13,7 +13,17 @@ from collections.abc import Callable
 from typing import Any
 
 from apps.api import ops
-from apps.mcp.handlers import _parse_uuid, _run_op, _wrap_text
+from apps.mcp.handlers import (
+    _PARTS_INPUT_SCHEMA,
+    _POST_SETTINGS_INPUT_SCHEMA,
+    _RECURRENCE_INPUT_SCHEMA,
+    _TAXONOMY_INPUT_PROPERTIES,
+    IDEMPOTENCY_KEY_INPUT_PROPERTY,
+    _idempotent,
+    _parse_uuid,
+    _run_op,
+    _wrap_text,
+)
 from apps.mcp.protocol import INVALID_PARAMS, JsonRpcError
 from apps.mcp.tools import Tool, register_tool
 
@@ -111,23 +121,78 @@ def _tool(
     properties: dict | None = None,
     required: list[str] | None = None,
     read_only: bool = False,
+    idempotent: bool = False,
 ) -> None:
-    """Register a tool that runs ``op`` with the keyword arguments ``parse`` builds from the call."""
+    """Register a tool that runs ``op`` with the keyword arguments ``parse`` builds from the call.
+
+    ``idempotent`` marks a create-like tool: it takes an optional
+    ``idempotency_key`` so a retried call returns the first result.
+    """
 
     def handler(args: dict, context: dict[str, Any]) -> dict:
         kwargs = parse(args)
         positional = kwargs.pop("_args", ())
         return _wrap_text(_run_op(op, context, *positional, **kwargs))
 
-    schema: dict[str, Any] = {"type": "object", "properties": properties or {}, "additionalProperties": False}
+    properties = dict(properties or {})
+    if idempotent:
+        properties.update(IDEMPOTENCY_KEY_INPUT_PROPERTY)
+        handler = _idempotent(name, handler)
+    schema: dict[str, Any] = {"type": "object", "properties": properties, "additionalProperties": False}
     if required:
         schema["required"] = required
     register_tool(Tool(name=name, description=description, input_schema=schema, handler=handler, read_only=read_only))
 
 
 # ---------------------------------------------------------------------------
-# Posts: delete, duplicate
+# Posts: update, delete, duplicate
 # ---------------------------------------------------------------------------
+
+
+def _update_post_args(a: dict) -> dict[str, Any]:
+    from pydantic import ValidationError
+
+    from apps.api.schemas import UpdatePostRequest
+
+    fields = {k: v for k, v in a.items() if k != "post_id"}
+    try:
+        payload = UpdatePostRequest.model_validate(fields)
+    except ValidationError as exc:
+        err = exc.errors()[0]
+        where = ".".join(str(p) for p in err["loc"])
+        raise JsonRpcError(INVALID_PARAMS, f"{where}: {err['msg']}") from exc
+    return {"_args": (_uuid_arg(a, "post_id", required=True), payload)}
+
+
+_tool(
+    "update_post",
+    (
+        "Edit an existing draft, approved or scheduled post (REST PATCH /posts/{id}); omitted fields are unchanged. "
+        "Set caption, title, first_comment, internal_notes, media_asset_ids (replaces the list), parts (replaces "
+        "the thread's later parts; [] makes it a single post), post_settings, tags, category_id, "
+        "proposed_publish_at, scheduled_at (re-times a scheduled post) or recurrence (frequency 'never' stops a "
+        "repeat). Refused once the post is publishing or published, or when the change would leave a scheduled "
+        "post unpublishable. Needs create_posts, plus publish_directly to re-time or repeat a scheduled post. "
+        "Returns the post, like get_post."
+    ),
+    ops.update_post,
+    _update_post_args,
+    properties={
+        "post_id": _uuid_prop(),
+        "caption": _text_prop(max_length=10_000),
+        "title": _text_prop(max_length=255),
+        "first_comment": _text_prop(max_length=10_000),
+        "internal_notes": _text_prop("Team-only note.", max_length=10_000),
+        "media_asset_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}},
+        "parts": _PARTS_INPUT_SCHEMA,
+        "post_settings": _POST_SETTINGS_INPUT_SCHEMA,
+        "scheduled_at": _text_prop("ISO 8601 (UTC if no offset); only re-times a post that is already scheduled."),
+        "proposed_publish_at": _text_prop("ISO 8601 suggested publish time for a draft."),
+        "recurrence": _RECURRENCE_INPUT_SCHEMA,
+        **_TAXONOMY_INPUT_PROPERTIES,
+    },
+    required=["post_id"],
+)
 
 _tool(
     "delete_post",
@@ -154,6 +219,7 @@ _tool(
     lambda a: {"_args": (_uuid_arg(a, "post_id", required=True),)},
     properties={"post_id": _uuid_prop()},
     required=["post_id"],
+    idempotent=True,
 )
 
 
@@ -166,7 +232,7 @@ _tool(
     (
         "List posts in the approval workflow, soonest first. Defaults to status `pending` (waiting on a reviewer or "
         "the client); pass pending_review, pending_client, approved, rejected, changes_requested, on_hold or all. "
-        "Use it to find what needs a decision, then call approve_post, request_post_changes or reject_post. Only "
+        "Use it to find what needs a decision, then call review_post. Only "
         "posts whose every target is in the key's allowlist appear. Needs approve_posts or create_posts. "
         "Paginated: pass next_cursor back as cursor."
     ),
@@ -188,53 +254,24 @@ _tool(
     read_only=True,
 )
 
-_DECISION_PROPS = {
-    "post_id": _uuid_prop(),
-    "comment": _text_prop("Feedback for the author.", max_length=10_000),
-}
-
-
-def _decision(decision: str) -> _Parse:
-    return lambda a: {"_args": (_uuid_arg(a, "post_id", required=True), decision, a.get("comment", ""))}
-
-
 _tool(
-    "approve_post",
+    "review_post",
     (
-        "Approve a post that is waiting for review, as the person behind this key. In the two-stage workflow an "
-        "internal approval moves the post on to client sign-off; otherwise it becomes approved and can be scheduled. "
-        "An optional comment is kept in the approval history. Refused (409) when nothing is waiting on this "
-        "reviewer. Needs approve_posts (the key's and its issuer's)."
+        "Decide a post that is waiting for review, as the person behind this key (find them with list_approvals). "
+        "`decision`: `approve` (in the two-stage workflow an internal approval moves it on to client sign-off; "
+        "otherwise it becomes approved and can be scheduled), `request_changes` (sends it back to the author to "
+        "revise) or `reject` (it should not go out). A comment is required for request_changes and reject, and the "
+        "author is notified. Refused when nothing is waiting on this reviewer. Needs approve_posts (the key's and "
+        "its issuer's). Returns the post."
     ),
     ops.decide_approval,
-    _decision("approve"),
-    properties=_DECISION_PROPS,
-    required=["post_id"],
-)
-
-_tool(
-    "request_post_changes",
-    (
-        "Send a post under review back to its author for changes. A comment saying what to change is required and "
-        "the author is notified. Use it when the post is fixable; use reject_post when it should not go out. "
-        "Needs approve_posts."
-    ),
-    ops.decide_approval,
-    _decision("request_changes"),
-    properties=_DECISION_PROPS,
-    required=["post_id", "comment"],
-)
-
-_tool(
-    "reject_post",
-    (
-        "Reject a post under review. A comment giving the reason is required and the author is notified. Use "
-        "request_post_changes instead when the author should revise it. Needs approve_posts."
-    ),
-    ops.decide_approval,
-    _decision("reject"),
-    properties=_DECISION_PROPS,
-    required=["post_id", "comment"],
+    lambda a: {"_args": (_uuid_arg(a, "post_id", required=True), a["decision"], a.get("comment", ""))},
+    properties={
+        "post_id": _uuid_prop(),
+        "decision": {"type": "string", "enum": ["approve", "request_changes", "reject"]},
+        "comment": _text_prop("Feedback for the author; required unless approving.", max_length=10_000),
+    },
+    required=["post_id", "decision"],
 )
 
 _tool(
@@ -271,6 +308,7 @@ _tool(
         "parent_id": _uuid_prop("A top-level comment on the same post to reply to."),
     },
     required=["post_id", "body"],
+    idempotent=True,
 )
 
 
@@ -323,6 +361,7 @@ _tool(
         "priority": {"type": "boolean", "default": False},
     },
     required=["queue_id", "post_id"],
+    idempotent=True,
 )
 
 _tool(
@@ -474,6 +513,7 @@ _tool(
         "group_id": _uuid_prop("Kanban column; defaults to the first."),
     },
     required=["title"],
+    idempotent=True,
 )
 
 _tool(
@@ -526,6 +566,7 @@ _tool(
     lambda a: {"name": a.get("name", "")},
     properties={"name": _text_prop(max_length=100, min_length=1)},
     required=["name"],
+    idempotent=True,
 )
 
 _tool(
@@ -573,7 +614,7 @@ _tool(
     "list_templates",
     (
         "List the workspace's reusable post templates (name, caption, first comment, tags, category, target accounts "
-        "and media), A-Z. Only the target accounts this key may act on are shown. Use a template's caption as the "
+        "and media), A-Z. Templates aimed at accounts outside the key's allowlist are not shown. Use a template's caption as the "
         "starting point for create_draft. Paginated."
     ),
     ops.list_templates,
@@ -605,13 +646,14 @@ _tool(
     },
     properties={"name": _text_prop(max_length=200, min_length=1), **_TEMPLATE_PROPS},
     required=["name"],
+    idempotent=True,
 )
 
 _tool(
     "update_template",
     (
-        "Edit a post template; omitted fields are unchanged. platform_account_ids replaces the accounts you can act "
-        "on (accounts outside the key's allowlist are kept). Needs create_posts."
+        "Edit a post template; omitted fields are unchanged and platform_account_ids replaces the target "
+        "accounts (all must be in the key's allowlist). Needs create_posts."
     ),
     ops.update_template,
     lambda a: {
@@ -761,6 +803,7 @@ _tool(
         "color": _text_prop("#RRGGBB"),
     },
     required=["title", "start_date"],
+    idempotent=True,
 )
 
 _tool(
@@ -789,6 +832,17 @@ _tool(
     "list_signatures",
     "List the workspace's shared sign-offs (personal signatures are not included); append one to a caption.",
     ops.list_signatures,
+    lambda a: {},
+    read_only=True,
+)
+
+_tool(
+    "list_members",
+    (
+        "List the workspace's team members with their role and the @mention handle that notifies them from "
+        "add_post_comment. Use it to address feedback to the right person. No email addresses."
+    ),
+    ops.list_members,
     lambda a: {},
     read_only=True,
 )

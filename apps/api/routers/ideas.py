@@ -68,6 +68,7 @@ def create_idea(request, payload: CreateIdeaRequest):
         is_write=True,
         target_id=lambda i: i.id,
         status_code=201,
+        idempotent=True,
     )
     return 201, idea
 
@@ -114,6 +115,7 @@ def create_group(request, payload: CreateIdeaGroupRequest):
         is_write=True,
         target_id=lambda g: g.id,
         status_code=201,
+        idempotent=True,
     )
     return 201, group
 

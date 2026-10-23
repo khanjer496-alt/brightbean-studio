@@ -35,6 +35,7 @@ def create_category(request, payload: CreateCategoryRequest):
         is_write=True,
         target_id=lambda c: c.id,
         status_code=201,
+        idempotent=True,
     )
     return 201, category
 

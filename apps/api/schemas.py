@@ -1699,6 +1699,20 @@ class UpdateTemplateRequest(Schema):
     media_asset_ids: list[uuid.UUID] | None = None
 
 
+class MemberResponse(Schema):
+    user_id: uuid.UUID
+    display_name: str
+    workspace_role: str = Field(..., description="owner, manager, editor, contributor, client or viewer.")
+    custom_role: str | None = Field(None, description="Name of the custom role that sets their permissions, if any.")
+    mention: str | None = Field(
+        None, description="Write this in a comment body (e.g. `@janedoe`) to notify them; null when no handle works."
+    )
+
+
+class MembersListResponse(Schema):
+    members: list[MemberResponse]
+
+
 class TagResponse(Schema):
     id: uuid.UUID
     name: str

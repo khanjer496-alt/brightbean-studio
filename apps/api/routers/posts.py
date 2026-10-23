@@ -46,19 +46,11 @@ from apps.api.schemas import (
     ScheduleRequest,
     UpdatePostRequest,
 )
-from apps.calendar.services import clean_recurrence, save_recurrence, stop_recurrence
+from apps.calendar.services import save_recurrence
 from apps.composer.models import Post
 from apps.composer.services import (
-    clean_post_settings,
     create_post,
-    media_change_blocker,
-    replace_post_settings,
-    resolve_thread_part_assets,
-    set_post_parts,
-    sync_post_scheduled_at,
-    thread_change_blocker,
     transition_platform_post,
-    usable_media_types,
 )
 from apps.social_accounts.models import SocialAccount
 
@@ -112,18 +104,11 @@ def _can_view_internal_notes(request: HttpRequest) -> bool:
 
 
 def _check_recurrence(spec: RecurrenceSpec, *, workspace, scheduled_at) -> None:
-    """422 unless ``spec`` can repeat a post first scheduled at ``scheduled_at``.
-
-    Run before anything is written, so a bad repeat never leaves a post
-    scheduled without it.
-    """
-    import zoneinfo
-
-    ws_tz = zoneinfo.ZoneInfo(workspace.effective_timezone or "UTC")
+    """422 unless ``spec`` can repeat a post first scheduled at ``scheduled_at`` (see ``ops.check_recurrence``)."""
     try:
-        clean_recurrence(**spec.rule_fields(), start=scheduled_at.astimezone(ws_tz))
-    except ValueError as exc:
-        raise HttpError(422, str(exc)) from exc
+        ops.check_recurrence(spec, workspace=workspace, scheduled_at=scheduled_at)
+    except ops.OpError as exc:
+        raise HttpError(exc.status, exc.message) from exc
 
 
 def _post_to_response(request: HttpRequest, post: Post) -> PostResponse:
@@ -397,215 +382,18 @@ def retrieve(request, post_id: uuid.UUID):
     return _post_to_response(request, post)
 
 
-@router.patch("/{post_id}", response=PostResponse, summary="Update draft fields")
+@router.patch(
+    "/{post_id}",
+    response=PostResponse,
+    summary="Update a post",
+    description=(
+        "Edit a post that hasn't gone out; omitted (null) fields are unchanged. Needs `create_posts`, plus "
+        "`publish_directly` to re-time a scheduled post or start/change its repeat. 409 once it is publishing "
+        "or published."
+    ),
+)
 def update(request, post_id: uuid.UUID, payload: UpdatePostRequest):
-    enforce_http_rate_limits(request, is_write=True)
-    _require_perm(request, "create_posts")  # mirrors composer's create-or-edit perm
-    post = _get_workspace_post(request, post_id)
-    _check_taxonomy(request, tags=payload.tags, category_id=payload.category_id)
-
-    # Only allow updates while editable.
-    if not post.is_editable:
-        raise HttpError(409, f"Post is not editable in status {post.status}.")
-
-    # Re-timing a scheduled post is publish-budget behaviour: pushing
-    # ``scheduled_at`` into the past makes the publisher fire the post on
-    # its very next poll (~15 s), and pushing it far into the future buries
-    # admin-scheduled content. Either is a privilege escalation for a key
-    # that doesn't hold ``publish_directly`` — the create / schedule routes
-    # and every MCP transition tool gate this exact mutation on that
-    # permission, and the PATCH route must do the same to stay consistent.
-    # Codex PR #53 security review (round 4) caught this gap.
-    if payload.scheduled_at is not None and post.platform_posts.filter(status="scheduled").exists():
-        _require_perm(request, "publish_directly")
-
-    # Repeating hands each generated copy to the publisher too, so starting or
-    # changing a series takes the same permission; stopping one doesn't.
-    repeat = payload.recurrence if payload.recurrence and payload.recurrence.frequency != "never" else None
-    if payload.recurrence is not None and post.recurrence_source_id is not None:
-        raise HttpError(
-            422,
-            f"This post is a copy in a repeating series; change the series on post {post.recurrence_source_id}.",
-        )
-    if repeat is not None:
-        _require_perm(request, "publish_directly")
-        first_at = payload.scheduled_at or post.scheduled_at
-        if first_at is None or not post.platform_posts.filter(status="scheduled").exists():
-            raise HttpError(422, "Only a scheduled post can repeat; schedule it first.")
-        _check_recurrence(repeat, workspace=post.workspace, scheduled_at=first_at)
-
-    # ---- Validate-everything-first.
-    #
-    # Codex review found two bugs in the previous implementation:
-    #   (a) ``scheduled_children.update(scheduled_at=...)`` ran BEFORE
-    #       media validation, so a 422 from a foreign media asset still
-    #       committed the new schedule timestamp to the DB.
-    #   (b) ``post.media_attachments.all().delete()`` + the create loop
-    #       were not wrapped in a transaction, so a mid-loop failure
-    #       deleted the originals and persisted only a partial new set.
-    # Fix: resolve every required reference and reject every invalid
-    # input before any database mutation, then perform all mutations
-    # inside a single ``transaction.atomic()`` block. Either everything
-    # commits or nothing does.
-    from django.db import transaction
-
-    from apps.composer.models import PostMedia
-    from apps.media_library.models import MediaAsset
-
-    wanted_media: list = []
-    resolved_assets: dict = {}
-    if payload.media_asset_ids is not None:
-        wanted_media = list(payload.media_asset_ids)
-        resolved_assets = {a.id: a for a in MediaAsset.objects.filter(id__in=wanted_media, workspace=post.workspace)}
-        missing = [i for i in wanted_media if i not in resolved_assets]
-        if missing:
-            raise HttpError(422, f"Media asset(s) not in workspace: {missing}")
-        # A scheduled post may be edited, but not into one it can't publish:
-        # swapping a TikTok post's video for an image, or emptying a pin's
-        # media, would leave it queued to fail after the schedule route had
-        # checked it.
-        reason = media_change_blocker(
-            post,
-            media_types_after=usable_media_types(resolved_assets[mid] for mid in wanted_media),
-            assets_after=[resolved_assets[mid] for mid in wanted_media],
-        )
-        if reason:
-            raise HttpError(422, reason)
-
-    part_specs = None
-    part_assets: dict = {}
-    if payload.parts is not None:
-        part_specs = [part.to_spec() for part in payload.parts]
-        child_ids = {str(pp.social_account_id) for pp in post.platform_posts.all()}
-        foreign = {acc for spec in part_specs for acc in spec.caption_overrides if acc not in child_ids}
-        if foreign:
-            raise HttpError(
-                422, f"parts[*].platform_overrides name accounts this post doesn't target: {sorted(foreign)}"
-            )
-        try:
-            part_assets = resolve_thread_part_assets(post.workspace, part_specs)
-        except ValueError as exc:
-            raise HttpError(422, str(exc)) from exc
-    if payload.parts is not None or payload.first_comment is not None:
-        # As with media: a scheduled post may be edited, but not into a thread
-        # its platform would publish only the first part of — nor into a
-        # comments-mode thread that also carries a first comment.
-        reason = thread_change_blocker(post, part_specs, part_assets, first_comment=payload.first_comment)
-        if reason:
-            raise HttpError(422, reason)
-
-    settings_by_child: dict = {}
-    if payload.post_settings is not None:
-        settings_by_child = _post_settings_by_child(post, payload.post_settings)
-
-    with transaction.atomic():
-        update_fields: list[str] = []
-        for pp, platform_extra in settings_by_child.items():
-            pp.platform_extra = platform_extra
-            pp.save(update_fields=["platform_extra", "updated_at"])
-        if payload.caption is not None:
-            post.caption = payload.caption
-            update_fields.append("caption")
-        if payload.title is not None:
-            post.title = payload.title
-            update_fields.append("title")
-        if payload.first_comment is not None:
-            post.first_comment = payload.first_comment
-            update_fields.append("first_comment")
-        if payload.internal_notes is not None:
-            post.internal_notes = payload.internal_notes
-            update_fields.append("internal_notes")
-        if payload.scheduled_at is not None:
-            # Re-time any currently-scheduled child. Drafts are unaffected.
-            # ``QuerySet.update()`` bypasses ``auto_now``, so we include
-            # ``updated_at=timezone.now()`` explicitly. Otherwise each
-            # child's ``updated_at`` would freeze at its creation time
-            # despite an effective state change.
-            from django.utils import timezone as _tz
-
-            scheduled_children = post.platform_posts.filter(status="scheduled")
-            scheduled_children.update(scheduled_at=payload.scheduled_at, updated_at=_tz.now())
-            post.scheduled_at = payload.scheduled_at
-            update_fields.append("scheduled_at")
-        if payload.proposed_publish_at is not None:
-            # Draft-stage suggestion; null is a no-op, consistent with the
-            # other PATCH fields. Not gated on publish_directly — it never
-            # reaches the publisher.
-            post.proposed_publish_at = payload.proposed_publish_at
-            update_fields.append("proposed_publish_at")
-        if payload.media_asset_ids is not None:
-            # Replace the attachment set in order. Validated above, so
-            # the only remaining failure modes are DB-level — the atomic
-            # block rolls back the whole route if any single
-            # ``PostMedia.objects.create`` raises.
-            post.media_attachments.all().delete()
-            for position, mid in enumerate(wanted_media):
-                PostMedia.objects.create(
-                    post=post,
-                    media_asset=resolved_assets[mid],
-                    position=position,
-                )
-
-        if part_specs is not None:
-            try:
-                set_post_parts(post, part_specs, asset_map=part_assets)
-            except ValueError as exc:
-                raise HttpError(409, str(exc)) from exc
-            # The parts are the post's content too; touch it so "modified
-            # since" readers see the change.
-            if not update_fields:
-                post.save(update_fields=["updated_at"])
-
-        if update_fields:
-            post.save(update_fields=[*update_fields, "updated_at"])
-        elif settings_by_child and part_specs is None:
-            post.save(update_fields=["updated_at"])
-
-        sync_post_scheduled_at(post)
-        _apply_taxonomy(request, post, tags=payload.tags, category_id=payload.category_id)
-
-        if repeat is not None:
-            save_recurrence(post, **repeat.rule_fields(), refresh=payload.scheduled_at is not None)
-        elif payload.recurrence is not None:
-            stop_recurrence(post)
-
-    post.refresh_from_db()
-    log_audit_entry(request, action="post.update", target_id=post.id, status_code=200)
-    return _post_to_response(request, post)
-
-
-def _post_settings_by_child(post, settings: dict) -> dict:
-    """The ``platform_extra`` each child gets from a PATCH's ``post_settings``, or ``HttpError`` 422.
-
-    Each child takes the keys its own platform declares, replaced as the
-    composer replaces them; a key no child's platform declares is refused, and
-    a scheduled child must stay publishable.
-    """
-    from providers import post_settings_error_for, post_settings_for
-
-    result = {}
-    used: set[str] = set()
-    for pp in post.platform_posts.select_related("social_account"):
-        platform = pp.social_account.platform
-        declared = {field.key for field in post_settings_for(platform)}
-        if not declared:
-            continue
-        mine = {key: value for key, value in settings.items() if key in declared}
-        used.update(mine)
-        try:
-            cleaned = clean_post_settings(platform, mine)
-        except ValueError as exc:
-            raise HttpError(422, str(exc)) from exc
-        platform_extra = replace_post_settings(platform, pp.platform_extra, cleaned)
-        if pp.status == "scheduled":
-            reason = post_settings_error_for(platform, platform_extra)
-            if reason:
-                raise HttpError(422, f"{pp.social_account.get_platform_display()}: {reason}")
-        result[pp] = platform_extra
-    unknown = sorted(set(settings) - used)
-    if unknown:
-        raise HttpError(422, f"Unknown post setting(s) {unknown}: none of this post's accounts declare them.")
-    return result
+    return run_op(request, ops.update_post, post_id, payload, action="post.update", is_write=True, target_id=post_id)
 
 
 @router.post("/{post_id}/schedule", response=PostResponse, summary="Schedule a draft or approved post")
@@ -719,6 +507,7 @@ def duplicate(request, post_id: uuid.UUID):
         is_write=True,
         target_id=lambda p: p.id,
         status_code=201,
+        idempotent=True,
     )
     return 201, post
 

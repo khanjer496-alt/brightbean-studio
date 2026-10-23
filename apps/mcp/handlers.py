@@ -76,6 +76,67 @@ def _wrap_text(payload: Any) -> dict:
     }
 
 
+# Optional argument of the create-like tools; see ``_idempotent``.
+IDEMPOTENCY_KEY_INPUT_PROPERTY = {
+    "idempotency_key": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "description": (
+            "Optional. Reuse the same value when retrying this call after a timeout: the first result is "
+            "returned again instead of creating a duplicate (kept 24 h; API-key connections only)."
+        ),
+    }
+}
+
+
+def _idempotent(name: str, handler):
+    """Wrap a create-like tool handler so a retried ``idempotency_key`` replays the first result.
+
+    The MCP twin of REST's ``Idempotency-Key`` header, stored in the same
+    ``IdempotencyRecord`` table under the calling key with a ``tools/call``
+    fingerprint, so a key reused with different arguments is refused. The
+    work and the stored result commit together; a refusal releases the claim.
+    OAuth callers have no ``ApiKey`` row to key the record on, so for them the
+    argument is accepted and ignored.
+    """
+    from django.db import transaction
+
+    from apps.api.middleware import (
+        claim_idempotency_slot,
+        finalize_idempotent_response,
+        fingerprint_request,
+        release_idempotent_claim,
+    )
+
+    def wrapped(args: dict, context: dict[str, Any]) -> dict:
+        key = args.get("idempotency_key")
+        args = {k: v for k, v in args.items() if k != "idempotency_key"}
+        api_key = context["api_key"]
+        if not key or getattr(api_key, "is_oauth", False):
+            return handler(args, context)
+        try:
+            disposition, _status, replay = claim_idempotency_slot(
+                api_key=api_key, idempotency_key=key, fingerprint=fingerprint_request("MCP", name, args)
+            )
+        except ValueError as exc:
+            raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
+        if disposition == "replay":
+            return replay
+        if disposition == "in_flight":
+            raise JsonRpcError(INVALID_PARAMS, "A call with this idempotency_key is still in flight; retry shortly.")
+        try:
+            with transaction.atomic():
+                result = handler(args, context)
+                finalize_idempotent_response(api_key=api_key, idempotency_key=key, status_code=200, body=result)
+        except Exception:
+            release_idempotent_claim(api_key=api_key, idempotency_key=key)
+            raise
+        return result
+
+    return wrapped
+
+
 def _run_op(op, context: dict[str, Any], *args: Any, **kwargs: Any):
     """Run a shared ``apps.api.ops`` operation as the calling actor, mapping a refusal onto a JSON-RPC error.
 
@@ -421,11 +482,12 @@ register_tool(
                 "parts": _PARTS_INPUT_SCHEMA,
                 "post_settings": _POST_SETTINGS_INPUT_SCHEMA,
                 **_TAXONOMY_INPUT_PROPERTIES,
+                **IDEMPOTENCY_KEY_INPUT_PROPERTY,
             },
             "required": ["social_account_id", "caption"],
             "additionalProperties": False,
         },
-        handler=_create_draft,
+        handler=_idempotent("create_draft", _create_draft),
     )
 )
 
@@ -586,11 +648,12 @@ register_tool(
                 "parts": _PARTS_INPUT_SCHEMA,
                 "post_settings": _POST_SETTINGS_INPUT_SCHEMA,
                 **_TAXONOMY_INPUT_PROPERTIES,
+                **IDEMPOTENCY_KEY_INPUT_PROPERTY,
             },
             "required": ["social_account_id", "caption", "scheduled_at"],
             "additionalProperties": False,
         },
-        handler=_schedule_post,
+        handler=_idempotent("schedule_post", _schedule_post),
     )
 )
 

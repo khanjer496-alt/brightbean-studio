@@ -130,5 +130,6 @@ def add_comment(request, post_id: uuid.UUID, payload: CreateCommentRequest):
         is_write=True,
         target_id=lambda c: c.id,
         status_code=201,
+        idempotent=True,
     )
     return 201, comment

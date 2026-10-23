@@ -31,6 +31,7 @@ from apps.api.routers.ideas import router as ideas_router
 from apps.api.routers.inbox import router as inbox_router
 from apps.api.routers.me import router as me_router
 from apps.api.routers.media import router as media_router
+from apps.api.routers.members import router as members_router
 from apps.api.routers.posts import router as posts_router
 from apps.api.routers.queues import router as queues_router
 from apps.api.routers.signatures import router as signatures_router
@@ -129,6 +130,10 @@ api = NinjaAPI(
         "with `create_posts`. `/brand-voice/` reads (`create_posts` or `manage_workspace_settings`) "
         "and updates (`manage_workspace_settings`) the voice the AI assistant writes in, and "
         "`GET /usage/` reports the plan, its limits and current usage.\n\n"
+        "**Team.** `GET /members/` lists the workspace's members with their role and `@mention` handle.\n\n"
+        "**Retries.** Every create route (`POST` answering 201) accepts an `Idempotency-Key` header: a retry with "
+        "the same key and body replays the first response for 24 hours instead of creating a duplicate, and the "
+        "same key with a different body is refused with 422.\n\n"
         "**Pagination.** List endpoints take `limit` (default 50, max 100) and an opaque `cursor`; "
         "a non-null `next_cursor` means more remain.\n\n"
         "**Scopes.** A key's scope is its permission set plus its account allowlist. Reads that "
@@ -165,6 +170,7 @@ api.add_router("/categories", categories_router)
 api.add_router("/events", events_router)
 api.add_router("/brand-voice", brand_voice_router)
 api.add_router("/usage", usage_router)
+api.add_router("/members", members_router)
 # MCP Streamable HTTP transport. Same audit + rate limits as REST, but a
 # wider auth class: ``McpAuth`` accepts both bb_studio_ keys AND OAuth 2.1
 # access tokens (Claude Desktop's native connector flow). Mounted last so
@@ -387,6 +393,7 @@ _RESOURCE_SEGMENTS = {
     "events": "events",
     "brand-voice": "brand_voice",
     "usage": "usage",
+    "members": "members",
     "hashtag-sets": "hashtag_sets",
     "signatures": "signatures",
 }
