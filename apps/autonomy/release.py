@@ -88,7 +88,16 @@ def going_out_soon(workspace, *, limit: int = 50):
 
 
 def _live(action: AgentAction) -> AgentAction:
-    """The entry locked and fresh, or an error when it can no longer be changed."""
+    """The entry locked and fresh, or an error when it can no longer be changed.
+
+    The platform post or reply it sends is locked too, and re-read: the
+    publisher claims a post under that row lock (and the reply sweep sends
+    under the reply's), so an undo or hold either lands before the send starts
+    or sees that it already has.
+    """
+    from apps.composer.models import PlatformPost
+    from apps.inbox.models import InboxReply
+
     action = (
         AgentAction.objects.select_for_update(of=("self",))
         .select_related("platform_post__post", "reply")
@@ -96,7 +105,22 @@ def _live(action: AgentAction) -> AgentAction:
     )
     if action.decision != Decision.EXECUTED or action.actor_type == "human":
         raise ReleaseError("Only an executed automated action can be undone.")
+    if action.platform_post_id:
+        action.platform_post = (
+            PlatformPost.objects.select_for_update().select_related("post").get(pk=action.platform_post_id)
+        )
+    if action.reply_id:
+        action.reply = InboxReply.objects.select_for_update().get(pk=action.reply_id)
     return action
+
+
+def _still_waiting(action: AgentAction) -> None:
+    from apps.inbox.models import InboxReply
+
+    if action.platform_post is not None and action.platform_post.status != "scheduled":
+        raise ReleaseError("It already went out (or is going out now), so it can't be stopped. Delete it instead.")
+    if action.reply is not None and action.reply.status != InboxReply.Status.DRAFT:
+        raise ReleaseError("The reply was already sent, so it can't be stopped.")
 
 
 def undo(action: AgentAction, user) -> AgentAction:
@@ -135,6 +159,7 @@ def hold(action: AgentAction, user) -> AgentAction:
         action = _live(action)
         if action.undone_at is not None:
             raise ReleaseError("It was already undone.")
+        _still_waiting(action)
         if action.held_at is None or action.hold_released_at is not None:
             action.held_at = timezone.now()
             action.hold_released_at = None
@@ -148,6 +173,7 @@ def release_hold(action: AgentAction, user) -> AgentAction:
         action = _live(action)
         if action.undone_at is not None:
             raise ReleaseError("It was already undone.")
+        _still_waiting(action)
         now = timezone.now()
         action.hold_released_at = now
         action.release_at = now
@@ -184,6 +210,8 @@ def approve_held(action: AgentAction, user) -> AgentAction:
                 transition_platform_post(pp, "scheduled", scheduled_at=when)
             except ValueError as exc:
                 raise ReleaseError(str(exc)) from exc
+            # A held schedule kept its repeat setting; the series starts now that it is approved.
+            _start_series(pp.post)
         elif reply is not None:
             try:
                 send_reply_now(reply, actor=user)
@@ -211,6 +239,15 @@ def approve_held(action: AgentAction, user) -> AgentAction:
         final_text=action.final_text,
     )
     return action
+
+
+def _start_series(post) -> None:
+    from apps.calendar.models import RecurrenceRule
+    from apps.calendar.services import refresh_series
+
+    if post.recurrence_source_id is None and RecurrenceRule.objects.filter(post=post, is_active=True).exists():
+        post.refresh_from_db()
+        refresh_series(post)
 
 
 def dismiss_held(action: AgentAction, user) -> AgentAction:
@@ -255,16 +292,31 @@ def provider_supports_delete(account) -> bool:
     return provider_cls is not None and provider_cls.delete_post is not SocialProvider.delete_post
 
 
+_DELETING = "Deleting from the platform..."
+
+
 def delete_from_platform(action: AgentAction, user) -> AgentAction:
     """Take an autonomous post down from the platform and record how that went."""
     from apps.publisher.engine import _provider_and_access_token
 
-    action = AgentAction.objects.select_related("platform_post__social_account__workspace").get(pk=action.pk)
-    pp = action.platform_post
-    if pp is None or pp.status != "published" or not pp.platform_post_id:
-        raise ReleaseError("There is no published post to delete.")
-    if action.platform_deleted_at is not None:
-        return action
+    with transaction.atomic():
+        # Claimed under the row lock so a double click deletes (and records) once.
+        action = (
+            AgentAction.objects.select_for_update(of=("self",))
+            .select_related("platform_post__social_account__workspace")
+            .get(pk=action.pk)
+        )
+        pp = action.platform_post
+        if action.decision != Decision.EXECUTED or action.actor_type == "human":
+            raise ReleaseError("Only a post an automation published can be deleted from here.")
+        if pp is None or pp.status != "published" or not pp.platform_post_id:
+            raise ReleaseError("There is no published post to delete.")
+        if action.platform_deleted_at is not None:
+            return action
+        if action.platform_delete_result == _DELETING:
+            raise ReleaseError("It is being deleted now.")
+        action.platform_delete_result = _DELETING
+        action.save(update_fields=["platform_delete_result"])
     account = pp.social_account
     if not provider_supports_delete(account):
         result, deleted = f"{account.get_platform_display()} does not allow deleting posts from here.", False

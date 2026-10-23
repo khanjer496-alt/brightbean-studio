@@ -18,6 +18,9 @@ from apps.mcp.protocol import INVALID_PARAMS, JsonRpcError
 from apps.members.models import PERMISSION_KEYS, OrgMembership, WorkspaceMembership
 from providers.exceptions import RateLimitError, TokenExpiredError
 
+# These tests drive an agent the workspace trusts to publish and reply on its own.
+pytestmark = pytest.mark.usefixtures("autonomous_agents")
+
 MCP_URL = "/api/v1/mcp/"
 
 

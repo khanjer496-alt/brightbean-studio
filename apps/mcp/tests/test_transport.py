@@ -28,6 +28,9 @@ from apps.members.models import (
     WorkspaceMembership,
 )
 
+# These tests drive an agent the workspace trusts to publish and reply on its own.
+pytestmark = pytest.mark.usefixtures("autonomous_agents")
+
 # ---------------------------------------------------------------------------
 # Test client — forces ``secure=True`` so ApiKeyAuth's HTTPS guard
 # doesn't reject every request with 400. Same pattern as the REST tests.

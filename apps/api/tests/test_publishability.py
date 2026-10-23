@@ -23,6 +23,9 @@ from apps.media_library.models import MediaAsset
 from apps.members.models import PERMISSION_KEYS, OrgMembership, WorkspaceMembership
 from apps.social_accounts.models import SocialAccount
 
+# These tests drive an agent the workspace trusts to publish and reply on its own.
+pytestmark = pytest.mark.usefixtures("autonomous_agents")
+
 MCP_URL = "/api/v1/mcp/"
 
 

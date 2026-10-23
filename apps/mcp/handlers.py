@@ -40,7 +40,19 @@ from apps.api.schemas import (
     WebhookEndpointWithSecretResponse,
 )
 from apps.autonomy.actors import agent as agent_actor
-from apps.autonomy.gate import deliver_reply, gate_existing, gate_post, gate_reply, record_all, refusal_for
+from apps.autonomy.gate import (
+    AutonomyRefusalError,
+    content_text,
+    deliver_reply,
+    gate_existing,
+    gate_post,
+    gate_reply,
+    gate_reply_edit,
+    gate_resume,
+    record_all,
+    refusal_for,
+    requeue_edited_reply,
+)
 from apps.calendar.services import clean_recurrence, save_recurrence
 from apps.composer.models import PlatformPost, Post
 from apps.composer.services import create_post, transition_platform_post
@@ -438,7 +450,7 @@ def _create_draft(args: dict, context: dict[str, Any]) -> dict:
         workspace=api_key.workspace,
         actor=_agent(context),
         account=sa,
-        text=args["caption"],
+        text=content_text(args["caption"], args.get("title", ""), args.get("first_comment", ""), parts=parts),
         schedule=False,
         operation="post.create.draft",
         source="mcp",
@@ -611,7 +623,7 @@ def _schedule_post(args: dict, context: dict[str, Any]) -> dict:
         workspace=api_key.workspace,
         actor=_agent(context),
         account=sa,
-        text=args["caption"],
+        text=content_text(args["caption"], args.get("title", ""), args.get("first_comment", ""), parts=parts),
         schedule=True,
         scheduled_at=scheduled_at,
         operation="post.create.schedule",
@@ -619,9 +631,9 @@ def _schedule_post(args: dict, context: dict[str, Any]) -> dict:
     )
     if gate.blocked:
         raise _autonomy_error(gate.refuse())
+    # A held schedule keeps its repeat setting: the rule is saved against the
+    # proposed time and the series starts once a person approves the post.
     schedule_now = gate.schedule
-    if not schedule_now:
-        repeat = None
     # Platform quota is shared with REST; ``check_platform_quota``
     # raises ``HttpError(429,...)`` which we re-shape into a JSON-RPC
     # error so MCP clients see structured feedback rather than HTTP.
@@ -941,8 +953,6 @@ def _schedule_draft(args: dict, context: dict[str, Any]) -> dict:
     if refusal is not None:
         raise _autonomy_error(refusal)
     schedulable = [pp for pp, gate in pairs if gate.schedule]
-    if not schedulable:
-        repeat = None
 
     # Per-platform 24h quota check, one per child, BEFORE we mutate
     # anything — over-quota fails the whole call with no partial commit.
@@ -966,7 +976,12 @@ def _schedule_draft(args: dict, context: dict[str, Any]) -> dict:
                 transition_platform_post(pp, "scheduled", scheduled_at=scheduled_at)
             except ValueError as exc:
                 raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
+        if not schedulable:
+            # Everything was held: keep the asked-for time as the proposal a person approves.
+            post.proposed_publish_at = scheduled_at
+            post.save(update_fields=["proposed_publish_at", "updated_at"])
         if repeat is not None:
+            # A held schedule keeps its repeat setting; the series starts once a person approves it.
             post.refresh_from_db()
             save_recurrence(post, **repeat.rule_fields(), refresh=True)
     post.refresh_from_db()
@@ -1023,6 +1038,11 @@ def _resume_thread(args: dict, context: dict[str, Any]) -> dict:
     stopped = [pp for pp in post.platform_posts.all() if pp.is_thread_partial]
     if not stopped:
         raise JsonRpcError(INVALID_PARAMS, "No thread on this post is stopped part-way")
+    refusal = gate_resume(
+        workspace=post.workspace, actor=_agent(context), post=post, platform_posts=stopped, source="mcp"
+    )
+    if refusal is not None:
+        raise _autonomy_error(refusal)
     for pp in stopped:
         try:
             resume_thread(pp, confirm_unconfirmed=args.get("confirm_unconfirmed") is True)
@@ -1985,11 +2005,28 @@ def _update_reply_draft(args: dict, context: dict[str, Any]) -> dict:
     if not args.get("body"):
         raise JsonRpcError(INVALID_PARAMS, "body is required")
     reply = _get_inbox_reply_for_key(context["api_key"], args["reply_id"])
+    message = reply.inbox_message
     try:
-        update_reply_draft(reply, body=args["body"])
+        gate = gate_reply_edit(
+            workspace=message.workspace,
+            actor=_agent(context),
+            account=message.social_account,
+            reply=reply,
+            text=args["body"],
+            source="mcp",
+        )
+    except AutonomyRefusalError as exc:
+        raise _autonomy_error(exc) from exc
+    from django.db import transaction
+
+    try:
+        with transaction.atomic():
+            update_reply_draft(reply, body=args["body"])
+            note = requeue_edited_reply(gate, reply)
     except (ReplyStateError, ValueError) as exc:
         raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
-    return _wrap_text(_serialize_inbox_reply(reply))
+    out = _serialize_inbox_reply(reply)
+    return _wrap_text({**out, "autonomy": note} if note else out)
 
 
 register_tool(

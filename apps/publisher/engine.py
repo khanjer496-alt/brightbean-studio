@@ -1409,12 +1409,17 @@ class PublishEngine:
                 # predicate under the database's row lock, so a competing worker
                 # (or a stale snapshot of a row whose backoff was since pushed
                 # out) cannot dispatch the same retry twice.
-                claimed = PlatformPost.objects.filter(
-                    pk=pp.pk,
-                    status=PlatformPost.Status.SCHEDULED,
-                    retry_count=pp.retry_count,
-                    next_retry_at__lte=timezone.now(),
-                ).update(status=PlatformPost.Status.PUBLISHING, updated_at=timezone.now())
+                claimed = (
+                    PlatformPost.objects.filter(
+                        pk=pp.pk,
+                        status=PlatformPost.Status.SCHEDULED,
+                        retry_count=pp.retry_count,
+                        next_retry_at__lte=timezone.now(),
+                    )
+                    # Re-checked at claim time: a crisis pause or hold placed since the query wins.
+                    .exclude(autonomy_hold_exclusion(timezone.now()))
+                    .update(status=PlatformPost.Status.PUBLISHING, updated_at=timezone.now())
+                )
                 if not claimed:
                     continue
                 pp.status = PlatformPost.Status.PUBLISHING

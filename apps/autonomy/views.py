@@ -194,6 +194,7 @@ _ACTIONS = {
 def action_run(request, workspace_id, action_id, verb):
     """Undo, hold, release, approve, dismiss or delete-from-platform one entry."""
     workspace = _get_workspace(request, workspace_id)
+    _require_view(request)
     action = _action_or_404(workspace, action_id)
     perms = _perms(request)
     try:

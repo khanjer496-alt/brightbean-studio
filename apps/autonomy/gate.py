@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from django.utils import timezone
 
 from . import service
-from .models import ActionType, AgentAction
+from .models import ActionType, AgentAction, Decision
 from .service import Verdict
 
 
@@ -183,10 +183,67 @@ def gate_reply(*, workspace, actor, account, text: str, send: bool, operation: s
     )
 
 
+def content_text(*chunks: str | None, parts=()) -> str:
+    """Everything a post asked for would publish as text, for the checks to read.
+
+    ``chunks`` are the caption, title, first comment and any per-account
+    overrides; ``parts`` are the later thread parts (``ThreadPartSpec``s), with
+    their own per-account captions. Checking the caption alone would let a
+    blocked phrase ride in a first comment or the third part of a thread.
+    """
+    texts = list(chunks)
+    for part in parts or ():
+        texts.append(part.caption)
+        texts.extend((part.caption_overrides or {}).values())
+    return "\n".join(t for t in texts if t)
+
+
+def _queued_to_send(reply):
+    """The autonomous decisions that will send ``reply`` when their undo window ends."""
+    return AgentAction.objects.filter(
+        reply_id=reply.pk, decision=Decision.EXECUTED, undone_at__isnull=True, release_at__isnull=False
+    ).exclude(actor_type="human")
+
+
+def gate_reply_edit(*, workspace, actor, account, reply, text: str, source: str = "api") -> ReplyGate | None:
+    """Gate an agent's edit of a draft reply. Raises :class:`AutonomyRefusalError` when the policy refuses it.
+
+    A reply already approved to go out when its undo window ends was checked
+    with its old text, so the new text is a fresh send decision. Returns that
+    gate, to pass to :func:`requeue_edited_reply` in the same transaction as
+    the edit; None for a plain draft nobody has queued.
+    """
+    queued = _queued_to_send(reply).exists()
+    gate = gate_reply(
+        workspace=workspace,
+        actor=actor,
+        account=account,
+        text=text,
+        send=queued,
+        operation="reply.update",
+        source=source,
+    )
+    if gate.blocked:
+        raise gate.refuse(reply=reply)
+    return gate if queued else None
+
+
+def requeue_edited_reply(gate: ReplyGate | None, reply) -> dict | None:
+    """Replace the old send decision for an edited reply with the new one (a fresh undo window, or a hold)."""
+    if gate is None:
+        return None
+    _queued_to_send(reply).update(undone_at=timezone.now())
+    _, note = gate.record_with_notice(reply=reply)
+    return note
+
+
 def publish_text(platform_post) -> str:
     """Everything a platform post would publish as text: caption, first comment and thread parts."""
-    parts = [platform_post.effective_caption, platform_post.effective_first_comment]
-    parts.extend(p.caption for p in platform_post.post.thread_parts.all())
+    parts = [platform_post.effective_title, platform_post.effective_caption, platform_post.effective_first_comment]
+    overrides = {s.part_id: s.platform_specific_caption for s in platform_post.part_states.all()}
+    for part in platform_post.post.thread_parts.all():
+        override = overrides.get(part.id)
+        parts.append(override if override is not None else part.caption)
     return "\n".join(p for p in parts if p)
 
 
@@ -210,6 +267,61 @@ def gate_existing(
         )
         for pp in platform_posts
     ]
+
+
+def gate_resume(*, workspace, actor, post, platform_posts, source: str = "api") -> AutonomyRefusalError | None:
+    """Whether an agent may restart stopped threads: resuming publishes the rest, so it needs publishing allowed.
+
+    Nothing is held here (a half-published thread can't wait as a draft): when
+    the policy would not let the agent publish, the resume is refused, logged,
+    and left for a person. Returns the refusal, or None after recording each
+    allowed resume.
+    """
+    pairs = gate_existing(
+        workspace=workspace,
+        actor=actor,
+        platform_posts=platform_posts,
+        scheduled_at=None,
+        operation="post.resume_thread",
+        source=source,
+    )
+    for pp, gate in pairs:
+        if not gate.schedule:
+            message = f"Not resumed because {gate.verdict.reason_text}. A person can resume the thread from the post."
+
+            def write(pk, gate=gate, pp=pp, message=message):
+                service.record(
+                    pk=pk,
+                    workspace=workspace,
+                    actor=actor,
+                    action_type=ActionType.PUBLISH_POSTS,
+                    operation="post.resume_thread",
+                    verdict=gate.verdict,
+                    decision=Decision.BLOCKED,
+                    summary=message,
+                    account=pp.social_account,
+                    post=post,
+                    platform_post=pp,
+                    final_text=gate.text,
+                )
+
+            refusal = AutonomyRefusalError(message, write)
+            refusal.log()
+            return refusal
+    for pp, gate in pairs:
+        # A resume goes out now: no undo window to record, just who did it under which level.
+        service.record(
+            workspace=workspace,
+            actor=actor,
+            action_type=ActionType.PUBLISH_POSTS,
+            operation="post.resume_thread",
+            verdict=gate.verdict,
+            account=pp.social_account,
+            post=post,
+            final_text=gate.text,
+            summary="Resumed a thread that stopped part-way.",
+        )
+    return None
 
 
 def refusal_for(pairs, post) -> AutonomyRefusalError | None:

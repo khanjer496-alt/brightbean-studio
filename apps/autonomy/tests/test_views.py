@@ -12,7 +12,7 @@ from apps.accounts.models import User
 from apps.autonomy import service
 from apps.autonomy.actors import human, system
 from apps.autonomy.models import ActionType, AgentAction, AutonomyPolicy
-from apps.composer.models import PlatformPost
+from apps.composer.models import PlatformPost, Post
 from apps.members.models import WorkspaceMembership
 
 from .conftest import schedule_via_rest, set_policy
@@ -357,7 +357,13 @@ class TestClientVisibility:
             ("undone", system("Zapier bot"), "executed", {"undone": True}),
             ("human", human(world.owner), "executed", {}),
             ("pending", system("Zapier bot"), "executed", {"waiting": True}),
+            ("still_queued", system("Zapier bot"), "executed", {"status": "scheduled"}),
+            ("taken_down", system("Zapier bot"), "executed", {"deleted": True}),
         ]:
+            post = Post.objects.create(workspace=world.workspace, caption=f"Text for {name}", author=world.owner)
+            pp = PlatformPost.objects.create(
+                post=post, social_account=world.account1, status=kwargs.get("status", "published")
+            )
             action = service.record(
                 workspace=world.workspace,
                 actor=actor,
@@ -366,7 +372,11 @@ class TestClientVisibility:
                 decision=decision,
                 final_text=f"Text for {name}",
                 account=world.account1,
+                post=post,
+                platform_post=pp,
             )
+            if kwargs.get("deleted"):
+                AgentAction.objects.filter(pk=action.pk).update(platform_deleted_at=timezone.now())
             if kwargs.get("undone"):
                 AgentAction.objects.filter(pk=action.pk).update(undone_at=timezone.now())
             if kwargs.get("waiting"):

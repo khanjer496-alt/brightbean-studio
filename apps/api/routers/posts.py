@@ -47,7 +47,7 @@ from apps.api.schemas import (
     UpdatePostRequest,
 )
 from apps.autonomy.actors import agent as agent_actor
-from apps.autonomy.gate import gate_existing, gate_post, record_all, refusal_for
+from apps.autonomy.gate import content_text, gate_existing, gate_post, gate_resume, record_all, refusal_for
 from apps.calendar.services import save_recurrence
 from apps.composer.models import Post
 from apps.composer.services import (
@@ -276,7 +276,13 @@ def create(request, payload: CreatePostRequest):
         workspace=request.api_key.workspace,
         actor=agent_actor(request.api_key, None if request.user.is_anonymous else request.user),
         account=social_account,
-        text=payload.caption,
+        text=content_text(
+            payload.caption,
+            payload.title,
+            payload.first_comment,
+            *(value for override in platform_overrides.values() for value in override.values()),
+            parts=[part.to_spec() for part in payload.parts],
+        ),
         schedule=payload.action == "schedule",
         scheduled_at=payload.scheduled_at,
         operation=f"post.create.{payload.action}",
@@ -285,7 +291,8 @@ def create(request, payload: CreatePostRequest):
         release_idempotent_claim(api_key=request.api_key, idempotency_key=idempotency_key)
         raise HttpError(403, gate.refuse().message)
     schedule_now = payload.action == "schedule" and gate.schedule
-    repeat = repeat if schedule_now else None
+    # A held schedule keeps its repeat setting: the rule is saved against the
+    # proposed time and the series starts once a person approves the post.
     if payload.action != "schedule":
         proposed_publish_at = payload.proposed_publish_at
     else:
@@ -461,8 +468,6 @@ def schedule(request, post_id: uuid.UUID, payload: ScheduleRequest):
     if refusal is not None:
         raise HttpError(403, refusal.message)
     schedulable = [pp for pp, gate in pairs if gate.schedule]
-    if not schedulable:
-        repeat = None
 
     # Quota check is per-account, so we evaluate it once per child before
     # we touch any state. Doing the checks first means an over-quota
@@ -484,6 +489,10 @@ def schedule(request, post_id: uuid.UUID, payload: ScheduleRequest):
                 transition_platform_post(pp, "scheduled", scheduled_at=payload.scheduled_at)
             except ValueError as exc:
                 raise HttpError(422, str(exc)) from exc
+        if not schedulable:
+            # Everything was held: keep the asked-for time as the proposal a person approves.
+            post.proposed_publish_at = payload.scheduled_at
+            post.save(update_fields=["proposed_publish_at", "updated_at"])
         if repeat is not None:
             post.refresh_from_db()
             save_recurrence(post, **repeat.rule_fields(), refresh=True)
@@ -581,6 +590,14 @@ def resume_thread_route(request, post_id: uuid.UUID, confirm_unconfirmed: bool =
     stopped = [pp for pp in post.platform_posts.all() if pp.is_thread_partial]
     if not stopped:
         raise HttpError(409, "No thread on this post is stopped part-way.")
+    refusal = gate_resume(
+        workspace=post.workspace,
+        actor=agent_actor(request.api_key, None if request.user.is_anonymous else request.user),
+        post=post,
+        platform_posts=stopped,
+    )
+    if refusal is not None:
+        raise HttpError(403, refusal.message)
     for pp in stopped:
         try:
             resume_thread(pp, confirm_unconfirmed=confirm_unconfirmed)

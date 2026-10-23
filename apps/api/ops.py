@@ -93,8 +93,15 @@ from apps.autonomy import configure as autonomy_configure
 from apps.autonomy import policy as autonomy_policy
 from apps.autonomy import service as autonomy_service
 from apps.autonomy.actors import agent as agent_actor
-from apps.autonomy.gate import gate_post, record_all, refusal_for
-from apps.autonomy.models import AccountAutonomyOverride, ActionType, ActorType, AgentAction, Decision
+from apps.autonomy.gate import content_text, gate_post, publish_text, record_all, refusal_for
+from apps.autonomy.models import (
+    AccountAutonomyOverride,
+    ActionType,
+    ActorType,
+    AgentAction,
+    AutonomyPolicy,
+    Decision,
+)
 from apps.calendar import evergreen as evergreen_service
 from apps.calendar import services as calendar_services
 from apps.calendar.models import CustomCalendarEvent, EvergreenItem, PostingSlot, Queue
@@ -444,22 +451,47 @@ def _post_settings_by_child(post: Post, settings: dict) -> dict:
     return result
 
 
-_CONTENT_FIELDS = ("caption", "title", "first_comment", "media_asset_ids", "parts", "scheduled_at")
+_CONTENT_FIELDS = ("caption", "title", "first_comment", "media_asset_ids", "parts", "scheduled_at", "recurrence")
 
 
-def _gate_content_change(actor: Actor, post: Post, payload: UpdatePostRequest) -> list:
-    """Run the autonomy policy over an agent's edit of what a post says or when it goes out.
+def _gate_content_change(actor: Actor, post: Post, payload: UpdatePostRequest, part_specs) -> list:
+    """Run the autonomy policy over an agent's edit of what a post says, when it goes out or how it repeats.
 
     Changing a scheduled post is a publish decision again (the approved content
     is no longer what is queued); changing a draft only needs drafting allowed.
+    The checks read everything the post would publish after the edit: caption,
+    title, first comment, thread parts and each account's overrides.
     Returns the gated children to record once the edit is written.
     """
     if not any(getattr(payload, name) is not None for name in _CONTENT_FIELDS):
         return []
-    children = list(post.platform_posts.select_related("social_account"))
+    children = list(
+        post.platform_posts.select_related("social_account").prefetch_related("part_states", "post__thread_parts")
+    )
     scheduled = [pp for pp in children if pp.status == "scheduled"]
     caption = payload.caption if payload.caption is not None else post.caption
+    title = payload.title if payload.title is not None else post.title
+    first_comment = payload.first_comment if payload.first_comment is not None else post.first_comment
     who = agent_actor(actor.api_key, actor.user)
+
+    def text_for(pp) -> str:
+        if part_specs is not None:
+            parts = [
+                (spec.caption_overrides or {}).get(str(pp.social_account_id)) or spec.caption for spec in part_specs
+            ]
+        else:
+            overrides = {state.part_id: state.platform_specific_caption for state in pp.part_states.all()}
+            parts = [
+                overrides[part.id] if overrides.get(part.id) is not None else part.caption
+                for part in post.thread_parts.all()
+            ]
+        return content_text(
+            pp.platform_specific_title if pp.platform_specific_title is not None else title,
+            pp.platform_specific_caption if pp.platform_specific_caption is not None else caption,
+            pp.platform_specific_first_comment if pp.platform_specific_first_comment is not None else first_comment,
+            *parts,
+        )
+
     pairs = [
         (
             pp,
@@ -467,7 +499,7 @@ def _gate_content_change(actor: Actor, post: Post, payload: UpdatePostRequest) -
                 workspace=post.workspace,
                 actor=who,
                 account=pp.social_account,
-                text=caption,
+                text=text_for(pp),
                 schedule=bool(scheduled),
                 scheduled_at=payload.scheduled_at or pp.scheduled_at or post.scheduled_at,
                 operation="post.update",
@@ -560,7 +592,7 @@ def update_post(actor: Actor, post_id: uuid.UUID, payload: UpdatePostRequest) ->
     if payload.post_settings is not None:
         settings_by_child = _post_settings_by_child(post, payload.post_settings)
 
-    gated = _gate_content_change(actor, post, payload)
+    gated = _gate_content_change(actor, post, payload, part_specs)
 
     with transaction.atomic():
         update_fields: list[str] = []
@@ -607,15 +639,24 @@ def update_post(actor: Actor, post_id: uuid.UUID, payload: UpdatePostRequest) ->
         composer_services.sync_post_scheduled_at(post)
         apply_post_taxonomy(actor, post, tags=payload.tags, category_id=payload.category_id)
 
+        # A scheduled post the policy won't let this agent change in place goes back to a draft for
+        # review, before any series is saved, so no copy is queued from content nobody approved.
+        held_at = post.scheduled_at
+        for pp, gate in gated:
+            if pp.status == "scheduled" and not gate.schedule:
+                transition_platform_post(pp, "draft")
+        if gated and not post.platform_posts.filter(status="scheduled").exists() and held_at is not None:
+            post.refresh_from_db()
+            if post.scheduled_at is None:
+                # Keep the time as the proposal a person approves; a repeat setting is kept with it.
+                post.proposed_publish_at = held_at
+                post.save(update_fields=["proposed_publish_at", "updated_at"])
+
         if repeat is not None:
             calendar_services.save_recurrence(post, **repeat.rule_fields(), refresh=payload.scheduled_at is not None)
         elif payload.recurrence is not None:
             calendar_services.stop_recurrence(post)
 
-        # A scheduled post the policy won't let this agent change in place goes back to a draft for review.
-        for pp, gate in gated:
-            if pp.status == "scheduled" and not gate.schedule:
-                transition_platform_post(pp, "draft")
         note = record_all(gated, post) if gated else None
 
     return post_response(actor, _get_visible_post(actor, post_id)).with_autonomy(note)
@@ -835,8 +876,23 @@ def add_post_to_queue(
         with transaction.atomic():
             entry = calendar_services.add_to_queue(post, queue, priority=priority)
             pp.refresh_from_db()
+            # Queueing hands the post to the publisher, so it is a publish decision like scheduling.
+            # A hold leaves the post a draft (the queue entry rolls back) for a person to approve.
+            gate = gate_post(
+                workspace=post.workspace,
+                actor=agent_actor(actor.api_key, actor.user),
+                account=queue.social_account,
+                text=publish_text(pp),
+                schedule=True,
+                scheduled_at=pp.scheduled_at,
+                operation="queue.add",
+            )
+            if not gate.schedule:
+                refusal = gate.refuse(post=post, platform_post=pp)
+                raise OpError(403, refusal.message, refusal=refusal)
             if pp.status != "scheduled":
                 transition_platform_post(pp, "scheduled", scheduled_at=pp.scheduled_at)
+            gate.record(post=post, platform_post=pp)
     except calendar_services.QueueFullError as exc:
         raise OpError(409, "No open slot within the scheduling horizon.") from exc
     except ValueError as exc:
@@ -2058,20 +2114,46 @@ def get_autonomy_policy(actor: Actor) -> AutonomyPolicyResponse:
     return _autonomy_policy_response(actor.workspace)
 
 
+# Settings a key may change only in the stricter direction: a check switched on, a longer undo
+# window, a lower daily cap. Every other setting (and loosening any of these) is for a person.
+_TIGHTEN_ONLY = {
+    "review_links": lambda new, old: bool(new) or not old,
+    "review_mentions": lambda new, old: bool(new) or not old,
+    "review_prices": lambda new, old: bool(new) or not old,
+    "review_sensitive": lambda new, old: bool(new) or not old,
+    "undo_delay_minutes": lambda new, old: new >= old,
+    "max_posts_per_day": lambda new, old: new <= old,
+    "max_replies_per_day": lambda new, old: new <= old,
+}
+
+
 def _require_tightening(policy, changes: dict) -> None:
-    """A key may tighten the policy (lower a level, pause, add blocked phrases); loosening it is for a person."""
+    """A key may tighten the policy (lower a level, pause, add blocked phrases); loosening it is for a person.
+
+    A value equal to the current one is no change, so an agent can send back
+    the policy it read with one field tightened.
+    """
     for name, value in changes.items():
+        current = getattr(policy, name, None)
         if name in _LEVEL_SETTINGS:
-            if _LEVEL_RANK[value] > _LEVEL_RANK[getattr(policy, name)]:
+            if value not in _LEVEL_RANK:
+                raise OpError(422, f"{name} must be one of {', '.join(_LEVEL_RANK)}.")
+            if _LEVEL_RANK[value] > _LEVEL_RANK[current]:
                 raise OpError(403, f"A key can lower {name} but not raise it: ask a person to change it in Settings.")
         elif name == "crisis_paused":
-            if not value:
+            if current and not value:
                 raise OpError(403, "Only a person can turn crisis pause off, in Settings.")
         elif name == "blocked_phrases":
-            current = {p.casefold() for p in policy.blocked_phrases or []}
-            if not current <= {str(p).strip().casefold() for p in value}:
+            kept = {p.casefold() for p in policy.blocked_phrases or []}
+            if not kept <= {str(p).strip().casefold() for p in value}:
                 raise OpError(403, "A key can add blocked phrases but not remove them: ask a person.")
-        else:
+        elif name in _TIGHTEN_ONLY:
+            if not isinstance(value, bool | int) or not _TIGHTEN_ONLY[name](value, current):
+                raise OpError(403, f"A key can make {name} stricter but not looser: ask a person.")
+        elif name in ("quiet_start", "quiet_end"):
+            if value != (current.strftime("%H:%M") if current else None):
+                raise OpError(403, f"A key can't change {name}: ask a person to change it in Settings.")
+        elif value != current:
             raise OpError(403, f"A key can't change {name}: ask a person to change it in Settings.")
 
 
@@ -2081,13 +2163,18 @@ def update_autonomy_policy(actor: Actor, **fields: Any) -> AutonomyPolicyRespons
     overrides = fields.pop("account_overrides", None)
     changes = {k: v for k, v in fields.items() if v is not None}
     who = agent_actor(actor.api_key, actor.user)
-    policy = autonomy_policy.get_policy(actor.workspace)
-    _require_tightening(policy, changes)
     if overrides:
         raise OpError(403, "A key can't set per-account overrides: ask a person to change them in Settings.")
     try:
-        if changes:
-            autonomy_configure.update_policy(actor.workspace, who, **changes)
+        with transaction.atomic():
+            # Checked against the row as it is now, locked: a person may have tightened it a moment ago,
+            # and "stricter than what I read" must not undo that.
+            policy = AutonomyPolicy.objects.select_for_update().filter(
+                workspace_id=actor.workspace_id
+            ).first() or autonomy_policy.get_policy(actor.workspace)
+            _require_tightening(policy, changes)
+            if changes:
+                autonomy_configure.update_policy(actor.workspace, who, **changes)
     except ValueError as exc:
         raise OpError(422, str(exc)) from exc
     return _autonomy_policy_response(actor.workspace)

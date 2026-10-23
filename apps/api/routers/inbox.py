@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import uuid
 
+from django.db import transaction
 from django.db.models import QuerySet
 from django.http import Http404, HttpRequest
 from django.shortcuts import get_object_or_404
@@ -38,7 +39,7 @@ from apps.api.schemas import (
     UpdateReplyRequest,
 )
 from apps.autonomy.actors import agent as agent_actor
-from apps.autonomy.gate import deliver_reply, gate_reply
+from apps.autonomy.gate import AutonomyRefusalError, deliver_reply, gate_reply, gate_reply_edit, requeue_edited_reply
 from apps.inbox.models import InboxMessage, InboxReply
 from apps.inbox.services import (
     ReplyStateError,
@@ -241,14 +242,28 @@ def update_reply(request, reply_id: uuid.UUID, payload: UpdateReplyRequest):
     enforce_http_rate_limits(request, is_write=True)
     _require_perm(request, "use_inbox")
     reply = _get_reply(request, reply_id)
+    message = reply.inbox_message
+    user = request.user if not request.user.is_anonymous else None
     try:
-        update_reply_draft(reply, body=payload.body)
+        gate = gate_reply_edit(
+            workspace=message.workspace,
+            actor=agent_actor(request.api_key, user),
+            account=message.social_account,
+            reply=reply,
+            text=payload.body,
+        )
+    except AutonomyRefusalError as exc:
+        raise HttpError(403, exc.message) from exc
+    try:
+        with transaction.atomic():
+            update_reply_draft(reply, body=payload.body)
+            note = requeue_edited_reply(gate, reply)
     except ReplyStateError as exc:
         raise HttpError(409, str(exc)) from exc
     except ValueError as exc:
         raise HttpError(422, str(exc)) from exc
     log_audit_entry(request, action="inbox.reply.update", target_id=reply.id, status_code=200)
-    return InboxReplyResponse.from_reply(reply)
+    return InboxReplyResponse.from_reply(reply).with_autonomy(note)
 
 
 @router.post("/replies/{reply_id}/send", response=InboxReplyResponse, summary="Send a draft reply")

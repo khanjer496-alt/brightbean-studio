@@ -13,11 +13,21 @@ class AutonomyConfig(AppConfig):
 
     @staticmethod
     def _register_tasks(sender, **kwargs):
-        from apps.autonomy.tasks import REPLY_RELEASE_INTERVAL_SECONDS, release_due_replies
+        from apps.autonomy.tasks import (
+            PRUNE_INTERVAL_SECONDS,
+            REPLY_RELEASE_INTERVAL_SECONDS,
+            prune_agent_actions,
+            release_due_replies,
+        )
         from apps.common.background import register_recurring_task
 
         register_recurring_task(
             release_due_replies,
             repeat=REPLY_RELEASE_INTERVAL_SECONDS,
             verbose_name="release_due_autonomous_replies",
+        )
+        register_recurring_task(
+            prune_agent_actions,
+            repeat=PRUNE_INTERVAL_SECONDS,
+            verbose_name="prune_agent_actions",
         )

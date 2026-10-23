@@ -1,8 +1,7 @@
 """Fixtures for the autonomy tests.
 
-The wider suite pins permissive defaults (see ``config/settings/test.py``) so the
-tests that predate the dial keep their meaning. These tests run on the
-conservative production defaults and set every policy they depend on explicitly.
+These run on the conservative production defaults (``AUTONOMY_DEFAULT_LEVELS`` in
+base settings) and set every other policy they depend on explicitly.
 """
 
 from __future__ import annotations
@@ -14,17 +13,6 @@ import pytest
 from django.utils import timezone
 
 from apps.autonomy.models import AccountAutonomyOverride, AutonomyPolicy
-
-
-@pytest.fixture(autouse=True)
-def conservative_defaults(settings):
-    settings.AUTONOMY_DEFAULT_LEVELS = {
-        "draft_level": "draft_only",
-        "publish_level": "draft_only",
-        "reply_level": "draft_only",
-        "recycle_level": "per_item",
-    }
-    settings.AUTONOMY_DEFAULT_UNDO_MINUTES = 5
 
 
 @pytest.fixture(autouse=True)

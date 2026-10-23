@@ -121,6 +121,15 @@ def _verdict(outcome, action_type, level, source, reasons, report=None, **extra)
     )
 
 
+# The trail keeps what was said, not an unbounded copy of it: a long thread is clipped here.
+TEXT_LIMIT = 20_000
+
+
+def _clip(text: str) -> str:
+    text = text or ""
+    return text if len(text) <= TEXT_LIMIT else text[: TEXT_LIMIT - 1] + "…"
+
+
 def undo_delay(policy) -> dt.timedelta:
     return dt.timedelta(minutes=policy.undo_delay_minutes)
 
@@ -241,8 +250,8 @@ def record(
         guardrail_results=verdict.results if verdict is not None else [],
         ai_used=bool(verdict and verdict.ai_used) or ai_used,
         risk_score=verdict.risk_score if verdict is not None else None,
-        source_text=source_text,
-        final_text=final_text,
+        source_text=_clip(source_text),
+        final_text=_clip(final_text),
         post=post,
         platform_post=platform_post,
         reply=reply,
@@ -342,8 +351,8 @@ def record_scheduled(
                 decision=Decision.EXECUTED,
                 post=post,
                 platform_post=pp,
-                source_text=source_text,
-                final_text=text,
+                source_text=_clip(source_text),
+                final_text=_clip(text),
                 requested_at=pp.scheduled_at or post.scheduled_at,
                 summary=summary,
             )
@@ -371,6 +380,9 @@ def client_visible_actions(workspace, *, limit: int = 50):
         .exclude(actor_type="human")
         .exclude(operation="recurrence.copy")
         .filter(models.Q(release_at__isnull=True) | models.Q(release_at__lte=now))
+        # Only what is actually out there: a post still queued, held, failed or since taken down isn't shown.
+        .filter(models.Q(platform_post__status="published") | models.Q(reply__status="sent"))
+        .filter(platform_deleted_at__isnull=True)
         .select_related("social_account")
         .order_by("-created_at")[:limit]
     )

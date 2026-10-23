@@ -18,8 +18,19 @@ overridden per social account. The dial never skips an approval the workspace re
 ## Guardrails (Auto with guardrails)
 
 Blocked words and phrases (refused outright), links, @mentions, prices and discounts, health, financial
-and legal claims, a daily cap per account, quiet hours, and two optional AI checks (risk and brand-voice
-drift) that count against the plan's AI allowance and hold the action if the AI can't be reached.
+and legal claims (English and Arabic), a daily cap per account, quiet hours, and two optional AI checks
+(risk and brand-voice drift) that count against the plan's AI allowance and hold the action if the AI
+can't be reached or the text is too long for it to read in full.
+
+The checks read everything the post would publish: caption, title, first comment, every thread part and
+each account's overrides. Text is folded before matching, so case, accents, zero-width characters,
+full-width or styled letters and look-alike letters from other scripts don't change the result.
+
+Every write path an agent has goes through the policy: creating, scheduling, editing, duplicating and
+queueing posts, resuming a stopped thread (refused rather than held when publishing isn't allowed),
+creating, editing and sending replies. Editing a reply already waiting out its undo window is a new send
+decision with a fresh window. A schedule that is held keeps its repeat setting; the series starts when a
+person approves the post.
 
 ## What an agent is told
 
@@ -37,14 +48,19 @@ A write that the policy held or refused says why, so the agent can behave:
 ```
 
 A refusal is an error (REST 403, MCP error) beginning "Blocked because". Read the policy first with
-`GET /autonomy` / `get_autonomy_policy`; a key can lower levels, switch crisis pause on and add blocked
-phrases, but only a person can loosen the policy.
+`GET /autonomy` / `get_autonomy_policy`; a key (or an OAuth/MCP session) can only make the policy
+stricter: lower levels, switch crisis pause on, add blocked phrases, switch a review check on, lengthen the
+undo window or lower a daily cap. Sending back an unchanged value is fine; anything looser needs a person.
 
 ## Undo window, crisis pause, audit
 
 Autonomous posts and replies wait (5 minutes by default) in "Going out soon", where a person can undo
-or hold them. After publishing, "Delete from platform" appears where the platform allows it. Crisis pause
-stops every autonomous action and holds queued ones until it is turned off. Every action, by a person,
+or hold them. After publishing, "Delete from platform" appears where the platform allows it. Undo and
+hold take effect against the publisher's claim, so either they land before the send starts or they say it
+already went out. Crisis pause stops every autonomous action and holds queued ones until it is turned
+off; the publisher re-checks it at the moment it sends. Every action, by a person,
 agent or automation, is in the workspace's Activity page and `GET /autonomy/actions`, with the decision,
 the guardrail results and a diff against the source text. Held and blocked actions notify owners and
-managers and send `agent.action.held` / `agent.action.blocked` webhooks.
+managers and send `agent.action.held` / `agent.action.blocked` webhooks. The trail can't be edited or
+deleted from the app, the admin or the API; entries are kept for `AUTONOMY_AUDIT_RETENTION_DAYS`
+(400 by default), except ones still waiting for a person.

@@ -15,6 +15,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import re
+import unicodedata
 import zoneinfo
 from dataclasses import dataclass, field
 
@@ -70,6 +71,81 @@ class Report:
 # ---------------------------------------------------------------------------
 
 
+# Letters from other scripts that render like Latin ones, so "frее" (Cyrillic е) can't slip past
+# a blocked "free". Only lookalikes of Latin letters are folded; real Arabic, Greek or Cyrillic words
+# stay as written (a phrase typed in those scripts is folded the same way, so it still matches).
+_CONFUSABLES = str.maketrans(
+    {
+        # Cyrillic
+        "а": "a",
+        "в": "b",
+        "е": "e",
+        "ё": "e",
+        "к": "k",
+        "м": "m",
+        "н": "h",
+        "о": "o",
+        "р": "p",
+        "с": "c",
+        "т": "t",
+        "у": "y",
+        "х": "x",
+        "і": "i",
+        "ї": "i",
+        "ј": "j",
+        "ѕ": "s",
+        "ԁ": "d",
+        "ӏ": "l",
+        "ɡ": "g",
+        # Greek
+        "α": "a",
+        "β": "b",
+        "ε": "e",
+        "ι": "i",
+        "κ": "k",
+        "ν": "v",
+        "ο": "o",
+        "ρ": "p",
+        "τ": "t",
+        "υ": "u",
+        "χ": "x",
+        "ζ": "z",
+        "η": "n",
+        # Punctuation that stands in for a dot or an at sign
+        "。": ".",
+        "｡": ".",
+        "․": ".",
+        "‧": ".",
+        "﹫": "@",
+        # Arabic letter variants written interchangeably
+        "أ": "ا",
+        "إ": "ا",
+        "آ": "ا",
+        "ٱ": "ا",
+        "ى": "ي",
+        "ة": "ه",
+        "ؤ": "و",
+        "ئ": "ي",
+    }
+)
+
+
+def normalize(text: str) -> str:
+    """Text as the checks read it, so look-alike spellings can't dodge them.
+
+    NFKC folds full-width and styled letters (𝐟𝐫𝐞𝐞, ｆｒｅｅ) and Arabic presentation
+    forms; invisible format characters (zero-width spaces and joiners, bidi marks,
+    soft hyphens), combining marks (accents, strike-throughs, Arabic diacritics) and
+    the Arabic tatweel are dropped; homoglyphs of Latin letters are folded; case is
+    folded; runs of whitespace become one space. Phrases and text go through the
+    same folding, so a phrase typed with accents or in another script still matches.
+    """
+    text = unicodedata.normalize("NFKD", unicodedata.normalize("NFKC", text or ""))
+    kept = [ch for ch in text if unicodedata.category(ch) not in ("Cf", "Mn") and ch != "\u0640"]
+    text = unicodedata.normalize("NFC", "".join(kept)).casefold().translate(_CONFUSABLES)
+    return " ".join(text.split())
+
+
 @dataclass(frozen=True)
 class Classifier:
     name: str
@@ -82,12 +158,29 @@ class Classifier:
 
 _FLAGS = re.IGNORECASE
 
+
+def _terms(*terms: str) -> str:
+    """An alternation of plain terms, folded like the text they are matched against.
+
+    Used for Arabic, which attaches prefixes (و، ال، ب) to words, so the terms
+    match inside a word rather than at a word boundary.
+    """
+    return "(?:" + "|".join(re.escape(normalize(t)) for t in terms) + ")"
+
+
+def _pattern(english: str, *arabic: str) -> re.Pattern:
+    return re.compile(english + ("|" + _terms(*arabic) if arabic else ""), _FLAGS)
+
+
 CLASSIFIERS: list[Classifier] = [
     Classifier(
         "links",
         "Links",
         "review_links",
-        re.compile(r"https?://\S+|\bwww\.\S+|\b[a-z0-9-]+\.(?:com|org|net|io|co|app|ly|me|info|biz)\b/?\S*", _FLAGS),
+        re.compile(
+            r"https?://\S+|\bwww\.\S+|\b[a-z0-9-]+\.(?:com|org|net|io|co|app|ly|me|info|biz|shop|store|link|sa|ae)\b/?\S*",
+            _FLAGS,
+        ),
         "contains a link",
     ),
     Classifier(
@@ -101,11 +194,27 @@ CLASSIFIERS: list[Classifier] = [
         "prices",
         "Prices and discounts",
         "review_prices",
-        re.compile(
-            r"[$€£¥]\s?\d|\b\d[\d,.]*\s?(?:usd|eur|gbp|dollars?|euros?|pounds?)\b|\b\d+\s?%\s?(?:off|discount)"
+        _pattern(
+            r"[$€£¥₹💲💰🤑]\s?\d|\b\d[\d,.]*\s?(?:usd|eur|gbp|aed|sar|egp|kwd|qar|dollars?|euros?|pounds?)\b"
+            r"|\b\d+\s?%\s?(?:off|discount)"
             r"|\b(?:discount|coupon|promo code|sale price|on sale|price drop|limited[- ]time offer|free shipping"
             r"|money[- ]back|% off|buy one get one)\b",
-            _FLAGS,
+            "ريال",
+            "ر.س",
+            "درهم",
+            "د.إ",
+            "دينار",
+            "جنيه",
+            "ليرة",
+            "خصم",
+            "تخفيض",
+            "كوبون",
+            "كود الخصم",
+            "عرض خاص",
+            "عرض لفترة محدودة",
+            "شحن مجاني",
+            "السعر",
+            "بسعر",
         ),
         "makes a price or discount claim",
     ),
@@ -113,10 +222,23 @@ CLASSIFIERS: list[Classifier] = [
         "health_claims",
         "Health claims",
         "review_sensitive",
-        re.compile(
-            r"\b(?:cures?|cured|treats?|heals?|prevents?|diagnos\w+|clinically proven|medical advice|miracle"
-            r"|weight[- ]loss|detox|fda[- ]approved|lowers? (?:blood|cholesterol)|side effects?)\b",
-            _FLAGS,
+        _pattern(
+            r"\b(?:cures?|cured|cure for|treatment for|heals?|diagnos\w+|clinically proven|medical advice|miracle"
+            r"|weight[- ]loss|detox|fda[- ]approved|lowers? (?:blood|cholesterol)|side effects?|immune boost\w*"
+            r"|anti[- ]aging)\b",
+            "يعالج",
+            "علاج",
+            "يشفي",
+            "شفاء",
+            "تخسيس",
+            "إنقاص الوزن",
+            "خسارة الوزن",
+            "ديتوكس",
+            "مثبت طبيا",
+            "مثبت علميا",
+            "نصيحة طبية",
+            "أعراض جانبية",
+            "يقوي المناعة",
         ),
         "makes a health claim",
     ),
@@ -124,10 +246,19 @@ CLASSIFIERS: list[Classifier] = [
         "financial_claims",
         "Financial claims",
         "review_sensitive",
-        re.compile(
-            r"\b(?:guaranteed returns?|risk[- ]free|get rich|double your money|investment advice|financial advice"
-            r"|passive income|high[- ]yield|no risk|insider tip|returns? of \d+)\b",
-            _FLAGS,
+        _pattern(
+            r"\b(?:guaranteed returns?|guaranteed profits?|risk[- ]free|get rich|double your money|investment advice"
+            r"|financial advice|passive income|high[- ]yield|no risk|insider tip|returns? of \d+)\b",
+            "أرباح مضمونة",
+            "ربح مضمون",
+            "عائد مضمون",
+            "بدون مخاطر",
+            "بدون مخاطرة",
+            "دخل سلبي",
+            "نصيحة استثمارية",
+            "نصيحة مالية",
+            "ضاعف أموالك",
+            "اربح من البيت",
         ),
         "makes a financial claim",
     ),
@@ -135,10 +266,15 @@ CLASSIFIERS: list[Classifier] = [
         "legal_claims",
         "Legal claims",
         "review_sensitive",
-        re.compile(
-            r"\b(?:legal advice|lawsuit|sue\b|liable|liability|guaranteed outcome|you will win your case"
-            r"|not legally|breach of contract|class action)\b",
-            _FLAGS,
+        _pattern(
+            r"\b(?:legal advice|lawsuit|sue (?:you|them|us|him|her)|liable|liability|guaranteed outcome"
+            r"|you will win your case|not legally|breach of contract|class action)\b",
+            "استشارة قانونية",
+            "نصيحة قانونية",
+            "دعوى قضائية",
+            "مسؤولية قانونية",
+            "رفع قضية",
+            "ضمان كسب القضية",
         ),
         "makes a legal claim",
     ),
@@ -152,17 +288,28 @@ def register_classifier(classifier: Classifier) -> None:
 
 
 def blocked_phrase_hits(phrases, text: str) -> list[str]:
-    """The phrases from ``phrases`` that appear in ``text`` (whole words, any case)."""
+    """The phrases from ``phrases`` that appear in ``text``.
+
+    Both sides are folded by :func:`normalize` first, so case, accents, zero-width
+    characters, full-width or styled letters and look-alike letters from other
+    scripts make no difference. A phrase in a script that marks word boundaries
+    with spaces matches whole words; one containing Arabic matches anywhere, as
+    Arabic attaches prefixes to the word.
+    """
+    folded = normalize(text)
     hits = []
     for phrase in phrases or []:
-        phrase = (phrase or "").strip()
-        if not phrase:
+        key = normalize(phrase)
+        if not key:
             continue
-        words = r"\s+".join(re.escape(word) for word in phrase.split())
-        pattern = rf"(?<!\w){words}(?!\w)"
-        if re.search(pattern, text or "", _FLAGS):
-            hits.append(phrase)
+        words = r"\s+".join(re.escape(word) for word in key.split())
+        pattern = words if _ARABIC_RE.search(key) else rf"(?<!\w){words}(?!\w)"
+        if re.search(pattern, folded):
+            hits.append(phrase.strip())
     return hits
+
+
+_ARABIC_RE = re.compile(r"[\u0600-\u06ff\u0750-\u077f]")
 
 
 def check_blocked_phrases(policy, text: str) -> GuardrailResult:
@@ -176,11 +323,12 @@ def check_blocked_phrases(policy, text: str) -> GuardrailResult:
 
 
 def check_classifiers(policy, text: str) -> list[GuardrailResult]:
+    folded = normalize(text)
     results = []
     for classifier in CLASSIFIERS:
         if not getattr(policy, classifier.setting, False):
             continue
-        if classifier.pattern.search(text or ""):
+        if classifier.pattern.search(folded):
             results.append(GuardrailResult(classifier.name, classifier.label, False, classifier.reason))
         else:
             results.append(GuardrailResult(classifier.name, classifier.label, True))
@@ -256,16 +404,25 @@ def check_quiet_hours(policy, workspace, when: dt.datetime) -> GuardrailResult:
 # ---------------------------------------------------------------------------
 
 
+def _ai_checks(policy):
+    return (("ai_risk", "AI risk check", policy.ai_risk_check), ("brand_voice", "Brand voice", policy.ai_voice_check))
+
+
 def check_ai(policy, workspace, text: str, account, *, source: str) -> tuple[list[GuardrailResult], float | None]:
     """The AI risk and brand voice checks, when switched on. A check that can't run holds the action."""
     from apps.ai_writer.client import AIError
     from apps.ai_writer.models import AIRequestLog
-    from apps.ai_writer.services import AIContext, review_content
+    from apps.ai_writer.services import MAX_CAPTION_CHARS, AIContext, review_content
     from apps.billing.entitlements import PlanLimitError
 
     wants_risk, wants_voice = policy.ai_risk_check, policy.ai_voice_check
     if not (wants_risk or wants_voice):
         return [], None
+    if len(text or "") > MAX_CAPTION_CHARS:
+        # The reviewer reads at most this much; what it can't read must not go out unread.
+        reason = f"it is longer than the AI check can read in full ({MAX_CAPTION_CHARS} characters)"
+        results = [GuardrailResult(name, label, False, reason) for name, label, on in _ai_checks(policy) if on]
+        return results, None
     src = AIRequestLog.Source.MCP if source == "mcp" else AIRequestLog.Source.API
     if source == "system":
         src = AIRequestLog.Source.SYSTEM
