@@ -1,14 +1,20 @@
 {% extends "layouts/workspace_settings.html" %}
-{% block title %}Brand Voice - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
+{% block title %}Brand kit - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
 {% block content %}
 <div class="max-w-2xl">
-    <h2 class="text-xl font-semibold mb-2 text-[var(--text-primary)]">Brand Voice</h2>
+    <h2 class="text-xl font-semibold mb-2 text-[var(--text-primary)]">Brand kit</h2>
     <p class="text-sm mb-8 text-[var(--text-secondary)]">
+        Everything that makes this workspace look and sound like your brand. Anything you leave blank here is taken from the {% if inherited_from_org %}organization's brand kit{% else %}organization's brand kit, if it has one{% endif %}.
+    </p>
+
+    <h3 class="text-base font-semibold mb-1 text-[var(--text-primary)]">Brand voice</h3>
+    <p class="text-sm mb-4 text-[var(--text-secondary)]">
         Describe how this workspace sounds. The AI assistant follows it every time it writes, rewrites or adapts a post here.
     </p>
 
-    <form method="POST" class="flex flex-col gap-6">
+    <form method="POST" class="flex flex-col gap-6 mb-10">
         {% csrf_token %}
+        <input type="hidden" name="section" value="voice">
 
         <div>
             <label for="brand_voice_tone" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Tone</label>
@@ -60,8 +66,23 @@
             </button>
         </div>
         {% else %}
-        <p class="text-xs text-[var(--text-tertiary)]">Only workspace owners and managers can change the brand voice.</p>
+        <p class="text-xs text-[var(--text-tertiary)]">Only workspace owners and managers can change the brand kit.</p>
         {% endif %}
     </form>
+
+    {% url 'media_library:index' workspace_id=workspace.id as media_url %}
+    {% include "brand_kit/_sections.html" with can_edit=is_owner_or_manager inherits=True %}
+
+    <section aria-labelledby="kit-review" class="mb-10">
+        <h3 id="kit-review" class="text-base font-semibold mb-1 text-[var(--text-primary)]">Review reply policy</h3>
+        <p class="text-sm mb-4 text-[var(--text-secondary)]">What a public reply to a customer review may and may not promise: refunds, apologies, who to contact. The AI draft follows it. Without a policy, drafts never promise a refund or admit fault.</p>
+        <form method="POST" class="flex flex-col gap-3">
+            {% csrf_token %}
+            <input type="hidden" name="section" value="review">
+            <label for="review_reply_policy" class="sr-only">Review reply policy</label>
+            <textarea id="review_reply_policy" name="review_reply_policy" rows="4" maxlength="{{ review_policy_max }}" class="form-input-styled text-sm resize-y" {% if not is_owner_or_manager %}disabled{% endif %}>{{ workspace.review_reply_policy }}</textarea>
+            {% if is_owner_or_manager %}<div><button type="submit" class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer bg-[var(--neutral-100)] text-[var(--text-primary)]">Save review policy</button></div>{% endif %}
+        </form>
+    </section>
 </div>
 {% endblock %}

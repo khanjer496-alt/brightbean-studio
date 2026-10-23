@@ -35,6 +35,7 @@ from apps.api.schemas import (
     ApplyBestTimesResponse,
     BestTimeResponse,
     BestTimesResponse,
+    BrandKitResponse,
     BrandVoiceResponse,
     CalendarEventResponse,
     CalendarEventsListResponse,
@@ -1531,6 +1532,32 @@ def update_brand_voice(
     if changed:
         workspace.save(update_fields=[*changed, "updated_at"])
     return _brand_voice_response(workspace)
+
+
+def get_brand_kit(actor: Actor) -> BrandKitResponse:
+    """The workspace's brand kit with the organization's as the fallback for blank fields."""
+    from apps.workspaces import brand_kit
+
+    actor.require_any("create_posts", "manage_workspace_settings")
+    return BrandKitResponse(**brand_kit.serialize(actor.workspace))
+
+
+def update_brand_kit(actor: Actor, *, logos: dict | None = None, **fields) -> BrandKitResponse:
+    """Change the workspace's own brand kit. Omitted fields are unchanged; lists replace."""
+    from apps.workspaces import brand_kit
+
+    actor.require("manage_workspace_settings")
+    data = {name: value for name, value in fields.items() if value is not None}
+    for slot, asset_id in (logos or {}).items():
+        if slot not in brand_kit.LOGO_SLOTS:
+            raise OpError(422, f"Unknown logo slot {slot}; use {', '.join(brand_kit.LOGO_SLOTS)}.")
+        data[f"logo_{slot}"] = asset_id
+    kit = brand_kit.kit_for(workspace=actor.workspace)
+    try:
+        brand_kit.update(kit, data)
+    except brand_kit.BrandKitError as exc:
+        raise OpError(422, str(exc)) from exc
+    return BrandKitResponse(**brand_kit.serialize(actor.workspace))
 
 
 def get_usage(actor: Actor) -> UsageResponse:

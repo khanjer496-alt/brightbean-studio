@@ -877,6 +877,73 @@ _tool(
 )
 
 _tool(
+    "get_brand_kit",
+    (
+        "Read the workspace's brand kit: logo media ids (primary, mark, on_light, on_dark), named colour swatches, "
+        "fonts, tagline, default hashtags, legal disclaimers, and do's and don'ts. Blank fields come from the "
+        "organization's kit. Follow the do's and don'ts and add the disclaimers when you write posts. Needs "
+        "create_posts or manage_workspace_settings."
+    ),
+    ops.get_brand_kit,
+    lambda a: {},
+    read_only=True,
+)
+
+_tool(
+    "update_brand_kit",
+    (
+        "Change the workspace's brand kit. Omitted fields are unchanged; colors, fonts, default_hashtags and "
+        "disclaimers replace their lists. logos maps a slot (primary, mark, on_light, on_dark) to a media library "
+        "image id, or null to clear it. It shapes reports and every AI request, so change it only when asked. "
+        "Needs manage_workspace_settings."
+    ),
+    ops.update_brand_kit,
+    lambda a: {
+        k: a[k]
+        for k in ("logos", "colors", "fonts", "tagline", "default_hashtags", "disclaimers", "dos", "donts")
+        if k in a
+    },
+    properties={
+        "logos": {"type": "object", "additionalProperties": {"type": ["string", "null"]}},
+        "colors": {
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}, "hex": {"type": "string"}},
+                "required": ["hex"],
+            },
+        },
+        "fonts": {
+            "type": "array",
+            "maxItems": 6,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string"},
+                    "role": {"type": "string", "enum": ["heading", "body", "other"]},
+                    "asset_id": {"type": "string"},
+                },
+                "required": ["name"],
+            },
+        },
+        "tagline": _text_prop(max_length=150),
+        "default_hashtags": {"type": "array", "items": {"type": "string"}, "maxItems": 30},
+        "disclaimers": {
+            "type": "array",
+            "maxItems": 10,
+            "items": {
+                "type": "object",
+                "properties": {"name": {"type": "string"}, "text": {"type": "string", "maxLength": 1000}},
+                "required": ["text"],
+            },
+        },
+        "dos": _text_prop(max_length=1000),
+        "donts": _text_prop(max_length=1000),
+    },
+)
+
+_tool(
     "get_usage",
     (
         "Read the organization's plan, its limits and current usage (channels, workspaces, scheduled posts this "
