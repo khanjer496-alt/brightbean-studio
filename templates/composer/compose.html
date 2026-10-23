@@ -565,6 +565,7 @@
                     </div>
                     <div class="caption-wrap">
                         <textarea name="caption"
+                                  id="caption-editor"
                                   class="caption-editor"
                                   placeholder="What would you like to share?"
                                   x-model="caption"
@@ -604,12 +605,15 @@
                         {% include "composer/partials/media_issues.html" with media_issue_groups=None oob=False %}
 
                         <!-- Bottom bar: media library + char counter -->
-                        <div class="flex items-center justify-between px-4 py-2 border-t border-stone-100">
-                            <button type="button" @click="showMediaPicker = true"
-                                    class="text-xs font-medium text-stone-400 hover:text-orange-600 transition-colors flex items-center gap-1.5 cursor-pointer">
-                                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
-                                Media Library
-                            </button>
+                        <div class="flex items-center justify-between gap-2 px-4 py-2 border-t border-stone-100">
+                            <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                {% include "composer/partials/insert_toolbar.html" with target_id="'caption-editor'" mention_accounts="mentionAccountIds()" label="'caption'" panel_position="above" %}
+                                <button type="button" @click="showMediaPicker = true"
+                                        class="text-xs font-medium text-stone-400 hover:text-orange-600 transition-colors flex items-center gap-1.5 cursor-pointer">
+                                    <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+                                    Media Library
+                                </button>
+                            </div>
                             <span class="text-xs tabular-nums font-medium"
                                   :class="captionOverLimit() ? 'text-red-500' : 'text-stone-400'"
                                   x-text="captionLimit() ? captionCount() + ' / ' + captionLimit() : captionCount()">
@@ -1249,7 +1253,9 @@
                                   class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all resize-none"
                                   style="font-family: system-ui, -apple-system, sans-serif;"
                                   :placeholder="'Custom ' + (charLimits[accId]?.caption_label || 'caption') + ' for this platform...'"
+                                  :id="'override-caption-' + accId"
                                   rows="3"></textarea>
+                        {% include "composer/partials/insert_toolbar.html" with target_id="'override-caption-' + accId" mention_accounts="charLimits[accId]?.mention_lookup ? [accId] : []" label="'the caption override'" panel_position="below" %}
                         <!-- Per-part overrides for this account's thread -->
                         <template x-for="(part, index) in threadParts" :key="'override-' + accId + '-' + part.key">
                             <div class="mt-2">
@@ -1262,6 +1268,7 @@
                                           rows="2"
                                           x-model="part.caption_overrides[accId]"
                                           @input="debouncedPreviewUpdate()"></textarea>
+                                {% include "composer/partials/insert_toolbar.html" with target_id="'override-part-' + accId + '-' + part.key" mention_accounts="charLimits[accId]?.mention_lookup ? [accId] : []" label="'the override of part ' + (index + 2)" panel_position="below" %}
                             </div>
                         </template>
 
@@ -2153,6 +2160,7 @@
 {{ platform_extras|json_script:"composer-platform-extras" }}
 {{ media_items|json_script:"composer-media-items" }}
 {{ thread_parts|json_script:"composer-thread-parts" }}
+<script src="{% static 'js/composer-inserts.js' %}"></script>
 <script nonce="{{ request.csp_nonce }}">
 function composerApp() {
     return {
@@ -2579,6 +2587,12 @@ function composerApp() {
         applyAICaption(text) {
             this.caption = text;
             this.debouncedPreviewUpdate();
+        },
+        // Accounts "@" can suggest mentions for: all selected accounts, but only
+        // when every one of them can look them up. Otherwise "@" is plain text.
+        mentionAccountIds() {
+            const lookup = this.selectedAccounts.every((id) => this.charLimits[id]?.mention_lookup);
+            return this.selectedAccounts.length > 0 && lookup ? this.selectedAccounts : [];
         },
         appendToCaption(text) {
             const current = this.caption.replace(/\s+$/, '');

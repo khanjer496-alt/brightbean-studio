@@ -85,6 +85,10 @@ urlpatterns = [
     # Tags
     path("tags/", views.tag_list, name="tag_list"),
     path("tags/create/", views.tag_create, name="tag_create"),
+    # Composer inserts
+    path("compose/hashtags/", views.hashtag_picker, name="hashtag_picker"),
+    path("compose/signatures/", views.signature_picker, name="signature_picker"),
+    path("compose/mentions/", views.mention_search, name="mention_search"),
     # Feeds
     path("feeds/", views.feed_list, name="feed_list"),
     path("feeds/add/", views.feed_add, name="feed_add"),

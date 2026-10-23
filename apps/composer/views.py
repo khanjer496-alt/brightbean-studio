@@ -43,13 +43,14 @@ from apps.members.decorators import require_permission
 from apps.members.models import WorkspaceMembership
 from apps.social_accounts.models import SocialAccount
 from apps.workspaces.models import Workspace
-from providers import is_video_only, requires_media, thread_capability_for
+from providers import is_video_only, mention_lookup_for, requires_media, thread_capability_for
 from providers.tiktok import VALID_PRIVACY_LEVELS as TIKTOK_PRIVACY_LEVELS
 
 from .forms import ContentCategoryForm, PostForm
 from .models import (
     ContentCategory,
     Feed,
+    HashtagSet,
     Idea,
     IdeaGroup,
     IdeaMedia,
@@ -59,17 +60,21 @@ from .models import (
     PostMedia,
     PostTemplate,
     PostVersion,
+    Signature,
     Tag,
 )
 from .services import (
+    default_signature,
     media_blocker,
     media_change_blocker,
     media_rule_issues,
+    mention_suggestions,
     parse_thread_parts,
     post_media_assets,
     post_media_types,
     post_thread_parts,
     publish_blocker,
+    recent_hashtags,
     require_publishable,
     resolve_thread_part_assets,
     set_post_parts,
@@ -78,6 +83,7 @@ from .services import (
     thread_started,
     thread_stopped_state,
     usable_media_types,
+    with_signature,
 )
 from .status import READONLY_STATUSES, derive_post_status
 
@@ -1007,6 +1013,9 @@ def compose(request, workspace_id, post_id=None):
         template_data = _resolve_template_data(request.GET.get("template"), workspace)
         if template_data and template_data.get("caption"):
             initial["caption"] = template_data["caption"]
+        else:
+            # A new post starts with the sign-off its author (or workspace) has marked default.
+            initial["caption"] = with_signature("", default_signature(workspace, request.user))
         form = PostForm(initial=initial)
         platform_post_list = []
         scoped_platform_posts = []
@@ -1055,6 +1064,8 @@ def compose(request, workspace_id, post_id=None):
             # Each of these costs two characters once the provider escapes it,
             # so the live counter can charge for them as the user types.
             "escaped_chars": acc.escaped_chars,
+            # Whether typing "@" can suggest accounts to mention on this platform.
+            "mention_lookup": mention_lookup_for(acc.platform),
             "name": acc.account_name or acc.account_handle,
             "youtube_url": f"https://www.youtube.com/channel/{acc.account_platform_id}"
             if acc.platform == "youtube"
@@ -4459,6 +4470,70 @@ def tag_create(request, workspace_id):
         return JsonResponse({"error": "Tag name is required."}, status=400)
     tag, created = Tag.objects.get_or_create(workspace=workspace, name=name)
     return JsonResponse({"id": str(tag.id), "name": tag.name, "created": created})
+
+
+# ---------------------------------------------------------------------------
+# Composer inserts: hashtag sets, signatures, @mention suggestions
+# ---------------------------------------------------------------------------
+
+
+@login_required
+@require_GET
+@require_permission("create_posts")
+def hashtag_picker(request, workspace_id):
+    """JSON for the composer's hashtag menu: saved sets and recently used tags."""
+    workspace = _get_workspace(request, workspace_id)
+    sets = HashtagSet.objects.for_workspace(workspace.id)
+    return JsonResponse(
+        {
+            "sets": [{"id": str(s.id), "name": s.name, "text": s.text, "count": len(s.hashtags)} for s in sets],
+            "recent": recent_hashtags(workspace.id),
+        }
+    )
+
+
+@login_required
+@require_GET
+@require_permission("create_posts")
+def signature_picker(request, workspace_id):
+    """JSON for the composer's signature menu: the workspace's signatures and the user's own."""
+    workspace = _get_workspace(request, workspace_id)
+    signatures = Signature.objects.available(workspace.id, request.user)
+    return JsonResponse(
+        {
+            "signatures": [
+                {
+                    "id": str(s.id),
+                    "name": s.name,
+                    "body": s.body,
+                    "scope": "personal" if s.user_id else "workspace",
+                    "is_default": s.is_default,
+                }
+                for s in signatures
+            ]
+        }
+    )
+
+
+@login_required
+@require_GET
+@require_permission("create_posts")
+def mention_search(request, workspace_id):
+    """Accounts to @mention matching ``?q=``, searched on the ``?account=`` ids.
+
+    A nicety, so it never errors: a bad id, a platform without lookup or a
+    platform that is down just yields no suggestions.
+    """
+    workspace = _get_workspace(request, workspace_id)
+    query = request.GET.get("q", "").strip()[:100]
+    account_ids = [a for a in request.GET.getlist("account") if _is_valid_uuid(a)]
+    if not query or not account_ids:
+        return JsonResponse({"results": []})
+    accounts = SocialAccount.objects.for_workspace(workspace.id).filter(
+        id__in=account_ids,
+        connection_status=SocialAccount.ConnectionStatus.CONNECTED,
+    )
+    return JsonResponse({"results": mention_suggestions(accounts, query)})
 
 
 # ── Feeds ──────────────────────────────────────────────────────────────────

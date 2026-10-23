@@ -82,6 +82,7 @@ Reorder by dragging the handle or with the up/down buttons; the finisher stays l
                               :placeholder="part.is_finisher ? 'Follow for more…' : 'Continue the thread…'"
                               x-model="part.caption"
                               @input="debouncedPreviewUpdate()"></textarea>
+                    {% include "composer/partials/insert_toolbar.html" with target_id="'thread-part-' + part.key" mention_accounts="mentionAccountIds()" label="'part ' + (index + 2)" panel_position="below" %}
 
                     <!-- Part media -->
                     <div class="flex flex-wrap items-center gap-2" x-show="part.media.length > 0 || threadMediaAllowed">
