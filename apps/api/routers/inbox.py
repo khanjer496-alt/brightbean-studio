@@ -37,7 +37,7 @@ from apps.api.schemas import (
     InboxReplyResponse,
     UpdateReplyRequest,
 )
-from apps.inbox.models import InboxMessage, InboxReply
+from apps.inbox.models import InboxMessage, InboxReply, needs_reply_q
 from apps.inbox.services import (
     ReplyStateError,
     create_reply_draft,
@@ -102,7 +102,9 @@ def list_messages(
     message_type: str | None = Query(None),
     social_account_id: uuid.UUID | None = Query(None),
     rating: int | None = Query(None, ge=1, le=5, description="Only reviews with this star rating."),
-    needs_reply: bool = Query(False, description="Only reviews that have no public reply yet."),
+    needs_reply: bool = Query(
+        False, description="Only reviews that have no public reply yet, or whose reply the platform rejected."
+    ),
     limit: int = Query(_LIMIT_DEFAULT, ge=1, le=_LIMIT_MAX),
     cursor: str | None = Query(None),
 ):
@@ -131,7 +133,7 @@ def list_messages(
     if rating is not None:
         qs = qs.filter(rating=rating)
     if needs_reply:
-        qs = qs.filter(message_type=InboxMessage.MessageType.REVIEW).exclude(extra__has_key="review_reply")
+        qs = qs.filter(needs_reply_q())
     qs = qs.order_by("-received_at", "id")
 
     rows = list(qs[offset : offset + limit + 1])

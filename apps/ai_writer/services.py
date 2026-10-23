@@ -555,7 +555,10 @@ def draft_review_reply(ctx: AIContext, review: str, *, rating: int | None, revie
     prompt = (
         f"Write one public reply from the business to the customer review below, posted on "
         f"{account.get_platform_display()}. The review is rated {rated}. {tone} Keep it short, human and "
-        f"under {min(account.char_limit, 700)} characters. Do not state facts you were not given.\n\n{body}"
+        f"under {min(account.char_limit, 700)} characters. Do not state facts you were not given: no opening "
+        f"hours, prices, names of staff, offers or contact details unless the policy or brand rules give them. "
+        f"Write in the language the review is written in (answer an Arabic review in Arabic, a French one in "
+        f"French); for a rating with no comment, use the language of the brand voice examples, else English.\n\n{body}"
     )
     system = _system_prompt(ctx.workspace) + _review_policy_block(ctx.workspace)
     text = _text(_run(ctx, run, action="review_reply", prompt=prompt, schema=_TEXT_SCHEMA, system=system))

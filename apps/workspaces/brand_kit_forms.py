@@ -57,7 +57,7 @@ def page_context(kit) -> dict:
             (slot, brand_kit.LOGO_LABELS[slot], getattr(kit, f"logo_{slot}_id")) for slot in brand_kit.LOGO_SLOTS
         ],
         "image_assets": list(assets.filter(media_type="image").order_by("filename")[:200]),
-        "font_assets": list(assets.exclude(media_type="image").order_by("filename")[:200]),
+        "font_assets": list(brand_kit.font_assets(kit).order_by("filename")[:200]),
         "color_rows": list(kit.colors) + [{"name": "", "hex": ""}] * 2,
         "font_rows": list(kit.fonts) + [{"name": "", "role": "other", "asset_id": ""}] * 2,
         "disclaimer_rows": list(kit.disclaimers) + [{"name": "", "text": ""}],

@@ -161,9 +161,14 @@ class InboxMessage(models.Model):
         return (self.extra or {}).get("review_reply") or {}
 
     @property
+    def review_reply_rejected(self) -> bool:
+        """The platform refused the reply (Google: ``reviewReplyState`` REJECTED), so the review is still unanswered."""
+        return self.review_reply.get("state") == REVIEW_REPLY_REJECTED
+
+    @property
     def needs_reply(self) -> bool:
-        """A review with no public reply yet."""
-        return self.message_type == self.MessageType.REVIEW and not self.review_reply
+        """A review with no public reply yet, or whose reply the platform rejected."""
+        return self.message_type == self.MessageType.REVIEW and (not self.review_reply or self.review_reply_rejected)
 
     @property
     def attachments(self):
@@ -171,6 +176,20 @@ class InboxMessage(models.Model):
 
         extra = self.extra or {}
         return normalize_attachments(extra.get("attachments", (extra.get("message") or {}).get("attachments", [])))
+
+
+# The state a platform gives a review reply it refused to publish.
+REVIEW_REPLY_REJECTED = "REJECTED"
+
+
+def needs_reply_q() -> models.Q:
+    """Reviews still waiting for an answer: no public reply, or one the platform rejected.
+
+    The queryset twin of :attr:`InboxMessage.needs_reply`, shared by the inbox, REST and MCP filters.
+    """
+    return models.Q(message_type=InboxMessage.MessageType.REVIEW) & (
+        ~models.Q(extra__has_key="review_reply") | models.Q(extra__review_reply__state=REVIEW_REPLY_REJECTED)
+    )
 
 
 def rating_band(rating: int | None) -> str:

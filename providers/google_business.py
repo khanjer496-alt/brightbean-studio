@@ -40,6 +40,11 @@ POSTS_API = "https://mybusiness.googleapis.com/v4"
 #   deleteReply: DELETE {name=accounts/*/locations/*/reviews/*}/reply
 REVIEWS_API = POSTS_API
 REVIEWS_PAGE_SIZE = 50
+# A first import walks this many pages (1,000 reviews) so the history analytics
+# reads is complete for nearly every location; later polls stop at ``since``.
+REVIEWS_FIRST_IMPORT_PAGES = 20
+# Accounts searched for the connected location when a login manages several.
+REVIEWS_OWNER_ACCOUNTS_MAX = 20
 # A reply or edit made on Google can move updateTime a little after we last
 # looked, and clocks differ; walk this far back past ``since`` to catch them.
 REVIEWS_LOOKBACK = timedelta(days=1)
@@ -384,9 +389,40 @@ class GoogleBusinessProvider(SocialProvider):
         if location.startswith("accounts/"):
             return location
         location = location if location.startswith("locations/") else f"locations/{location}"
-        account = self._get_account_id(access_token)
+        account = self._location_owner(access_token, location)
         account = account if account.startswith("accounts/") else f"accounts/{account}"
         return f"{account}/{location}"
+
+    def _location_owner(self, access_token: str, location: str) -> str:
+        """The account (``accounts/1``) the connected location belongs to.
+
+        A login can manage several Business Profile accounts (an agency's own
+        plus each client's), so "the first account" is only safe when there is
+        exactly one; otherwise each account's locations are listed until the
+        connected one turns up.
+        """
+        if self.credentials.get("account_id"):
+            return self.credentials["account_id"]
+        accounts = (
+            self._request("GET", f"{ACCOUNTS_API}/accounts", access_token=access_token).json().get("accounts", [])
+        )
+        names = [a["name"] for a in accounts if a.get("name")]
+        if len(names) == 1:
+            return names[0]
+        for account in names[:REVIEWS_OWNER_ACCOUNTS_MAX]:
+            data = self._request(
+                "GET",
+                f"{BUSINESS_INFO_API}/{account}/locations",
+                access_token=access_token,
+                params={"readMask": "name", "pageSize": 100},
+            ).json()
+            if any(loc.get("name") == location for loc in data.get("locations", [])):
+                return account
+        raise PublishError(
+            "The connected Google Business location is no longer in any account this login manages",
+            platform=self.platform_name,
+            retryable=False,
+        )
 
     def _review_message(self, review: dict) -> ProviderInboxMessage:
         reviewer = review.get("reviewer") or {}
@@ -448,7 +484,8 @@ class GoogleBusinessProvider(SocialProvider):
         return ReviewPage(messages=messages, average_rating=average, total_count=total, next_page_token=page_token)
 
     def get_messages(self, access_token: str, since: datetime | None = None) -> list[ProviderInboxMessage]:
-        return self.list_reviews(access_token, since=since).messages
+        pages = 5 if since else REVIEWS_FIRST_IMPORT_PAGES
+        return self.list_reviews(access_token, since=since, max_pages=pages).messages
 
     def reply_to_review(self, access_token: str, review_id: str, text: str) -> ReplyResult:
         if len(text.encode()) > REVIEW_REPLY_MAX_BYTES:

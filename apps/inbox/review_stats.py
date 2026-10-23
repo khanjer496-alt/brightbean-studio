@@ -3,7 +3,12 @@
 Computed from the reviews the inbox holds, over the same window the analytics
 pages use. A review counts in the window it was *created* in (the platform's
 ``create_time``), and counts as answered when it carries a public reply, whether
-the team wrote it here or someone wrote it on the platform.
+the team wrote it here or someone wrote it on the platform; a reply the platform
+rejected does not count. Response time runs to the *first* reply, so editing a
+reply later does not make the team look slower.
+
+Fewer than ``MIN_SAMPLE`` reviews is flagged ``low_sample``: the page says so
+and does not compare such an average with the previous period.
 """
 
 from __future__ import annotations
@@ -14,6 +19,8 @@ from statistics import median
 from providers import PROVIDER_REGISTRY
 
 from .models import InboxMessage
+
+MIN_SAMPLE = 5
 
 
 def review_accounts(accounts):
@@ -45,12 +52,13 @@ def summarize(rows) -> dict:
     """Count, mean rating, response rate and median response time of ``(message, created_at)`` rows."""
     count = len(rows)
     if not count:
-        return {"count": 0, "average": None, "response_rate": None, "median_response_hours": None}
+        return {"count": 0, "average": None, "response_rate": None, "median_response_hours": None, "low_sample": True}
     average = sum(m.rating for m, _ in rows) / count
-    answered = [(m, c) for m, c in rows if m.review_reply]
+    answered = [(m, c) for m, c in rows if m.review_reply and not m.review_reply_rejected]
     hours = []
     for message, created in answered:
-        replied = _parse(message.review_reply.get("update_time"))
+        reply = message.review_reply
+        replied = _parse(reply.get("first_replied_at") or reply.get("update_time"))
         if replied is not None and replied >= created:
             hours.append((replied - created).total_seconds() / 3600)
     return {
@@ -58,6 +66,7 @@ def summarize(rows) -> dict:
         "average": round(average, 2),
         "response_rate": round(100 * len(answered) / count),
         "median_response_hours": round(median(hours), 1) if hours else None,
+        "low_sample": count < MIN_SAMPLE,
     }
 
 
@@ -84,7 +93,7 @@ def review_overview(accounts, rng) -> dict | None:
         now = summarize([(m, c) for m, c in mine if start_at <= c < end_at])
         before = summarize([(m, c) for m, c in mine if prev_start <= c < prev_end])
         delta = None
-        if now["average"] is not None and before["average"] is not None:
+        if not now["low_sample"] and not before["low_sample"]:
             delta = round(now["average"] - before["average"], 2)
         locations.append({"account": account, **now, "previous_average": before["average"], "delta": delta})
     window = [(m, c) for m, c in current if start_at <= c < end_at]

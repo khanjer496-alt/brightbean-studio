@@ -128,7 +128,7 @@
                         <tr class="border-t border-line">
                             <th scope="row" class="px-4 py-2.5 text-left font-medium text-ink">{{ loc.account.account_name }}</th>
                             <td class="px-4 py-2.5 text-right font-mono text-ink-2">{{ loc.count }}</td>
-                            <td class="px-4 py-2.5 text-right font-mono text-ink-2">{% if loc.average is None %}No reviews{% else %}{{ loc.average }} / 5{% if loc.delta is not None %} <span class="text-xs text-ink-3">({% if loc.delta > 0 %}+{% endif %}{{ loc.delta }} vs previous)</span>{% endif %}{% endif %}</td>
+                            <td class="px-4 py-2.5 text-right font-mono text-ink-2">{% if loc.average is None %}No reviews{% else %}{{ loc.average }} / 5{% if loc.low_sample %} <span class="text-xs text-ink-3">(too few to compare)</span>{% elif loc.delta is not None %} <span class="text-xs text-ink-3">({% if loc.delta > 0 %}+{% endif %}{{ loc.delta }} vs previous)</span>{% endif %}{% endif %}</td>
                             <td class="px-4 py-2.5 text-right font-mono text-ink-2">{% if loc.response_rate is None %}-{% else %}{{ loc.response_rate }}%{% endif %}</td>
                             <td class="px-4 py-2.5 text-right font-mono text-ink-2">{% if loc.median_response_hours is None %}-{% else %}{{ loc.median_response_hours }} h{% endif %}</td>
                         </tr>
@@ -138,12 +138,13 @@
             </div>
             {% if reviews.weekly %}
             <div class="border-t border-line px-5 py-3">
-                <h3 class="m-0 mb-2 text-xs font-semibold text-ink-2">Average rating by week</h3>
+                <h3 class="m-0 mb-2 text-xs font-semibold text-ink-2">Average rating by week <span class="font-normal text-ink-3">(reviews that week in brackets)</span></h3>
                 <ul class="m-0 flex list-none flex-wrap gap-x-5 gap-y-1 p-0 text-xs text-ink-2">
                     {% for w in reviews.weekly %}<li>Week of {{ w.week|date:"M j" }}: <span class="font-mono">{{ w.average }}</span> ({{ w.count }})</li>{% endfor %}
                 </ul>
             </div>
             {% endif %}
+            <p class="m-0 border-t border-line px-5 py-3 text-xs text-ink-3">From the reviews in your inbox, counted in the week they were written. Replies Google rejected don't count as replied; time to reply runs to the first reply.</p>
         </section>
         {% endif %}
 

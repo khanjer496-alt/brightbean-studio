@@ -126,9 +126,17 @@ def _dispatch_to_platform(message: InboxMessage, body: str, *, origin=PROGRAMMAT
 
 def _record_review_reply(message: InboxMessage, body: str) -> None:
     """Remember the public reply on the review, so "needs reply" and the response time see it."""
+    now = timezone.now().isoformat()
+    previous = message.review_reply
     message.extra = {
         **(message.extra or {}),
-        "review_reply": {"comment": body, "update_time": timezone.now().isoformat(), "state": ""},
+        "review_reply": {
+            "comment": body,
+            "update_time": now,
+            "state": "",
+            # Editing a reply moves ``update_time``; response time is measured to the first one.
+            "first_replied_at": previous.get("first_replied_at") or previous.get("update_time") or now,
+        },
     }
     message.save(update_fields=["extra"])
 

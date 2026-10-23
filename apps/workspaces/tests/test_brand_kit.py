@@ -283,3 +283,27 @@ class TestSettingsPages:
         client.post(url, {"section": "copy", "dos": "Org rule"})
         kit = BrandKit.objects.get(organization__isnull=False)
         assert kit.dos == "Org rule" and kit.workspace_id is None
+
+
+class TestAssetReferences:
+    def test_a_font_points_at_a_pdf_of_this_brand(self, workspace, organization, logo):
+        pdf = MediaAsset.objects.create(
+            organization=organization, workspace=workspace, filename="spec.pdf", media_type="document"
+        )
+        kit = brand_kit.kit_for(workspace=workspace)
+        with pytest.raises(brand_kit.BrandKitError):
+            brand_kit.update(kit, {"fonts": [{"name": "Inter", "asset_id": str(logo.id)}]})
+        brand_kit.update(kit, {"fonts": [{"name": "Inter", "asset_id": str(pdf.id)}]})
+        assert kit.fonts[0]["asset_id"] == str(pdf.id)
+
+    def test_the_orphan_sweep_keeps_logos_and_font_files(self, workspace, organization, logo):
+        from apps.media_library.services import _fk_referenced_asset_ids
+
+        pdf = MediaAsset.objects.create(
+            organization=organization, workspace=workspace, filename="spec.pdf", media_type="document"
+        )
+        brand_kit.update(
+            brand_kit.kit_for(workspace=workspace),
+            {"logo_primary": str(logo.id), "fonts": [{"name": "Inter", "asset_id": str(pdf.id)}]},
+        )
+        assert {logo.id, pdf.id} <= _fk_referenced_asset_ids()

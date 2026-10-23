@@ -542,9 +542,16 @@ class InboxSyncEngine:
         )
         if not created:
             defaults["extra"] = {**(obj.extra or {}), **defaults["extra"]}
-            if msg.message_type == InboxMessage.MessageType.REVIEW and "review_reply" not in msg.extra:
-                # The reply was removed on the platform; the merge must not resurrect it.
-                defaults["extra"].pop("review_reply", None)
+            if msg.message_type == InboxMessage.MessageType.REVIEW:
+                if "review_reply" not in msg.extra:
+                    # The reply was removed on the platform; the merge must not resurrect it.
+                    defaults["extra"].pop("review_reply", None)
+                else:
+                    first = ((obj.extra or {}).get("review_reply") or {}).get("first_replied_at") or (
+                        (obj.extra or {}).get("review_reply") or {}
+                    ).get("update_time")
+                    if first:
+                        defaults["extra"]["review_reply"] = {**msg.extra["review_reply"], "first_replied_at": first}
             if (obj.extra or {}).get("is_deleted"):
                 defaults["body"] = ""
                 defaults["extra"].update(is_deleted=True, attachments=[])

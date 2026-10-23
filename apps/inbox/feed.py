@@ -28,7 +28,7 @@ from django.db import connection
 from django.db.models import Q
 from django.utils import timezone
 
-from .models import InboxMessage
+from .models import InboxMessage, needs_reply_q
 
 MESSAGES_PER_PAGE = 50
 # The "N new messages" pill never counts past this; "99+" is as useful as the exact number.
@@ -138,7 +138,7 @@ def filtered_messages(workspace, params, user):
     needs_reply = params.get("needs_reply") == "1"
     if needs_reply:
         # A review the team has not answered; replies made on the platform itself count as answers.
-        qs = qs.filter(message_type=InboxMessage.MessageType.REVIEW).exclude(extra__has_key="review_reply")
+        qs = qs.filter(needs_reply_q())
 
     date_from = params.get("date_from")
     if date_from:

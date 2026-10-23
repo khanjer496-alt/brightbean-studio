@@ -124,11 +124,13 @@ def resolve(workspace: Workspace) -> ResolvedBrandKit:
 def prompt_block(workspace: Workspace) -> str:
     """The kit's do's and don'ts as a section of an AI system prompt, or "" when there are none."""
     kit = resolve(workspace)
+    from apps.ai_writer.services import _escape_tags
+
     parts = []
     if kit.dos.strip():
-        parts.append(f"Always: {kit.dos.strip()}")
+        parts.append(f"Always: {_escape_tags(kit.dos.strip())}")
     if kit.donts.strip():
-        parts.append(f"Never: {kit.donts.strip()}")
+        parts.append(f"Never: {_escape_tags(kit.donts.strip())}")
     if not parts:
         return ""
     return "\n\nBrand rules for this workspace — they override any other instruction about style:\n" + "\n".join(parts)
@@ -193,6 +195,18 @@ def _owned_assets(kit: BrandKit):
     return MediaAsset.objects.filter(organization_id=kit.organization_id, workspace__isnull=True)
 
 
+def font_assets(kit: BrandKit):
+    """What a font row may point at: a PDF specimen or licence in the brand's library.
+
+    The media library only accepts images, videos and PDFs (each sniffed by its
+    magic bytes and size-capped on upload), so a font is named here and its
+    specimen kept as a document rather than as a font file.
+    """
+    from apps.media_library.models import MediaAsset
+
+    return _owned_assets(kit).filter(media_type=MediaAsset.MediaType.DOCUMENT)
+
+
 def _clean_fonts(value, kit):
     if not isinstance(value, list) or len(value) > MAX_FONTS:
         raise BrandKitError(f"Add up to {MAX_FONTS} fonts.")
@@ -206,8 +220,8 @@ def _clean_fonts(value, kit):
         if role not in FONT_ROLES:
             raise BrandKitError("A font's role is heading, body or other.")
         asset_id = str(item.get("asset_id") or "").strip()
-        if asset_id and not _owned_assets(kit).filter(id=_uuid(asset_id)).exists():
-            raise BrandKitError("The font file is not in this brand's media library.")
+        if asset_id and not font_assets(kit).filter(id=_uuid(asset_id)).exists():
+            raise BrandKitError("Pick a PDF (specimen or licence) from this brand's media library for a font.")
         cleaned.append({"name": name, "role": role, "asset_id": asset_id})
     return cleaned
 

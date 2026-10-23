@@ -108,6 +108,11 @@
         <div class="mb-4 rounded-xl border border-stone-200 p-4" id="review-public-reply">
             <p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-stone-500">Your public reply</p>
             <p class="text-[13px] text-stone-800 leading-relaxed whitespace-pre-wrap">{{ message.review_reply.comment }}</p>
+            {% if message.review_reply_rejected %}
+            <p class="mt-2 text-[12px] font-medium text-red-700">The platform rejected this reply under its content policy, so it isn't public. Edit it and send again.</p>
+            {% elif message.review_reply.state == "PENDING" %}
+            <p class="mt-2 text-[12px] text-stone-500">The platform is still checking this reply before it shows publicly.</p>
+            {% endif %}
             {% if request.workspace_membership.effective_permissions.reply_from_inbox %}
             <button type="button"
                     class="mt-2 text-[12px] font-semibold text-red-700 underline underline-offset-2"

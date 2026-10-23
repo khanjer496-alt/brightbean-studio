@@ -155,6 +155,32 @@ class TestProvider:
         provider.list_reviews("tok")
         assert calls[-1] == "https://mybusiness.googleapis.com/v4/accounts/77/locations/9/reviews"
 
+    def test_the_owning_account_is_found_when_a_login_manages_several(self):
+        provider = GoogleBusinessProvider({"review_location": "locations/9"})
+        calls = []
+
+        def request(method, url, **kwargs):
+            calls.append(url)
+            if url.endswith("/accounts"):
+                body = {"accounts": [{"name": "accounts/1"}, {"name": "accounts/2"}]}
+            elif url.endswith("accounts/1/locations"):
+                body = {"locations": [{"name": "locations/5"}]}
+            elif url.endswith("accounts/2/locations"):
+                body = {"locations": [{"name": "locations/9"}]}
+            else:
+                body = {}
+            return SimpleNamespace(json=lambda: body)
+
+        provider._request = request
+        provider.list_reviews("tok")
+        assert calls[-1] == "https://mybusiness.googleapis.com/v4/accounts/2/locations/9/reviews"
+
+    def test_a_first_import_reads_deeper_than_a_routine_poll(self, provider):
+        pages = [{"reviews": [review(i)], "nextPageToken": f"t{i}"} for i in range(30)]
+        provider._request = fake_pages(*pages)
+        provider.get_messages("tok")
+        assert len(provider._request.calls) == 20
+
     def test_reply_and_delete_use_the_reply_endpoint(self, provider):
         provider._request = fake_pages()
         provider.reply_to_review("tok", f"{PARENT}/reviews/r1", "Thank you!")
@@ -198,6 +224,17 @@ class TestSync:
         msg.refresh_from_db()
         assert InboxMessage.objects.count() == 1
         assert msg.needs_reply is False and msg.review_reply["comment"] == "Sorry"
+
+    def test_a_reply_edited_on_google_keeps_its_first_time(self, gbp_account, provider):
+        provider._request = fake_pages({"reviews": [review(1, reply="Thanks")]})
+        self.sync(provider)
+        SocialAccount.objects.filter(pk=gbp_account.pk).update(inbox_last_polled_at=None)
+        edited = review(1, updated="2026-10-23T00:00:00Z", reply="Thanks a lot")
+        edited["reviewReply"]["updateTime"] = "2026-10-23T00:00:00Z"
+        provider._request = fake_pages({"reviews": [edited]})
+        self.sync(provider)
+        reply = InboxMessage.objects.get().review_reply
+        assert reply["comment"] == "Thanks a lot" and reply["first_replied_at"] == "2026-10-21T10:00:00Z"
 
     def test_a_reply_removed_on_google_is_forgotten(self, gbp_account, provider):
         provider._request = fake_pages({"reviews": [review(1, reply="Thanks")]})
@@ -323,6 +360,13 @@ class TestFilters:
         assert self.feed(inbox_client, inbox_workspace, "?needs_reply=1") == {"a", "b"}
         assert self.feed(inbox_client, inbox_workspace, "?needs_reply=1&rating=1") == {"a"}
 
+    def test_a_rejected_reply_still_needs_one(self, inbox_client, inbox_workspace, gbp_account, inbox_owner):
+        msg = make_review(inbox_workspace, gbp_account, "rej", reply={"comment": "Hm", "state": "REJECTED"})
+        assert msg.needs_reply is True
+        assert self.feed(inbox_client, inbox_workspace, "?needs_reply=1") == {"rej"}
+        url = reverse("inbox:message_detail", kwargs={"workspace_id": inbox_workspace.id, "message_id": msg.id})
+        assert "rejected this reply" in inbox_client.get(url).content.decode()
+
     def test_row_shows_rating_and_needs_reply(self, inbox_client, inbox_workspace, reviews):
         html = inbox_client.get(reverse("inbox:feed", kwargs={"workspace_id": inbox_workspace.id})).content.decode()
         assert "1 out of 5 stars" in html and "Needs reply" in html and 'name="needs_reply"' in html
@@ -375,6 +419,17 @@ class TestAiDraft:
             self.draft(inbox_client, inbox_workspace, msg)
         assert "Never promise a refund" in fake.systems[0]
         assert "positive" in fake.prompts[0]
+
+    def test_the_draft_answers_in_the_reviewer_language_and_invents_nothing(
+        self, inbox_client, inbox_workspace, gbp_account
+    ):
+        msg = make_review(inbox_workspace, gbp_account, "ar", rating=4)
+        InboxMessage.objects.filter(pk=msg.pk).update(body="خدمة ممتازة والقهوة لذيذة")
+        with patch_anthropic() as fake:
+            fake.queue({"text": "شكراً لك!"})
+            self.draft(inbox_client, inbox_workspace, msg)
+        assert "answer an Arabic review in Arabic" in fake.prompts[0]
+        assert "خدمة ممتازة" in fake.prompts[0] and "no opening hours, prices" in fake.prompts[0]
 
     def test_review_text_is_quoted_as_data(self, inbox_client, inbox_workspace, gbp_account):
         msg = make_review(inbox_workspace, gbp_account, "ai3", rating=2)
@@ -472,8 +527,44 @@ class TestAnalytics:
         loc = out["locations"][0]
         assert loc["count"] == 3 and loc["average"] == pytest.approx(3.33, abs=0.01)
         assert loc["response_rate"] == 67 and loc["median_response_hours"] == 7.0
-        assert loc["previous_average"] == 3.0 and loc["delta"] == pytest.approx(0.33, abs=0.01)
+        # Three reviews against one: shown, but not compared.
+        assert loc["previous_average"] == 3.0 and loc["low_sample"] and loc["delta"] is None
         assert out["weekly"] and sum(w["count"] for w in out["weekly"]) == 3
+
+    def test_enough_reviews_are_compared_with_the_previous_period(self, inbox_workspace, gbp_account):
+        now = timezone.now()
+        for i in range(5):
+            make_review(inbox_workspace, gbp_account, f"n{i}", rating=5, created=now - timedelta(days=2))
+            make_review(inbox_workspace, gbp_account, f"p{i}", rating=3, created=now - timedelta(days=40))
+        loc = review_stats.review_overview(SocialAccount.objects.filter(pk=gbp_account.pk), self.rng(inbox_workspace))[
+            "locations"
+        ][0]
+        assert not loc["low_sample"] and loc["delta"] == 2.0
+
+    def test_a_rejected_reply_is_not_an_answer_and_edits_keep_the_first_reply_time(self, inbox_workspace, gbp_account):
+        t = timezone.now() - timedelta(days=3)
+        make_review(
+            inbox_workspace,
+            gbp_account,
+            "rej",
+            created=t,
+            reply={"comment": "x", "update_time": t.isoformat(), "state": "REJECTED"},
+        )
+        make_review(
+            inbox_workspace,
+            gbp_account,
+            "edited",
+            created=t,
+            reply={
+                "comment": "y",
+                "update_time": (t + timedelta(hours=30)).isoformat(),
+                "first_replied_at": (t + timedelta(hours=2)).isoformat(),
+            },
+        )
+        loc = review_stats.review_overview(SocialAccount.objects.filter(pk=gbp_account.pk), self.rng(inbox_workspace))[
+            "locations"
+        ][0]
+        assert loc["response_rate"] == 50 and loc["median_response_hours"] == 2.0
 
     def test_no_reviews_is_not_a_zero(self, inbox_workspace, gbp_account):
         loc = review_stats.review_overview(SocialAccount.objects.filter(pk=gbp_account.pk), self.rng(inbox_workspace))[
