@@ -14,7 +14,6 @@ import logging
 from datetime import datetime
 from statistics import median
 
-from django.conf import settings
 from django.db.models import Min, Q
 from django.utils import timezone
 from django.utils.text import Truncator
@@ -361,5 +360,4 @@ def build_report_data(
             if with_ai
             else {"text": "The AI summary is written when the report is generated.", "source": "preview"}
         )
-    data["product_name"] = settings.BRAND_NAME
     return data

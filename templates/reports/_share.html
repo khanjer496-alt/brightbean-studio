@@ -1,2 +1,2 @@
-<label for="share-url-{{ run.id }}" class="block text-xs font-semibold text-ink-2">Anyone with this link can view the report, no sign-in needed. It expires in {{ days }} days.</label>
+<label for="share-url-{{ run.id }}" class="block text-xs font-semibold text-ink-2">Anyone with this link can view the report, no sign-in needed. It expires in {{ days }} days, or sooner if the report is deleted or its links are revoked.</label>
 <input id="share-url-{{ run.id }}" type="text" readonly value="{{ url }}" class="form-input-styled mt-1 w-full font-mono text-xs" onfocus="this.select()">

@@ -61,6 +61,7 @@ class TestPermissions:
         assert client.post(url("run", workspace, report_id=definition.id)).status_code == 403
         assert client.post(url("delete", workspace, report_id=definition.id)).status_code == 403
         assert client.post(url("run_share", workspace, run_id=ready_run.id)).status_code == 403
+        assert client.post(url("revoke_links", workspace, report_id=definition.id)).status_code == 403
 
     def test_viewer_sees_no_manage_buttons(self, client, workspace, viewer, definition):
         client.force_login(viewer)
@@ -164,6 +165,22 @@ class TestRunsAndDownloads:
         client.force_login(owner)
         response = client.post(url("run_share", workspace, run_id=ready_run.id))
         assert b"/reports/share/" in response.content and b"expires in 30 days" in response.content
+
+    def test_revoke_links(self, client, workspace, owner, definition, ready_run):
+        token = services.make_token(ready_run)
+        client.force_login(owner)
+        page = client.get(url("history", workspace, report_id=definition.id)).content.decode()
+        assert "Revoke all shared links" in page
+        response = client.post(url("revoke_links", workspace, report_id=definition.id), follow=True)
+        assert "stopped working" in response.content.decode()
+        assert services.resolve_token(token) is None
+
+    def test_run_now_over_the_limit_explains_why(self, client, workspace, owner, definition, monkeypatch):
+        monkeypatch.setattr(services, "MANUAL_RUNS_PER_HOUR", 0)
+        client.force_login(owner)
+        response = client.post(url("run", workspace, report_id=definition.id), follow=True)
+        assert response.status_code == 200 and "in the last hour" in response.content.decode()
+        assert not definition.runs.exists()
 
     def test_unfinished_run_has_no_detail_page(self, client, workspace, owner, definition):
         run = services.create_run(definition, trigger="manual")

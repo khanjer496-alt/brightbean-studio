@@ -9,4 +9,5 @@ app_name = "reports_public"
 urlpatterns = [
     path("<str:token>/", views.public_report, name="view"),
     path("<str:token>/pdf/", views.public_pdf, name="pdf"),
+    path("<str:token>/logo.png", views.public_logo, name="logo"),
 ]

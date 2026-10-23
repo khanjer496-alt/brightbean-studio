@@ -8,9 +8,12 @@ which a workspace that loses it keeps its definitions through but can't use.
 
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
 
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.http import FileResponse, Http404, HttpResponse
@@ -209,7 +212,12 @@ def report_history(request, workspace_id, report_id):
         return _not_in_plan(request, workspace)
     definition = _definition(workspace, report_id)
     runs = list(definition.runs.all()[:50])
-    context = {"definition": definition, "runs": runs, "polling": any(r.status in ("pending", "running") for r in runs)}
+    context = {
+        "definition": definition,
+        "runs": runs,
+        "polling": any(r.status in ("pending", "running") for r in runs),
+        "link_days": settings.REPORT_LINK_MAX_AGE_DAYS,
+    }
     if request.headers.get("HX-Request") and request.headers.get("HX-Target") == "report-runs":
         return render(
             request,
@@ -228,6 +236,19 @@ def report_run(request, workspace_id, report_id):
         services.queue_manual_run(definition, request.user, deliver=request.POST.get("deliver") == "on")
     except PlanLimitError as exc:
         return HttpResponse(str(exc), status=402)
+    except services.RunLimitError as exc:
+        messages.error(request, str(exc))
+    return redirect("reports:history", workspace_id=workspace.id, report_id=definition.id)
+
+
+@login_required
+@require_POST
+def report_revoke_links(request, workspace_id, report_id):
+    """Turn off every shareable link to this report, including the ones already emailed."""
+    workspace = _workspace(request, workspace_id, manage=True)
+    definition = _definition(workspace, report_id)
+    services.revoke_links(definition)
+    messages.success(request, "Every shared link to this report has stopped working. New links work as usual.")
     return redirect("reports:history", workspace_id=workspace.id, report_id=definition.id)
 
 
@@ -290,11 +311,18 @@ def _private(response):
     return response
 
 
+def _shared_run(token) -> ReportRun | None:
+    run = services.resolve_token(token)
+    if run is None or not services.reports_enabled(run.definition.workspace.organization):
+        return None
+    return run
+
+
 @never_cache
 @require_GET
 def public_report(request, token):
-    run = services.resolve_token(token)
-    if run is None or not services.reports_enabled(run.definition.workspace.organization):
+    run = _shared_run(token)
+    if run is None:
         return _private(render(request, "reports/link_expired.html", status=410))
     return _private(render(request, "reports/public.html", {"run": run, "data": run.data, "token": token}))
 
@@ -302,7 +330,25 @@ def public_report(request, token):
 @never_cache
 @require_GET
 def public_pdf(request, token):
-    run = services.resolve_token(token)
-    if run is None or not services.reports_enabled(run.definition.workspace.organization):
+    run = _shared_run(token)
+    if run is None:
         return _private(render(request, "reports/link_expired.html", status=410))
     return _private(pdf_response(run))
+
+
+@never_cache
+@require_GET
+def public_logo(request, token):
+    """The snapshot's logo for the emailed copy (mail clients block ``data:`` images)."""
+    run = _shared_run(token)
+    logo = (run.data.get("branding") or {}).get("logo", "") if run else ""
+    prefix = "data:image/png;base64,"
+    if not logo.startswith(prefix):
+        raise Http404("No logo.")
+    try:
+        body = base64.b64decode(logo[len(prefix) :], validate=True)
+    except (binascii.Error, ValueError):
+        raise Http404("No logo.") from None
+    response = HttpResponse(body, content_type="image/png")
+    response["X-Content-Type-Options"] = "nosniff"
+    return _private(response)

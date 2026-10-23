@@ -16,6 +16,7 @@ DEFAULT_ACCENT = "#0b6bcb"
 MIN_CONTRAST = 3.0  # WCAG minimum for graphical objects and large text, against white
 LOGO_MAX_BYTES = 1024 * 1024
 LOGO_BOX = (240, 96)
+LOGO_MAX_PIXELS = 25_000_000
 LOGO_CACHE_SECONDS = 600
 LOGO_TYPES = frozenset({"image/png", "image/jpeg", "image/gif", "image/webp"})
 
@@ -88,6 +89,9 @@ def _download_logo(url: str) -> str:
         if response is None or response.status_code >= 400:
             return ""
         image = Image.open(io.BytesIO(response.content))
+        # A small file can still decode to an enormous bitmap; a logo never needs one.
+        if image.width * image.height > LOGO_MAX_PIXELS:
+            return ""
         image.thumbnail(LOGO_BOX)
         out = io.BytesIO()
         image.convert("RGBA").save(out, format="PNG", optimize=True)

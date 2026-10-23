@@ -66,7 +66,7 @@ class TestValidation:
             make(workspace, frequency="weekly").full_clean()
         assert "recipients" in exc.value.message_dict
         with pytest.raises(ValidationError) as exc:
-            make(workspace, frequency="monthly", day_of_month=31, recipients=["a@example.com"]).full_clean()
+            make(workspace, frequency="monthly", day_of_month=32, recipients=["a@example.com"]).full_clean()
         assert "day_of_month" in exc.value.message_dict
 
     def test_accent_must_be_hex(self, workspace):
@@ -125,6 +125,16 @@ class TestSlots:
         d = make(workspace, frequency="monthly", day_of_month=5, send_time=time(7), recipients=["a@example.com"])
         assert periods.due_slot(d, datetime(2026, 10, 4, 23, tzinfo=UTC)) is None
         assert periods.due_slot(d, datetime(2026, 10, 5, 7, tzinfo=UTC))[0] == "M2026-10"
+
+    def test_monthly_on_the_31st_uses_the_last_day_of_short_months(self, workspace):
+        workspace.timezone = "Asia/Dubai"
+        d = make(workspace, frequency="monthly", day_of_month=31, send_time=time(9), recipients=["a@example.com"])
+        d.full_clean()
+        # 09:00 in Dubai (UTC+4) on 30 Nov and 28 Feb; 31 Dec stays the 31st.
+        assert periods.due_slot(d, datetime(2026, 11, 30, 4, 59, tzinfo=UTC)) is None
+        assert periods.due_slot(d, datetime(2026, 11, 30, 5, 0, tzinfo=UTC))[0] == "M2026-11"
+        assert periods.due_slot(d, datetime(2027, 2, 28, 5, 0, tzinfo=UTC))[0] == "M2027-02"
+        assert periods.next_fire(d, datetime(2026, 12, 1, tzinfo=UTC)) == datetime(2026, 12, 31, 5, 0, tzinfo=UTC)
 
     def test_slot_before_anchor_is_skipped(self, workspace):
         d = self.weekly(workspace, schedule_anchor=datetime(2026, 10, 21, tzinfo=UTC))

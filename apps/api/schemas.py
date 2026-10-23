@@ -1446,6 +1446,12 @@ class ReportResponse(Schema):
     latest_run: ReportRunResponse | None = None
 
 
+class ReportsListResponse(Schema):
+    reports: list[ReportResponse]
+    limit: int
+    next_cursor: str | None = Field(None, description="Pass back as ``cursor`` for the next page; null on the last.")
+
+
 # ---------------------------------------------------------------------------
 # Shared list / delete envelopes
 # ---------------------------------------------------------------------------

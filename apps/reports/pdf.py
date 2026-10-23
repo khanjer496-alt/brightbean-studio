@@ -1,10 +1,15 @@
 """The report as a PDF, drawn from the stored snapshot with fpdf2.
 
-fpdf2 is pure Python, so it needs no system libraries and no headless browser
-(the Docker image ships neither). Charts are the same static SVGs the web page
-shows, embedded as vector graphics. The built-in PDF fonts only cover Latin-1,
-so text is mapped to it first: typographic punctuation is kept as its plain
-equivalent, and characters outside Latin-1 (emoji, other scripts) are dropped.
+fpdf2 is pure Python apart from the HarfBuzz shaping wheel, so it needs no
+system libraries and no headless browser (the Docker image ships neither).
+Charts are the same static SVGs the web page shows, embedded as vector graphics.
+
+Text is set in the bundled Noto fonts (SIL OFL 1.1, ``apps/reports/fonts``):
+Noto Sans for Latin, Greek and Cyrillic, Noto Sans Arabic and monochrome Noto
+Emoji as fallbacks. HarfBuzz joins Arabic letters and fpdf2's bidi pass orders
+right-to-left runs, so an Arabic caption reads as written. A paragraph that
+starts in a right-to-left script is right-aligned. Characters none of the fonts
+has (CJK, for now) are left out rather than drawn as empty boxes.
 """
 
 from __future__ import annotations
@@ -12,6 +17,9 @@ from __future__ import annotations
 import base64
 import io
 import re
+import unicodedata
+from functools import lru_cache
+from pathlib import Path
 
 from fpdf import FPDF
 
@@ -34,26 +42,55 @@ LINE = (229, 231, 235)
 GOOD = (21, 128, 61)
 BAD = (185, 28, 28)
 
-_PUNCTUATION = str.maketrans(
-    {
-        "‘": "'",
-        "’": "'",
-        "“": '"',
-        "”": '"',
-        "–": "-",
-        "—": "-",
-        "−": "-",
-        "…": "...",
-        " ": " ",
-        "•": "-",
-    }
+FONT_DIR = Path(__file__).resolve().parent / "fonts"
+FONT = "NotoSans"
+# (family, style, file). The first family is the body font; the others are fallbacks, in order.
+FONT_FILES = (
+    (FONT, "", "NotoSans-Regular.ttf"),
+    (FONT, "B", "NotoSans-Bold.ttf"),
+    ("NotoSansArabic", "", "NotoSansArabic-Regular.ttf"),
+    ("NotoSansArabic", "B", "NotoSansArabic-Bold.ttf"),
+    ("NotoEmoji", "", "NotoEmoji-Regular.ttf"),
 )
+FALLBACK_FONTS = ("NotoSansArabic", "NotoEmoji")
+# Format and joiner characters HarfBuzz consumes even where a font's cmap lacks them.
+_SHAPING_MARKS = frozenset({0x200C, 0x200D, 0x200E, 0x200F, 0xFE0E, 0xFE0F})
+_RTL = frozenset({"R", "AL"})
+_LTR = frozenset({"L"})
 
 
-def latin(text) -> str:
-    """``text`` as something the built-in fonts can draw."""
-    cleaned = str(text if text is not None else "").translate(_PUNCTUATION)
-    return " ".join(cleaned.encode("latin-1", "ignore").decode("latin-1").split())
+@lru_cache(maxsize=1)
+def _coverage() -> frozenset[int]:
+    """Every code point at least one bundled font can draw."""
+    from fontTools.ttLib import TTFont
+
+    points: set[int] = set(_SHAPING_MARKS)
+    for _family, _style, name in FONT_FILES:
+        with TTFont(FONT_DIR / name, lazy=True) as font:
+            points.update(font.getBestCmap())
+    return frozenset(points)
+
+
+def clean(text) -> str:
+    """``text`` on one line, keeping only characters the bundled fonts can draw."""
+    covered = _coverage()
+    kept = (" " if ch.isspace() else ch for ch in str(text if text is not None else ""))
+    return " ".join("".join(ch for ch in kept if ch == " " or ord(ch) in covered).split())
+
+
+def is_rtl(text: str) -> bool:
+    """Whether the first strongly directional character is right-to-left (Arabic, Hebrew…)."""
+    for ch in text:
+        kind = unicodedata.bidirectional(ch)
+        if kind in _RTL:
+            return True
+        if kind in _LTR:
+            return False
+    return False
+
+
+def _align(text: str, default: str = "L") -> str:
+    return "R" if is_rtl(text) else default
 
 
 def _rgb(hex_color: str) -> tuple[int, int, int]:
@@ -75,27 +112,46 @@ def _image(data_uri: str) -> io.BytesIO | None:
 
 
 class _Report(FPDF):
-    def __init__(self, data: dict):
+    def __init__(self, data: dict, total_pages: int | None = None):
         super().__init__(format="A4", unit="mm")
         self.data = data
+        # fpdf2's "{nb}" alias is patched in after layout, which shaped text runs don't survive,
+        # so the page count comes from a first pass instead.
+        self.total_pages = total_pages
         self.accent = _rgb(data["branding"]["accent"])
+        for family, style, name in FONT_FILES:
+            self.add_font(family, style, FONT_DIR / name)
+        self.set_fallback_fonts(list(FALLBACK_FONTS), exact_match=False)
+        self.set_text_shaping(True)
         self.set_margins(MARGIN, MARGIN, MARGIN)
         self.set_auto_page_break(auto=True, margin=20)
-        self.set_title(latin(data["title"]))
-        self.set_author(latin(data["branding"]["agency"]))
-        self.set_creator(latin(data["branding"]["product"]) or latin(data["branding"]["agency"]))
+        self.set_title(clean(data["title"]))
+        self.set_author(clean(data["branding"]["agency"]))
+        self.set_creator(clean(data["branding"]["product"]) or clean(data["branding"]["agency"]))
         self.set_lang("en")
+
+    # fpdf2 switches to a fallback font inside a text run without telling the
+    # page state, so the next run in the "same" font would draw its glyphs with
+    # the fallback (garbled text after an Arabic or emoji run). Every text call
+    # therefore re-selects its font explicitly.
+    def cell(self, *args, **kwargs):
+        self.current_font_is_set_on_page = False
+        return super().cell(*args, **kwargs)
+
+    def multi_cell(self, *args, **kwargs):
+        self.current_font_is_set_on_page = False
+        return super().multi_cell(*args, **kwargs)
 
     def footer(self):
         self.set_y(-14)
-        self.set_font("Helvetica", "", 8)
+        self.set_font(FONT, "", 8)
         self.set_text_color(*MUTED)
         credit = self.data["branding"]["product"]
-        left = latin(f"{self.data['branding']['agency']}  |  {self.data['workspace']}")
+        left = clean(f"{self.data['branding']['agency']} | {self.data['workspace']}")
         self.cell(CONTENT_W / 2, 6, left, align="L")
-        right = f"Page {self.page_no()} of {{nb}}"
+        right = f"Page {self.page_no()}" + (f" of {self.total_pages}" if self.total_pages else "")
         if credit:
-            right = f"Prepared with {latin(credit)}  |  " + right
+            right = f"Prepared with {clean(credit)} | " + right
         self.cell(CONTENT_W / 2, 6, right, align="R")
 
 
@@ -103,9 +159,9 @@ def _heading(pdf: _Report, text: str):
     if pdf.will_page_break(30):
         pdf.add_page()
     pdf.ln(4)
-    pdf.set_font("Helvetica", "B", 13)
+    pdf.set_font(FONT, "B", 13)
     pdf.set_text_color(*INK)
-    pdf.cell(0, 7, latin(text), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 7, clean(text), new_x="LMARGIN", new_y="NEXT")
     pdf.set_draw_color(*pdf.accent)
     pdf.set_line_width(0.6)
     pdf.line(MARGIN, pdf.get_y(), MARGIN + 18, pdf.get_y())
@@ -128,31 +184,33 @@ def _cover(pdf: _Report):
         x = MARGIN + 46
     pdf.set_xy(x, 10)
     pdf.set_text_color(*text_color)
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.cell(0, 8, latin(b["agency"]), new_x="LEFT", new_y="NEXT")
+    pdf.set_font(FONT, "B", 16)
+    pdf.cell(0, 8, clean(b["agency"]), new_x="LEFT", new_y="NEXT")
     pdf.set_x(x)
-    pdf.set_font("Helvetica", "", 10)
-    pdf.cell(0, 6, latin(data["workspace"]), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font(FONT, "", 10)
+    pdf.cell(0, 6, clean(data["workspace"]), new_x="LMARGIN", new_y="NEXT")
     pdf.set_y(42)
     pdf.set_text_color(*INK)
-    pdf.set_font("Helvetica", "B", 20)
-    pdf.multi_cell(0, 9, latin(data["title"]), new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 10)
+    pdf.set_font(FONT, "B", 20)
+    title = clean(data["title"])
+    pdf.multi_cell(0, 9, title, align=_align(title), new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font(FONT, "", 10)
     pdf.set_text_color(*MUTED)
     period = data["period"]
     line = f"{period['label']}  ({period['days']} days, {period['timezone']})"
     if period["compare"]:
         line += f"   Compared with {period['previous_label']}"
-    pdf.multi_cell(0, 5, latin(line), new_x="LMARGIN", new_y="NEXT")
+    pdf.multi_cell(0, 5, clean(line), new_x="LMARGIN", new_y="NEXT")
 
 
 def _summary(pdf: _Report):
     summary = pdf.data["ai_summary"]
     _heading(pdf, "What changed and what to do next")
-    pdf.set_font("Helvetica", "", 10.5)
+    pdf.set_font(FONT, "", 10.5)
     pdf.set_text_color(*INK)
     for paragraph in [p for p in summary["text"].split("\n") if p.strip()]:
-        pdf.multi_cell(0, 5.6, latin(paragraph), new_x="LMARGIN", new_y="NEXT")
+        text = clean(paragraph)
+        pdf.multi_cell(0, 5.6, text, align=_align(text), new_x="LMARGIN", new_y="NEXT")
         pdf.ln(1.5)
 
 
@@ -174,18 +232,18 @@ def _kpis(pdf: _Report):
         pdf.set_line_width(0.3)
         pdf.rect(x, row_y, box_w, box_h)
         pdf.set_xy(x + 3, row_y + 2.5)
-        pdf.set_font("Helvetica", "", 8.5)
+        pdf.set_font(FONT, "", 8.5)
         pdf.set_text_color(*MUTED)
-        pdf.cell(box_w - 6, 4, latin(k["label"]))
+        pdf.cell(box_w - 6, 4, clean(k["label"]))
         pdf.set_xy(x + 3, row_y + 8)
-        pdf.set_font("Helvetica", "B", 15)
+        pdf.set_font(FONT, "B", 15)
         pdf.set_text_color(*INK)
-        pdf.cell(box_w - 6, 7, latin(k["display"]))
+        pdf.cell(box_w - 6, 7, clean(k["display"]))
         if k["delta_display"]:
             pdf.set_xy(x + 3, row_y + 16)
-            pdf.set_font("Helvetica", "B", 8.5)
+            pdf.set_font(FONT, "B", 8.5)
             pdf.set_text_color(*(GOOD if k["tone"] == "good" else BAD if k["tone"] == "bad" else MUTED))
-            pdf.cell(box_w - 6, 4, latin(f"{k['delta_display']} vs previous"))
+            pdf.cell(box_w - 6, 4, clean(f"{k['delta_display']} vs previous"))
         if col == cols - 1 or i == len(kpis) - 1:
             pdf.set_y(row_y + box_h + gap)
     pdf.set_text_color(*INK)
@@ -197,12 +255,12 @@ def _trends(pdf: _Report):
     for t in pdf.data["trends"]:
         if pdf.will_page_break(70):
             pdf.add_page()
-        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_font(FONT, "B", 10)
         pdf.set_text_color(*INK)
-        pdf.cell(0, 6, latin(f"{t['label']} per day  (total {t['total_display']})"), new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(0, 6, clean(f"{t['label']} per day  (total {t['total_display']})"), new_x="LMARGIN", new_y="NEXT")
         svg = charts.line_chart(t["label"], t["labels"], t["current"], t["previous"], accent)
         pdf.image(_svg(svg), x=MARGIN, w=CONTENT_W)
-        pdf.set_font("Helvetica", "", 8)
+        pdf.set_font(FONT, "", 8)
         pdf.set_text_color(*MUTED)
         legend = "Solid line: this period."
         if t["previous"]:
@@ -212,19 +270,19 @@ def _trends(pdf: _Report):
 
 
 def _table(pdf: _Report, headers: list[str], widths: list[float], rows: list[list[str]]):
-    pdf.set_font("Helvetica", "B", 8.5)
+    pdf.set_font(FONT, "B", 8.5)
     pdf.set_text_color(*MUTED)
     pdf.set_draw_color(*LINE)
     for h, w, i in zip(headers, widths, range(len(headers)), strict=True):
-        pdf.cell(w, 6, latin(h), border="B", align="L" if i == 0 else "R")
+        pdf.cell(w, 6, clean(h), border="B", align="L" if i == 0 else "R")
     pdf.ln()
-    pdf.set_font("Helvetica", "", 9)
+    pdf.set_font(FONT, "", 9)
     pdf.set_text_color(*INK)
     for row in rows:
         if pdf.will_page_break(7):
             pdf.add_page()
         for value, w, i in zip(row, widths, range(len(row)), strict=True):
-            pdf.cell(w, 6.5, latin(value), border="B", align="L" if i == 0 else "R")
+            pdf.cell(w, 6.5, clean(value), border="B", align="L" if i == 0 else "R")
         pdf.ln()
 
 
@@ -254,7 +312,7 @@ def _top_posts(pdf: _Report):
     _heading(pdf, "Top posts")
     posts = pdf.data["top_posts"]
     if not posts:
-        pdf.set_font("Helvetica", "", 10)
+        pdf.set_font(FONT, "", 10)
         pdf.cell(0, 6, "No published posts with reported views in this period.", new_x="LMARGIN", new_y="NEXT")
         return
     for post in posts:
@@ -267,31 +325,32 @@ def _top_posts(pdf: _Report):
             pdf.image(thumb, x=MARGIN, y=top, w=20, h=20, keep_aspect_ratio=True)
             text_x = MARGIN + 24
         pdf.set_xy(text_x, top)
-        pdf.set_font("Helvetica", "", 10)
+        pdf.set_font(FONT, "", 10)
         pdf.set_text_color(*INK)
-        pdf.multi_cell(CONTENT_W - (text_x - MARGIN), 5, latin(post["caption"]), new_x="LMARGIN", new_y="NEXT")
+        caption = clean(post["caption"])
+        pdf.multi_cell(CONTENT_W - (text_x - MARGIN), 5, caption, align=_align(caption), new_x="LMARGIN", new_y="NEXT")
         pdf.set_x(text_x)
-        pdf.set_font("Helvetica", "", 8.5)
+        pdf.set_font(FONT, "", 8.5)
         pdf.set_text_color(*MUTED)
         meta = (
             f"{post['network']}  |  {post['published']}  |  {post['format']}  |  "
             f"{post['exposure']} views  |  {post['engagements']} engagements  |  {post['rate']} rate"
         )
-        pdf.multi_cell(CONTENT_W - (text_x - MARGIN), 4.5, latin(meta), new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(CONTENT_W - (text_x - MARGIN), 4.5, clean(meta), new_x="LMARGIN", new_y="NEXT")
         pdf.set_y(max(pdf.get_y(), top + 20) + 3)
 
 
 def _activity(pdf: _Report):
     _heading(pdf, "Posting activity")
     a = pdf.data["activity"]
-    pdf.set_font("Helvetica", "", 10)
+    pdf.set_font(FONT, "", 10)
     pdf.set_text_color(*INK)
     summary = f"{a['total']} posts published."
     if a["busiest_weekday"]:
         summary += f" Busiest day: {a['busiest_weekday']}."
     if a["formats"]:
         summary += " Formats: " + ", ".join(f"{f['posts']} {f['format'].lower()}" for f in a["formats"]) + "."
-    pdf.multi_cell(0, 5.5, latin(summary), new_x="LMARGIN", new_y="NEXT")
+    pdf.multi_cell(0, 5.5, clean(summary), new_x="LMARGIN", new_y="NEXT")
     if pdf.will_page_break(65):
         pdf.add_page()
     svg = charts.column_chart("Posts per day", a["labels"], a["counts"], pdf.data["branding"]["accent"])
@@ -301,12 +360,12 @@ def _activity(pdf: _Report):
 def _inbox(pdf: _Report):
     _heading(pdf, "Inbox response")
     i = pdf.data["inbox"]
-    pdf.set_font("Helvetica", "", 10)
+    pdf.set_font(FONT, "", 10)
     pdf.set_text_color(*INK)
     pdf.multi_cell(
         0,
         5.5,
-        latin(
+        clean(
             f"{i['received']} messages received, {i['replied']} replied to ({i['reply_rate']}). "
             f"Median time to first reply: {i['median_response']}."
         ),
@@ -316,10 +375,14 @@ def _inbox(pdf: _Report):
 
 
 def render_pdf(data: dict) -> bytes:
-    """The finished report as PDF bytes."""
+    """The finished report as PDF bytes (laid out twice: the first pass counts the pages)."""
+    pages = _layout(data, None).pages_count
+    return bytes(_layout(data, pages).output())
+
+
+def _layout(data: dict, total_pages: int | None) -> _Report:
     sections = data["sections"]
-    pdf = _Report(data)
-    pdf.alias_nb_pages("{nb}")
+    pdf = _Report(data, total_pages)
     pdf.add_page()
     _cover(pdf)
     if SECTION_AI_SUMMARY in sections and data.get("ai_summary"):
@@ -336,4 +399,4 @@ def render_pdf(data: dict) -> bytes:
         _activity(pdf)
     if SECTION_INBOX in sections and data.get("inbox"):
         _inbox(pdf)
-    return bytes(pdf.output())
+    return pdf

@@ -97,7 +97,26 @@ class TestExecution:
         definition.white_label = True
         definition.save()
         services.execute_run(self.make_run(definition, deliver=True).id)
-        assert "PostDelegate" not in next(m for m in mail.outbox if m.to == ["boss@client.test"]).body
+        msg = next(m for m in mail.outbox if m.to == ["boss@client.test"])
+        assert "PostDelegate" not in msg.body and "PostDelegate" not in msg.alternatives[0][0]
+        assert "PostDelegate" not in msg.from_email and "Bright Agency" in msg.from_email
+
+    def test_sender_names_the_agency_via_the_product(self, definition, seeded, settings):
+        settings.BRAND_NAME = "PostDelegate"
+        settings.DEFAULT_FROM_EMAIL = "PostDelegate <reports@postdelegate.test>"
+        services.execute_run(self.make_run(definition, deliver=True).id)
+        msg = next(m for m in mail.outbox if m.to == ["boss@client.test"])
+        assert msg.from_email == "Bright Agency via PostDelegate <reports@postdelegate.test>"
+
+    def test_email_out_of_retries_still_makes_the_report_ready(self, definition, seeded):
+        run = self.make_run(definition, deliver=True)
+        with patch("apps.reports.services.send_or_raise", side_effect=RuntimeError("smtp down")):
+            for _ in range(services.MAX_ATTEMPTS):
+                ReportRun.objects.filter(pk=run.pk).update(next_attempt_at=None)
+                services.execute_run(run.id)
+        run.refresh_from_db()
+        assert run.status == "succeeded" and run.emailed_to == [] and run.email_error
+        assert Notification.objects.filter(event_type=EventType.REPORT_GENERATED).count() == 1
 
     def test_announces_once_to_report_managers_only(self, definition, seeded, owner, viewer, client_user):
         run = services.execute_run(self.make_run(definition).id)
@@ -167,6 +186,15 @@ class TestExecution:
         run.refresh_from_db()
         assert run.status == "pending"
 
+    def test_stale_run_out_of_attempts_is_failed_not_requeued(self, definition):
+        run = self.make_run(definition)
+        ReportRun.objects.filter(pk=run.pk).update(
+            status="running", started_at=timezone.now() - timedelta(hours=1), attempts=services.MAX_ATTEMPTS
+        )
+        assert services.reap_stale_runs() == 1
+        run.refresh_from_db()
+        assert run.status == "failed" and run.error
+
     def test_run_now_queues_a_task(self, definition, owner):
         run = services.queue_manual_run(definition, owner)
         assert run.status == "pending" and run.requested_by == owner
@@ -177,6 +205,22 @@ class TestExecution:
         set_plan(workspace.organization, "team")
         with pytest.raises(PlanLimitError):
             services.queue_manual_run(definition, owner)
+
+    def test_run_now_limits(self, definition, owner, monkeypatch):
+        monkeypatch.setattr(services, "DELIVERED_RUNS_PER_DAY", 1)
+        services.queue_manual_run(definition, owner, deliver=True)
+        with pytest.raises(services.RunLimitError):
+            services.queue_manual_run(definition, owner, deliver=True)
+        services.queue_manual_run(definition, owner)  # building without emailing still works
+        monkeypatch.setattr(services, "MANUAL_RUNS_PER_HOUR", 2)
+        with pytest.raises(services.RunLimitError):
+            services.queue_manual_run(definition, owner)
+
+    def test_run_now_with_delivery_needs_recipients(self, definition, owner):
+        definition.recipients = []
+        definition.save()
+        with pytest.raises(services.RunLimitError):
+            services.queue_manual_run(definition, owner, deliver=True)
 
 
 class TestShareLinks:
@@ -199,6 +243,37 @@ class TestShareLinks:
     def test_forged_or_foreign_tokens_fail(self, ready):
         assert services.resolve_token("garbage") is None
         assert services.resolve_token(signing.dumps({"run": str(ready.id)}, salt="other")) is None
+
+    def test_revoking_stops_existing_links_only(self, ready):
+        token = services.make_token(ready)
+        services.revoke_links(ready.definition)
+        assert services.resolve_token(token) is None
+        ready.definition.refresh_from_db()
+        ready.refresh_from_db()
+        assert services.resolve_token(services.make_token(ready)) == ready
+
+    def test_archived_workspace_or_deleted_report_stops_links(self, ready, workspace):
+        token = services.make_token(ready)
+        workspace.is_archived = True
+        workspace.save(update_fields=["is_archived"])
+        assert services.resolve_token(token) is None
+        workspace.is_archived = False
+        workspace.save(update_fields=["is_archived"])
+        ready.definition.delete()
+        assert services.resolve_token(token) is None
+
+    def test_logo_is_served_for_the_email(self, client, ready):
+        import base64
+
+        png = base64.b64encode(b"\x89PNG\r\n\x1a\nfake").decode()
+        ready.data["branding"]["logo"] = f"data:image/png;base64,{png}"
+        ready.save(update_fields=["data"])
+        token = services.make_token(ready)
+        r = client.get(f"/reports/share/{token}/logo.png")
+        assert r.status_code == 200 and r["Content-Type"] == "image/png" and r.content.startswith(b"\x89PNG")
+        ready.data["branding"]["logo"] = ""
+        ready.save(update_fields=["data"])
+        assert client.get(f"/reports/share/{token}/logo.png").status_code == 404
 
     def test_unfinished_run_has_no_link(self, definition):
         run = services.create_run(definition, trigger="manual")

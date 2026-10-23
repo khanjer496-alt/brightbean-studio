@@ -73,7 +73,7 @@ class ReportDefinitionForm(forms.ModelForm):
                     )
                 ],
             ),
-            "day_of_month": forms.NumberInput(attrs={"class": INPUT, "min": 1, "max": 28}),
+            "day_of_month": forms.NumberInput(attrs={"class": INPUT, "min": 1, "max": 31}),
             "send_time": forms.TimeInput(attrs={"type": "time", "class": INPUT}, format="%H:%M"),
         }
         labels = {

@@ -191,7 +191,7 @@ api.add_router("/mcp", mcp_router, auth=McpAuth())
 def _http_error_handler(request: HttpRequest, exc: HttpError) -> HttpResponse:
     body, headers = (
         _parse_quota_message(exc.message)
-        if exc.status_code == 429
+        if exc.status_code == 429 and exc.message.startswith("rate_limited")
         else (
             {"error": _slug_for(exc.status_code), "detail": exc.message},
             {},

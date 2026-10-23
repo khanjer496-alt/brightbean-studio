@@ -10,6 +10,7 @@ partial day would read as a dip.
 
 from __future__ import annotations
 
+import calendar
 from datetime import date, datetime, timedelta
 
 from apps.analytics.ranges import CUSTOM, AnalyticsRange, local_today, workspace_tzinfo
@@ -50,7 +51,9 @@ def _slot(definition: ReportDefinition, tz, day: date) -> tuple[str, datetime]:
         iso_year, iso_week, _ = week_start.isocalendar()
         key = f"W{iso_year}-{iso_week:02d}"
     else:
-        fire_day = day.replace(day=definition.day_of_month)
+        # The 31st fires on the 30th in a 30-day month and on the 28th or 29th in February.
+        last = calendar.monthrange(day.year, day.month)[1]
+        fire_day = day.replace(day=min(definition.day_of_month, last))
         key = f"M{day.year}-{day.month:02d}"
     return key, datetime.combine(fire_day, definition.send_time, tzinfo=tz)
 

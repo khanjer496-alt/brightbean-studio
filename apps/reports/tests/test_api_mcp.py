@@ -29,9 +29,9 @@ def _clear_throttle():
     cache.delete("agent_api:auth_fail:127.0.0.1")
 
 
-def make_client(workspace, owner, seeded, permissions):
+def make_client(workspace, owner, accounts, permissions):
     key = key_services.issue_api_key(
-        workspace=workspace, social_accounts=[seeded[0]], issued_by=owner, name="rep", permissions=permissions
+        workspace=workspace, social_accounts=list(accounts), issued_by=owner, name="rep", permissions=permissions
     )
     return SecureClient(HTTP_AUTHORIZATION=f"Bearer {key.plaintext_token}")
 
@@ -44,6 +44,12 @@ def api(workspace, owner, seeded, definition):
 @pytest.fixture
 def read_only_api(workspace, owner, seeded, definition):
     return make_client(workspace, owner, seeded, ["view_analytics"])
+
+
+@pytest.fixture
+def narrow_api(workspace, owner, seeded, definition):
+    """A key allowlisted on Instagram only."""
+    return make_client(workspace, owner, seeded[:1], list(PERMISSION_KEYS))
 
 
 def rpc(client, name, arguments=None):
@@ -59,7 +65,8 @@ class TestRest:
     def test_list(self, api, definition):
         r = api.get("/api/v1/reports/")
         assert r.status_code == 200
-        [item] = r.json()
+        [item] = r.json()["reports"]
+        assert r.json()["next_cursor"] is None
         assert item["id"] == str(definition.id) and item["recipients"] == 1 and item["latest_run"] is None
 
     def test_run_then_latest(self, api, definition):
@@ -81,6 +88,23 @@ class TestRest:
         other = Workspace.objects.create(organization=workspace.organization, name="Other")
         d = ReportDefinition.objects.create(workspace=other, name="X")
         assert api.post(f"/api/v1/reports/{d.id}/run").status_code == 404
+
+    def test_allowlist_hides_reports_covering_other_accounts(self, narrow_api, definition, seeded):
+        # The definition covers every account, LinkedIn included: a key limited to Instagram can't see it.
+        assert narrow_api.get("/api/v1/reports/").json()["reports"] == []
+        assert narrow_api.get(f"/api/v1/reports/{definition.id}/runs/latest").status_code == 404
+        assert narrow_api.post(f"/api/v1/reports/{definition.id}/run").status_code == 404
+        definition.social_accounts.set([seeded[0]])
+        [item] = narrow_api.get("/api/v1/reports/").json()["reports"]
+        assert item["id"] == str(definition.id)
+        definition.social_accounts.add(seeded[1])
+        assert narrow_api.get("/api/v1/reports/").json()["reports"] == []
+
+    def test_run_now_is_rate_limited(self, api, definition, monkeypatch):
+        monkeypatch.setattr(services, "MANUAL_RUNS_PER_HOUR", 1)
+        assert api.post(f"/api/v1/reports/{definition.id}/run").status_code == 202
+        r = api.post(f"/api/v1/reports/{definition.id}/run")
+        assert r.status_code == 429 and "last hour" in r.json()["detail"]
 
     def test_plan_gate(self, api, definition, settings, workspace):
         settings.BILLING_ENABLED = True
@@ -118,6 +142,11 @@ class TestMcp:
     def test_run_needs_manage_permission(self, read_only_api, definition):
         body = rpc(read_only_api, "run_report", {"report_id": str(definition.id)})
         assert "error" in body and "Permission denied" in body["error"]["message"]
+
+    def test_allowlist_applies(self, narrow_api, definition):
+        assert text(rpc(narrow_api, "list_reports"))["reports"] == []
+        body = rpc(narrow_api, "run_report", {"report_id": str(definition.id)})
+        assert "error" in body and "not found" in body["error"]["message"]
 
     def test_unknown_report(self, api):
         body = rpc(api, "get_latest_report_run", {"report_id": "00000000-0000-0000-0000-000000000000"})

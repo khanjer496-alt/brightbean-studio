@@ -12,7 +12,7 @@ from apps.billing.tests.support import set_plan
 from apps.reports import branding, periods
 from apps.reports.builder import build_report_data, fallback_summary
 from apps.reports.models import DEFAULT_SECTIONS, SECTION_KEYS
-from apps.reports.pdf import latin, render_pdf
+from apps.reports.pdf import clean, is_rtl, render_pdf
 
 pytestmark = pytest.mark.django_db
 
@@ -120,9 +120,28 @@ class TestPdf:
         make_post(workspace, seeded[0], timezone.now() - timedelta(days=1), "Café “quotes” — 日本語 🎉")
         assert render_pdf(build(definition, with_ai=False)).startswith(b"%PDF-")
 
-    def test_latin_mapping(self):
-        assert latin("It’s “fine” — ok… 🎉") == 'It\'s "fine" - ok...'
-        assert latin("日本語") == ""
+    def test_text_keeps_arabic_emoji_and_punctuation(self):
+        assert clean("It’s “fine” — ok… 🎉") == "It’s “fine” — ok… 🎉"
+        assert clean("قهوة\nجديدة  ☕️") == "قهوة جديدة ☕️"
+        # No bundled font draws CJK yet: it is left out rather than drawn as empty boxes.
+        assert clean("日本語 ok") == "ok"
+
+    def test_rtl_detection(self):
+        assert is_rtl("قهوة جديدة New") and is_rtl("123 قهوة")
+        assert not is_rtl("New قهوة") and not is_rtl("123")
+
+    def test_arabic_text_is_embedded_shaped(self, definition, seeded, workspace):
+        """The PDF embeds the Arabic font and draws the joined (presentation) glyphs, not isolated letters."""
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.analytics.tests.helpers import make_post
+
+        definition.name = "تقرير شهري"
+        make_post(workspace, seeded[0], timezone.now() - timedelta(days=1), "قهوة جديدة وصلت اليوم ☕")
+        pdf = render_pdf(build(definition, with_ai=False))
+        assert b"NotoSansArabic" in pdf and b"NotoEmoji" in pdf and b"NotoSans" in pdf
 
     def test_empty_workspace_still_renders(self, definition):
         assert render_pdf(build(definition, with_ai=False)).startswith(b"%PDF-")

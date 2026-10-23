@@ -9,13 +9,13 @@
         <span class="flex h-12 items-center rounded-lg bg-white px-3"><img src="{{ data.branding.logo }}" alt="{{ data.branding.agency }}" class="h-9 w-auto max-w-40 object-contain"></span>
         {% endif %}
         <div class="min-w-0">
-            <p class="m-0 text-lg font-bold leading-tight">{{ data.branding.agency }}</p>
-            <p class="m-0 text-sm opacity-90">{{ data.workspace }}</p>
+            <p class="m-0 text-lg font-bold leading-tight" dir="auto">{{ data.branding.agency }}</p>
+            <p class="m-0 text-sm opacity-90" dir="auto">{{ data.workspace }}</p>
         </div>
     </header>
 
     <div class="px-5 pb-8 pt-6 sm:px-8">
-        <h1 id="report-title" class="m-0 text-2xl font-bold tracking-tight text-gray-900">{{ data.title }}</h1>
+        <h1 id="report-title" class="m-0 text-2xl font-bold tracking-tight text-gray-900" dir="auto">{{ data.title }}</h1>
         <p class="mt-1 text-sm text-gray-600">
             {{ data.period.label }} &middot; {{ data.period.days }} days
             {% if data.period.compare %}&middot; compared with {{ data.period.previous_label }}{% endif %}
@@ -25,7 +25,7 @@
         <section class="mt-6" aria-labelledby="report-summary-h">
             <h2 id="report-summary-h" class="m-0 mb-2 text-base font-semibold text-gray-900">What changed and what to do next</h2>
             <div class="space-y-3 text-[15px] leading-relaxed text-gray-800">
-                {% for paragraph in data.ai_summary.text.splitlines %}{% if paragraph.strip %}<p class="m-0">{{ paragraph }}</p>{% endif %}{% endfor %}
+                {% for paragraph in data.ai_summary.text.splitlines %}{% if paragraph.strip %}<p class="m-0" dir="auto">{{ paragraph }}</p>{% endif %}{% endfor %}
             </div>
         </section>
         {% endif %}
@@ -122,7 +122,7 @@
                 <li class="flex gap-3 rounded-xl border border-gray-200 p-3">
                     {% if p.thumb %}<img src="{{ p.thumb }}" alt="" class="h-16 w-16 shrink-0 rounded-lg object-cover">{% endif %}
                     <div class="min-w-0">
-                        <p class="m-0 break-words text-sm text-gray-900">{{ p.caption }}</p>
+                        <p class="m-0 break-words text-sm text-gray-900" dir="auto">{{ p.caption }}</p>
                         <p class="m-0 mt-1 text-xs text-gray-600">{{ p.network }} &middot; {{ p.published }} &middot; {{ p.format }} &middot; <strong class="text-gray-900">{{ p.exposure }}</strong> views &middot; {{ p.engagements }} engagements &middot; {{ p.rate }} rate</p>
                     </div>
                 </li>

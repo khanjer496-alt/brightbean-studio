@@ -88,12 +88,16 @@ class ReportDefinition(models.Model):
 
     frequency = models.CharField(max_length=8, choices=Frequency.choices, default=Frequency.NONE)
     weekday = models.PositiveSmallIntegerField(default=0, help_text="0 = Monday … 6 = Sunday (weekly).")
-    day_of_month = models.PositiveSmallIntegerField(default=1, help_text="1–28 (monthly).")
+    day_of_month = models.PositiveSmallIntegerField(
+        default=1, help_text="1–31 (monthly); a month without that day uses its last day."
+    )
     send_time = models.TimeField(default=dt.time(9, 0))
     # Runs are only created for schedule occurrences after this instant, so
     # switching a schedule on mid-week doesn't fire this week's earlier slot.
     schedule_anchor = models.DateTimeField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
+    # Part of every shareable link's signed payload: replacing it revokes every link already handed out.
+    share_key = models.UUIDField(default=uuid.uuid4, editable=False)
 
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
@@ -136,8 +140,8 @@ class ReportDefinition(models.Model):
 
         if self.frequency == self.Frequency.WEEKLY and not 0 <= self.weekday <= 6:
             errors["weekday"] = "Pick a day of the week."
-        if self.frequency == self.Frequency.MONTHLY and not 1 <= self.day_of_month <= 28:
-            errors["day_of_month"] = "Pick a day between 1 and 28, so every month has one."
+        if self.frequency == self.Frequency.MONTHLY and not 1 <= self.day_of_month <= 31:
+            errors["day_of_month"] = "Pick a day between 1 and 31."
 
         recipients = self.recipients
         if not isinstance(recipients, list):
