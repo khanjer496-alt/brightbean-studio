@@ -61,6 +61,7 @@ from apps.social_accounts.error_messages import (
     friendly_publish_error,
     is_credential_rejection,
 )
+from apps.webhooks import events as webhook_events
 from providers import VIDEO_POST_TYPES, get_provider
 from providers.exceptions import APIError, ProviderError, PublishError, RateLimitError
 from providers.types import PostType, PublishContent, PublishResult, PublishState
@@ -1274,6 +1275,7 @@ class PublishEngine:
 
         platform_post.status = PlatformPost.Status.FAILED
         platform_post.publish_error = publish_error
+        webhook_events.post_failed(platform_post)
         self._notify_publish_failed(platform_post)
 
     @staticmethod
@@ -1985,6 +1987,7 @@ def _stop_thread(platform_post, part, user_message: str) -> None:
         return
     platform_post.thread_status = ThreadStatus.PARTIAL
     platform_post.thread_error = stored
+    webhook_events.post_partially_published(platform_post)
     try:
         from apps.notifications.engine import notify
         from apps.notifications.models import EventType

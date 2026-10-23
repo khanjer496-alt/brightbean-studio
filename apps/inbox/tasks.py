@@ -15,6 +15,7 @@ from apps.members.models import WorkspaceMembership
 from apps.notifications.engine import notify
 from apps.notifications.models import EventType
 from apps.social_accounts.models import SocialAccount
+from apps.webhooks import events as webhook_events
 from providers import get_provider
 from providers.exceptions import ProviderError, QuotaExceededError, TokenExpiredError
 from providers.google_errors import google_error_reasons
@@ -552,6 +553,7 @@ class InboxSyncEngine:
 
     def _notify_new_message(self, message):
         """Send notification for a new inbox message."""
+        webhook_events.inbox_message_received(message)
         if message.assigned_to:
             users = [message.assigned_to]
         else:

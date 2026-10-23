@@ -24,6 +24,7 @@ from apps.billing.entitlements import PlanLimitError, billing_enabled, check_can
 from apps.common.validators import is_safe_url as _is_safe_url
 from apps.credentials.models import PlatformCredential, derive_is_configured
 from apps.members.decorators import require_permission
+from apps.webhooks import events as webhook_events
 from providers.exceptions import QuotaExceededError
 
 from .error_messages import quota_connect_error
@@ -874,6 +875,7 @@ def _render_account_card(request, account, workspace_id):
 def disconnect(request, workspace_id, account_id):
     """Disconnect a social account."""
     account = get_object_or_404(SocialAccount.objects.for_workspace(workspace_id), id=account_id)
+    webhook_events.account_disconnected(account, reason="Disconnected by a workspace member.")
     if account.platform == "youtube":
         from .youtube_compliance import purge_connection
 
