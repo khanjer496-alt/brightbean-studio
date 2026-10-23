@@ -24,6 +24,7 @@ from .types import (
     AuthType,
     CommentResult,
     InboxMessage,
+    MediaRules,
     MediaType,
     OAuthTokens,
     PostMetrics,
@@ -122,8 +123,35 @@ class YouTubeMessageBatch(list[InboxMessage]):
         self.next_page_token = next_page_token
 
 
+# YouTube takes uploads of up to 12 hours, but channels that haven't verified a
+# phone number stop at 15 minutes — which this can't see, so it only warns.
+# https://support.google.com/youtube/answer/71673
+# Shorts run up to 3 minutes and are square or vertical; anything else uploads
+# as a regular video rather than failing.
+# https://support.google.com/youtube/answer/15424877
+YOUTUBE_MEDIA_RULES = {
+    PostType.VIDEO: MediaRules(
+        source="https://support.google.com/youtube/answer/71673",
+        published_items=1,
+        media_types=frozenset({"video"}),
+        max_duration=15 * 60,
+        advisory=frozenset({"max_duration"}),
+    ),
+    PostType.SHORT: MediaRules(
+        source="https://support.google.com/youtube/answer/15424877",
+        published_items=1,
+        media_types=frozenset({"video"}),
+        max_aspect_ratio=1.0,
+        max_duration=3 * 60,
+        advisory=frozenset({"aspect_ratio", "max_duration"}),
+    ),
+}
+
+
 class YouTubeProvider(SocialProvider):
     """YouTube Data API v3 provider using Google OAuth 2.0."""
+
+    media_rules = YOUTUBE_MEDIA_RULES
 
     # ------------------------------------------------------------------
     # Metadata

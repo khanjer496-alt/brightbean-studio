@@ -12,6 +12,7 @@ from .types import (
     AccountProfile,
     AuthType,
     CommentResult,
+    MediaRules,
     MediaType,
     OAuthTokens,
     PostMetrics,
@@ -38,8 +39,26 @@ CONTAINER_POLL_TIMEOUT = 120  # seconds of video processing
 LONG_LIVED_TOKEN_TTL = 60 * 24 * 60 * 60
 
 
+# What Threads accepts: images up to 8 MB, videos up to 5 minutes, and
+# carousels of up to 20 items.
+# https://developers.facebook.com/docs/threads/overview#media-specifications
+_THREADS_DOCS = "https://developers.facebook.com/docs/threads/overview#media-specifications"
+THREADS_MEDIA_RULES = {
+    PostType.IMAGE: MediaRules(source=_THREADS_DOCS, max_image_bytes=8 * 1024 * 1024),
+    PostType.VIDEO: MediaRules(source=_THREADS_DOCS, max_duration=5 * 60),
+    PostType.CAROUSEL: MediaRules(
+        source=_THREADS_DOCS,
+        max_items=20,
+        max_image_bytes=8 * 1024 * 1024,
+        max_duration=5 * 60,
+    ),
+}
+
+
 class ThreadsProvider(SocialProvider):
     """Threads API provider using OAuth 2.0."""
+
+    media_rules = THREADS_MEDIA_RULES
 
     # Publishes from hosted URLs only — the platform fetches the media
     # itself, so ``PublishContent.media_files`` is never read and the engine

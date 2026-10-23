@@ -20,6 +20,7 @@ from urllib.parse import urlencode
 
 from .base import SocialProvider
 from .exceptions import APIError, OAuthError, ProviderError, PublishError
+from .instagram import INSTAGRAM_MEDIA_RULES
 from .meta_comments import (
     fetch_instagram_comments,
     find_own_instagram_comment,
@@ -96,6 +97,8 @@ class InstagramLoginProvider(SocialProvider):
     Authenticates Professional (Business or Creator) Instagram accounts
     directly through Instagram, without requiring a linked Facebook Page.
     """
+
+    media_rules = INSTAGRAM_MEDIA_RULES
 
     # Publishes from hosted URLs only — the platform fetches the media
     # itself, so ``PublishContent.media_files`` is never read and the engine

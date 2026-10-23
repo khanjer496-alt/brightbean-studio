@@ -22,7 +22,7 @@ from .mastodon import MastodonProvider
 from .pinterest import PinterestProvider
 from .threads import ThreadsProvider
 from .tiktok import TikTokProvider
-from .types import PostType
+from .types import MediaRules, PostType
 from .youtube import YouTubeProvider
 
 if TYPE_CHECKING:
@@ -102,6 +102,18 @@ def requires_media(platform: str) -> bool:
     if provider_cls is None:
         return False
     return PostType.TEXT not in provider_cls().supported_post_types
+
+
+def media_rules_for(platform: str, post_type: PostType) -> MediaRules | None:
+    """The media limits ``platform`` declares for ``post_type``, or None.
+
+    Read off the provider class (``SocialProvider.media_rules``), so checking
+    a post never builds a provider or touches credentials.
+    """
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    if provider_cls is None:
+        return None
+    return provider_cls.media_rules.get(post_type)
 
 
 def get_provider(platform: str, credentials: dict | None = None) -> SocialProvider:

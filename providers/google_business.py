@@ -10,6 +10,7 @@ from .exceptions import OAuthError, PublishError
 from .types import (
     AccountProfile,
     AuthType,
+    MediaRules,
     MediaType,
     OAuthTokens,
     PostMetrics,
@@ -28,6 +29,18 @@ BUSINESS_INFO_API = "https://mybusinessbusinessinformation.googleapis.com/v1"
 POSTS_API = "https://mybusiness.googleapis.com/v4"
 
 
+# What a Business Profile post's photo may be: 10 KB to 5 MB, at least 250x250.
+# https://support.google.com/business/answer/6103862
+GOOGLE_BUSINESS_MEDIA_RULES = {
+    PostType.IMAGE: MediaRules(
+        source="https://support.google.com/business/answer/6103862",
+        min_width=250,
+        min_height=250,
+        max_image_bytes=5 * 1024 * 1024,
+    ),
+}
+
+
 class GoogleBusinessProvider(SocialProvider):
     """Google Business Profile provider.
 
@@ -40,6 +53,8 @@ class GoogleBusinessProvider(SocialProvider):
     - ``account_id`` – Google Business account ID
     - ``location_id`` – Google Business location ID
     """
+
+    media_rules = GOOGLE_BUSINESS_MEDIA_RULES
 
     # Publishes from hosted URLs only — the platform fetches the media
     # itself, so ``PublishContent.media_files`` is never read and the engine

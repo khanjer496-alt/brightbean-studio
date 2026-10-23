@@ -20,6 +20,7 @@ from .types import (
     AuthType,
     CommentResult,
     InboxMessage,
+    MediaRules,
     MediaType,
     OAuthTokens,
     PostMetrics,
@@ -77,6 +78,27 @@ def _file_digest(path: str) -> str:
         return hashlib.file_digest(f, "sha256").hexdigest()
 
 
+# Mastodon's defaults: 4 attachments, images up to 16 MB, videos up to 99 MB.
+# Each server can change them, so they only warn.
+# https://docs.joinmastodon.org/user/posting/#attachments
+_MASTODON_DOCS = "https://docs.joinmastodon.org/user/posting/#attachments"
+_MASTODON_ADVISORY = frozenset({"max_items", "max_image_bytes", "max_video_bytes"})
+MASTODON_MEDIA_RULES = {
+    PostType.IMAGE: MediaRules(
+        source=_MASTODON_DOCS,
+        max_items=4,
+        max_image_bytes=16 * 1024 * 1024,
+        advisory=_MASTODON_ADVISORY,
+    ),
+    PostType.VIDEO: MediaRules(
+        source=_MASTODON_DOCS,
+        max_items=4,
+        max_video_bytes=99 * 1024 * 1024,
+        advisory=_MASTODON_ADVISORY,
+    ),
+}
+
+
 class MastodonProvider(SocialProvider):
     """Mastodon API v1 provider.
 
@@ -86,6 +108,8 @@ class MastodonProvider(SocialProvider):
     - ``client_id``    – obtained from app registration
     - ``client_secret``– obtained from app registration
     """
+
+    media_rules = MASTODON_MEDIA_RULES
 
     def __init__(self, credentials: dict | None = None):
         super().__init__(credentials)

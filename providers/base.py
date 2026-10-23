@@ -7,7 +7,7 @@ import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable
 from datetime import datetime
-from typing import IO
+from typing import IO, ClassVar
 
 import httpx
 
@@ -19,6 +19,7 @@ from .types import (
     CommentResult,
     Demographics,
     InboxMessage,
+    MediaRules,
     MediaType,
     OAuthTokens,
     PostMetrics,
@@ -159,6 +160,11 @@ class SocialProvider(ABC):
     # doesn't replay the same cumulative values into multiple historical
     # date rows on first sync.
     account_metrics_supports_date_range: bool = True
+
+    # Media limits per post type, checked before a post is scheduled (see
+    # ``MediaRules``). A post type with no entry is not checked, so a provider
+    # declares only what its platform documents.
+    media_rules: ClassVar[dict[PostType, MediaRules]] = {}
 
     # How many post ids a single ``get_post_metrics_batch`` call may carry. 1 —
     # the default — means the platform has no batch endpoint, so the analytics

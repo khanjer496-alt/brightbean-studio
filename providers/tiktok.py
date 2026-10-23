@@ -16,6 +16,7 @@ from .types import (
     AccountMetrics,
     AccountProfile,
     AuthType,
+    MediaRules,
     MediaType,
     OAuthTokens,
     PostMetrics,
@@ -113,8 +114,30 @@ def _pkce_code_challenge(code_verifier: str) -> str:
     return hashlib.sha256(code_verifier.encode("ascii")).hexdigest()
 
 
+# What TikTok's Content Posting API accepts. Creators can be held to a shorter
+# maximum than 10 minutes; ``max_video_post_duration_sec`` from creator info is
+# checked again at publish time.
+# https://developers.tiktok.com/doc/content-posting-api-media-transfer-guide
+TIKTOK_MEDIA_RULES = {
+    PostType.VIDEO: MediaRules(
+        source="https://developers.tiktok.com/doc/content-posting-api-media-transfer-guide",
+        published_items=1,
+        media_types=frozenset({"video"}),
+        min_width=360,
+        min_height=360,
+        max_width=4096,
+        max_height=4096,
+        min_duration=3,
+        max_duration=10 * 60,
+        advisory=frozenset({"min_duration"}),
+    ),
+}
+
+
 class TikTokProvider(SocialProvider):
     """TikTok Content Posting API provider using OAuth 2.0."""
+
+    media_rules = TIKTOK_MEDIA_RULES
 
     # TikTok requires PKCE on the authorization request (for desktop/native
     # apps and localhost redirect URIs); see ``_pkce_code_challenge``.

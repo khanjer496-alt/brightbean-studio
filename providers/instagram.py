@@ -38,6 +38,7 @@ from .types import (
     AuthType,
     CommentResult,
     InboxMessage,
+    MediaRules,
     MediaType,
     OAuthTokens,
     PostMetrics,
@@ -95,8 +96,62 @@ CONTAINER_POLL_INTERVAL = 2  # seconds
 CONTAINER_POLL_TIMEOUT = 120  # seconds
 
 
+# What Instagram's content publishing API accepts, per post type. Shared with
+# ``InstagramLoginProvider``, which publishes through the same endpoints.
+# https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media
+_INSTAGRAM_DOCS = "https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media"
+_INSTAGRAM_REEL_RULES = MediaRules(
+    source=_INSTAGRAM_DOCS,
+    published_items=1,
+    media_types=frozenset({"video"}),
+    recommended_aspect_ratio=9 / 16,
+    min_duration=3,
+    max_duration=15 * 60,
+    max_video_bytes=300 * 1024 * 1024,
+)
+INSTAGRAM_MEDIA_RULES = {
+    # Feed images must fall between 4:5 portrait and 1.91:1 landscape, as JPEGs
+    # of at most 8 MB. GIFs are not on the list of accepted formats.
+    PostType.IMAGE: MediaRules(
+        source=_INSTAGRAM_DOCS,
+        media_types=frozenset({"image", "video"}),
+        min_aspect_ratio=4 / 5,
+        max_aspect_ratio=1.91,
+        max_image_bytes=8 * 1024 * 1024,
+        advisory=frozenset({"media_types"}),
+    ),
+    # Up to 10 images or videos. Instagram crops every slide to the first
+    # one's shape, so a slide outside the feed range is a warning, not a refusal.
+    PostType.CAROUSEL: MediaRules(
+        source=_INSTAGRAM_DOCS,
+        max_items=10,
+        media_types=frozenset({"image", "video"}),
+        min_aspect_ratio=4 / 5,
+        max_aspect_ratio=1.91,
+        max_image_bytes=8 * 1024 * 1024,
+        max_duration=15 * 60,
+        max_video_bytes=300 * 1024 * 1024,
+        advisory=frozenset({"media_types", "aspect_ratio"}),
+    ),
+    # A lone video publishes as a Reel (see PublishEngine._resolve_post_type).
+    PostType.REEL: _INSTAGRAM_REEL_RULES,
+    PostType.VIDEO: _INSTAGRAM_REEL_RULES,
+    PostType.STORY: MediaRules(
+        source=_INSTAGRAM_DOCS,
+        published_items=1,
+        recommended_aspect_ratio=9 / 16,
+        max_image_bytes=8 * 1024 * 1024,
+        min_duration=3,
+        max_duration=60,
+        max_video_bytes=100 * 1024 * 1024,
+    ),
+}
+
+
 class InstagramProvider(SocialProvider):
     """Instagram Graph API provider (via Facebook Graph API v25.0)."""
+
+    media_rules = INSTAGRAM_MEDIA_RULES
 
     # Publishes from hosted URLs only — the platform fetches the media
     # itself, so ``PublishContent.media_files`` is never read and the engine

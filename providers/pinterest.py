@@ -12,6 +12,7 @@ from .exceptions import OAuthError, PublishError
 from .types import (
     AccountProfile,
     AuthType,
+    MediaRules,
     MediaType,
     OAuthTokens,
     PostMetrics,
@@ -28,8 +29,26 @@ API_BASE = os.environ.get("PINTEREST_API_BASE", "https://api.pinterest.com/v5")
 TOKEN_URL = f"{API_BASE}/oauth/token"
 
 
+# What a Pin accepts. 2:3 (1000x1500) is recommended; other shapes are cropped
+# in the feed rather than refused.
+# https://help.pinterest.com/en/business/article/pinterest-product-specs
+# https://developers.pinterest.com/docs/api/v5/pins-create
+PINTEREST_MEDIA_RULES = {
+    PostType.PIN: MediaRules(
+        source="https://help.pinterest.com/en/business/article/pinterest-product-specs",
+        published_items=1,
+        recommended_aspect_ratio=2 / 3,
+        max_image_bytes=20 * 1024 * 1024,
+        min_duration=4,
+        max_duration=15 * 60,
+    ),
+}
+
+
 class PinterestProvider(SocialProvider):
     """Pinterest API v5 provider using OAuth 2.0."""
+
+    media_rules = PINTEREST_MEDIA_RULES
 
     def __init__(self, credentials: dict | None = None):
         creds = dict(credentials or {})
