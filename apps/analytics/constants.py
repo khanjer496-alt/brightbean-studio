@@ -25,6 +25,7 @@ NO_ANALYTICS_PLATFORMS: dict[str, str] = {
     "discord": ("Discord doesn't expose post analytics for channel messages."),
     "slack": ("Slack doesn't expose post analytics for channel messages."),
     "reddit": ("Reddit analytics aren't wired up yet; publishing is supported."),
+    "x": ("X bills every post-metrics read to your own developer app, so analytics aren't synced automatically."),
 }
 
 # Platforms whose terms limit us to showing the figures they report. Their

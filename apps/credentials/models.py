@@ -27,6 +27,8 @@ REQUIRED_CREDENTIAL_KEYS = {
     "discord": (("client_id",), ("client_secret",), ("bot_token",)),
     "slack": (("client_id",), ("client_secret",)),
     "reddit": (("client_id",), ("client_secret",)),
+    # Each customer's own X developer app (X bills API use to the app owner): never set in .env.
+    "x": (("client_id",), ("client_secret",)),
 }
 
 
@@ -62,6 +64,7 @@ class PlatformCredential(models.Model):
         DISCORD = "discord", "Discord"
         SLACK = "slack", "Slack"
         REDDIT = "reddit", "Reddit"
+        X = "x", "X (Twitter)"
 
     class TestResult(models.TextChoices):
         SUCCESS = "success", "Success"
@@ -73,6 +76,16 @@ class PlatformCredential(models.Model):
         "organizations.Organization",
         on_delete=models.CASCADE,
         related_name="platform_credentials",
+    )
+    # Set for an app that serves one workspace only, where each workspace brings its own
+    # developer app (an agency whose clients each own their X app and pay X for it). It
+    # overrides the organization's row (``workspace`` empty) for that workspace.
+    workspace = models.ForeignKey(
+        "workspaces.Workspace",
+        on_delete=models.CASCADE,
+        related_name="platform_credentials",
+        blank=True,
+        null=True,
     )
     platform = models.CharField(max_length=30, choices=Platform.choices)
     credentials = EncryptedJSONField(
@@ -93,10 +106,22 @@ class PlatformCredential(models.Model):
 
     class Meta:
         db_table = "credentials_platform_credential"
-        unique_together = [("organization", "platform")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["organization", "platform"],
+                condition=models.Q(workspace__isnull=True),
+                name="uniq_platform_credential_org",
+            ),
+            models.UniqueConstraint(
+                fields=["workspace", "platform"],
+                condition=models.Q(workspace__isnull=False),
+                name="uniq_platform_credential_workspace",
+            ),
+        ]
 
     def __str__(self):
-        return f"{self.organization.name} - {self.get_platform_display()}"
+        owner = f"{self.organization.name} / {self.workspace.name}" if self.workspace_id else self.organization.name
+        return f"{owner} - {self.get_platform_display()}"
 
     def save(self, *args, **kwargs):
         # ``is_configured`` is the runtime gate every consumer filters on; keep it
@@ -127,11 +152,12 @@ def _extract_secret(credentials):
     return creds.get("app_secret") or creds.get("client_secret") or ""
 
 
-def resolve_platform_credentials(platform, org_id):
+def resolve_platform_credentials(platform, org_id, workspace_id=None):
     """Return app credentials for ``platform``, with ``.env`` dominant.
 
     If env has any non-empty value for the platform it wins; otherwise fall back
-    to the org's admin-entered ``PlatformCredential`` row. Returns a fresh dict.
+    to ``workspace_id``'s own ``PlatformCredential`` row when it has one, then to
+    the org's row. Returns a fresh dict.
     """
     from django.conf import settings
 
@@ -141,16 +167,23 @@ def resolve_platform_credentials(platform, org_id):
     if derive_is_configured(platform, env_creds):
         credentials = dict(env_creds)
     else:
-        try:
-            cred = PlatformCredential.objects.for_org(org_id).get(platform=platform, is_configured=True)
-            credentials = dict(cred.credentials)
-        except PlatformCredential.DoesNotExist:
-            credentials = dict(env_creds)
+        cred = configured_platform_credential(platform, org_id, workspace_id)
+        credentials = dict(cred.credentials) if cred else dict(env_creds)
     if platform == "instagram" and credentials:
         # This deployment switch applies to every OAuth entry point, including
         # org-owned apps. Stored credentials cannot override an operator's opt-out.
         credentials["dm_oauth_scopes_enabled"] = settings.PLATFORM_INSTAGRAM_FACEBOOK_DM_SCOPES_ENABLED
     return credentials
+
+
+def configured_platform_credential(platform, org_id, workspace_id=None):
+    """The usable ``PlatformCredential`` row for a workspace: its own, else the organization's."""
+    rows = PlatformCredential.objects.for_org(org_id).filter(platform=platform, is_configured=True)
+    if workspace_id:
+        own = rows.filter(workspace_id=workspace_id).first()
+        if own is not None:
+            return own
+    return rows.filter(workspace__isnull=True).first()
 
 
 def resolve_app_secret(platform, org_id):

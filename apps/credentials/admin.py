@@ -7,7 +7,7 @@ from .models import PlatformCredential
 @admin.register(PlatformCredential)
 class PlatformCredentialAdmin(admin.ModelAdmin):
     form = PlatformCredentialAdminForm
-    list_display = ("organization", "platform", "is_configured", "test_result", "tested_at")
+    list_display = ("organization", "workspace", "platform", "is_configured", "test_result", "tested_at")
     list_filter = ("platform", "is_configured", "test_result")
     search_fields = ("organization__name",)
     # is_configured is derived from the credentials on save (see model); the test

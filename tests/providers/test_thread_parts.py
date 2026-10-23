@@ -41,6 +41,7 @@ class TestDeclarations:
             ("discord", ThreadMode.REPLY_CHAIN),
             ("slack", ThreadMode.REPLY_CHAIN),
             ("reddit", ThreadMode.COMMENTS),
+            ("x", ThreadMode.REPLY_CHAIN),
         ],
     )
     def test_every_platform_declares_its_mode(self, platform, mode):

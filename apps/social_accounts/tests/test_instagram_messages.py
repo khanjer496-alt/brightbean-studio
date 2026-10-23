@@ -230,18 +230,18 @@ def test_different_meta_apps_do_not_share_subscriptions(instagram_account, organ
     provider = InstagramProvider({"client_id": "app"})
     provider._request = MagicMock(return_value=SimpleNamespace(json=lambda: {"success": True}))
 
-    def creds(platform, org_id):
+    def creds(platform, org_id, workspace_id=None):
         return {"app_id": "app" if org_id == organization.id else "other-app"}
 
     with (
         patch("apps.credentials.models.resolve_platform_credentials", side_effect=creds),
         patch(
             "apps.social_accounts.webhooks._get_provider_for_platform",
-            side_effect=lambda platform, org_id, **kw: InstagramProvider({"client_id": "app", **kw}),
+            side_effect=lambda platform, org_id, workspace_id=None, **kw: InstagramProvider({"client_id": "app", **kw}),
         ) as factory,
     ):
         # Capture the provider while preserving injected per-account metadata.
-        def construct(platform, org_id, **kwargs):
+        def construct(platform, org_id, workspace_id=None, **kwargs):
             provider.credentials.update(kwargs)
             return provider
 

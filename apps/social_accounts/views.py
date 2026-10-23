@@ -22,7 +22,7 @@ from django_ratelimit.decorators import ratelimit
 
 from apps.billing.entitlements import PlanLimitError, billing_enabled, check_can_add_channel
 from apps.common.validators import is_safe_url as _is_safe_url
-from apps.credentials.models import PlatformCredential, derive_is_configured
+from apps.credentials.models import PlatformCredential, configured_platform_credential, derive_is_configured
 from apps.members.decorators import require_permission
 from apps.webhooks import events as webhook_events
 from providers.exceptions import APIError, PublishError, QuotaExceededError
@@ -58,7 +58,9 @@ def _get_configured_platforms(org_id):
     from providers.types import AuthType
 
     configured = set(
-        PlatformCredential.objects.for_org(org_id).filter(is_configured=True).values_list("platform", flat=True)
+        PlatformCredential.objects.for_org(org_id)
+        .filter(is_configured=True, workspace__isnull=True)
+        .values_list("platform", flat=True)
     )
     env_creds = getattr(settings, "PLATFORM_CREDENTIALS_FROM_ENV", {})
     for platform, creds in env_creds.items():
@@ -76,7 +78,11 @@ def _get_configured_platforms(org_id):
     # we register a per-instance OAuth app on first connect and persist it in
     # MastodonAppRegistration.
     for platform, provider_cls in PROVIDER_REGISTRY.items():
-        if provider_cls().auth_type in (AuthType.SESSION, AuthType.INSTANCE_OAUTH):
+        # ``user_supplied_credentials``: the customer brings their own developer
+        # app (X) and enters its credentials on the platform's connect form.
+        if provider_cls().auth_type in (AuthType.SESSION, AuthType.INSTANCE_OAUTH) or (
+            provider_cls.user_supplied_credentials
+        ):
             configured.add(platform)
 
     return configured
@@ -200,7 +206,7 @@ def account_list(request, workspace_id):
         .prefetch_related("posting_slots")
         .order_by("platform", "account_name")
     )
-    configured_platforms = _get_configured_platforms(request.org.id)
+    configured_platforms = _get_configured_platforms(request.workspace.organization_id)
 
     return render(
         request,
@@ -225,7 +231,7 @@ def account_list(request, workspace_id):
 @ratelimit(key="user", rate="20/m", method="POST", block=True)
 def connect_platform(request, workspace_id):
     """GET: show platform grid. POST: initiate OAuth flow."""
-    configured_platforms = _get_configured_platforms(request.org.id)
+    configured_platforms = _get_configured_platforms(request.workspace.organization_id)
     visible_platform_choices = _get_visible_platform_choices()
 
     if request.method == "GET":
@@ -255,7 +261,7 @@ def connect_platform(request, workspace_id):
     # Refuse before the platform round-trip rather than after it: a user at
     # their plan's channel limit shouldn't authorize an app only to be told no.
     try:
-        check_can_add_channel(request.org)
+        check_can_add_channel(request.workspace.organization)
     except PlanLimitError as exc:
         messages.error(request, exc.message)
         return redirect("social_accounts:connect", workspace_id=workspace_id)
@@ -271,13 +277,19 @@ def connect_platform(request, workspace_id):
     if connect_url_name:
         return redirect(connect_url_name, workspace_id=workspace_id)
 
-    # Standard OAuth flow
-    provider = _get_provider_for_platform(platform, request.org.id)
+    return _start_oauth(request, workspace_id, platform)
+
+
+def _start_oauth(request, workspace_id, platform):
+    """Send the user to ``platform``'s authorization page (state, nonce and PKCE verifier set up)."""
+    # The workspace's organization, as the callback resolves it: ``request.org`` is the
+    # user's first membership, which for a guest in another organization's workspace is not it.
+    provider = _get_provider_for_platform(platform, request.workspace.organization_id, workspace_id=workspace_id)
     apply_analytics_scope_flag(provider, platform)
     nonce = secrets.token_urlsafe(32)
     state = _sign_state(workspace_id, platform, request.user.id, nonce)
 
-    # PKCE verifier (e.g. TikTok); round-trips via the session alongside the nonce.
+    # PKCE verifier (e.g. TikTok, X); round-trips via the session alongside the nonce.
     code_verifier = issue_pkce_verifier(provider)
 
     # Store nonce in session to prevent replay
@@ -366,7 +378,13 @@ def oauth_callback(request, platform):
         if platform == PlatformCredential.Platform.MASTODON:
             extra_creds = _resolve_mastodon_extra_creds(session_data)
 
-        provider = _get_provider_for_platform(platform, request.org.id, **extra_creds)
+        # The signed state's workspace and its organization, not ``request.org``: this
+        # URL names no workspace, so the middleware cannot say which of the user's
+        # organizations the connection is for, and the app credentials that started
+        # this flow (an org's own app, or a workspace's own X app) belong to one of them.
+        provider = _get_provider_for_platform(
+            platform, ws_membership.workspace.organization_id, workspace_id=workspace_id, **extra_creds
+        )
         redirect_uri = redirect_uri_from_request(request)
         tokens = provider.exchange_code(code, redirect_uri, **pkce_kwargs(session_data.get("code_verifier")))
 
@@ -481,6 +499,7 @@ def oauth_callback(request, platform):
             refresh_token=tokens.refresh_token,
             expires_in=tokens.expires_in,
             instance_url=extra_creds.get("instance_url", ""),
+            platform_data=(profile.extra or {}).get("account_data"),
         )
         messages.success(request, f"Connected {profile.name} successfully.")
 
@@ -825,6 +844,85 @@ def connect_telegram(request, workspace_id):
 
 
 # ------------------------------------------------------------------
+# X Connect (the customer's own developer app)
+# ------------------------------------------------------------------
+
+
+@csp_update(FORM_ACTION="'self' https:")
+@login_required
+@require_permission("manage_social_accounts")
+@ratelimit(key="user", rate="20/m", method="POST", block=True)
+def connect_x(request, workspace_id):
+    """Collect the customer's own X app credentials, then start OAuth 2.0 + PKCE against that app.
+
+    X bills API use to the owner of the developer app, so there are no platform-wide
+    credentials. What is entered here is stored as this workspace's encrypted
+    ``PlatformCredential``: an agency's clients each bring (and pay for) their own app, and
+    a workspace manager can only ever change the app of their own workspace. A workspace
+    without one uses the organization's app when an administrator set one up. The secret
+    is never sent back to the page; leaving it blank keeps the saved one.
+    """
+    platform = PlatformCredential.Platform.X
+    workspace = request.workspace
+    org_id = workspace.organization_id
+    own = PlatformCredential.objects.for_org(org_id).filter(platform=platform, workspace_id=workspace_id).first()
+    current = own or configured_platform_credential(platform, org_id, workspace_id)
+    current_credentials = dict(current.credentials) if current else {}
+
+    def render_form(client_id=""):
+        return render(
+            request,
+            "social_accounts/x_connect.html",
+            {
+                "workspace_id": workspace_id,
+                "callback_url": _build_redirect_uri(request, platform),
+                "client_id": client_id or current_credentials.get("client_id", ""),
+                "has_secret": bool(current_credentials.get("client_secret")),
+                "uses_org_app": current is not None and current.workspace_id is None,
+            },
+        )
+
+    if request.method == "GET":
+        return render_form()
+
+    client_id = request.POST.get("client_id", "").strip()
+    client_secret = request.POST.get("client_secret", "").strip()
+    if not client_secret and client_id == current_credentials.get("client_id"):
+        # A blank secret keeps the saved one, but only for the app it belongs to.
+        client_secret = current_credentials.get("client_secret", "")
+    if not client_id or not client_secret:
+        messages.error(request, "Enter the Client ID and Client Secret of your X app.")
+        return render_form(client_id)
+
+    try:
+        check_can_add_channel(workspace.organization)
+    except PlanLimitError as exc:
+        messages.error(request, exc.message)
+        return render_form(client_id)
+
+    credentials = {"client_id": client_id, "client_secret": client_secret}
+    if (
+        current_credentials.get("client_id") not in (None, client_id)
+        and SocialAccount.objects.filter(workspace_id=workspace_id, platform=platform).exists()
+    ):
+        # Tokens belong to the app that issued them: switching apps would break every connected X account.
+        messages.error(
+            request,
+            "X accounts in this workspace are already connected through your current X app. "
+            "Disconnect them before using another app.",
+        )
+        return render_form(client_id)
+    if own is None and current_credentials != credentials:
+        PlatformCredential.objects.create(
+            organization_id=org_id, workspace_id=workspace_id, platform=platform, credentials=credentials
+        )
+    elif own is not None and current_credentials != credentials:
+        own.credentials = credentials
+        own.save()
+    return _start_oauth(request, workspace_id, platform)
+
+
+# ------------------------------------------------------------------
 # Mastodon Connect (instance-based OAuth)
 # ------------------------------------------------------------------
 
@@ -946,7 +1044,7 @@ def reconnect(request, workspace_id, account_id):
         return redirect(connect_url_name, workspace_id=workspace_id)
 
     # Standard OAuth reconnect
-    provider = _get_provider_for_platform(platform, request.org.id)
+    provider = _get_provider_for_platform(platform, request.workspace.organization_id, workspace_id=workspace_id)
     apply_analytics_scope_flag(provider, platform)
     nonce = secrets.token_urlsafe(32)
     state = _sign_state(workspace_id, platform, request.user.id, nonce)
@@ -1202,6 +1300,7 @@ def _create_or_update_account(
     facebook_user_token_expires_at=None,
     messaging_access=None,
     authorizing_user=None,
+    platform_data=None,
 ):
     """Create or update a SocialAccount from OAuth results."""
     token_expires_at = None
@@ -1209,6 +1308,8 @@ def _create_or_update_account(
         token_expires_at = timezone.now() + timedelta(seconds=expires_in)
 
     analytics_defaults = {}
+    if platform_data is not None:
+        analytics_defaults["platform_data"] = platform_data
     if platform == "youtube":
         from apps.organizations.models import Organization
 
