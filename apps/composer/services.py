@@ -18,6 +18,7 @@ import datetime as dt
 import hashlib
 import logging
 import re
+import unicodedata
 import uuid
 from collections.abc import Iterable
 from typing import Any
@@ -1120,8 +1121,35 @@ MAX_HASHTAGS_PER_SET = 30
 RECENT_HASHTAG_POSTS = 50
 RECENT_HASHTAG_LIMIT = 15
 
-_HASHTAG_TOKEN = re.compile(r"^\w*[^\W\d_]\w*$")
-_HASHTAG_IN_TEXT = re.compile(r"(?<![\w#&])#(\w*[^\W\d_]\w*)")
+
+def _combining_marks() -> str:
+    """A regex class body for the Basic Multilingual Plane's combining marks.
+
+    ``\\w`` leaves marks out, so "#हिंदी" or a vowelled "#قَهوة" would stop at
+    their first letter. With the marks (and the zero-width joiners Persian
+    writes inside words) a hashtag runs to the end of the word.
+    """
+    ranges: list[str] = []
+    start = prev = None
+    for code in range(0x300, 0x10000):
+        if unicodedata.category(chr(code)).startswith("M"):
+            if start is None:
+                start = code
+            elif code != prev + 1:
+                ranges.append(f"\\u{start:04x}-\\u{prev:04x}")
+                start = code
+            prev = code
+    if start is not None:
+        ranges.append(f"\\u{start:04x}-\\u{prev:04x}")
+    return "".join(ranges) + "\\u200c\\u200d"
+
+
+_TAG_CHAR = rf"[\w{_combining_marks()}]"
+# At least one letter, so "#2024" or "#1" is not a hashtag.
+_TAG_WORD = rf"{_TAG_CHAR}*[^\W\d_]{_TAG_CHAR}*"
+_HASHTAG_TOKEN = re.compile(rf"^{_TAG_WORD}$")
+# Not inside a word, an HTML entity ("&#123;") or a URL fragment ("/#top").
+_HASHTAG_IN_TEXT = re.compile(rf"(?<![\w#&/])#({_TAG_WORD})")
 
 
 def parse_hashtags(raw: str) -> list[str]:
@@ -1194,6 +1222,23 @@ def with_signature(caption: str, signature) -> str:
 
 MENTION_CACHE_SECONDS = 60
 MENTION_MAX_ACCOUNTS = 5
+MENTION_QUERY_MAX = 64
+_MENTION_TEXT_MAX = 100
+
+
+def _mention_item(suggestion) -> dict[str, str]:
+    """A suggestion as the composer's JSON, trimmed to what is safe to show.
+
+    Names and handles come from strangers' profiles, so they are capped; the
+    page renders them as text. An avatar is kept only when it is an https URL,
+    so a profile cannot point the page at another scheme.
+    """
+    avatar = suggestion.avatar_url or ""
+    return {
+        "handle": suggestion.handle[:_MENTION_TEXT_MAX],
+        "name": (suggestion.name or "")[:_MENTION_TEXT_MAX],
+        "avatar_url": avatar if avatar.startswith("https://") else "",
+    }
 
 
 def mention_suggestions(accounts: Iterable, query: str) -> list[dict[str, str]]:
@@ -1220,7 +1265,7 @@ def mention_suggestions(accounts: Iterable, query: str) -> list[dict[str, str]]:
         if found is None:
             try:
                 provider, access_token = _provider_and_access_token(account)
-                found = [dataclasses.asdict(m) for m in provider.search_mentions(access_token, query)]
+                found = [_mention_item(m) for m in provider.search_mentions(access_token, query)]
             except Exception:
                 logger.info("Mention lookup failed for %s", account.id, exc_info=True)
                 continue

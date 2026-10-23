@@ -167,3 +167,14 @@ test('arrow keys, Enter and Escape drive the suggestion list', async () => {
   assert.equal(el.value, '@two ');
   assert.equal(key('Enter').prevented, false, 'Enter is typing again once the list is closed');
 });
+
+test('a signature already closing the text is not inserted twice', () => {
+  const { component, el } = toolbar({ el: textarea('Great coffee\n\n-- Sam\n') });
+  component.$refs = {};
+  component.panel = 'signatures';
+  component.pickSignature({ body: '-- Sam' });
+  assert.equal(el.value, 'Great coffee\n\n-- Sam\n');
+  assert.equal(el.inputEvents, 0);
+  component.pickSignature({ body: '-- Team' });
+  assert.equal(el.value, 'Great coffee\n\n-- Sam\n\n-- Team');
+});

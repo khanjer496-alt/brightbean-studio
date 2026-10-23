@@ -245,8 +245,11 @@
                     this.closePanel(true);
                 },
 
+                // A signature already closing the text is not added a second time.
                 pickSignature(signature) {
-                    this.insert(signature.body, { block: true });
+                    const el = getTarget();
+                    const body = signature.body.trim();
+                    if (el && body && !el.value.trimEnd().endsWith(body)) this.insert(signature.body, { block: true });
                     this.closePanel(true);
                 },
 

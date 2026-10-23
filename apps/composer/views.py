@@ -24,6 +24,7 @@ from django.utils import timezone
 from django.utils.html import strip_tags
 from django.utils.text import get_text_list
 from django.views.decorators.http import require_GET, require_POST
+from django_ratelimit.decorators import ratelimit
 
 from apps.ai_writer.views import composer_context as ai_composer_context
 from apps.billing.entitlements import (
@@ -64,6 +65,7 @@ from .models import (
     Tag,
 )
 from .services import (
+    MENTION_QUERY_MAX,
     default_signature,
     media_blocker,
     media_change_blocker,
@@ -958,6 +960,10 @@ def compose(request, workspace_id, post_id=None):
     # primary action as "Save Draft" instead of arming "schedule for real".
     schedule_prefill_is_proposed = False
 
+    # The sign-off a new post starts with; the page also keeps it last when an
+    # AI result replaces or extends the caption.
+    signature = default_signature(workspace, request.user)
+
     # Load existing post or prepare a blank one
     if post_id:
         post = get_object_or_404(Post, id=post_id, workspace=workspace)
@@ -1014,8 +1020,7 @@ def compose(request, workspace_id, post_id=None):
         if template_data and template_data.get("caption"):
             initial["caption"] = template_data["caption"]
         else:
-            # A new post starts with the sign-off its author (or workspace) has marked default.
-            initial["caption"] = with_signature("", default_signature(workspace, request.user))
+            initial["caption"] = with_signature("", signature)
         form = PostForm(initial=initial)
         platform_post_list = []
         scoped_platform_posts = []
@@ -1255,6 +1260,7 @@ def compose(request, workspace_id, post_id=None):
         "char_limits": char_limits,
         "default_first_comment": default_first_comment,
         "default_hashtags": json.dumps(default_hashtags),
+        "signature_body": signature.body if signature else "",
         "can_publish": can_publish,
         "can_approve": can_approve,
         "can_view_internal_notes": can_view_internal_notes,
@@ -4476,6 +4482,10 @@ def tag_create(request, workspace_id):
 # Composer inserts: hashtag sets, signatures, @mention suggestions
 # ---------------------------------------------------------------------------
 
+# Per user, across every account searched. Typing pauses of 250 ms and the
+# client's own cache keep a normal writer well under it.
+MENTION_SEARCH_RATE = "60/m"
+
 
 @login_required
 @require_GET
@@ -4518,16 +4528,19 @@ def signature_picker(request, workspace_id):
 @login_required
 @require_GET
 @require_permission("create_posts")
+@ratelimit(key="user", rate=MENTION_SEARCH_RATE, block=False)
 def mention_search(request, workspace_id):
     """Accounts to @mention matching ``?q=``, searched on the ``?account=`` ids.
 
-    A nicety, so it never errors: a bad id, a platform without lookup or a
-    platform that is down just yields no suggestions.
+    A nicety, so it never errors: a bad id, a platform without lookup, a
+    platform that is down or a user typing faster than ``MENTION_SEARCH_RATE``
+    just yields no suggestions. The rate keeps one composer from spending the
+    connected accounts' own platform rate limits.
     """
     workspace = _get_workspace(request, workspace_id)
-    query = request.GET.get("q", "").strip()[:100]
+    query = request.GET.get("q", "").strip().lstrip("@")
     account_ids = [a for a in request.GET.getlist("account") if _is_valid_uuid(a)]
-    if not query or not account_ids:
+    if getattr(request, "limited", False) or not query or len(query) > MENTION_QUERY_MAX or not account_ids:
         return JsonResponse({"results": []})
     accounts = SocialAccount.objects.for_workspace(workspace.id).filter(
         id__in=account_ids,

@@ -21,6 +21,7 @@ from apps.composer.services import (
     recent_hashtags,
     with_signature,
 )
+from apps.composer.views import MENTION_SEARCH_RATE
 from apps.members.models import OrgMembership, WorkspaceMembership
 from apps.organizations.models import Organization
 from apps.social_accounts.models import SocialAccount
@@ -43,6 +44,9 @@ class ParseHashtagsTests(TestCase):
 
     def test_drops_things_that_are_not_hashtags(self):
         self.assertEqual(parse_hashtags("## 123 ! #ok_1 #"), ["#ok_1"])
+
+    def test_keeps_combining_marks(self):
+        self.assertEqual(parse_hashtags("हिंदी, #قَهوة"), ["#हिंदी", "#قَهوة"])
 
     def test_empty(self):
         self.assertEqual(parse_hashtags(""), [])
@@ -116,6 +120,14 @@ class RecentHashtagsTests(ComposerTestCase):
         self._post("old #Coffee #tea")
         self._post("new #latteart #coffee, item #1 and a@b.com #")
         self.assertEqual(recent_hashtags(self.workspace.id), ["#latteart", "#coffee", "#tea"])
+
+    def test_unicode_hashtags_run_to_the_end_of_the_word(self):
+        self._post("#قَهوة #نان\u200cوایی #हिंदी #café #日本")
+        self.assertEqual(recent_hashtags(self.workspace.id), ["#قَهوة", "#نان\u200cوایی", "#हिंदी", "#café", "#日本"])
+
+    def test_url_fragments_and_entities_are_not_hashtags(self):
+        self._post("Read https://example.com/docs/#install and &#123; then #real")
+        self.assertEqual(recent_hashtags(self.workspace.id), ["#real"])
 
     def test_limit(self):
         self._post(" ".join(f"#tag{n}" for n in range(30)))
@@ -192,7 +204,10 @@ class ComposeSignatureTests(ComposerTestCase):
 
     def test_new_post_starts_with_the_default_signature(self):
         Signature.objects.create(workspace=self.workspace, name="House", body="Sent from the shop", is_default=True)
-        self.assertEqual(self._compose().context["form"].initial["caption"], "\n\nSent from the shop")
+        response = self._compose()
+        self.assertEqual(response.context["form"].initial["caption"], "\n\nSent from the shop")
+        # The page knows it too, so AI results that replace the caption keep it last.
+        self.assertIn("signatureBody: 'Sent from the shop'", response.content.decode())
 
     def test_no_default_means_an_empty_caption(self):
         Signature.objects.create(workspace=self.workspace, name="House", body="x")
@@ -311,6 +326,41 @@ class MentionSearchTests(ComposerTestCase):
             connection_status=SocialAccount.ConnectionStatus.CONNECTED,
         )
         self.assertEqual(self._search("ali", linkedin).json(), {"results": []})
+        mock_provider.assert_not_called()
+
+    @patch("apps.publisher.engine._provider_and_access_token")
+    def test_remote_profiles_are_trimmed_and_only_https_avatars_kept(self, mock_provider):
+        provider = MagicMock()
+        provider.search_mentions.return_value = [
+            MentionSuggestion(handle="a.bsky.social", name="<b>A</b>" * 50, avatar_url="javascript:alert(1)"),
+            MentionSuggestion(handle="b.bsky.social", avatar_url="http://cdn.example/b.jpg"),
+            MentionSuggestion(handle="c.bsky.social", avatar_url="https://cdn.example/c.jpg"),
+        ]
+        mock_provider.return_value = (provider, "jwt")
+
+        results = self._search("x", self.bluesky).json()["results"]
+
+        self.assertEqual([r["avatar_url"] for r in results], ["", "", "https://cdn.example/c.jpg"])
+        self.assertEqual(len(results[0]["name"]), 100)
+        self.assertNotIn("jwt", json.dumps(results))
+
+    @patch("apps.publisher.engine._provider_and_access_token")
+    def test_searches_are_rate_limited_per_user(self, mock_provider):
+        provider = MagicMock()
+        provider.search_mentions.return_value = [MentionSuggestion(handle="a.bsky.social")]
+        mock_provider.return_value = (provider, "jwt")
+        allowed = int(MENTION_SEARCH_RATE.split("/")[0])
+
+        for n in range(allowed + 3):
+            response = self._search(f"q{n}", self.bluesky)
+            self.assertEqual(response.status_code, 200)
+
+        self.assertEqual(provider.search_mentions.call_count, allowed)
+        self.assertEqual(response.json(), {"results": []})
+
+    @patch("apps.publisher.engine._provider_and_access_token")
+    def test_an_overlong_query_is_not_sent(self, mock_provider):
+        self.assertEqual(self._search("a" * 65, self.bluesky).json(), {"results": []})
         mock_provider.assert_not_called()
 
     def test_bad_input_is_ignored(self):
