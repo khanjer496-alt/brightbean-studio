@@ -1,0 +1,8 @@
+{% comment %}Shown across the example workspace so nobody mistakes the sample drafts for real content.{% endcomment %}
+<div role="status" class="mb-4 flex flex-col gap-3 rounded-xl border border-line bg-warn-soft p-4 sm:flex-row sm:items-center sm:justify-between">
+    <p class="text-sm text-ink"><strong class="font-semibold">Example workspace.</strong> These sample drafts are never published. Look around, then remove it when you are done.</p>
+    <form method="post" action="{% url 'onboarding:sample_remove' workspace_id=request.workspace.id %}">
+        {% csrf_token %}
+        <button type="submit" class="btn-outline min-h-11 w-full sm:w-auto">Remove example</button>
+    </form>
+</div>

@@ -1,0 +1,8 @@
+{% comment %}The caption box. Also the target the AI writer swaps its result into. Expects: caption, error, max_caption.{% endcomment %}
+<div id="welcome-caption-field">
+    <label for="welcome-caption" class="mb-1.5 block text-sm font-semibold text-ink">Caption</label>
+    <textarea id="welcome-caption" name="caption" rows="6" maxlength="{{ max_caption }}" required
+              class="form-input-styled w-full resize-y"
+              {% if error %}aria-invalid="true" aria-describedby="welcome-caption-error"{% endif %}>{{ caption }}</textarea>
+    <p id="welcome-caption-error" class="mt-1.5 text-sm text-bad" role="alert">{{ error }}</p>
+</div>

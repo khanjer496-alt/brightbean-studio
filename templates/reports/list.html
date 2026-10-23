@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load tz %}
+{% load tz onboarding_tags %}
 {% block title %}Reports — {{ workspace.name }} — {{ brand_short_name }}{% endblock %}
 
 {% block content %}
@@ -41,10 +41,8 @@
         {% endfor %}
     </ul>
     {% else %}
-    <div class="rounded-xl border border-dashed border-line p-8 text-center">
-        <p class="m-0 text-[15px] font-semibold text-ink">No reports yet</p>
-        <p class="m-0 mt-1 text-[13px] text-ink-3">Create one to send clients a branded summary every week or month.</p>
-        {% if can_manage %}<a href="{% url 'reports:create' workspace_id=workspace.id %}" class="btn-brand mt-4 inline-flex min-h-11 w-auto items-center px-5 py-2">Create your first report</a>{% endif %}
+    <div class="rounded-xl border border-dashed border-line">
+        {% empty_state "reports" workspace show_action=can_manage %}
     </div>
     {% endif %}
 </div>

@@ -1,0 +1,53 @@
+{% extends "onboarding/welcome/base.html" %}
+
+{% block step %}
+{% include "onboarding/welcome/_heading.html" with title="Connect your first channel" lead="Pick the network you post on most. It takes under a minute, and you can add more any time." %}
+
+{% if connected_accounts %}
+<div class="mb-6 rounded-xl border border-line bg-good-soft p-4" role="status">
+    <p class="text-sm font-semibold text-good">Connected</p>
+    <ul class="mt-1 text-sm text-ink-2">
+        {% for account in connected_accounts %}<li>{{ account.account_name }} ({{ account.get_platform_display }})</li>{% endfor %}
+    </ul>
+</div>
+{% endif %}
+
+{% if spotlight %}
+<p class="mb-5 rounded-xl bg-accent-soft px-4 py-3 text-sm text-ink-2">
+    No platform apps are set up here yet, so the networks that need one are hidden. The ones marked "Works right away" only need your own login.
+</p>
+{% endif %}
+
+<ul class="grid grid-cols-1 gap-4 sm:grid-cols-2" aria-label="Networks you can connect">
+    {% for value, label in platforms %}
+    <li>
+        {% if value in spotlight %}
+        {% include "social_accounts/partials/_platform_card.html" with is_configured=True highlight=True workspace_id=workspace.id %}
+        {% else %}
+        {% include "social_accounts/partials/_platform_card.html" with is_configured=True workspace_id=workspace.id %}
+        {% endif %}
+    </li>
+    {% endfor %}
+</ul>
+
+<div class="mt-8 flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex flex-col gap-1 sm:flex-row sm:gap-2">
+        <form method="post" action="{{ next_url }}">
+            {% csrf_token %}
+            <button type="submit" class="min-h-11 w-full cursor-pointer rounded-full px-4 text-sm font-medium text-ink-2 hover:bg-surface-2 hover:text-ink sm:w-auto">{% if connected_accounts %}Add more later{% else %}Skip this step{% endif %}</button>
+        </form>
+        {% if not connected_accounts %}
+        <form method="post" action="{% url 'onboarding:sample_create' workspace_id=workspace.id %}">
+            {% csrf_token %}
+            <button type="submit" class="min-h-11 w-full cursor-pointer rounded-full px-4 text-sm font-medium text-accent hover:bg-accent-soft sm:w-auto">Show me an example instead</button>
+        </form>
+        {% endif %}
+    </div>
+    {% if connected_accounts %}
+    <form method="post" action="{{ next_url }}">
+        {% csrf_token %}
+        <button type="submit" class="btn-brand min-h-11 w-full sm:w-auto sm:px-8">Continue</button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}
