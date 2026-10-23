@@ -1616,8 +1616,10 @@ def _report_run_response(run) -> ReportRunResponse:
     )
 
 
-def _report_response(definition) -> ReportResponse:
-    run = definition.runs.order_by("-created_at").first()
+def _report_response(definition, run=None) -> ReportResponse:
+    """``run`` is the definition's latest run, when the caller already has it."""
+    if run is None:
+        run = definition.runs.order_by("-created_at").first()
     return ReportResponse(
         id=definition.id,
         name=definition.name,
@@ -1635,7 +1637,18 @@ def _report_response(definition) -> ReportResponse:
 def list_reports(actor: Actor, *, limit: int = LIMIT_DEFAULT, cursor: str | None = None) -> ReportsListResponse:
     _require_reports(actor)
     rows, next_cursor = _paginate(_visible_reports(actor).order_by("name", "id"), limit=limit, cursor=cursor)
-    return ReportsListResponse(reports=[_report_response(d) for d in rows], limit=limit, next_cursor=next_cursor)
+    from apps.reports.models import ReportRun
+
+    # One query for every row's latest run, as the web list does.
+    latest = {
+        run.definition_id: run
+        for run in ReportRun.objects.filter(definition__in=rows)
+        .order_by("definition_id", "-created_at")
+        .distinct("definition_id")
+    }
+    return ReportsListResponse(
+        reports=[_report_response(d, latest.get(d.id)) for d in rows], limit=limit, next_cursor=next_cursor
+    )
 
 
 def run_report(actor: Actor, report_id: uuid.UUID, *, deliver: bool = False) -> ReportRunResponse:
