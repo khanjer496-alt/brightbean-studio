@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load static %}
+{% load static onboarding_tags %}
 
 {% block title %}Publish - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
 
@@ -29,6 +29,9 @@
                 Calendar
             </button>
         </div>
+        {% if grid_available %}
+        <a href="{% url 'calendar:grid_index' workspace_id=workspace.id %}" class="inline-flex min-h-11 items-center rounded-full border border-line px-3.5 text-[13px] font-semibold text-stone-700 no-underline hover:bg-stone-50">Grid preview</a>
+        {% endif %}
 
     </div>
 </div>
@@ -349,6 +352,7 @@
 {% endblock %}
 
 {% block content %}
+{% onboarding_hint "calendar" %}
 <div id="publish-body" class="flex-1 flex flex-col min-h-0">
     {% if mode == 'list' %}
         {% include "calendar/partials/publish_list_shell.html" %}

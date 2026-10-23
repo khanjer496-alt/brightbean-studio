@@ -22,6 +22,14 @@ def dashboard(request):
 
     user = request.user
 
+    # A new owner lands in the welcome flow once per session, until they
+    # finish or skip it.
+    from apps.onboarding.flow import redirect_url_for_dashboard
+
+    welcome_url = redirect_url_for_dashboard(request)
+    if welcome_url:
+        return redirect(welcome_url)
+
     # Only trust last_workspace_id if the user still has an active membership
     # in that workspace. Otherwise the org may have been deleted out from under
     # them and we'd redirect into a 403.

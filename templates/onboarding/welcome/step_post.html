@@ -1,0 +1,86 @@
+{% extends "onboarding/welcome/base.html" %}
+
+{% block step %}
+{% include "onboarding/welcome/_heading.html" with title="Schedule your first post" lead="We wrote a friendly example to get you going. Edit it, or write your own." error_focus=error %}
+
+{% if error %}
+<div role="alert" tabindex="-1" x-data x-init="$el.focus()" class="mb-6 rounded-xl border border-line bg-bad-soft p-4 text-sm text-bad focus:outline-none">{{ error }}</div>
+{% endif %}
+
+{% if not accounts %}
+<div class="rounded-xl border border-dashed border-line p-6 text-center">
+    <p class="text-[15px] font-semibold text-ink">Connect a channel to schedule a post</p>
+    <p class="mx-auto mt-1 max-w-sm text-sm text-ink-2">Posts need somewhere to go. It only takes a minute.</p>
+    <a href="{% url 'onboarding:welcome_channel' workspace_id=workspace.id %}" class="btn-brand mt-4 min-h-11 w-auto px-6">Connect a channel</a>
+</div>
+{% else %}
+{{ char_limits|json_script:"welcome-char-limits" }}
+<form method="post" novalidate class="space-y-6"
+      x-data="{ limits: {}, account: '{{ chosen_account.id }}', count: 0, sync() { const box = document.getElementById('welcome-caption'); this.count = box ? box.value.length : 0 } }"
+      x-init="limits = JSON.parse(document.getElementById('welcome-char-limits').textContent); sync()"
+      @input="sync()" @htmx:after-settle="sync()"
+      @change="if ($event.target.name === 'account') account = $event.target.value">
+    {% csrf_token %}
+    {% if accounts|length > 1 %}
+    <fieldset>
+        <legend class="mb-2 text-sm font-semibold text-ink">Post to</legend>
+        <div class="flex flex-wrap gap-2">
+            {% for account in accounts %}
+            <label class="flex min-h-11 cursor-pointer items-center gap-2 rounded-full border border-line bg-surface-1 px-4 text-sm text-ink has-[:checked]:border-accent has-[:checked]:bg-accent-soft has-[:checked]:ring-1 has-[:checked]:ring-accent has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent">
+                <input type="radio" name="account" value="{{ account.id }}" class="sr-only" {% if account == chosen_account %}checked{% endif %}>
+                {{ account.account_name }} <span class="text-xs text-ink-3">{{ account.get_platform_display }}</span>
+            </label>
+            {% endfor %}
+        </div>
+    </fieldset>
+    {% else %}
+    <input type="hidden" name="account" value="{{ chosen_account.id }}">
+    <p class="text-sm text-ink-2">Posting to <strong class="text-ink">{{ chosen_account.account_name }}</strong> ({{ chosen_account.get_platform_display }})</p>
+    {% endif %}
+
+    {% if ai_enabled %}
+    <div>
+        <label for="welcome-prompt" class="mb-1.5 block text-sm font-semibold text-ink">Write with AI</label>
+        <div class="flex flex-col gap-2 sm:flex-row">
+            <input id="welcome-prompt" type="text" name="prompt" maxlength="500" placeholder="What is the post about?" class="form-input-styled w-full"
+                   @keydown.enter.prevent="$refs.aiButton.click()">
+            <button type="button" x-ref="aiButton" class="btn-outline min-h-11 shrink-0 sm:w-auto"
+                    hx-post="{% url 'onboarding:welcome_ai_write' workspace_id=workspace.id %}"
+                    hx-include="#welcome-prompt, #welcome-caption, [name=account]"
+                    hx-target="#welcome-caption-field" hx-swap="outerHTML"
+                    hx-disabled-elt="this">Write with AI</button>
+        </div>
+    </div>
+    {% endif %}
+
+    {% include "onboarding/welcome/_caption_field.html" with error="" %}
+
+    <div>
+        <p class="mb-1.5 text-sm font-semibold text-ink" id="welcome-when-label">When should it go out?</p>
+        <div class="grid grid-cols-2 gap-3 sm:max-w-sm" role="group" aria-labelledby="welcome-when-label">
+            <div>
+                <label for="welcome-date" class="sr-only">Date</label>
+                <input id="welcome-date" type="date" name="schedule_date" value="{{ schedule_date }}" class="form-input-styled w-full">
+            </div>
+            <div>
+                <label for="welcome-time" class="sr-only">Time</label>
+                <input id="welcome-time" type="time" name="schedule_time" value="{{ schedule_time }}" class="form-input-styled w-full">
+            </div>
+        </div>
+        <p class="mt-2 text-xs text-ink-3">
+            {% if is_best_time %}Best time for this channel: {{ suggested_label }}.{% else %}Suggested: {{ suggested_label }}.{% endif %}
+            Times are in {{ timezone_name }}.
+        </p>
+    </div>
+
+    {% comment %}Schedule comes first in the markup so pressing Enter in a field schedules rather than saving a draft.{% endcomment %}
+    <div class="flex flex-col gap-3 pt-2 sm:flex-row-reverse sm:items-center sm:justify-between">
+        <button type="submit" name="action" value="schedule" class="btn-brand min-h-11 w-full sm:w-auto sm:px-8">Schedule post</button>
+        <div class="flex flex-col gap-1 sm:flex-row sm:gap-2">
+            <button type="submit" name="action" value="draft" class="min-h-11 w-full cursor-pointer whitespace-nowrap rounded-full px-4 text-sm font-medium text-ink-2 hover:bg-surface-2 hover:text-ink sm:w-auto">Save as draft</button>
+            <a href="{{ compose_url }}" class="inline-flex min-h-11 w-full items-center justify-center whitespace-nowrap rounded-full px-4 text-sm font-medium text-ink-2 hover:bg-surface-2 hover:text-ink sm:w-auto">Open the full composer</a>
+        </div>
+    </div>
+</form>
+{% endif %}
+{% endblock %}

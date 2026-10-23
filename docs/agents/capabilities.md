@@ -34,6 +34,7 @@ Every row is a capability of the PostDelegate web app. **Before** is what REST a
 | Inbox, replies | yes / yes | unchanged | `use_inbox`, `reply_from_inbox` |
 | Analytics | yes / yes | unchanged | `view_analytics` |
 | Client reports: list, run now, latest run | none | `GET /reports`, `POST /reports/{id}/run`, `GET /reports/{id}/runs/latest` / `list_reports`, `run_report`, `get_latest_report_run`; a report covering an account outside the allowlist is hidden | `view_analytics`; run: + `manage_social_accounts`; plan feature `branded_reports` |
+| Link-in-bio pages: list, read, edit, links, stats | none | `GET /bio/pages`, `GET`/`PATCH /bio/pages/{id}`, `POST /bio/pages/{id}/links`, `PATCH`/`DELETE /bio/pages/{id}/links/{link}`, `GET /bio/pages/{id}/stats` / `list_bio_pages`, `get_bio_page`, `update_bio_page`, `add_bio_link`, `update_bio_link`, `delete_bio_link`, `get_bio_stats`; only http(s) link addresses; icons and the posts grid can only name allowlisted accounts | read: `view_analytics`; edit: `manage_social_accounts` |
 | AI writing assistant | yes / yes | unchanged | `create_posts` |
 | Webhooks | yes / yes | unchanged | `manage_workspace_settings` or `manage_social_accounts` |
 

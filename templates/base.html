@@ -266,7 +266,7 @@
             window.dispatchEvent(new CustomEvent('htmx-error', { detail: { message: message } }));
         });
     </script>
-    {% if user.is_authenticated %}
+    {% if user.is_authenticated and not focus_layout %}
     <div class="flex h-screen overflow-hidden"
          style="background: var(--surface-page);"
          x-data="{ sidebarCollapsed: localStorage.getItem('sidebarCollapsed') === 'true', mobileMenuOpen: false }"
@@ -681,6 +681,12 @@
                     <span class="sidebar-nav-label">Analytics</span>
                 </a>
                 {% endif %}
+                {% if request.workspace_membership.effective_permissions.view_analytics %}
+                <a href="{% url 'linkinbio:list' workspace_id=request.workspace.id %}" class="mb-1 sidebar-nav-item {% if request.resolver_match.app_name == 'linkinbio' %}active{% endif %}">
+                    <svg class="flex-shrink-0" width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7"/></svg>
+                    <span class="sidebar-nav-label">Link in bio</span>
+                </a>
+                {% endif %}
                 {% endif %}
 
                 {% comment %}
@@ -752,17 +758,19 @@
                         <span class="block truncate">{{ channel.account_name|default:channel.account_handle }}</span>
                     </span>
                     {% else %}<span class="sidebar-nav-label truncate flex-1 text-stone-400 opacity-60">{{ channel.account_name|default:channel.account_handle }}</span>{% endif %}
+                    {% if not onboarding.is_sample_workspace %}
                     <form method="post" action="{% url 'social_accounts:reconnect' workspace_id=request.workspace.id account_id=channel.id %}" class="sidebar-nav-label">
                         {% csrf_token %}
                         <button type="submit" class="inline-flex items-center px-2 py-0.5 text-[11px] font-semibold text-orange-700 bg-orange-50 rounded-full hover:bg-orange-100 transition-colors cursor-pointer" title="Reconnect {{ channel.account_name|default:channel.account_handle }}">
                             Reconnect
                         </button>
                     </form>
+                    {% endif %}
                 </div>
                 {% endfor %}
 
                 <!-- Connect channels (hidden when collapsed) -->
-                {% if sidebar_connectable_platforms %}
+                {% if sidebar_connectable_platforms and not onboarding.is_sample_workspace %}
                 <div class="sidebar-connect-channels" x-show="!sidebarCollapsed">
                 <div class="sidebar-section-label">Connect channels</div>
                 {% for platform_key, platform_label in sidebar_connectable_platforms|slice:":3" %}
@@ -931,6 +939,7 @@
                     {% endfor %}
                 </div>
                 {% endif %}
+                {% if onboarding.is_sample_workspace %}{% include "onboarding/partials/_sample_banner.html" %}{% endif %}
                 <div class="flex-1 min-h-0 flex flex-col overflow-y-auto overflow-x-hidden">
                 {% block content %}{% endblock %}
                 </div>
@@ -941,6 +950,18 @@
     <!-- Onboarding checklist popup (fixed bottom-right) -->
     {% include "onboarding/partials/_checklist.html" %}
 
+    {% elif focus_layout %}
+    {% comment %}Signed-in pages with no sidebar (the welcome flow): the page supplies focus_content.{% endcomment %}
+    <main id="focus-main">
+        {% if messages %}
+        <div class="mx-auto max-w-2xl px-4 pt-4" role="status">
+            {% for message in messages %}
+            <p class="mb-2 rounded-md p-4 {% if message.tags == 'error' %}bg-red-50 text-red-800{% elif message.tags == 'success' %}bg-green-50 text-green-800{% else %}bg-blue-50 text-blue-800{% endif %}">{{ message }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% block focus_content %}{% endblock %}
+    </main>
     {% else %}
     <main class="auth-bg relative min-h-screen flex items-center justify-center py-12 px-4" style="font-family: var(--font-body);">
         {% block auth_content %}{% endblock %}

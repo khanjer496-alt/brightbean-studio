@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode, urlsplit
 
@@ -153,9 +154,16 @@ YOUTUBE_MEDIA_RULES = {
 class YouTubeProvider(SocialProvider):
     """YouTube Data API v3 provider using Google OAuth 2.0."""
 
+    profile_url_template = "https://www.youtube.com/@{handle}"
+
     media_rules = YOUTUBE_MEDIA_RULES
     # Top-level comments on the video carry up to 10,000 characters.
     thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=10000)
+
+    @classmethod
+    def permalink_for(cls, platform_post_id: str, account) -> str:
+        video_id = (platform_post_id or "").strip()
+        return f"https://www.youtube.com/watch?v={video_id}" if re.fullmatch(r"[A-Za-z0-9_-]{6,20}", video_id) else ""
 
     # Unverified: Sprout Social's 2026 study has no YouTube times, Hootsuite's page is gone and Buffer's
     # (Mar 2026) contradicts itself on long-form hours, so the generic DEFAULT_BEST_TIME_WINDOWS apply

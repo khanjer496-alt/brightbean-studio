@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable
@@ -39,6 +40,8 @@ from .types import (
 logger = logging.getLogger(__name__)
 
 REQUEST_TIMEOUT = 30.0
+
+_PROFILE_HANDLE = re.compile(r"[A-Za-z0-9._-]{1,100}")
 
 # Shown to the user as-is (a PublishError message passes through). Retryable,
 # so it must not promise anything that stops being true once retries run out.
@@ -246,6 +249,11 @@ class SocialProvider(ABC):
     # link (``apps.onboarding``), whose page only runs the plain OAuth flow.
     supports_connection_link: ClassVar[bool] = True
 
+    # True for a network a brand-new user can connect with nothing but their own
+    # login (no platform app to set up). The welcome flow highlights these when
+    # no network that needs an app is configured.
+    works_without_platform_app: ClassVar[bool] = False
+
     # True when disconnecting calls ``revoke_token`` against a revocation
     # endpoint that ends only this account's grant. Left False wherever one
     # grant is shared by several accounts (every Slack channel of a workspace).
@@ -258,6 +266,16 @@ class SocialProvider(ABC):
     # (YouTube ``videos.list`` takes 50 ids for the same 1 quota unit). Must
     # never be 0: the chunking loop would not advance.
     post_metrics_batch_size: int = 1
+
+    # True when the platform shows an account's posts as a grid people judge at a glance
+    # (Instagram), so the app offers a grid preview that places scheduled posts among the
+    # published ones.
+    supports_grid_preview: ClassVar[bool] = False
+
+    # Where an account's public profile lives, with ``{handle}`` filled from the account's
+    # handle (a leading "@" dropped). Empty when the platform has no such page, or its address
+    # needs more than the handle (``profile_url`` overrides then).
+    profile_url_template: ClassVar[str] = ""
 
     @property
     def rate_limits(self) -> RateLimitConfig:
@@ -274,6 +292,27 @@ class SocialProvider(ABC):
         platform. The default adds nothing.
         """
         return {}
+
+    @classmethod
+    def profile_url(cls, account) -> str:
+        """The account's public profile address (https), or "" when it can't be built.
+
+        Used wherever the app links out to the account (link-in-bio social icons). The handle
+        is checked against a conservative pattern, because it ends up in a public page's links.
+        """
+        handle = (account.account_handle or "").strip().lstrip("@")
+        if not cls.profile_url_template or not _PROFILE_HANDLE.fullmatch(handle):
+            return ""
+        return cls.profile_url_template.format(handle=handle)
+
+    @classmethod
+    def permalink_for(cls, platform_post_id: str, account) -> str:
+        """The public address of a published post, built from its remote id alone, or "".
+
+        Used to fill in a link for posts whose publish didn't record one. Providers whose
+        post address needs an API call (or more than the id and the account) leave it "".
+        """
+        return ""
 
     @classmethod
     def caption_length(cls, text: str) -> int:

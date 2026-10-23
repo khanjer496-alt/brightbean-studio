@@ -1,0 +1,9 @@
+{% comment %}
+Step heading. Takes focus when the step loads (so a screen reader starts at the
+step's title and a keyboard user is at the top of the form), unless the step
+has errors and focuses its error summary instead (pass error_focus=True).
+Expects: title, lead.
+{% endcomment %}
+<h1 id="welcome-heading" tabindex="-1" {% if not error_focus %}x-data x-init="$el.focus()"{% endif %}
+    class="text-2xl font-bold tracking-tight text-ink focus:outline-none sm:text-3xl">{{ title }}</h1>
+<p class="mb-6 mt-2 text-[15px] leading-relaxed text-ink-2">{{ lead }}</p>

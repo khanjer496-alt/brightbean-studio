@@ -1516,6 +1516,13 @@ def save_post(request, workspace_id, post_id=None):
     workspace = _get_workspace(request, workspace_id)
     action = request.POST.get("action", "save_draft")
 
+    if action in _PUBLISH_COMMITTING_ACTIONS:
+        from apps.onboarding.sample import SAMPLE_REFUSAL, is_sample_workspace
+
+        # The example workspace holds sample drafts: nothing there is ever published.
+        if is_sample_workspace(workspace.id):
+            return JsonResponse({"errors": {"sample": SAMPLE_REFUSAL}}, status=400)
+
     if not post_id and action in {"schedule", "publish_now", "add_to_queue", "add_to_queue_priority"}:
         from apps.composer.services import _require_approval_gate_passes
 

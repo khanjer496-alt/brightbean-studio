@@ -116,6 +116,7 @@ LOCAL_APPS = [
     "apps.oauth_server",
     "apps.analytics",
     "apps.reports",
+    "apps.linkinbio",
     "apps.billing",
     "apps.ai_writer",
     "apps.webhooks",
@@ -128,6 +129,7 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "apps.linkinbio.middleware.CustomDomainMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -930,3 +932,10 @@ AUTONOMY_DEFAULT_LEVELS = {
 }
 # How long an autonomous publish or reply waits where a person can undo it.
 AUTONOMY_DEFAULT_UNDO_MINUTES = 5
+
+# Link-in-bio pages (apps.linkinbio). Every page is served at /l/<slug>/. A page may also name a custom
+# domain; requests for that host are only routed to it when this is on (the operator must also allow the
+# host in ALLOWED_HOSTS and point TLS at the app). LINKINBIO_CNAME_TARGET is what the editor tells owners
+# to point their CNAME at; blank shows this site's own host.
+LINKINBIO_CUSTOM_DOMAINS_ENABLED = env.bool("LINKINBIO_CUSTOM_DOMAINS_ENABLED", default=False)
+LINKINBIO_CNAME_TARGET = env("LINKINBIO_CNAME_TARGET", default="")

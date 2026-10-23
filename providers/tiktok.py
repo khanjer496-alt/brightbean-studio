@@ -138,6 +138,8 @@ TIKTOK_MEDIA_RULES = {
 class TikTokProvider(SocialProvider):
     """TikTok Content Posting API provider using OAuth 2.0."""
 
+    profile_url_template = "https://www.tiktok.com/@{handle}"
+
     media_rules = TIKTOK_MEDIA_RULES
 
     # Source: https://sproutsocial.com/insights/best-times-to-post-on-social-media/ (published 2026-03-31; checked 2026-10-24):

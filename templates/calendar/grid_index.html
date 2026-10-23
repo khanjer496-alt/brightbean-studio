@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Grid preview — {{ workspace.name }} — {{ brand_short_name }}{% endblock %}
+
+{% block content %}
+<div class="flex flex-1 flex-col">
+    <a href="{% url 'calendar:calendar' workspace_id=workspace.id %}" class="mb-3 inline-flex min-h-11 items-center text-[13px] text-ink-3 underline">&larr; Back to the calendar</a>
+    <h1 class="m-0 mb-1 text-2xl font-semibold tracking-tight text-ink">Grid preview</h1>
+    {% if accounts %}
+    <p class="m-0 mb-4 text-[13px] text-ink-3">Pick an account to see its profile grid with your scheduled posts in place.</p>
+    <ul class="m-0 flex max-w-xl list-none flex-col gap-2 p-0">
+        {% for account in accounts %}
+        <li><a href="{% url 'calendar:account_grid' workspace_id=workspace.id account_id=account.id %}" class="flex min-h-11 items-center justify-between rounded-xl border border-line bg-surface-1 px-4 py-3 text-[15px] font-semibold text-ink no-underline hover:bg-surface-2">{{ account.account_name }}<span class="text-xs font-normal text-ink-3">{{ account.get_platform_display }}</span></a></li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="max-w-xl rounded-xl border border-dashed border-line p-8 text-center">
+        <p class="m-0 text-[15px] font-semibold text-ink">No account with a grid yet</p>
+        <p class="m-0 mt-1 text-[13px] text-ink-3">Connect an Instagram account to preview its grid.</p>
+        <a href="{% url 'social_accounts:connect' workspace_id=workspace.id %}" class="btn-brand mt-4 inline-flex min-h-11 w-auto items-center px-5 py-2">Connect an account</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

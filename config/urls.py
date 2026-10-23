@@ -42,6 +42,7 @@ urlpatterns = [
     # Client reports live under Analytics; listed first so "reports/" never reaches the account route.
     path("workspace/<uuid:workspace_id>/analytics/reports/", include("apps.reports.urls")),
     path("workspace/<uuid:workspace_id>/analytics/", include("apps.analytics.urls")),
+    path("workspace/<uuid:workspace_id>/bio/", include("apps.linkinbio.urls")),
     # AI writing assistant: composer actions, and the org's own provider key.
     path("workspace/<uuid:workspace_id>/ai/", include("apps.ai_writer.urls")),
     # Autonomy: the agent activity trail, the "going out soon" tray and the dial.
@@ -50,6 +51,8 @@ urlpatterns = [
     path("workspace/<uuid:workspace_id>/webhooks/", include("apps.webhooks.urls")),
     # Shareable report links: signed token, no login.
     path("reports/share/", include("apps.reports.public_urls")),
+    # Public link-in-bio pages: no login, nothing stored about the visitor.
+    path("l/", include("apps.linkinbio.public_urls")),
     path("webhooks/", include("apps.inbox.webhook_urls")),
     path("webhooks/", include("apps.common.webhook_urls")),
     path("webhooks/", include("apps.billing.webhook_urls")),

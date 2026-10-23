@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% load static %}
-{% load common_extras %}
+{% load common_extras onboarding_tags %}
 
 {% block title %}{% if is_edit %}Edit Post{% else %}New Post{% endif %} - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
 
@@ -293,6 +293,8 @@
      x-data="composerApp()"
      @keydown.meta.s.prevent="saveDraft()"
      @keydown.ctrl.s.prevent="saveDraft()">
+
+    {% onboarding_hint "composer" %}
 
     <!-- Page header -->
     <div class="flex items-center gap-3 px-4 sm:px-6 py-3 border-b border-stone-100 flex-shrink-0">

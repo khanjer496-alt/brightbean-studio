@@ -527,6 +527,14 @@ class SocialAccount(models.Model):
         }
 
     @property
+    def supports_grid_preview(self) -> bool:
+        """True when the platform shows posts as a profile grid, so the app can preview it."""
+        from providers import PROVIDER_REGISTRY
+
+        provider_cls = PROVIDER_REGISTRY.get(self.platform)
+        return bool(provider_cls and provider_cls.supports_grid_preview)
+
+    @property
     def revokes_platform_grant_on_disconnect(self) -> bool:
         """True when disconnecting also revokes our access on the platform.
 

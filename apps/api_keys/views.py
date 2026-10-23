@@ -213,7 +213,10 @@ def _initial_issuance_context(org, user) -> dict:
     workspaces; everything downstream (accounts, permissions) loads via
     the HTMX partial on workspace change.
     """
-    workspaces = Workspace.objects.filter(organization=org, is_archived=False).order_by("name")
+    # The example workspace (apps.onboarding.sample) never gets a key.
+    workspaces = Workspace.objects.filter(organization=org, is_archived=False, sample_marker__isnull=True).order_by(
+        "name"
+    )
     return {"workspaces": workspaces}
 
 
@@ -238,7 +241,7 @@ def workspace_options_partial(request):
     if not workspace_id:
         return HttpResponse("")
     try:
-        workspace = Workspace.objects.get(id=workspace_id, organization=request.org)
+        workspace = Workspace.objects.get(id=workspace_id, organization=request.org, sample_marker__isnull=True)
     except (Workspace.DoesNotExist, ValueError, DjangoValidationError):
         # Django's UUIDField raises ``django.core.exceptions.ValidationError``
         # (not ``ValueError``) when the input doesn't parse as a UUID,
@@ -390,7 +393,7 @@ def issue_key(request):
     workspace = None
     if workspace_id and not errors:
         try:
-            workspace = Workspace.objects.get(id=workspace_id, organization=request.org)
+            workspace = Workspace.objects.get(id=workspace_id, organization=request.org, sample_marker__isnull=True)
         except (Workspace.DoesNotExist, ValueError, DjangoValidationError):
             # ``ValidationError`` covers the malformed-UUID path; see the
             # corresponding catch in ``workspace_options_partial`` for

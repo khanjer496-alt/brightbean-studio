@@ -1,0 +1,39 @@
+{% extends "onboarding/welcome/base.html" %}
+{% load tz %}
+
+{% block header_action %}{% endblock %}
+{% block progress %}{% endblock %}
+
+{% block step %}
+{% if first_post and first_post.status == 'scheduled' %}
+{% include "onboarding/welcome/_heading.html" with title="You're all set. Your first post is scheduled." lead="It will go out on its own at the time you chose. Here is what to do next." %}
+{% elif first_post %}
+{% include "onboarding/welcome/_heading.html" with title="Your first draft is saved." lead="Open it any time to finish and schedule it. Here is what to do next." %}
+{% else %}
+{% include "onboarding/welcome/_heading.html" with title="You're all set." lead="Your workspace is ready. Here is what to do next." %}
+{% endif %}
+
+{% if first_post %}
+<blockquote class="mb-6 rounded-xl border border-line bg-surface-1 p-4 text-sm leading-relaxed text-ink-2">
+    <p class="line-clamp-3">{{ first_post.post.caption }}</p>
+    <footer class="mt-2 text-xs text-ink-3">
+        {{ first_post.social_account.account_name }}{% if first_post.status == 'scheduled' %} &middot; scheduled for {% timezone workspace.effective_timezone|default:"UTC" %}{{ first_post.scheduled_at|default:first_post.post.scheduled_at|date:"D M j, g:i A" }}{% endtimezone %}{% endif %}
+    </footer>
+</blockquote>
+{% endif %}
+
+<ul class="mb-8 space-y-2">
+    {% if flow.is_agency %}
+    <li><a href="{% url 'client_portal_admin:client_list' workspace_id=workspace.id %}" class="flex min-h-11 items-center justify-between rounded-xl border border-line bg-surface-1 px-4 py-3 text-sm font-medium text-ink hover:border-line-strong">Set up your first client and the client portal <span aria-hidden="true">&rarr;</span></a></li>
+    {% endif %}
+    <li><a href="{% url 'members:list' %}" class="flex min-h-11 items-center justify-between rounded-xl border border-line bg-surface-1 px-4 py-3 text-sm font-medium text-ink hover:border-line-strong">Invite a teammate <span aria-hidden="true">&rarr;</span></a></li>
+    <li><a href="{% url 'workspaces:brand_voice_settings' workspace_id=workspace.id %}" class="flex min-h-11 items-center justify-between rounded-xl border border-line bg-surface-1 px-4 py-3 text-sm font-medium text-ink hover:border-line-strong">Set your brand voice{% if ai_enabled %} for the AI writer{% endif %} <span aria-hidden="true">&rarr;</span></a></li>
+    <li><a href="{% url 'calendar:posting_slots' workspace_id=workspace.id %}?onboarding=1" class="flex min-h-11 items-center justify-between rounded-xl border border-line bg-surface-1 px-4 py-3 text-sm font-medium text-ink hover:border-line-strong">Check your best posting times <span aria-hidden="true">&rarr;</span></a></li>
+</ul>
+
+{% if trial %}
+<p class="mb-6 text-sm text-ink-3">Your {{ trial.plan }} trial has {{ trial.days_left }} days left. No card needed.</p>
+{% endif %}
+
+<a href="{% url 'calendar:calendar' workspace_id=workspace.id %}" class="btn-brand min-h-11 w-full sm:w-auto sm:px-8">Go to my calendar</a>
+{% endblock %}

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load onboarding_tags %}
 
 {% block title %}Analytics — {{ workspace.name }} — {{ brand_short_name }}{% endblock %}
 
@@ -11,19 +12,8 @@
         </div>
     </div>
 
-    <div class="flex flex-1 items-center justify-center p-10">
-        <div class="max-w-[420px] text-center">
-            <div class="mx-auto mb-5 flex h-[72px] w-[72px] items-center justify-center rounded-2xl bg-accent-soft">
-                <svg class="h-8 w-8 text-accent" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 12l4-4 4 4 6-6"/></svg>
-            </div>
-            <h2 class="mb-2 font-display text-2xl font-bold text-ink">Connect an account to see analytics</h2>
-            <p class="mb-5 text-[15px] leading-relaxed text-ink-2">
-                This workspace has no connected accounts. Connect one to start tracking per-post
-                performance — and if you have connected an account before, check the Channels page:
-                one that needs reconnecting doesn't show up here.
-            </p>
-            <a href="{% url 'social_accounts:connect' workspace_id=workspace.id %}" class="btn-brand w-auto px-5 py-2.5">Connect a channel</a>
-        </div>
+    <div class="flex flex-1 items-center justify-center">
+        {% empty_state "analytics" workspace has_channels=False %}
     </div>
 </div>
 {% endblock %}

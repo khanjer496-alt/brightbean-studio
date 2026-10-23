@@ -522,6 +522,8 @@ class PublishEngine:
             # An autonomous post waits out its undo window, and stays put while
             # a person holds it or the workspace is in a crisis pause.
             .exclude(autonomy_hold_exclusion(now))
+            # The example workspace holds sample drafts that must never go out.
+            .exclude(post__workspace__sample_marker__isnull=False)
             .select_related("post__workspace", "social_account")
             .order_by("effective_at")[: _max_concurrent_publishes()]
         )
@@ -817,7 +819,8 @@ class PublishEngine:
                 else:
                     platform_post.status = PlatformPost.Status.PUBLISHED
                     platform_post.published_at = timezone.now()
-                    # Not stored; read by the post.published webhook fired from save().
+                    platform_post.permalink = str(result.get("url") or "")[:500] or None
+                    # Read by the post.published webhook fired from save().
                     setattr(platform_post, webhook_events.PERMALINK_ATTR, result.get("url") or "")
                 platform_post.save()
 

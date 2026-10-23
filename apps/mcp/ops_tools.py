@@ -13,6 +13,7 @@ from collections.abc import Callable
 from typing import Any
 
 from apps.api import ops
+from apps.api.schemas import CreateBioLinkRequest, UpdateBioLinkRequest, UpdateBioPageRequest
 from apps.mcp.handlers import (
     _PARTS_INPUT_SCHEMA,
     _POST_SETTINGS_INPUT_SCHEMA,
@@ -1158,5 +1159,149 @@ _tool(
     lambda a: {"_args": (_uuid_arg(a, "report_id", required=True),)},
     properties={"report_id": _uuid_prop("ID from list_reports.")},
     required=["report_id"],
+    read_only=True,
+)
+
+
+# ---------------------------------------------------------------------------
+# Link-in-bio pages
+# ---------------------------------------------------------------------------
+
+
+def _validated(model, fields: dict, *, exclude_unset: bool = True) -> dict[str, Any]:
+    from pydantic import ValidationError
+
+    try:
+        return model.model_validate(fields).model_dump(exclude_unset=exclude_unset)
+    except ValidationError as exc:
+        err = exc.errors()[0]
+        where = ".".join(str(p) for p in err["loc"])
+        raise JsonRpcError(INVALID_PARAMS, f"{where}: {err['msg']}") from exc
+
+
+_BIO_LINK_PROPERTIES = {
+    "title": _text_prop("The button text.", max_length=100, min_length=1),
+    "url": _text_prop("An absolute http(s) address; anything else is refused.", max_length=2000),
+    "icon": {"type": "string", "enum": ["", "link", "shop", "video", "music", "mail", "calendar", "star"]},
+    "thumbnail_media_id": _uuid_prop("An image from the media library; null removes it."),
+    "starts_at": _text_prop("ISO 8601 (UTC if no offset): the link shows from then."),
+    "ends_at": _text_prop("ISO 8601 (UTC if no offset): the link stops showing then."),
+    "is_active": {"type": "boolean"},
+}
+
+_tool(
+    "list_bio_pages",
+    (
+        "List the workspace's link-in-bio pages (public at /l/<slug>/) with their links, theme and settings. "
+        "Needs view_analytics."
+    ),
+    ops.list_bio_pages,
+    _page,
+    properties=_list_props(),
+    read_only=True,
+)
+
+_tool(
+    "get_bio_page",
+    "Read one link-in-bio page with its links (in order, with whether each shows right now). Needs view_analytics.",
+    ops.get_bio_page,
+    lambda a: {"_args": (_uuid_arg(a, "page_id", required=True),)},
+    properties={"page_id": _uuid_prop("ID from list_bio_pages.")},
+    required=["page_id"],
+    read_only=True,
+)
+
+_tool(
+    "update_bio_page",
+    (
+        "Edit a link-in-bio page; omitted fields are unchanged. title, bio, slug (the public address; changing it "
+        'breaks old links), theme (clean, midnight, sunrise, forest), accent_color (#RRGGBB or ""), '
+        "avatar_media_id, is_published, show_latest_posts, posts_account_id, social_account_ids (accounts whose "
+        "profile icons show; must be on the key's allowlist) and custom_domain. Needs manage_social_accounts. "
+        "Returns the page."
+    ),
+    ops.update_bio_page,
+    lambda a: {
+        "_args": (_uuid_arg(a, "page_id", required=True),),
+        **_validated(UpdateBioPageRequest, {k: v for k, v in a.items() if k != "page_id"}),
+    },
+    properties={
+        "page_id": _uuid_prop(),
+        "slug": _text_prop(max_length=40),
+        "title": _text_prop(max_length=80),
+        "bio": _text_prop(max_length=300),
+        "theme": {"type": "string", "enum": ["clean", "midnight", "sunrise", "forest"]},
+        "accent_color": _text_prop("#RRGGBB, or an empty string for the theme's own.", max_length=7),
+        "avatar_media_id": _uuid_prop("An image from the media library; null removes it."),
+        "is_published": {"type": "boolean"},
+        "show_latest_posts": {"type": "boolean"},
+        "posts_account_id": _uuid_prop("Only show posts from this account; null for all."),
+        "social_account_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}},
+        "custom_domain": _text_prop("A hostname with a CNAME to this app; null clears it.", max_length=253),
+    },
+    required=["page_id"],
+)
+
+_tool(
+    "add_bio_link",
+    (
+        "Add a link button to the end of a link-in-bio page. Only http(s) addresses are accepted. Optional "
+        "starts_at / ends_at schedule when it shows. Needs manage_social_accounts. Returns the page."
+    ),
+    ops.add_bio_link,
+    lambda a: {
+        "_args": (_uuid_arg(a, "page_id", required=True),),
+        **_validated(CreateBioLinkRequest, {k: v for k, v in a.items() if k != "page_id"}, exclude_unset=False),
+    },
+    properties={"page_id": _uuid_prop(), **_BIO_LINK_PROPERTIES},
+    required=["page_id", "title", "url"],
+)
+
+_tool(
+    "update_bio_link",
+    (
+        "Edit a link on a link-in-bio page (omitted fields are unchanged), or pass move: up | down to swap it with "
+        "its neighbour. Needs manage_social_accounts. Returns the page."
+    ),
+    ops.update_bio_link,
+    lambda a: {
+        "_args": (_uuid_arg(a, "page_id", required=True), _uuid_arg(a, "link_id", required=True)),
+        **_validated(UpdateBioLinkRequest, {k: v for k, v in a.items() if k not in ("page_id", "link_id")}),
+    },
+    properties={
+        "page_id": _uuid_prop(),
+        "link_id": _uuid_prop("ID from get_bio_page."),
+        **_BIO_LINK_PROPERTIES,
+        "move": {"type": "string", "enum": ["up", "down"]},
+    },
+    required=["page_id", "link_id"],
+)
+
+_tool(
+    "delete_bio_link",
+    "Remove a link from a link-in-bio page (its past click counts stay in the stats). Needs manage_social_accounts.",
+    ops.delete_bio_link,
+    lambda a: {"_args": (_uuid_arg(a, "page_id", required=True), _uuid_arg(a, "link_id", required=True))},
+    properties={"page_id": _uuid_prop(), "link_id": _uuid_prop()},
+    required=["page_id", "link_id"],
+)
+
+_tool(
+    "get_bio_stats",
+    (
+        "Page views and link clicks for a link-in-bio page over the last `days` UTC days (default 30, at most 90): "
+        "totals, a per-day series and clicks per link. Counted without cookies or stored addresses, so visitor "
+        "numbers are daily estimates. Needs view_analytics."
+    ),
+    ops.get_bio_stats,
+    lambda a: {
+        "_args": (_uuid_arg(a, "page_id", required=True),),
+        "days": 30 if a.get("days") is None else a["days"],
+    },
+    properties={
+        "page_id": _uuid_prop(),
+        "days": {"type": "integer", "minimum": 1, "maximum": 90, "default": 30},
+    },
+    required=["page_id"],
     read_only=True,
 )
