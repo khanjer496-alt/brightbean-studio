@@ -402,7 +402,21 @@ class SocialAccount(models.Model):
 
     @property
     def char_limit(self) -> int:
-        return self.PLATFORM_CHAR_LIMITS.get(self.platform, 2200)
+        limit = self.PLATFORM_CHAR_LIMITS.get(self.platform)
+        if limit is not None:
+            return limit
+        # A platform with no entry above states its own limit on the provider.
+        from providers import PROVIDER_REGISTRY
+
+        provider_cls = PROVIDER_REGISTRY.get(self.platform)
+        return provider_cls().max_caption_length if provider_cls else 2200
+
+    @property
+    def post_settings(self) -> list[dict]:
+        """The per-post settings this platform declares, as the composer and API describe them."""
+        from providers import post_settings_for
+
+        return [setting.as_dict() for setting in post_settings_for(self.platform)]
 
     @property
     def escaped_chars(self) -> str:
@@ -496,6 +510,11 @@ class SocialAccount(models.Model):
         ``deleteSession`` wants the refresh JWT rather than the access JWT it
         gets — and the app password outlives any session regardless.
         """
+        from providers import PROVIDER_REGISTRY
+
+        provider_cls = PROVIDER_REGISTRY.get(self.platform)
+        if provider_cls is not None and provider_cls.revokes_grant_on_disconnect:
+            return True
         return self.platform in {
             PlatformCredential.Platform.YOUTUBE,
             PlatformCredential.Platform.GOOGLE_BUSINESS,

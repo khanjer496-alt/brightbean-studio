@@ -82,6 +82,22 @@ def _get_configured_platforms(org_id):
     return configured
 
 
+def _connect_url_name(platform):
+    """The named connect form a provider uses instead of the OAuth redirect, or ""."""
+    from providers import PROVIDER_REGISTRY
+
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    return f"social_accounts:{provider_cls.connect_url_name}" if provider_cls and provider_cls.connect_url_name else ""
+
+
+def _has_destination_picker(platform):
+    """Whether one grant on ``platform`` serves several destinations the user picks from."""
+    from providers import PROVIDER_REGISTRY
+
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    return bool(provider_cls and provider_cls.has_destination_picker)
+
+
 def _build_redirect_uri(request, platform):
     """Build the OAuth callback URL.
 
@@ -251,6 +267,9 @@ def connect_platform(request, workspace_id):
         return redirect("social_accounts:connect_mastodon", workspace_id=workspace_id)
     if platform == PlatformCredential.Platform.DEVTO:
         return redirect("social_accounts:connect_devto", workspace_id=workspace_id)
+    connect_url_name = _connect_url_name(platform)
+    if connect_url_name:
+        return redirect(connect_url_name, workspace_id=workspace_id)
 
     # Standard OAuth flow
     provider = _get_provider_for_platform(platform, request.org.id)
@@ -422,6 +441,34 @@ def oauth_callback(request, platform):
                         )
                 messages.warning(request, warning)
                 return redirect("social_accounts:list", workspace_id=workspace_id)
+
+        # One grant, several destinations (Discord and Slack channels): let the
+        # user pick, through the same picker the Page flows use.
+        if _has_destination_picker(platform):
+            destinations = provider.list_destinations(tokens)
+            if not destinations:
+                messages.warning(
+                    request,
+                    f"No {provider.platform_name} channels were found that {settings.BRAND_NAME} can post to. "
+                    "Check the app has access to a channel, then reconnect.",
+                )
+                return redirect("social_accounts:list", workspace_id=workspace_id)
+            existing_ids = set(
+                SocialAccount.objects.filter(workspace_id=workspace_id, platform=platform).values_list(
+                    "account_platform_id", flat=True
+                )
+            )
+            for destination in destinations:
+                destination["already_connected"] = destination["id"] in existing_ids
+            request.session["oauth_page_select"] = {
+                "workspace_id": workspace_id,
+                "platform": platform,
+                # The grant is only the means of listing the destinations; each
+                # account carries the token it posts with (``access_token``).
+                "user_tokens": {"access_token": "", "refresh_token": None, "expires_in": None},
+                "pages": destinations,
+            }
+            return redirect("social_accounts:select_account")
 
         # Standard single-account flow (non-Facebook/Instagram platforms)
         profile = provider.get_profile(tokens.access_token)
@@ -787,6 +834,9 @@ def reconnect(request, workspace_id, account_id):
         return redirect("social_accounts:connect_mastodon", workspace_id=workspace_id)
     if platform == PlatformCredential.Platform.DEVTO:
         return redirect("social_accounts:connect_devto", workspace_id=workspace_id)
+    connect_url_name = _connect_url_name(platform)
+    if connect_url_name:
+        return redirect(connect_url_name, workspace_id=workspace_id)
 
     # Standard OAuth reconnect
     provider = _get_provider_for_platform(platform, request.org.id)

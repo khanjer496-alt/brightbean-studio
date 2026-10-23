@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import datetime as dt
 import uuid
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from django.conf import settings
 from ninja import Field, Schema
@@ -108,6 +108,14 @@ class AccountSummary(Schema):
     thread_media_per_part: bool = Field(
         False, description="True when a later part can carry its own ``media_asset_ids``. Comments are text only."
     )
+    post_settings: list[dict] = Field(
+        default_factory=list,
+        description=(
+            "Per-post settings the platform needs beyond the caption (Reddit: ``subreddit``, ``flair_id``, ...). "
+            "Each has a ``key``, ``label``, ``kind`` (text, select, checkbox), ``required`` and ``help``. Send them "
+            "as ``post_settings`` when creating the post; a scheduled post missing a required one is rejected with 422."
+        ),
+    )
 
     @classmethod
     def from_social_account(cls, sa) -> AccountSummary:
@@ -128,6 +136,7 @@ class AccountSummary(Schema):
             thread_max_parts=thread.max_parts,
             thread_part_max_length=thread.part_max_length or sa.char_limit,
             thread_media_per_part=thread.media_per_part,
+            post_settings=sa.post_settings,
         )
 
 
@@ -335,6 +344,13 @@ class CreatePostRequest(Schema):
         ),
     )
     parts: list[ThreadPart] = Field(default_factory=list, description=_PARTS_DESCRIPTION)
+    post_settings: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Per-post settings the account's platform declares in ``/accounts`` ``post_settings`` "
+            "(Reddit: ``subreddit``, ``flair_id``, ``nsfw``, ...). Unknown keys are rejected with 422."
+        ),
+    )
     action: PostAction = Field(
         "draft",
         description=(

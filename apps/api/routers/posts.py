@@ -293,6 +293,7 @@ def create(request, payload: CreatePostRequest):
                 status="scheduled" if payload.action == "schedule" else "draft",
                 platform_overrides=platform_overrides,
                 parts=[part.to_spec() for part in payload.parts],
+                post_settings=payload.post_settings,
             )
             if repeat is not None:
                 save_recurrence(post, **repeat.rule_fields())

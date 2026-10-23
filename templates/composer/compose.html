@@ -658,6 +658,62 @@
                     </div>
                 </template>
 
+                <!-- Settings a platform declares for itself (Reddit subreddit and flair, ...) -->
+                <template x-for="accId in selectedAccounts" :key="'provider-settings-' + accId">
+                    <div x-show="(charLimits[accId]?.post_settings || []).length"
+                         x-data="providerSettings(accId, '{{ workspace.id }}')"
+                         class="border border-stone-200 rounded-xl bg-white p-4 space-y-3">
+                        <input type="hidden" :name="'ps_panel_' + accId" value="1"
+                               :disabled="!(charLimits[accId]?.post_settings || []).length">
+                        <div class="flex items-center gap-2">
+                            <span class="platform-icon w-5 h-5 rounded-[5px] flex items-center justify-center"
+                                  :class="'pi-' + (charLimits[accId]?.platform || '')"
+                                  x-html="platformIconSvg(charLimits[accId]?.platform || '')"></span>
+                            <span class="text-xs font-semibold text-stone-600" x-text="charLimits[accId]?.name + ' - Post Settings'"></span>
+                        </div>
+                        <template x-for="f in fields" :key="f.key">
+                            <div>
+                                <template x-if="f.kind === 'checkbox'">
+                                    <label class="flex items-start gap-2 cursor-pointer">
+                                        <input type="checkbox" value="true"
+                                               :name="'ps_' + f.key + '_' + accId"
+                                               x-model="vals[f.key]"
+                                               class="w-4 h-4 mt-0.5 rounded border-stone-300 text-orange-500 focus:ring-orange-200">
+                                        <span class="text-sm text-stone-700" x-text="f.label"></span>
+                                    </label>
+                                </template>
+                                <template x-if="f.kind !== 'checkbox'">
+                                    <div>
+                                        <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1">
+                                            <span x-text="f.label"></span> <span x-show="f.required" class="text-red-400">*</span>
+                                        </label>
+                                        <template x-if="f.kind === 'select'">
+                                            <select :name="'ps_' + f.key + '_' + accId"
+                                                    x-model="vals[f.key]"
+                                                    class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all">
+                                                <option value="">Select…</option>
+                                                <template x-for="o in optionsFor(f)" :key="o.id">
+                                                    <option :value="o.id" :selected="vals[f.key] === o.id" x-text="o.name"></option>
+                                                </template>
+                                            </select>
+                                        </template>
+                                        <template x-if="f.kind === 'text'">
+                                            <input type="text"
+                                                   :name="'ps_' + f.key + '_' + accId"
+                                                   x-model="vals[f.key]"
+                                                   @change="refreshDependents(f.key)"
+                                                   :placeholder="f.placeholder"
+                                                   :maxlength="f.max_length || null"
+                                                   class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all">
+                                        </template>
+                                        <p x-show="f.help" class="text-[11px] text-stone-400 mt-1" x-text="f.help"></p>
+                                    </div>
+                                </template>
+                            </div>
+                        </template>
+                    </div>
+                </template>
+
                 <!-- Pinterest settings (auto-visible when any Pinterest account is selected) -->
                 <template x-for="accId in selectedAccounts" :key="'pin-settings-' + accId">
                     <div x-show="charLimits[accId]?.platform === 'pinterest'"
@@ -2154,6 +2210,47 @@
   document.body.addEventListener('approvalAction', function () {
     setTimeout(function () { window.location.reload(); }, 1100);
   });
+</script>
+<script nonce="{{ request.csp_nonce }}">
+// State for a platform's declared post settings (see SocialProvider.post_settings).
+// Fields come from the account's entry in the char-limits blob; options for
+// select fields that need the platform are fetched live, and re-fetched when
+// the field they depend on changes.
+function providerSettings(accId, workspaceId) {
+    const limits = JSON.parse(document.getElementById('composer-char-limits').textContent) || {};
+    const extras = JSON.parse(document.getElementById('composer-platform-extras').textContent) || {};
+    const fields = (limits[accId] && limits[accId].post_settings) || [];
+    const vals = {};
+    fields.forEach(f => {
+        const saved = (extras[accId] || {})[f.key];
+        vals[f.key] = f.kind === 'checkbox' ? (saved === undefined ? !!f.default : !!saved) : (saved || '');
+    });
+    return {
+        fields, vals, opts: {}, loaded: {},
+        init() { fields.forEach(f => { if (f.options_from_provider) this.loadOptions(f); }); },
+        optionsFor(f) {
+            if (f.options_from_provider) return this.opts[f.key] || [];
+            return f.choices.map(c => ({ id: c.value, name: c.label }));
+        },
+        refreshDependents(key) {
+            fields.filter(f => f.depends_on === key && f.options_from_provider).forEach(f => {
+                this.vals[f.key] = '';
+                this.loadOptions(f);
+            });
+        },
+        loadOptions(f) {
+            const dep = f.depends_on ? (this.vals[f.depends_on] || '').trim() : '';
+            if (f.depends_on && !dep) { this.opts[f.key] = []; return; }
+            const cacheKey = f.key + '|' + dep;
+            if (this.loaded[cacheKey]) return;
+            this.loaded[cacheKey] = true;
+            fetch(`/workspace/${workspaceId}/compose/post-setting-options/${accId}/${f.key}/?depends=${encodeURIComponent(dep)}`)
+                .then(r => r.json())
+                .then(d => { this.opts[f.key] = d.options || []; })
+                .catch(() => { this.opts[f.key] = []; });
+        },
+    };
+}
 </script>
 {{ selected_account_ids|json_script:"composer-selected-accounts" }}
 {{ char_limits|json_script:"composer-char-limits" }}

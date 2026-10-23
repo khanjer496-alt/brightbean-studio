@@ -23,7 +23,7 @@ import uuid
 from collections.abc import Iterable
 from typing import Any
 
-from providers import mention_lookup_for
+from providers import mention_lookup_for, post_settings_error_for
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +95,7 @@ def create_post(
     status: str = "draft",
     platform_overrides: dict[Any, dict[str, str | None]] | None = None,
     parts: list[ThreadPartSpec] | None = None,
+    post_settings: dict[str, Any] | None = None,
 ):
     """Create a ``Post`` + one ``PlatformPost`` for ``social_account``.
 
@@ -123,6 +124,9 @@ def create_post(
     * Media assets are attached in order by their position in
       ``media_asset_ids``. They must already live in the workspace's
       media library.
+    * ``post_settings`` are the per-post settings the platform declares
+      (``SocialProvider.post_settings``, listed on the account); a key the
+      platform doesn't declare is refused.
     * ``parts`` are the thread's later parts (``ThreadPartSpec``); the
       caption and media above are its first. Their media must live in the
       workspace's library too, and a scheduled thread must be one the
@@ -186,6 +190,8 @@ def create_post(
         if missing:
             raise ValueError(f"Media asset(s) not found in workspace {workspace.id}: {missing}")
 
+    extra = clean_post_settings(social_account.platform, post_settings)
+
     if status == "scheduled":
         # A new post has no platform_extra, so a Pinterest pin has no board
         # yet and is refused here: it can be created as a draft, given a
@@ -193,6 +199,7 @@ def create_post(
         reason = publish_blocker(
             social_account,
             media_types=usable_media_types(asset_map.values()),
+            platform_extra=extra,
         ) or media_rules_blocker(social_account, [asset_map[u] for _mid, u in resolved if u is not None])
         if reason:
             raise ValueError(reason)
@@ -234,6 +241,7 @@ def create_post(
             social_account=social_account,
             status=status,
             scheduled_at=scheduled_at if status == "scheduled" else None,
+            platform_extra=extra,
             platform_specific_title=override.get("title"),
             platform_specific_caption=override.get("caption"),
             platform_specific_first_comment=override.get("first_comment"),
@@ -511,9 +519,11 @@ def media_blocker(social_account, *, media_types) -> str:
     image or a video. Their providers refuse anything else before calling out.
     """
     from apps.media_library.models import MediaAsset
-    from providers import is_video_only, requires_media
+    from providers import accepts_media_for, is_video_only, requires_media
 
     platform = social_account.get_platform_display()
+    if media_types and not accepts_media_for(social_account.platform):
+        return f"{platform} posts are text or links. Remove the media from this post, or deselect {platform}."
     if is_video_only(social_account.platform) and MediaAsset.MediaType.VIDEO not in media_types:
         return f"{platform} can only publish videos. Add a video to this post before scheduling it."
     if requires_media(social_account.platform) and not media_types:
@@ -728,6 +738,45 @@ def media_rule_issues(social_account, assets, *, platform_extra: dict | None = N
     return issues
 
 
+def clean_post_settings(platform: str, settings: dict[str, Any] | None) -> dict[str, Any]:
+    """``settings`` restricted to what ``platform`` declares, or ``ValueError``.
+
+    The API and MCP take the same keys the composer's form does. An undeclared
+    key would be stored and silently ignored at publish time, so it is refused
+    where the caller can still fix it.
+    """
+    from providers import post_settings_for
+
+    if not settings:
+        return {}
+    declared = {field.key for field in post_settings_for(platform)}
+    unknown = sorted(set(settings) - declared)
+    if unknown:
+        allowed = ", ".join(sorted(declared)) or "none"
+        raise ValueError(f"Unknown post setting(s) {unknown} for {platform}; this platform accepts: {allowed}.")
+    return {key: value for key, value in settings.items() if value is not None and value != ""}
+
+
+def parse_post_settings(platform: str, get, account_id) -> dict:
+    """The ``platform_extra`` entries a platform's ``post_settings`` form fields describe.
+
+    ``get`` reads one form value (``request.POST.get``). Fields are named
+    ``ps_<key>_<account id>``, the way the other per-account composer fields
+    are. A blank text or select field is left out so a cleared setting is
+    removed; a checkbox is always recorded.
+    """
+    from providers import post_settings_for
+
+    values: dict = {}
+    for field in post_settings_for(platform):
+        raw = get(f"ps_{field.key}_{account_id}", "")
+        if field.kind == "checkbox":
+            values[field.key] = raw == "true"
+        elif str(raw).strip():
+            values[field.key] = str(raw).strip()
+    return values
+
+
 def media_rules_blocker(social_account, assets, *, platform_extra: dict | None = None) -> str:
     """The first ``media_rule_issues`` error for ``social_account``, or ""."""
     issues = media_rule_issues(social_account, assets, platform_extra=platform_extra)
@@ -749,7 +798,7 @@ def publish_blocker(social_account, *, media_types, platform_extra: dict | None 
         return reason
     if social_account.platform == "pinterest" and not (platform_extra or {}).get("board_id"):
         return "Pinterest needs a board for every pin. Choose one for this post in the composer before scheduling it."
-    return ""
+    return post_settings_error_for(social_account.platform, platform_extra)
 
 
 def require_publishable(platform_post, *, media_types=None, assets=None) -> None:

@@ -62,7 +62,7 @@ from apps.social_accounts.error_messages import (
     is_credential_rejection,
 )
 from apps.webhooks import events as webhook_events
-from providers import VIDEO_POST_TYPES, get_provider
+from providers import PROVIDER_REGISTRY, VIDEO_POST_TYPES, get_provider
 from providers.exceptions import APIError, ProviderError, PublishError, RateLimitError
 from providers.types import PostType, PublishContent, PublishResult, PublishState
 
@@ -129,6 +129,12 @@ def _resolve_publish_credentials(account):
         # comment's ``username`` without a ``from`` object, and an unrecognised
         # own comment lands in the inbox as an inbound message from ourselves.
         credentials["account_handle"] = account.account_handle
+
+    # Whatever else a provider keeps per account (a Slack channel) comes from
+    # the provider itself rather than from another branch above.
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    if provider_cls is not None:
+        credentials.update(provider_cls.credentials_for_account(account))
 
     return credentials
 

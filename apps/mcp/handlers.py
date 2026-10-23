@@ -218,6 +218,17 @@ def _parse_iso_datetime(value: Any, field_name: str) -> datetime:
 # ---------------------------------------------------------------------------
 
 
+# The ``post_settings`` argument of the creating tools: the per-post settings an
+# account's platform lists in list_accounts (``post_settings``).
+_POST_SETTINGS_INPUT_SCHEMA = {
+    "type": "object",
+    "description": (
+        "Per-post settings the account's platform declares in list_accounts' post_settings "
+        "(for example a Reddit subreddit and flair_id). Unknown keys are rejected."
+    ),
+    "additionalProperties": True,
+}
+
 # The ``parts`` argument of the post-creating tools — ThreadPart's fields.
 _PARTS_INPUT_SCHEMA = {
     "type": "array",
@@ -324,6 +335,7 @@ def _create_draft(args: dict, context: dict[str, Any]) -> dict:
             author=api_key.issued_by if api_key.issued_by_id else None,
             status="draft",
             parts=parts,
+            post_settings=args.get("post_settings"),
         )
     except ValueError as exc:
         raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
@@ -374,6 +386,7 @@ register_tool(
                     ),
                 },
                 "parts": _PARTS_INPUT_SCHEMA,
+                "post_settings": _POST_SETTINGS_INPUT_SCHEMA,
             },
             "required": ["social_account_id", "caption"],
             "additionalProperties": False,
@@ -490,6 +503,7 @@ def _schedule_post(args: dict, context: dict[str, Any]) -> dict:
                 author=api_key.issued_by if api_key.issued_by_id else None,
                 status="scheduled",
                 parts=parts,
+                post_settings=args.get("post_settings"),
             )
             if repeat is not None:
                 save_recurrence(post, **repeat.rule_fields())
@@ -534,6 +548,7 @@ register_tool(
                 },
                 "recurrence": _RECURRENCE_INPUT_SCHEMA,
                 "parts": _PARTS_INPUT_SCHEMA,
+                "post_settings": _POST_SETTINGS_INPUT_SCHEMA,
             },
             "required": ["social_account_id", "caption", "scheduled_at"],
             "additionalProperties": False,

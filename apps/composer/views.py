@@ -44,7 +44,15 @@ from apps.members.decorators import require_permission
 from apps.members.models import WorkspaceMembership
 from apps.social_accounts.models import SocialAccount
 from apps.workspaces.models import Workspace
-from providers import is_video_only, mention_lookup_for, requires_media, thread_capability_for
+from providers import (
+    accepts_media_for,
+    is_video_only,
+    mention_lookup_for,
+    post_settings_error_for,
+    post_settings_for,
+    requires_media,
+    thread_capability_for,
+)
 from providers.tiktok import VALID_PRIVACY_LEVELS as TIKTOK_PRIVACY_LEVELS
 
 from .forms import ContentCategoryForm, PostForm
@@ -71,6 +79,7 @@ from .services import (
     media_change_blocker,
     media_rule_issues,
     mention_suggestions,
+    parse_post_settings,
     parse_thread_parts,
     post_media_assets,
     post_media_types,
@@ -383,7 +392,36 @@ def _sync_platform_posts(request, post, workspace, initial_status=None):
                     extra["video_cover_timestamp_ms"] = cover_ms_val
             pp.platform_extra = extra
 
+        elif post_settings_for(account.platform) and f"ps_panel_{acc_id}" in request.POST:
+            # The platform declares its own per-post fields (a subreddit, a
+            # flair); rebuild only those keys so anything else already stored
+            # stays, and gate on the panel marker so a save from somewhere that
+            # never rendered the panel can't wipe them.
+            declared = {field.key for field in post_settings_for(account.platform)}
+            kept = {k: v for k, v in (pp.platform_extra or {}).items() if k not in declared}
+            pp.platform_extra = {**kept, **parse_post_settings(account.platform, request.POST.get, acc_id)}
+
         pp.save()
+
+
+def _validate_post_settings(request, workspace, action):
+    """Refuse to schedule a post whose platform wants settings the form leaves unfilled."""
+    if action not in _PUBLISH_COMMITTING_ACTIONS:
+        return None
+    selected_ids = _parse_selected_account_ids(request.POST.get("selected_accounts", ""))
+    if not selected_ids:
+        return None
+    for account in SocialAccount.objects.filter(id__in=selected_ids, workspace=workspace):
+        if not post_settings_for(account.platform) or f"ps_panel_{account.id}" not in request.POST:
+            continue
+        values = parse_post_settings(account.platform, request.POST.get, account.id)
+        error = post_settings_error_for(account.platform, values)
+        if error:
+            return JsonResponse(
+                {"errors": {"post_settings": f"{account.get_platform_display()}: {error}"}},
+                status=400,
+            )
+    return None
 
 
 def _validate_pinterest_board_selection(request, post, workspace):
@@ -519,12 +557,28 @@ def _validate_required_media(request, post, workspace, action):
 
     accounts = list(SocialAccount.objects.filter(id__in=selected_ids, workspace=workspace))
     # Skip the media lookup when no selected platform cares about it.
-    if not any(requires_media(account.platform) for account in accounts):
+    if not any(requires_media(account.platform) or not accepts_media_for(account.platform) for account in accounts):
         return None
     media_types = _composer_media_types(request, post, workspace)
     blocked = [account for account in accounts if media_blocker(account, media_types=media_types)]
     if not blocked:
         return None
+
+    # A platform that publishes no media at all is a different fix from the rest:
+    # the media has to go, not be added.
+    text_only = [a for a in blocked if not accepts_media_for(a.platform)]
+    if text_only:
+        names = sorted({a.get_platform_display() for a in text_only})
+        return JsonResponse(
+            {
+                "errors": {
+                    "media": f"{get_text_list(names, 'and')} can only publish text or links. "
+                    "Remove the media from this post, or deselect "
+                    f"{'that account' if len(text_only) == 1 else 'those accounts'}."
+                }
+            },
+            status=400,
+        )
 
     # Worded apart from media_blocker's because this form can also be fixed by
     # deselecting the account, and it names every platform at once.
@@ -1075,6 +1129,7 @@ def compose(request, workspace_id, post_id=None):
             "youtube_url": f"https://www.youtube.com/channel/{acc.account_platform_id}"
             if acc.platform == "youtube"
             else "",
+            "post_settings": acc.post_settings,
             **cfg,
         }
 
@@ -1487,6 +1542,10 @@ def save_post(request, workspace_id, post_id=None):
     asset_error = _validate_platform_asset_selection(request, workspace)
     if asset_error is not None:
         return asset_error
+
+    settings_error = _validate_post_settings(request, workspace, action)
+    if settings_error is not None:
+        return settings_error
 
     media_error = _validate_required_media(request, post, workspace, action)
     if media_error is not None:
@@ -2775,6 +2834,28 @@ def pinterest_boards(request, workspace_id, account_id):
         return JsonResponse({"error": "Failed to fetch boards"}, status=502)
 
     return JsonResponse({"boards": [{"id": b.get("id"), "name": b.get("name")} for b in boards]})
+
+
+@login_required
+@require_GET
+def post_setting_options(request, workspace_id, account_id, key):
+    """Live options for a platform's per-post setting (the composer's select fields)."""
+    workspace = _get_workspace(request, workspace_id)
+    account = get_object_or_404(SocialAccount, id=account_id, workspace=workspace)
+    declared = {field.key: field for field in post_settings_for(account.platform) if field.options_from_provider}
+    field = declared.get(key)
+    if field is None:
+        raise Http404("Unknown setting")
+
+    from apps.publisher.engine import _provider_and_access_token
+
+    try:
+        provider, access_token = _provider_and_access_token(account)
+        options = provider.get_setting_options(access_token, key, request.GET.get("depends", ""))
+    except Exception:
+        logger.warning("Could not load %s options for %s", key, account, exc_info=True)
+        return JsonResponse({"error": "Could not load options"}, status=502)
+    return JsonResponse({"options": [{"id": o["id"], "name": o["name"]} for o in options]})
 
 
 @login_required
