@@ -36,7 +36,14 @@ from dataclasses import replace
 from urllib.parse import urlencode, urlparse
 
 from .base import SocialProvider
-from .exceptions import APIError, OAuthError, PublishError, RateLimitError, TokenExpiredError
+from .exceptions import (
+    APIError,
+    OAuthError,
+    ProviderError,
+    PublishError,
+    RateLimitError,
+    TokenExpiredError,
+)
 from .types import (
     AccountProfile,
     AuthType,
@@ -376,11 +383,30 @@ class SlackProvider(SocialProvider):
             body["thread_ts"] = str(thread_ts)
         if content.extra.get("no_unfurl"):
             body.update(unfurl_links=False, unfurl_media=False)
+        # Upload the bytes first: a file Slack refuses (size, type, storage)
+        # fails here, before anything is visible. The uploads stay private
+        # until completeUploadExternal shares them.
+        uploaded = [self._upload_file(access_token, path) for path in files]
+
         message = self._api("chat.postMessage", access_token, write=True, json=body)
         ts = message["ts"]
 
-        if files:
-            self._share_files(access_token, channel, files, thread_ts=str(thread_ts or ts))
+        if uploaded:
+            try:
+                self._api(
+                    "files.completeUploadExternal",
+                    access_token,
+                    write=True,
+                    json={"files": uploaded, "channel_id": channel, "thread_ts": str(thread_ts or ts)},
+                )
+            except ProviderError as exc:
+                # The message is already live: a retry would post it twice.
+                raise APIError(
+                    f"{self.platform_name} posted the message but not its files: {exc}",
+                    platform=self.platform_name,
+                    raw_response=getattr(exc, "raw_response", {}) or {},
+                    ambiguous_write=True,
+                ) from exc
 
         return PublishResult(
             platform_post_id=ts,
@@ -388,35 +414,33 @@ class SlackProvider(SocialProvider):
             extra={"channel": channel, "ts": ts},
         )
 
-    def _share_files(self, access_token: str, channel: str, paths: list[str], *, thread_ts: str) -> None:
-        """Upload ``paths`` and share them in ``thread_ts``'s thread with one completeUploadExternal call."""
-        uploaded = []
-        for path in paths:
-            name = os.path.basename(path)
-            ticket = self._api(
-                "files.getUploadURLExternal",
-                access_token,
-                data={"filename": name, "length": str(os.path.getsize(path))},
+    def _upload_file(self, access_token: str, path: str) -> dict:
+        """Upload one file's bytes (``files.getUploadURLExternal`` + POST); returns its ``files`` entry."""
+        name = os.path.basename(path)
+        ticket = self._api(
+            "files.getUploadURLExternal",
+            access_token,
+            data={"filename": name, "length": str(os.path.getsize(path))},
+        )
+        upload_url = ticket["upload_url"]
+        host = urlparse(upload_url).hostname or ""
+        if not (host == "slack.com" or host.endswith(".slack.com")):
+            raise PublishError(
+                "Slack returned an upload address we won't send files to.",
+                platform=self.platform_name,
+                retryable=False,
             )
-            upload_url = ticket["upload_url"]
-            host = urlparse(upload_url).hostname or ""
-            if not (host == "slack.com" or host.endswith(".slack.com")):
-                raise PublishError(
-                    "Slack returned an upload address we won't send files to.",
-                    platform=self.platform_name,
-                    retryable=False,
-                )
+        try:
             with open(path, "rb") as handle:
                 self._request(
                     "POST", upload_url, data=handle, headers={"Content-Type": "application/octet-stream"}, timeout=300
                 )
-            uploaded.append({"id": ticket["file_id"], "title": name})
-        self._api(
-            "files.completeUploadExternal",
-            access_token,
-            write=True,
-            json={"files": uploaded, "channel_id": channel, "thread_ts": thread_ts},
-        )
+        except APIError as exc:
+            # An upload nobody shared yet is private: a lost response here can't
+            # have published anything, so it is an ordinary retry.
+            exc.ambiguous_write = False
+            raise
+        return {"id": ticket["file_id"], "title": name}
 
     def _permalink(self, access_token: str, channel: str, ts: str) -> str | None:
         try:

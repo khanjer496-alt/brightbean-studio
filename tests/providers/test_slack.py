@@ -241,19 +241,20 @@ class TestPublish:
         with patch.object(p, "_request", side_effect=request):
             result = p.publish_post("t", PublishContent(text="pics", media_files=paths))
         names = [name for _, name, _ in calls]
+        # The bytes go up (privately) before the message, so a refused file fails before anything is visible.
         assert names == [
+            "files.getUploadURLExternal",
+            "abc",
+            "files.getUploadURLExternal",
+            "abc",
             "chat.postMessage",
-            "files.getUploadURLExternal",
-            "abc",
-            "files.getUploadURLExternal",
-            "abc",
             "files.completeUploadExternal",
             "chat.getPermalink",
         ]
-        first_ticket = calls[1][2]["data"]
+        first_ticket = calls[0][2]["data"]
         assert first_ticket == {"filename": "a.png", "length": "3"}
-        assert calls[3][2]["data"] == {"filename": "b.mp4", "length": "5"}
-        assert calls[2][2]["headers"] == {"Content-Type": "application/octet-stream"}
+        assert calls[2][2]["data"] == {"filename": "b.mp4", "length": "5"}
+        assert calls[1][2]["headers"] == {"Content-Type": "application/octet-stream"}
         complete = calls[5][2]["json"]
         assert complete == {
             "files": [{"id": "F1", "title": "a.png"}, {"id": "F2", "title": "b.mp4"}],
@@ -290,7 +291,32 @@ class TestPublish:
         p = provider()
         with patch.object(p, "_request", side_effect=request):
             p.publish_post("t", PublishContent(text="", media_files=[str(path)]))
-        assert calls[0][2]["json"]["text"] == "chart.png"
+        post = next(kw for _, name, kw in calls if name == "chat.postMessage")
+        assert post["json"]["text"] == "chart.png"
+
+    def test_a_refused_file_fails_before_the_message_is_posted(self, tmp_path):
+        path = tmp_path / "a.png"
+        path.write_bytes(b"1")
+        request, calls = slack_api({"files.getUploadURLExternal": failed("file_upload_size_restricted")})
+        p = provider()
+        with patch.object(p, "_request", side_effect=request), pytest.raises(PublishError):
+            p.publish_post("t", PublishContent(text="x", media_files=[str(path)]))
+        assert all(name != "chat.postMessage" for _, name, _ in calls)
+
+    def test_files_failing_after_the_message_is_live_are_never_retried(self, tmp_path):
+        path = tmp_path / "a.png"
+        path.write_bytes(b"1")
+        request, _ = slack_api(
+            {
+                "chat.postMessage": ok({"ts": "9.9"}),
+                "files.getUploadURLExternal": ok({"upload_url": "https://files.slack.com/u", "file_id": "F1"}),
+                "files.completeUploadExternal": failed("ratelimited"),
+            }
+        )
+        p = provider()
+        with patch.object(p, "_request", side_effect=request), pytest.raises(APIError) as exc:
+            p.publish_post("t", PublishContent(text="x", media_files=[str(path)]))
+        assert exc.value.ambiguous_write is True
 
     def test_over_the_text_limit_is_refused(self):
         with pytest.raises(PublishError) as exc:

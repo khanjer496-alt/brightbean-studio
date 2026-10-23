@@ -722,14 +722,34 @@ def connect_devto(request, workspace_id):
 # ------------------------------------------------------------------
 
 
+TELEGRAM_CODE_SESSION_KEY = "telegram_connect_codes"
+
+
+def _telegram_verification_code(request, workspace_id, *, issue=True):
+    """The one-time code this user must put in the chat's description to prove they run it.
+
+    The bot is shared by every customer, so the bot being an administrator of a
+    chat proves nothing about who is connecting it: anyone could name a channel
+    another customer added the bot to. Editing the chat's description takes an
+    administrator of that chat, and ``getChat`` reads it back without needing
+    the bot's update stream (which a webhook or another poller may own).
+    """
+    codes = request.session.get(TELEGRAM_CODE_SESSION_KEY) or {}
+    code = codes.get(str(workspace_id), "")
+    if not code and issue:
+        code = f"verify-{secrets.token_hex(5)}"
+        request.session[TELEGRAM_CODE_SESSION_KEY] = {**codes, str(workspace_id): code}
+    return code
+
+
 @login_required
 @require_permission("manage_social_accounts")
 def connect_telegram(request, workspace_id):
-    """Connect a Telegram channel or group the platform bot administers."""
+    """Connect a Telegram channel or group the platform bot administers and the user controls."""
     platform = PlatformCredential.Platform.TELEGRAM
     provider = _get_provider_for_platform(platform, request.org.id)
 
-    def render_form():
+    def render_form(chat=""):
         try:
             bot_username = provider.get_bot_username()
         except Exception:
@@ -738,19 +758,37 @@ def connect_telegram(request, workspace_id):
         return render(
             request,
             "social_accounts/telegram_connect.html",
-            {"workspace_id": workspace_id, "bot_username": bot_username},
+            {
+                "workspace_id": workspace_id,
+                "bot_username": bot_username,
+                "verification_code": _telegram_verification_code(request, workspace_id),
+                "chat": chat,
+            },
         )
 
     if request.method == "GET":
         return render_form()
 
-    chat = provider.normalize_chat_reference(request.POST.get("chat", ""))
+    raw_chat = request.POST.get("chat", "")
+    chat = provider.normalize_chat_reference(raw_chat)
     if not chat:
         messages.error(request, "Enter the channel as @username, a t.me link, or its numeric chat id.")
-        return render_form()
+        return render_form(raw_chat)
+
+    # Read from the session, never the form: the code is what the user was shown.
+    code = _telegram_verification_code(request, workspace_id, issue=False)
+    if not code:
+        messages.error(request, "Your verification code expired. Add the new code below to the chat, then connect.")
+        return render_form(raw_chat)
 
     try:
         profile = provider.get_profile(chat)
+        if code not in (profile.extra or {}).get("description", ""):
+            messages.error(
+                request,
+                f"The code {code} isn't in {profile.name}'s description yet. Add it, save, then connect again.",
+            )
+            return render_form(raw_chat)
         # The chat id is the account's stored credential; the bot token stays in the environment.
         _create_or_update_account(
             workspace_id=workspace_id,
@@ -758,25 +796,29 @@ def connect_telegram(request, workspace_id):
             profile=profile,
             access_token=profile.platform_id,
         )
-        messages.success(request, f"Connected {profile.name} on Telegram.")
+        messages.success(request, f"Connected {profile.name} on Telegram. You can remove the code from its description.")
     except PlanLimitError as exc:
         messages.error(request, exc.message)
         return redirect("social_accounts:list", workspace_id=workspace_id)
     except PublishError as exc:
         messages.error(request, str(exc))
-        return render_form()
+        return render_form(raw_chat)
     except APIError as exc:
         logger.warning("Telegram connection failed: %s", exc)
         messages.error(
             request,
             "Telegram couldn't find that chat. Check the name, and make sure the bot was added to it as an administrator.",
         )
-        return render_form()
+        return render_form(raw_chat)
     except Exception:
         logger.exception("Telegram connection failed")
         messages.error(request, "Failed to connect Telegram. Please try again.")
-        return render_form()
+        return render_form(raw_chat)
 
+    # One use: the next connection proves control with a fresh code.
+    codes = dict(request.session.get(TELEGRAM_CODE_SESSION_KEY) or {})
+    codes.pop(str(workspace_id), None)
+    request.session[TELEGRAM_CODE_SESSION_KEY] = codes
     return redirect("calendar:calendar", workspace_id=workspace_id)
 
 

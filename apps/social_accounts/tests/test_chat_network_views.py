@@ -79,8 +79,28 @@ class TestTelegramConnect:
             body = authenticated_client.get(self.url(workspace)).content.decode()
         assert "@pd_bot" in body
 
+    def code(self, client, workspace):
+        """The verification code the form shows, as the user would copy it."""
+        from apps.social_accounts.views import TELEGRAM_CODE_SESSION_KEY
+
+        with patch("providers.telegram.TelegramProvider.get_bot_username", return_value="pd_bot"):
+            body = client.get(self.url(workspace)).content.decode()
+        code = client.session[TELEGRAM_CODE_SESSION_KEY][str(workspace.id)]
+        assert code in body
+        return code
+
+    def profile(self, description=""):
+        return AccountProfile(
+            platform_id="-1001234567890",
+            name="News",
+            handle="@newsroom",
+            follower_count=12,
+            extra={"type": "channel", "description": description},
+        )
+
     def test_connecting_stores_the_chat_id_as_the_credential(self, authenticated_client, workspace):
-        profile = AccountProfile(platform_id="-1001234567890", name="News", handle="@newsroom", follower_count=12)
+        code = self.code(authenticated_client, workspace)
+        profile = self.profile(f"Daily news. {code}")
         with patch("providers.telegram.TelegramProvider.get_profile", return_value=profile) as get_profile:
             response = authenticated_client.post(self.url(workspace), {"chat": "https://t.me/newsroom"})
         get_profile.assert_called_once_with("@newsroom")
@@ -92,8 +112,36 @@ class TestTelegramConnect:
         assert account.oauth_access_token == "-1001234567890"
         assert account.connection_status == SocialAccount.ConnectionStatus.CONNECTED
 
+    def test_a_chat_without_the_code_is_not_connected(self, authenticated_client, workspace):
+        """The bot is shared: being its admin chat proves nothing about who is connecting it."""
+        self.code(authenticated_client, workspace)
+        with patch("providers.telegram.TelegramProvider.get_profile", return_value=self.profile("Daily news.")):
+            response = authenticated_client.post(self.url(workspace), {"chat": "@newsroom"})
+        assert response.status_code == 200
+        assert "isn&#x27;t in News&#x27;s description" in response.content.decode()
+        assert not SocialAccount.objects.filter(platform="telegram").exists()
+
+    def test_a_code_posted_in_the_form_is_ignored(self, authenticated_client, workspace):
+        """Without a code issued to this session, nothing in the request can stand in for one."""
+        with patch(
+            "providers.telegram.TelegramProvider.get_profile", return_value=self.profile("verify-abc")
+        ) as get_profile:
+            response = authenticated_client.post(self.url(workspace), {"chat": "@newsroom", "code": "verify-abc"})
+        get_profile.assert_not_called()
+        assert response.status_code == 200
+        assert not SocialAccount.objects.filter(platform="telegram").exists()
+
+    def test_a_code_works_once(self, authenticated_client, workspace):
+        from apps.social_accounts.views import TELEGRAM_CODE_SESSION_KEY
+
+        code = self.code(authenticated_client, workspace)
+        with patch("providers.telegram.TelegramProvider.get_profile", return_value=self.profile(code)):
+            authenticated_client.post(self.url(workspace), {"chat": "@newsroom"})
+        assert str(workspace.id) not in authenticated_client.session[TELEGRAM_CODE_SESSION_KEY]
+
     def test_a_bot_that_cannot_post_shows_why(self, authenticated_client, workspace):
         error = PublishError("The bot can't post there yet. Add it as an administrator.", retryable=False)
+        self.code(authenticated_client, workspace)
         with patch("providers.telegram.TelegramProvider.get_profile", side_effect=error):
             response = authenticated_client.post(self.url(workspace), {"chat": "@newsroom"})
         assert response.status_code == 200
@@ -101,6 +149,7 @@ class TestTelegramConnect:
         assert not SocialAccount.objects.filter(platform="telegram").exists()
 
     def test_an_unknown_chat_is_explained(self, authenticated_client, workspace):
+        self.code(authenticated_client, workspace)
         with patch(
             "providers.telegram.TelegramProvider.get_profile",
             side_effect=APIError("chat not found", status_code=400, retryable=False),

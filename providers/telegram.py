@@ -32,7 +32,7 @@ from contextlib import ExitStack
 from dataclasses import replace
 
 from .base import SocialProvider
-from .exceptions import APIError, PublishError, RateLimitError
+from .exceptions import APIError, ProviderError, PublishError, RateLimitError
 from .types import (
     AccountProfile,
     AuthType,
@@ -137,6 +137,9 @@ def to_telegram_html(text: str) -> str:
         parts.append(html.escape(text[position : match.start()], quote=False))
         tag = match.group(0)
         name = _TAG_NAME.match(tag).group(1).lower()
+        if name == "a":
+            # A bare "&" in a link's query string is a parse error too.
+            tag = re.sub(r"&(?!(?:amp|lt|gt|quot|#\d+);)", "&amp;", tag)
         if tag.startswith("</"):
             if not stack or stack.pop() != name:
                 balanced = False
@@ -340,6 +343,9 @@ class TelegramProvider(SocialProvider):
     def get_profile(self, access_token: str) -> AccountProfile:
         """Verify the bot can post to the chat ``access_token`` names, and describe the chat.
 
+        ``extra["description"]`` carries the chat's description, which is where the
+        connecting user proves they administer the chat (see ``connect_telegram``).
+
         ``access_token`` is a chat id or ``@username`` here; the bot token comes from the environment.
         """
         chat = self._api("getChat", json_body={"chat_id": access_token})
@@ -360,7 +366,9 @@ class TelegramProvider(SocialProvider):
             name=chat.get("title") or chat.get("first_name") or str(chat["id"]),
             handle=f"@{username}" if username else None,
             follower_count=followers,
-            extra={"type": chat.get("type", "")},
+            # The connect view looks for the user's one-time code here: editing a
+            # chat's description takes an administrator of that chat.
+            extra={"type": chat.get("type", ""), "description": chat.get("description") or ""},
         )
 
     @staticmethod
@@ -416,15 +424,24 @@ class TelegramProvider(SocialProvider):
             caption = text if len(content.text or "") <= MAX_CAPTION_LENGTH else ""
             message_ids.extend(self._send_media(chat_id, media, caption, common))
             if text and not caption:
-                follow_up = self._publish_call(
-                    "sendMessage",
-                    json_body={
-                        "chat_id": chat_id,
-                        "text": text,
-                        "parse_mode": "HTML",
-                        **self._reply_params(message_ids[0], common),
-                    },
-                )
+                try:
+                    follow_up = self._publish_call(
+                        "sendMessage",
+                        json_body={
+                            "chat_id": chat_id,
+                            "text": text,
+                            "parse_mode": "HTML",
+                            **self._reply_params(message_ids[0], common),
+                        },
+                    )
+                except ProviderError as exc:
+                    # The media is already live: a retry would post it twice.
+                    raise APIError(
+                        f"{self.platform_name} posted the media but not the text that follows it: {exc}",
+                        platform=self.platform_name,
+                        raw_response=getattr(exc, "raw_response", {}) or {},
+                        ambiguous_write=True,
+                    ) from exc
                 message_ids.append(follow_up["message_id"])
 
         first = message_ids[0]

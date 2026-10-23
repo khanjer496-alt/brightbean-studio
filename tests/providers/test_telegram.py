@@ -11,7 +11,13 @@ from providers.exceptions import APIError, PublishError, RateLimitError
 from providers.telegram import TelegramProvider, _RedactBotToken, to_telegram_html
 from providers.types import AuthType, PostType, PublishContent, PublishResult, ThreadMode
 
-CHANNEL = {"id": -1001234567890, "type": "channel", "title": "News", "username": "newsroom"}
+CHANNEL = {
+    "id": -1001234567890,
+    "type": "channel",
+    "title": "News",
+    "username": "newsroom",
+    "description": "Daily news. verify-0a1b2c3d4e",
+}
 ADMIN = {"status": "administrator", "can_post_messages": True}
 
 
@@ -101,6 +107,13 @@ class TestHtml:
         assert to_telegram_html("<script>x</script>") == "&lt;script&gt;x&lt;/script&gt;"
 
 
+    def test_an_ampersand_in_a_link_is_escaped(self):
+        assert (
+            to_telegram_html('<a href="https://x.io/?a=1&b=2">x</a>')
+            == '<a href="https://x.io/?a=1&amp;b=2">x</a>'
+        )
+
+
 class TestConnect:
     def test_verifies_the_bot_can_post_to_a_channel(self):
         request, calls = fake_api(
@@ -118,6 +131,8 @@ class TestConnect:
         assert profile.name == "News"
         assert profile.handle == "@newsroom"
         assert profile.follower_count == 42
+        # Where connect_telegram looks for the user's proof of control.
+        assert profile.extra["description"] == "Daily news. verify-0a1b2c3d4e"
         member_call = next(kw for name, kw in calls if name == "getChatMember")
         assert member_call["json"] == {"chat_id": -1001234567890, "user_id": 99}
 
@@ -170,6 +185,22 @@ class TestConnect:
 
 
 class TestPublish:
+    def test_a_follow_up_failing_after_the_media_is_live_is_never_retried(self, tmp_path):
+        photo = tmp_path / "a.jpg"
+        photo.write_bytes(b"1")
+
+        def request(method, url, **kwargs):
+            if url.endswith("/sendPhoto"):
+                return ok({"message_id": 5})
+            raise RateLimitError("slow down", retry_after=3)
+
+        p = provider()
+        with patch.object(p, "_request", side_effect=request), pytest.raises(APIError) as exc:
+            p.publish_post(
+                "-100", PublishContent(text="x" * 1500, media_files=[str(photo)], media_types=["image"])
+            )
+        assert exc.value.ambiguous_write is True
+
     def test_text_goes_through_send_message_as_html(self):
         request, calls = fake_api({"sendMessage": {"message_id": 7}})
         p = provider(chat_username="newsroom")
