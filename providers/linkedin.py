@@ -22,6 +22,7 @@ from .types import (
     MediaRules,
     MediaType,
     OAuthTokens,
+    PeakWindow,
     PostMetrics,
     PostType,
     PublishContent,
@@ -124,6 +125,17 @@ class LinkedInProvider(SocialProvider):
     media_rules = LINKEDIN_MEDIA_RULES
     # LinkedIn comments are capped at 1,250 characters.
     thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=1250)
+
+    # Source: https://sproutsocial.com/insights/best-times-to-post-on-social-media/ (published 2026-03-31; checked 2026-10-24):
+    # Mon 1-2pm; Tue 11am-5pm; Wed 11am-4pm; Thu 11am, 1-5pm; Fri 11am, 1-2pm. Hours are the audience's local time; industry averages, not your audience.
+    best_time_source = "Sprout Social study, Mar 2026"
+    best_time_windows = (
+        PeakWindow(days=(1, 2, 3), hours=(11, 13, 14)),
+        PeakWindow(days=(1, 2, 3), hours=(15,)),
+        PeakWindow(days=(1, 2), hours=(12,)),
+        PeakWindow(days=(4,), hours=(11, 13)),
+        PeakWindow(days=(0,), hours=(13,)),
+    )
 
     writing_style = "Professional and insightful: a hook line, short paragraphs with line breaks, a takeaway or question at the end, and three to five hashtags."
 

@@ -5,6 +5,7 @@ from django.apps import AppConfig
 logger = logging.getLogger(__name__)
 
 SYNC_INTERVAL_SECONDS = 3600  # hourly
+BEST_TIMES_INTERVAL_SECONDS = 86400  # daily
 
 
 class AnalyticsConfig(AppConfig):
@@ -24,18 +25,19 @@ class AnalyticsConfig(AppConfig):
 
     @staticmethod
     def _register_sync_task(sender, **kwargs):
-        """Idempotently register the hourly analytics crons (sync, engagement alerts)."""
+        """Idempotently register the analytics crons (hourly sync and engagement alerts, daily best times)."""
         try:
             from background_task.models import Task
 
-            from apps.analytics.tasks import check_engagement_alerts, sync_all_account_analytics
+            from apps.analytics.tasks import check_engagement_alerts, refresh_best_times, sync_all_account_analytics
 
-            for name, task in (
-                ("sync_all_account_analytics", sync_all_account_analytics),
-                ("check_engagement_alerts", check_engagement_alerts),
+            for name, task, interval in (
+                ("sync_all_account_analytics", sync_all_account_analytics, SYNC_INTERVAL_SECONDS),
+                ("check_engagement_alerts", check_engagement_alerts, SYNC_INTERVAL_SECONDS),
+                ("refresh_best_times", refresh_best_times, BEST_TIMES_INTERVAL_SECONDS),
             ):
                 if not Task.objects.filter(verbose_name=name).exists():
-                    task(repeat=SYNC_INTERVAL_SECONDS, verbose_name=name)
-                    logger.info("Registered recurring %s (every %ss)", name, SYNC_INTERVAL_SECONDS)
+                    task(repeat=interval, verbose_name=name)
+                    logger.info("Registered recurring %s (every %ss)", name, interval)
         except Exception:
             logger.debug("Skipping analytics cron registration (database not ready)")

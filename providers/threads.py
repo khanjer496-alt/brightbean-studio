@@ -16,6 +16,7 @@ from .types import (
     MediaRules,
     MediaType,
     OAuthTokens,
+    PeakWindow,
     PostMetrics,
     PostType,
     PublishContent,
@@ -65,6 +66,14 @@ class ThreadsProvider(SocialProvider):
     media_rules = THREADS_MEDIA_RULES
     # Each part is a reply to the one before it (``reply_to_id``).
     thread = ThreadCapability(mode=ThreadMode.REPLY_CHAIN, max_parts=25, media_per_part=True)
+
+    # Source: https://buffer.com/resources/best-time-to-post-social-media/ (published 2026-03-25; checked 2026-10-24):
+    # weekdays 7am-12pm, Wed best, then Thu and Tue; Sprout has no Threads data. Hours are the audience's local time; industry averages, not your audience.
+    best_time_source = "Buffer study, Mar 2026"
+    best_time_windows = (
+        PeakWindow(days=(1, 2, 3), hours=(8, 9, 10)),
+        PeakWindow(days=(0, 4), hours=(9, 10, 11)),
+    )
 
     writing_style = "Casual and conversational, like talking to followers. At most one hashtag; emojis welcome."
 

@@ -235,6 +235,21 @@ class ThreadMode(enum.StrEnum):
 
 
 @dataclass(frozen=True)
+class PeakWindow:
+    """Local-time hours on given weekdays when a network's audience is most active.
+
+    A provider lists these best first (``SocialProvider.best_time_windows``);
+    they are the stand-in "best time to post" until an account has enough
+    published posts of its own to learn from. Days are 0=Monday … 6=Sunday and
+    hours 0-23, both in the audience's local time, which for us is the
+    workspace timezone.
+    """
+
+    days: tuple[int, ...]
+    hours: tuple[int, ...]
+
+
+@dataclass(frozen=True)
 class ThreadCapability:
     """What a platform accepts as a thread, declared per provider.
 

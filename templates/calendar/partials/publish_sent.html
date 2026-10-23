@@ -16,6 +16,7 @@ Shows all published/partially_published platform posts. Loaded via HTMX into #ta
                 <th class="px-4 py-3 text-xs font-semibold text-stone-400 uppercase tracking-wider">Caption</th>
                 <th class="px-4 py-3 text-xs font-semibold text-stone-400 uppercase tracking-wider">Platform</th>
                 <th class="px-4 py-3 text-xs font-semibold text-stone-400 uppercase tracking-wider">Author</th>
+                <th class="px-4 py-3 text-xs font-semibold text-stone-400 uppercase tracking-wider"><span class="sr-only">Actions</span></th>
             </tr>
         </thead>
         <tbody>
@@ -98,10 +99,21 @@ Shows all published/partially_published platform posts. Loaded via HTMX into #ta
                 <td class="px-4 py-3 text-xs text-stone-500">
                     {{ pp.post.author.display_name|default:"-" }}
                 </td>
+                <td class="px-4 py-3" @click.stop>
+                    {% if pp.status == "published" and request.workspace_membership.effective_permissions.create_posts %}
+                    <button type="button"
+                            class="whitespace-nowrap px-3 py-1.5 text-xs font-semibold text-stone-700 border border-stone-200 rounded-full hover:bg-stone-50 cursor-pointer"
+                            hx-get="{% url 'calendar:evergreen_add_form' workspace_id=workspace.id %}?platform_post_id={{ pp.id }}"
+                            hx-target="#evergreen-modal" hx-swap="innerHTML">
+                        Add to evergreen
+                    </button>
+                    {% endif %}
+                </td>
             </tr>
             {% endfor %}
         </tbody>
     </table>
+    <div id="evergreen-modal"></div>
     {% else %}
     {% if not has_connected_accounts %}
     {% include "calendar/partials/_no_channels_empty_state.html" %}

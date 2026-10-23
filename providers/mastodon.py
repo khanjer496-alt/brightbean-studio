@@ -121,6 +121,9 @@ class MastodonProvider(SocialProvider):
 
     mention_lookup = True
 
+    # Unverified: none of the Sprout Social, Hootsuite or Buffer studies covers Mastodon, so the generic
+    # DEFAULT_BEST_TIME_WINDOWS apply (checked 2026-10-24).
+
     writing_style = (
         "Genuine and community-minded, no marketing speak. Hashtags in CamelCase for discoverability and accessibility."
     )

@@ -65,6 +65,7 @@ class AIRequestLog(models.Model):
         WEB = "web", "Web"
         API = "api", "Agent API"
         MCP = "mcp", "MCP"
+        SYSTEM = "system", "Scheduled task"
 
     class Status(models.TextChoices):
         OK = "ok", "OK"

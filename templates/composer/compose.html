@@ -1675,6 +1675,11 @@
                                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                                         Timezone: {{ workspace.effective_timezone }}
                                     </div>
+                                    <div id="best-time-chips"
+                                         hx-get="{% url 'calendar:best_time_chips' workspace_id=workspace.id %}"
+                                         hx-trigger="publish-mode-change[detail.mode=='schedule'] from:window"
+                                         hx-include="[name='selected_accounts']"
+                                         hx-swap="innerHTML"></div>
                                 </div>
 
                                 {% include "composer/partials/repeat_panel.html" %}
@@ -3545,6 +3550,20 @@ function repeatPanel() {
             showMenu();
         });
     }
+
+    // "Best times" chips (loaded into #best-time-chips) fill the date and time fields.
+    document.addEventListener('click', function(e) {
+        var chip = e.target.closest('[data-best-time-chip]');
+        if (!chip) return;
+        [['scheduled_date', chip.dataset.date], ['scheduled_time', chip.dataset.time]].forEach(function(pair) {
+            var input = document.querySelector('input[name="' + pair[0] + '"]');
+            if (!input) return;
+            if (input._flatpickr) { input._flatpickr.setDate(pair[1], true); return; }
+            input.value = pair[1];
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        });
+    });
 
     // Schedule sub-view: confirm button sets mode to schedule and closes
     if (scheduleConfirm) {
