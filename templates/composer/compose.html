@@ -2933,6 +2933,9 @@ function repeatPanel() {
         end: initial.end,
         endDate: initial.end_date || '',
         count: initial.count || 4,
+        // True while the publish button is set to a queue action; opening the
+        // Schedule sub-view clears it so the control can be edited.
+        queued: (document.getElementById('publish-action-btn')?.value || '').startsWith('add_to_queue'),
 
         get unitLabel() {
             const unit = UNITS[this.frequency] || '';
@@ -2997,12 +3000,18 @@ function repeatPanel() {
     function showPopover() { popover.classList.remove('hidden'); }
     function hidePopover() { popover.classList.add('hidden'); showMenu(); }
     function showMenu() { menu.classList.remove('hidden'); scheduleView.classList.add('hidden'); }
-    function showSchedule() { menu.classList.add('hidden'); scheduleView.classList.remove('hidden'); }
+    function showSchedule() {
+        menu.classList.add('hidden');
+        scheduleView.classList.remove('hidden');
+        window.dispatchEvent(new CustomEvent('publish-mode-change', { detail: { mode: 'schedule' } }));
+    }
 
     function setMode(mode, label, actionLabelText, iconKey) {
         modeLabel.textContent = label;
         actionLabel.textContent = actionLabelText;
         actionBtn.value = mode;
+        // The Repeat control (repeat_panel.html) stands down for queue actions.
+        window.dispatchEvent(new CustomEvent('publish-mode-change', { detail: { mode: mode } }));
         if (icons[iconKey]) {
             modeIcon.innerHTML = icons[iconKey];
         }

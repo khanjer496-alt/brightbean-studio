@@ -528,6 +528,46 @@ def _recurrence_from_form(request):
     }
 
 
+def _recurrence_error(recurrence, post, workspace):
+    """A 400 response if ``recurrence`` can't repeat ``post``, else None.
+
+    The series starts at the post's scheduled time or, for a post sent for
+    approval, its proposed one. Checked before anything is written.
+    """
+    import zoneinfo
+
+    from apps.calendar.services import clean_recurrence
+
+    start = post.scheduled_at or post.proposed_publish_at
+    if start is None:
+        return JsonResponse(
+            {"errors": {"recurrence": "Pick a date and time for the first post to repeat."}}, status=400
+        )
+    ws_tz = zoneinfo.ZoneInfo(workspace.effective_timezone or "UTC")
+    try:
+        clean_recurrence(**recurrence, start=start.astimezone(ws_tz))
+    except ValueError as exc:
+        return JsonResponse({"errors": {"recurrence": str(exc)}}, status=400)
+    return None
+
+
+def _save_approval_recurrence(post, recurrence):
+    """Keep the Repeat setting of a post sent for approval.
+
+    The rule is saved now and its copies start once the post is approved and
+    scheduled (``generate_occurrences`` waits for a committed first post), each
+    carrying that approval. ``never`` stops a series the post already had.
+    """
+    from apps.calendar.services import save_recurrence, stop_recurrence
+
+    if recurrence is None:
+        return
+    if recurrence["frequency"] == "never":
+        stop_recurrence(post)
+    else:
+        save_recurrence(post, **recurrence)
+
+
 def _composer_media_assets(request, post, workspace) -> list:
     """The post's media assets in order — for a post never saved, its uploads.
 
@@ -1340,6 +1380,10 @@ def save_post(request, workspace_id, post_id=None):
     elif action == "submit_for_approval":
         # Save post first so it has a PK, then delegate to approval service
         _capture_proposed_publish_at(post, post_id, workspace, form, clear_when_blank=False)
+        if recurrence is not None and recurrence["frequency"] != "never":
+            recurrence_error = _recurrence_error(recurrence, post, workspace)
+            if recurrence_error is not None:
+                return recurrence_error
         post.save()
         # Sync platform posts before submitting
         _sync_platform_posts(request, post, workspace, initial_status="draft")
@@ -1347,6 +1391,7 @@ def save_post(request, workspace_id, post_id=None):
         from apps.approvals.services import submit_for_review
 
         submit_for_review(post, request.user, workspace)
+        _save_approval_recurrence(post, recurrence)
         if request.htmx:
             return HttpResponse(
                 status=204,
@@ -1359,12 +1404,17 @@ def save_post(request, workspace_id, post_id=None):
     elif action == "resubmit_for_approval":
         # Resubmit after changes requested or rejection
         _capture_proposed_publish_at(post, post_id, workspace, form, clear_when_blank=False)
+        if recurrence is not None and recurrence["frequency"] != "never":
+            recurrence_error = _recurrence_error(recurrence, post, workspace)
+            if recurrence_error is not None:
+                return recurrence_error
         post.save()
         _sync_platform_posts(request, post, workspace, initial_status="draft")
         _save_version(post, request.user)
         from apps.approvals.services import resubmit_post
 
         resubmit_post(post, request.user, workspace)
+        _save_approval_recurrence(post, recurrence)
         if request.htmx:
             return HttpResponse(
                 status=204,
@@ -1385,7 +1435,7 @@ def save_post(request, workspace_id, post_id=None):
     # re-set from any save that keeps its schedule. Checked before anything is
     # written so a bad setting leaves the post as it was.
     from apps.calendar.models import RecurrenceRule
-    from apps.calendar.services import clean_recurrence, save_recurrence, stop_recurrence
+    from apps.calendar.services import save_recurrence, stop_recurrence
 
     repeating = post.pk is not None and RecurrenceRule.objects.filter(post=post, is_active=True).exists()
     apply_recurrence = (
@@ -1395,13 +1445,9 @@ def save_post(request, workspace_id, post_id=None):
         and (action == "schedule" or repeating)
     )
     if apply_recurrence:
-        import zoneinfo
-
-        ws_tz = zoneinfo.ZoneInfo(workspace.effective_timezone or "UTC")
-        try:
-            clean_recurrence(**recurrence, start=post.scheduled_at.astimezone(ws_tz))
-        except ValueError as exc:
-            return JsonResponse({"errors": {"recurrence": str(exc)}}, status=400)
+        recurrence_error = _recurrence_error(recurrence, post, workspace)
+        if recurrence_error is not None:
+            return recurrence_error
 
     post.save()
 

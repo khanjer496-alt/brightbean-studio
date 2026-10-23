@@ -630,14 +630,17 @@ def save_recurrence(post, *, frequency, interval=1, weekdays=None, end_date=None
     When the rule changes (or ``refresh`` says the first post moved), the
     upcoming copies made under the old rule are replaced; then the copies the
     lookahead window needs are generated straight away rather than at the next
-    daily sweep. Raises ``ValueError`` for an invalid setting.
+    hourly sweep. A post still waiting for approval has only a proposed time:
+    its rule is kept, and copies start once it is approved and scheduled.
+    Raises ``ValueError`` for an invalid setting.
     """
     from django.db import transaction
 
     from .models import RecurrenceRule
     from .tasks import generate_occurrences
 
-    if not post.scheduled_at:
+    start = post.scheduled_at or post.proposed_publish_at
+    if not start:
         raise ValueError("Schedule the post before making it repeat.")
     ws_tz = zoneinfo.ZoneInfo(post.workspace.effective_timezone or "UTC")
     fields = clean_recurrence(
@@ -646,7 +649,7 @@ def save_recurrence(post, *, frequency, interval=1, weekdays=None, end_date=None
         weekdays=weekdays,
         end_date=end_date,
         count=count,
-        start=post.scheduled_at.astimezone(ws_tz),
+        start=start.astimezone(ws_tz),
     )
 
     with transaction.atomic():
@@ -677,3 +680,23 @@ def stop_recurrence(post):
     if not updated:
         return 0
     return remove_upcoming_occurrences(post)
+
+
+def refresh_series(post):
+    """Regenerate ``post``'s upcoming copies after its first post moved.
+
+    Copies are placed relative to the first post, so moving it (a calendar
+    drag) replaces the unpublished copies with ones at the new time. Returns
+    the number of copies generated; 0 when ``post`` doesn't start a series.
+    """
+    from django.db import transaction
+
+    from .models import RecurrenceRule
+    from .tasks import generate_occurrences
+
+    with transaction.atomic():
+        rule = RecurrenceRule.objects.select_for_update().filter(post=post, is_active=True).first()
+        if rule is None:
+            return 0
+        remove_upcoming_occurrences(post)
+        return generate_occurrences(rule)

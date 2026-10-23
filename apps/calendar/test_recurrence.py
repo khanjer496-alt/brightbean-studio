@@ -473,3 +473,108 @@ def _query_count(fn):
     with CaptureQueriesContext(connection) as ctx:
         fn()
     return len(ctx.captured_queries)
+
+
+class ApprovalSeriesTests(_SeriesMixin, TestCase):
+    """A series sent for approval keeps its rule and starts once approved."""
+
+    _form = ComposerRepeatTests._form
+    _post = ComposerRepeatTests._post
+
+    def setUp(self):
+        ComposerRepeatTests.setUp(self)
+        self.ws.approval_workflow_mode = "required_internal"
+        self.ws.save(update_fields=["approval_workflow_mode"])
+
+    def test_rule_waits_for_approval_and_copies_inherit_it(self):
+        from apps.approvals import services as approval_services
+        from apps.approvals.policy import approval_allows_publish
+        from apps.composer.services import transition_platform_post
+
+        response = self._post(
+            action="submit_for_approval", recurrence_frequency="daily", recurrence_end="after", recurrence_count="3"
+        )
+
+        self.assertEqual(response.status_code, 204, response.content)
+        source = Post.objects.get(caption="repeat me")
+        self.assertTrue(source.recurrence_rule.is_active)
+        self.assertIsNotNone(source.proposed_publish_at)
+        self.assertEqual(self._copies(source), [])
+        # The hourly sweep leaves a series in review alone.
+        generate_recurring_posts()
+        self.assertEqual(self._copies(source), [])
+
+        pp = source.platform_posts.get()
+        approval_services.approve_post(pp, self.user, self.ws)
+        pp.refresh_from_db()
+        transition_platform_post(pp, "scheduled", scheduled_at=source.proposed_publish_at)
+        source.refresh_from_db()
+        generate_occurrences(source.recurrence_rule)
+
+        copies = self._copies(source)
+        self.assertEqual(len(copies), 2)
+        for copy in copies:
+            copy_pp = copy.platform_posts.get()
+            self.assertEqual(copy_pp.status, "scheduled")
+            self.assertTrue(approval_allows_publish(copy_pp))
+
+    def test_approval_submit_without_a_time_is_refused(self):
+        response = self._post(
+            action="submit_for_approval", scheduled_date="", scheduled_time="", recurrence_frequency="daily"
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Pick a date", json.loads(response.content)["errors"]["recurrence"])
+        self.assertFalse(Post.objects.exists())
+
+    def test_compose_page_says_repeat_starts_once_approved(self):
+        html = self.client.get(reverse("composer:compose", kwargs={"workspace_id": self.ws.id})).content.decode()
+        self.assertIn("Repeat starts once approved", html)
+
+
+class MoveSeriesTests(_SeriesMixin, TestCase):
+    """Dragging a series' first post on the calendar moves its copies too."""
+
+    def setUp(self):
+        self._workspace()
+        self.user = User.objects.create_user(email="drag@example.com", password="pw", tos_accepted_at=timezone.now())
+        OrgMembership.objects.create(user=self.user, organization=self.org, org_role=OrgMembership.OrgRole.OWNER)
+        WorkspaceMembership.objects.create(
+            user=self.user, workspace=self.ws, workspace_role=WorkspaceMembership.WorkspaceRole.OWNER
+        )
+        self.client.force_login(self.user)
+        day = timezone.localtime(timezone.now(), NEW_YORK).date() + timedelta(days=2)
+        self.start = datetime.combine(day, time(9, 0), tzinfo=NEW_YORK)
+        self.source = self._source(self.start)
+        save_recurrence(self.source, frequency="daily", count=3)
+
+    def test_copies_follow_the_first_post(self):
+        new_start = self.start + timedelta(days=1, hours=1)
+        response = self.client.post(
+            reverse("calendar:reschedule", kwargs={"workspace_id": self.ws.id}),
+            {
+                "platform_post_id": str(self.source.platform_posts.get().id),
+                "new_datetime": new_start.replace(tzinfo=None).isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 204, response.content)
+        copies = self._copies(self.source)
+        self.assertEqual(
+            [c.scheduled_at.astimezone(NEW_YORK) for c in copies],
+            [new_start + timedelta(days=1), new_start + timedelta(days=2)],
+        )
+
+    def test_moving_a_copy_leaves_the_series_alone(self):
+        first_copy = self._copies(self.source)[0]
+        before = [c.id for c in self._copies(self.source)]
+        response = self.client.post(
+            reverse("calendar:reschedule", kwargs={"workspace_id": self.ws.id}),
+            {
+                "platform_post_id": str(first_copy.platform_posts.get().id),
+                "new_datetime": (self.start + timedelta(days=1, hours=3)).replace(tzinfo=None).isoformat(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 204, response.content)
+        self.assertEqual([c.id for c in self._copies(self.source)], before)

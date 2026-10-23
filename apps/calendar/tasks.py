@@ -36,7 +36,7 @@ _RECURRING_COMMITTED_STATUSES = frozenset(
 # How often the recurring-post sweep runs; registered on a repeating schedule by
 # apps.calendar.apps.CalendarConfig. Saving a series generates its copies at
 # once, so this only has to keep the lookahead window topped up.
-RECURRENCE_GENERATION_INTERVAL_SECONDS = 86400  # daily
+RECURRENCE_GENERATION_INTERVAL_SECONDS = 3600  # hourly
 
 # Safety bound on the dates one rule may produce in a single pass. A daily
 # series is walked from its first post, so a few years of it stay well inside.
@@ -70,12 +70,28 @@ def generate_recurring_posts():
 def generate_occurrences(rule, *, now=None):
     """Create the missing copies of ``rule``'s post inside the lookahead window.
 
-    Idempotent: a date that already has a copy is skipped, so the daily sweep
+    Idempotent: a date that already has a copy is skipped, so the hourly sweep
     and a save of the series can both call it. Returns the number created.
     """
     now = now or timezone.now()
+    # Hold the rule's row for the whole pass: the hourly sweep and a save of
+    # the series can run at once, and each would otherwise see the same dates
+    # missing and create them twice. A second caller waits, then finds them.
+    with transaction.atomic():
+        rule = RecurrenceRule.objects.select_for_update(of=("self",)).select_related("post__workspace").get(pk=rule.pk)
+        return _generate_locked(rule, now)
+
+
+def _generate_locked(rule, now):
+    """``generate_occurrences`` once ``rule``'s row is locked."""
     source = rule.post
     if not rule.is_active or not source.scheduled_at:
+        return 0
+    source_pps = list(source.platform_posts.select_related("social_account"))
+    # A series runs once its first post is committed to publishing. One still
+    # in review keeps its rule and starts when it is approved and scheduled;
+    # its copies then carry that approval (see _create_occurrence).
+    if source_pps and not any(pp.status in _RECURRING_COMMITTED_STATUSES for pp in source_pps):
         return 0
 
     # Recurrence dates and times are computed in the post's workspace
@@ -128,7 +144,6 @@ def generate_occurrences(rule, *, now=None):
     # Every clone carries the source's media, so one answer serves each
     # recurrence date and platform of this rule.
     media_types = post_media_types(source)
-    source_pps = list(source.platform_posts.select_related("social_account"))
     source_media = list(source.media_attachments.all())
     generated = 0
 
@@ -203,6 +218,12 @@ def _create_occurrence(source, scheduled_dt, d, source_pps, source_media, media_
                     platform_extra=copy.deepcopy(pp.platform_extra) if pp.platform_extra else {},
                     scheduled_at=pp_scheduled,
                     status=("scheduled" if pp.status in _RECURRING_COMMITTED_STATUSES and not blocked else "draft"),
+                    # A copy is the approved content at another date, so it
+                    # carries the first post's approval proof. The publisher
+                    # recomputes the content fingerprint before sending, so a
+                    # copy that has drifted from what was approved still stops.
+                    approval_completed_at=pp.approval_completed_at,
+                    approval_fingerprint=pp.approval_fingerprint,
                 )
             )
         PlatformPost.objects.bulk_create(new_pps)

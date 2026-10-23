@@ -1198,6 +1198,13 @@ def reschedule_post(request, workspace_id):
     except (ValueError, TypeError) as e:
         return JsonResponse({"error": f"Invalid datetime: {e}"}, status=400)
 
+    # Moving a series' first post moves the series: its unpublished copies are
+    # regenerated from the new time. A no-op for posts that don't start one.
+    if post.recurrence_source_id is None:
+        from .services import refresh_series
+
+        refresh_series(post)
+
     return HttpResponse(
         status=204,
         headers={"HX-Trigger": json.dumps({"postRescheduled": {"platformPostId": str(pp.id), "postId": str(post.id)}})},
