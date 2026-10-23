@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable
@@ -38,6 +39,8 @@ from .types import (
 logger = logging.getLogger(__name__)
 
 REQUEST_TIMEOUT = 30.0
+
+_PROFILE_HANDLE = re.compile(r"[A-Za-z0-9._-]{1,100}")
 
 # Shown to the user as-is (a PublishError message passes through). Retryable,
 # so it must not promise anything that stops being true once retries run out.
@@ -247,6 +250,16 @@ class SocialProvider(ABC):
     # never be 0: the chunking loop would not advance.
     post_metrics_batch_size: int = 1
 
+    # True when the platform shows an account's posts as a grid people judge at a glance
+    # (Instagram), so the app offers a grid preview that places scheduled posts among the
+    # published ones.
+    supports_grid_preview: ClassVar[bool] = False
+
+    # Where an account's public profile lives, with ``{handle}`` filled from the account's
+    # handle (a leading "@" dropped). Empty when the platform has no such page, or its address
+    # needs more than the handle (``profile_url`` overrides then).
+    profile_url_template: ClassVar[str] = ""
+
     @property
     def rate_limits(self) -> RateLimitConfig:
         """Platform rate limit configuration."""
@@ -262,6 +275,18 @@ class SocialProvider(ABC):
         platform. The default adds nothing.
         """
         return {}
+
+    @classmethod
+    def profile_url(cls, account) -> str:
+        """The account's public profile address (https), or "" when it can't be built.
+
+        Used wherever the app links out to the account (link-in-bio social icons). The handle
+        is checked against a conservative pattern, because it ends up in a public page's links.
+        """
+        handle = (account.account_handle or "").strip().lstrip("@")
+        if not cls.profile_url_template or not _PROFILE_HANDLE.fullmatch(handle):
+            return ""
+        return cls.profile_url_template.format(handle=handle)
 
     @classmethod
     def caption_length(cls, text: str) -> int:

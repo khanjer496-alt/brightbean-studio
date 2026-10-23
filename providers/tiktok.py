@@ -137,6 +137,8 @@ TIKTOK_MEDIA_RULES = {
 class TikTokProvider(SocialProvider):
     """TikTok Content Posting API provider using OAuth 2.0."""
 
+    profile_url_template = "https://www.tiktok.com/@{handle}"
+
     media_rules = TIKTOK_MEDIA_RULES
 
     writing_style = "Casual, energetic and trend-aware: a punchy hook and a few relevant hashtags. Emojis welcome."

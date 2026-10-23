@@ -66,6 +66,10 @@ class Plan:
     # don't count — that usage is billed to them, not to us.
     max_ai_requests_per_day: int | None
     features: frozenset[Feature] = field(default_factory=frozenset)
+    # Link-in-bio pages a workspace's organization may keep (apps.linkinbio), and whether
+    # its public pages carry the product's badge. Free: one badged page; paid plans: more, unbranded.
+    max_bio_pages: int | None = 1
+    bio_badge: bool = False
 
     @property
     def is_free(self) -> bool:
@@ -99,6 +103,8 @@ PLANS: dict[str, Plan] = {
         max_scheduled_posts_per_month=30,
         max_api_calls_per_day=100,
         max_ai_requests_per_day=20,
+        max_bio_pages=1,
+        bio_badge=True,
     ),
     CREATOR: Plan(
         slug=CREATOR,
@@ -110,6 +116,7 @@ PLANS: dict[str, Plan] = {
         max_scheduled_posts_per_month=None,
         max_api_calls_per_day=1_000,
         max_ai_requests_per_day=200,
+        max_bio_pages=3,
     ),
     TEAM: Plan(
         slug=TEAM,
@@ -122,6 +129,7 @@ PLANS: dict[str, Plan] = {
         max_api_calls_per_day=10_000,
         max_ai_requests_per_day=1_000,
         features=frozenset({Feature.APPROVALS, Feature.INBOX, Feature.ANALYTICS}),
+        max_bio_pages=10,
     ),
     AGENCY: Plan(
         slug=AGENCY,
@@ -142,6 +150,7 @@ PLANS: dict[str, Plan] = {
                 Feature.BRANDED_REPORTS,
             }
         ),
+        max_bio_pages=None,
     ),
 }
 

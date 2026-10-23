@@ -38,6 +38,8 @@ MAX_TITLE_LENGTH = 128
 class DevtoProvider(SocialProvider):
     """DEV.to / Forem provider using a personal API key (no OAuth)."""
 
+    profile_url_template = "https://dev.to/{handle}"
+
     # Publishes from hosted URLs only — the platform fetches the media
     # itself, so ``PublishContent.media_files`` is never read and the engine
     # can skip downloading the asset to local disk entirely.

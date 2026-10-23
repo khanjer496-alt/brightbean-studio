@@ -673,6 +673,12 @@
                     <span class="sidebar-nav-label">Analytics</span>
                 </a>
                 {% endif %}
+                {% if request.workspace_membership.effective_permissions.view_analytics %}
+                <a href="{% url 'linkinbio:list' workspace_id=request.workspace.id %}" class="mb-1 sidebar-nav-item {% if request.resolver_match.app_name == 'linkinbio' %}active{% endif %}">
+                    <svg class="flex-shrink-0" width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.5.5l3-3a5 5 0 00-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 00-7.5-.5l-3 3a5 5 0 007 7l1.7-1.7"/></svg>
+                    <span class="sidebar-nav-label">Link in bio</span>
+                </a>
+                {% endif %}
                 {% endif %}
 
                 {% comment %}

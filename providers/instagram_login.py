@@ -100,6 +100,9 @@ class InstagramLoginProvider(SocialProvider):
     directly through Instagram, without requiring a linked Facebook Page.
     """
 
+    supports_grid_preview = True
+    profile_url_template = "https://www.instagram.com/{handle}/"
+
     media_rules = INSTAGRAM_MEDIA_RULES
     # Instagram comments share the caption's 2,200-character limit.
     thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=2200)

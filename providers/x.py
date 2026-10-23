@@ -252,6 +252,8 @@ def _code_challenge(code_verifier: str) -> str:
 class XProvider(SocialProvider):
     """X provider: OAuth 2.0 + PKCE on the customer's own app; posts, threads, media, polls."""
 
+    profile_url_template = "https://x.com/{handle}"
+
     uses_pkce = True
     user_supplied_credentials = True
     connect_url_name = "connect_x"

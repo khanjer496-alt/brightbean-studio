@@ -1,0 +1,71 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    <meta name="description" content="{{ page.bio|truncatechars:160 }}">
+    <meta property="og:title" content="{{ page.title }}">
+    <meta property="og:description" content="{{ page.bio|truncatechars:160 }}">
+    {% if avatar_url %}<meta property="og:image" content="{{ avatar_url }}">{% endif %}
+    <link rel="icon" href="data:,">
+    <title>{{ page.title }}</title>
+    <link rel="stylesheet" href="{% static 'css/linkinbio.css' %}">
+    {% if page.accent_color %}<link rel="stylesheet" href="{% url 'linkinbio_public:theme' slug=page.slug %}">{% endif %}
+</head>
+<body class="bio bio-theme-{{ page.theme }}" data-click-url="{% url 'linkinbio_public:click' slug=page.slug %}">
+    <main class="bio-main">
+        <header class="bio-header">
+            {% if avatar_url %}<img class="bio-avatar" src="{{ avatar_url }}" alt="" width="96" height="96">{% endif %}
+            <h1 class="bio-title">{{ page.title }}</h1>
+            {% if page.bio %}<p class="bio-text">{{ page.bio|linebreaksbr }}</p>{% endif %}
+        </header>
+
+        {% if socials %}
+        <nav class="bio-socials" aria-label="Social profiles">
+            <ul class="bio-socials-list">
+                {% for social in socials %}
+                <li><a class="bio-social" href="{{ social.url }}" rel="noopener nofollow ugc" target="_blank">{{ social.label }}<span class="bio-sr"> (opens in a new tab)</span></a></li>
+                {% endfor %}
+            </ul>
+        </nav>
+        {% endif %}
+
+        {% if links %}
+        <ul class="bio-links">
+            {% for link in links %}
+            <li>
+                <a class="bio-link" href="{{ link.url }}" rel="noopener nofollow ugc" target="_blank" data-bio-id="{{ link.id }}">
+                    {% if link.thumbnail %}<img class="bio-thumb" src="{{ link.thumbnail.file.url }}" alt="" width="44" height="44">{% elif link.icon %}{% include "linkinbio/_icon.html" with icon=link.icon %}{% endif %}
+                    <span class="bio-link-title">{{ link.title }}</span>
+                    <span class="bio-sr">(opens in a new tab)</span>
+                </a>
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% if tiles %}
+        <section class="bio-grid-section" aria-labelledby="bio-latest">
+            <h2 class="bio-subtitle" id="bio-latest">Latest posts</h2>
+            <ul class="bio-grid">
+                {% for tile in tiles %}
+                <li>
+                    {% if tile.url %}
+                    <a class="bio-tile" href="{{ tile.url }}" rel="noopener nofollow ugc" target="_blank" data-bio-id="{{ tile.id }}"><img src="{{ tile.image }}" alt="{{ tile.alt }}" loading="lazy"><span class="bio-sr">(opens in a new tab)</span></a>
+                    {% else %}
+                    <span class="bio-tile"><img src="{{ tile.image }}" alt="{{ tile.alt }}" loading="lazy"></span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+        {% endif %}
+
+        {% if show_badge %}
+        <footer class="bio-footer"><a class="bio-badge" href="/" rel="noopener">Made with PostDelegate</a></footer>
+        {% endif %}
+    </main>
+    <script src="{% static 'js/linkinbio.js' %}" defer></script>
+</body>
+</html>

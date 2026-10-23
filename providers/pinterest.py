@@ -48,6 +48,8 @@ PINTEREST_MEDIA_RULES = {
 class PinterestProvider(SocialProvider):
     """Pinterest API v5 provider using OAuth 2.0."""
 
+    profile_url_template = "https://www.pinterest.com/{handle}/"
+
     media_rules = PINTEREST_MEDIA_RULES
 
     writing_style = (
