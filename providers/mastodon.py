@@ -15,7 +15,7 @@ from urllib.parse import urlencode
 from django.conf import settings
 
 from .base import SocialProvider
-from .exceptions import APIError, OAuthError, PublishError
+from .exceptions import APIError, OAuthError, PublicProfileNotFound, PublishError
 from .types import (
     AccountProfile,
     AuthType,
@@ -27,6 +27,7 @@ from .types import (
     OAuthTokens,
     PostMetrics,
     PostType,
+    PublicProfileMetrics,
     PublishContent,
     PublishResult,
     RateLimitConfig,
@@ -120,6 +121,10 @@ class MastodonProvider(SocialProvider):
     thread = ThreadCapability(mode=ThreadMode.REPLY_CHAIN, max_parts=25, media_per_part=True)
 
     mention_lookup = True
+
+    supports_public_profile_metrics = True
+    competitor_handle_hint = "name@mastodon.social"
+    competitor_handle_pattern = r"[A-Za-z0-9_]{1,100}(@[A-Za-z0-9.-]+\.[A-Za-z]{2,})?"
 
     # Unverified: none of the Sprout Social, Hootsuite or Buffer studies covers Mastodon, so the generic
     # DEFAULT_BEST_TIME_WINDOWS apply (checked 2026-10-24).
@@ -610,6 +615,65 @@ class MastodonProvider(SocialProvider):
             comments=data.get("replies_count", 0),
             engagements=(data.get("favourites_count", 0) + data.get("reblogs_count", 0) + data.get("replies_count", 0)),
             extra=data,
+        )
+
+    def public_profile_metrics(self, handle: str, using_account, access_token: str = "") -> PublicProfileMetrics:
+        """Followers and status count from the instance's account lookup, engagement from the account's statuses.
+
+        A handle on the connected account's own instance is a public lookup. One
+        on another instance is resolved through the connected instance's account
+        search (``resolve=true``), which needs the connected account's token and
+        leaves the federation fetch to the instance, not to this server.
+        """
+        user, _, domain = handle.partition("@")
+        own_host = self.instance_url.split("://")[-1].lower()
+        try:
+            if domain and domain.lower() != own_host:
+                found = self._request(
+                    "GET",
+                    f"{self.instance_url}/api/v1/accounts/search",
+                    access_token=access_token or None,
+                    params={"q": handle, "resolve": "true", "limit": 1},
+                ).json()
+                account = found[0] if found else None
+            else:
+                account = self._request(
+                    "GET", f"{self.instance_url}/api/v1/accounts/lookup", params={"acct": user}
+                ).json()
+        except APIError as exc:
+            if exc.status_code in (404, 422):
+                raise PublicProfileNotFound(f"No Mastodon account found for {handle}.", platform="Mastodon") from exc
+            raise
+        if not account:
+            raise PublicProfileNotFound(f"No Mastodon account found for {handle}.", platform="Mastodon")
+        engagement, stamps = [], []
+        try:
+            statuses = self._request(
+                "GET",
+                f"{self.instance_url}/api/v1/accounts/{account['id']}/statuses",
+                params={"limit": 30, "exclude_replies": "true", "exclude_reblogs": "true"},
+            ).json()
+        except APIError:
+            statuses = []
+        for status in statuses:
+            engagement.append(
+                int(status.get("favourites_count") or 0)
+                + int(status.get("reblogs_count") or 0)
+                + int(status.get("replies_count") or 0)
+            )
+            try:
+                stamps.append(datetime.fromisoformat(str(status.get("created_at")).replace("Z", "+00:00")))
+            except ValueError:
+                continue
+        return PublicProfileMetrics(
+            handle=account.get("acct") or handle,
+            display_name=account.get("display_name") or "",
+            followers=account.get("followers_count"),
+            posts_count=account.get("statuses_count"),
+            avg_engagement=round(sum(engagement) / len(engagement), 2) if engagement else None,
+            posts_per_week=self._posts_per_week(stamps),
+            sampled_posts=len(engagement),
+            profile_url=account.get("url") or "",
         )
 
     # ------------------------------------------------------------------

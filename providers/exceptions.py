@@ -166,3 +166,13 @@ class WebhookChannelError(APIError):
     def __init__(self, message: str, *, needs_reconnect: bool = False, **kwargs):
         self.needs_reconnect = needs_reconnect
         super().__init__(message, **kwargs)
+
+
+class PublicProfileNotFound(ProviderError):
+    """The handle names no public profile this account is allowed to read.
+
+    Permanent for that handle (``retryable=False``), unlike a rate limit.
+    """
+
+    def __init__(self, message: str, platform: str = ""):
+        super().__init__(message, platform=platform, retryable=False)

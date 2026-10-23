@@ -7,7 +7,7 @@ import re
 import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import IO, ClassVar
 
 import httpx
@@ -28,6 +28,7 @@ from .types import (
     PostMetrics,
     PostSetting,
     PostType,
+    PublicProfileMetrics,
     PublishContent,
     PublishResult,
     PublishStatus,
@@ -277,6 +278,34 @@ class SocialProvider(ABC):
     # needs more than the handle (``profile_url`` overrides then).
     profile_url_template: ClassVar[str] = ""
 
+    # True when ``public_profile_metrics`` can read another account's public numbers
+    # through an official API, using a connected account's own access. Competitor
+    # benchmarking (``apps.competitors``) lists only these networks. Left False
+    # wherever the only route would be scraping, which this product does not do.
+    supports_public_profile_metrics: ClassVar[bool] = False
+
+    # Why a network cannot be benchmarked, in a sentence for the competitors page.
+    public_profile_unavailable_reason: ClassVar[str] = (
+        "This network offers no official way to read another account's public numbers."
+    )
+
+    # Example handle and what it looks like, shown in the add-competitor form.
+    competitor_handle_hint: ClassVar[str] = "handle"
+
+    # Pattern a competitor handle must match after ``normalize_competitor_handle``.
+    competitor_handle_pattern: ClassVar[str] = r"[A-Za-z0-9._-]{1,100}"
+
+    @classmethod
+    def normalize_competitor_handle(cls, handle: str) -> str:
+        """The canonical form of a typed handle ("@name", a profile link) or "" when it is unusable."""
+        value = (handle or "").strip()
+        if cls.profile_url_template:
+            prefix = cls.profile_url_template.split("{handle}")[0]
+            if value.lower().startswith(prefix.lower()):
+                value = value[len(prefix) :].split("/")[0].split("?")[0]
+        value = value.lstrip("@")
+        return value if re.fullmatch(cls.competitor_handle_pattern, value) else ""
+
     @property
     def rate_limits(self) -> RateLimitConfig:
         """Platform rate limit configuration."""
@@ -501,6 +530,17 @@ class SocialProvider(ABC):
     def get_account_metrics(self, access_token: str, date_range: tuple[datetime, datetime]) -> AccountMetrics:
         """Fetch account-level metrics for a date range."""
         raise NotImplementedError(f"{self.platform_name} does not support account metrics")
+
+    def public_profile_metrics(self, handle: str, using_account, access_token: str = "") -> PublicProfileMetrics:
+        """Public numbers for ``handle``, read with ``using_account``'s access.
+
+        ``using_account`` is the customer's connected ``SocialAccount`` on this
+        network, whose token (``access_token``) authorises the call where the
+        network requires one. Only called for a provider that sets
+        ``supports_public_profile_metrics``. Raises ``PublicProfileNotFound``
+        when the handle has no readable public profile.
+        """
+        raise NotImplementedError(f"{self.platform_name} does not support public profile metrics")
 
     def get_audience_demographics(self, access_token: str) -> Demographics:
         """Fetch audience demographic data."""
@@ -743,6 +783,20 @@ class SocialProvider(ABC):
             platform=self.platform_name,
             raw_response=self._safe_json(response),
         )
+
+    @staticmethod
+    def _posts_per_week(timestamps: list[datetime], now: datetime | None = None) -> float | None:
+        """Posting rate from a sample of the newest posts: the sample's size over the time since its oldest.
+
+        Measured to *now*, not to the newest post, so an account that went quiet
+        reads as slow rather than as busy. None for an empty sample.
+        """
+        if not timestamps:
+            return None
+        now = now or datetime.now(UTC)
+        oldest = min(timestamps)
+        weeks = max((now - oldest).total_seconds() / 604800, 1 / 7)
+        return round(len(timestamps) / weeks, 2)
 
     @staticmethod
     def _safe_json(response: httpx.Response) -> dict:

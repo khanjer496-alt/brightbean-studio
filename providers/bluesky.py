@@ -11,7 +11,7 @@ import time
 from datetime import UTC, datetime
 
 from .base import SocialProvider
-from .exceptions import PublishError
+from .exceptions import APIError, PublicProfileNotFound, PublishError
 from .types import (
     AccountProfile,
     AuthType,
@@ -20,6 +20,7 @@ from .types import (
     MentionSuggestion,
     OAuthTokens,
     PostType,
+    PublicProfileMetrics,
     PublishContent,
     PublishResult,
     RateLimitConfig,
@@ -30,6 +31,9 @@ from .types import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_PDS_URL = "https://bsky.social"
+# Unauthenticated, cached read endpoint for app.bsky.* lookups on any account.
+PUBLIC_API_URL = "https://public.api.bsky.app"
+PUBLIC_FEED_SAMPLE = 30
 
 
 def _access_jwt_expires_in(access_jwt: str) -> int | None:
@@ -94,6 +98,10 @@ class BlueskyProvider(SocialProvider):
         return f"https://bsky.app/profile/{match[1]}/post/{match[2]}" if match else ""
 
     mention_lookup = True
+
+    supports_public_profile_metrics = True
+    competitor_handle_hint = "name.bsky.social"
+    competitor_handle_pattern = r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}"
 
     # Unverified: none of the Sprout Social, Hootsuite or Buffer studies covers Bluesky, so the generic
     # DEFAULT_BEST_TIME_WINDOWS apply (checked 2026-10-24).
@@ -259,6 +267,52 @@ class BlueskyProvider(SocialProvider):
     # ------------------------------------------------------------------
     # Mentions
     # ------------------------------------------------------------------
+
+    def public_profile_metrics(self, handle: str, using_account, access_token: str = "") -> PublicProfileMetrics:
+        """Followers and post count from ``app.bsky.actor.getProfile``, engagement from the author feed.
+
+        Both are public AT Protocol reads on ``public.api.bsky.app``; no login
+        is needed, so ``using_account`` is not used.
+        """
+        try:
+            profile = self._request(
+                "GET", f"{PUBLIC_API_URL}/xrpc/app.bsky.actor.getProfile", params={"actor": handle}
+            ).json()
+        except APIError as exc:
+            if exc.status_code == 400:
+                raise PublicProfileNotFound(f"No Bluesky profile found for {handle}.", platform="Bluesky") from exc
+            raise
+        engagement, stamps = [], []
+        try:
+            feed = self._request(
+                "GET",
+                f"{PUBLIC_API_URL}/xrpc/app.bsky.feed.getAuthorFeed",
+                params={"actor": handle, "limit": PUBLIC_FEED_SAMPLE, "filter": "posts_no_replies"},
+            ).json()
+        except APIError:
+            feed = {}
+        for item in feed.get("feed", []):
+            if item.get("reason"):  # a repost by this account, not its own post
+                continue
+            post = item.get("post") or {}
+            engagement.append(
+                sum(int(post.get(k) or 0) for k in ("likeCount", "repostCount", "replyCount", "quoteCount"))
+            )
+            created = (post.get("record") or {}).get("createdAt") or post.get("indexedAt")
+            try:
+                stamps.append(datetime.fromisoformat(str(created).replace("Z", "+00:00")))
+            except ValueError:
+                continue
+        return PublicProfileMetrics(
+            handle=profile.get("handle") or handle,
+            display_name=profile.get("displayName") or "",
+            followers=profile.get("followersCount"),
+            posts_count=profile.get("postsCount"),
+            avg_engagement=round(sum(engagement) / len(engagement), 2) if engagement else None,
+            posts_per_week=self._posts_per_week(stamps),
+            sampled_posts=len(engagement),
+            profile_url=f"https://bsky.app/profile/{profile.get('handle') or handle}",
+        )
 
     def search_mentions(self, access_token: str, query: str, limit: int = 8) -> list[MentionSuggestion]:
         """Suggest accounts for an @mention from Bluesky's actor typeahead."""
