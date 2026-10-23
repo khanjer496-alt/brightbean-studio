@@ -304,16 +304,6 @@ def social_links(page: BioPage) -> list[dict]:
     return rows
 
 
-def _image_url(asset) -> str:
-    for field in (asset.thumbnail, asset.file if asset.media_type != MediaAsset.MediaType.VIDEO else None):
-        if field:
-            try:
-                return field.url
-            except ValueError:
-                continue
-    return ""
-
-
 def latest_posts(page: BioPage, limit: int = LATEST_POSTS_LIMIT) -> list[dict]:
     """Published posts, newest first, as tiles; a tile is a link only when a post link was attached."""
     media = Prefetch(
@@ -338,7 +328,7 @@ def latest_posts(page: BioPage, limit: int = LATEST_POSTS_LIMIT) -> list[dict]:
         if post.id in seen:
             continue
         attachments = list(post.media_attachments.all())
-        image = _image_url(attachments[0].media_asset) if attachments else ""
+        image = attachments[0].media_asset.preview_url if attachments else ""
         if not image:
             continue
         seen.add(post.id)

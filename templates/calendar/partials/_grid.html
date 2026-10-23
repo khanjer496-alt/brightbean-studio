@@ -1,0 +1,58 @@
+{% load tz %}
+<div id="grid-body" data-grid-root data-swap-url="{{ swap_url }}">
+    <div role="status" aria-live="polite" class="min-h-6">{% if notice %}<p class="m-0 mb-2 rounded-lg border border-line bg-surface-1 p-3 text-[13px] text-ink">{{ notice }}</p>{% endif %}</div>
+    {% if error %}<p role="alert" class="m-0 mb-2 rounded-lg border border-bad bg-bad-soft p-3 text-[13px] text-bad">{{ error }}</p>{% endif %}
+
+    {% if grid.tiles %}
+    <ul class="m-0 grid list-none grid-cols-3 gap-1 p-0" aria-label="Grid preview for {{ profile_name }}, newest first, left to right">
+        {% for tile in grid.tiles %}
+        <li class="relative aspect-square overflow-hidden bg-surface-2 {% if tile.state != 'published' %}border-2 border-dashed border-accent{% endif %}"
+            {% if tile.movable %}draggable="true" data-grid-tile data-pp-id="{{ tile.id }}"{% endif %}>
+            {% if tile.image_url %}<img src="{{ tile.image_url }}" alt="{{ tile.caption|truncatechars:100 }}" draggable="false" loading="lazy" class="h-full w-full object-cover">
+            {% else %}<p class="m-0 flex h-full w-full items-center justify-center overflow-hidden p-2 text-center text-[11px] leading-snug text-ink-2 sm:text-xs">{{ tile.caption|default:"No picture"|truncatechars:90 }}</p>{% endif %}
+
+            {% if tile.state == 'scheduled' %}
+            <span class="absolute left-0 top-0 max-w-full rounded-br bg-surface-0 px-1.5 py-0.5 text-[10px] font-semibold text-ink sm:text-[11px]">Scheduled &middot; {{ tile.moment|timezone:timezone_name|date:"M j, H:i" }}{% if tile.status_label != "Scheduled" %} ({{ tile.status_label }}){% endif %}</span>
+            {% elif tile.state == 'draft' %}
+            <span class="absolute left-0 top-0 max-w-full rounded-br bg-surface-0 px-1.5 py-0.5 text-[10px] font-semibold text-ink sm:text-[11px]">Draft &middot; suggested {{ tile.moment|timezone:timezone_name|date:"M j, H:i" }}</span>
+            {% else %}
+            <span class="sr-only">Published {{ tile.moment|timezone:timezone_name|date:"M j, Y" }}</span>
+            {% endif %}
+
+            {% if tile.movable %}
+            <div class="absolute inset-x-0 bottom-0 flex justify-between gap-1 bg-surface-0/90 p-1">
+                {% for direction, label, enabled in tile.moves %}
+                <form method="post" action="{% url 'calendar:grid_move' workspace_id=workspace.id account_id=account.id platform_post_id=tile.id %}" class="m-0"
+                      hx-post="{% url 'calendar:grid_move' workspace_id=workspace.id account_id=account.id platform_post_id=tile.id %}" hx-target="#grid-body" hx-swap="outerHTML">
+                    {% csrf_token %}
+                    <input type="hidden" name="direction" value="{{ direction }}">
+                    <button type="submit" {% if not enabled %}disabled{% endif %} {% if focus_id == tile.id and enabled %}data-grid-focus{% endif %}
+                            aria-label="Move this post {{ direction }}: swap times with the next {{ direction }} scheduled post"
+                            class="inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-md border border-line bg-surface-1 px-2 text-[11px] font-semibold text-ink hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40">{{ label }}</button>
+                </form>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    <p class="m-0 mt-3 text-xs text-ink-3">Times are shown in {{ timezone_name }}. {% if grid.upcoming_count %}Drag a scheduled post onto another to swap their times, or use its Earlier and Later buttons.{% else %}Nothing is scheduled for this account yet.{% endif %} Re-timing follows the same permissions as the calendar.</p>
+    {% else %}
+    <div class="rounded-xl border border-dashed border-line p-8 text-center">
+        <p class="m-0 text-[15px] font-semibold text-ink">Nothing on this grid yet</p>
+        <p class="m-0 mt-1 text-[13px] text-ink-3">Schedule a post for {{ profile_name }} and it appears here.</p>
+    </div>
+    {% endif %}
+
+    {% if grid.unscheduled %}
+    <section class="mt-6" aria-labelledby="grid-drafts-h">
+        <h2 id="grid-drafts-h" class="m-0 mb-2 text-[15px] font-semibold text-ink">Drafts without a time</h2>
+        <p class="m-0 mb-2 text-xs text-ink-3">These have no place on the grid until they are scheduled.</p>
+        <ul class="m-0 flex list-none flex-col gap-1 p-0">
+            {% for tile in grid.unscheduled %}
+            <li><a href="{% url 'composer:compose_edit' workspace_id=workspace.id post_id=tile.platform_post.post_id %}" class="flex min-h-11 items-center rounded-lg border border-line bg-surface-1 px-3 text-[13px] text-ink no-underline hover:bg-surface-2">{{ tile.caption|default:"Untitled draft"|truncatechars:80 }}</a></li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+</div>

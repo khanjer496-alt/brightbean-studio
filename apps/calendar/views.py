@@ -20,6 +20,8 @@ from apps.members.models import WorkspaceMembership
 from apps.social_accounts.models import SocialAccount
 from apps.workspaces.models import Workspace
 
+from . import grid
+from . import services as calendar_services
 from .holidays import get_holidays_for_range
 from .models import CustomCalendarEvent, PostingSlot, Queue, QueueEntry
 
@@ -51,7 +53,7 @@ COMMON_TIMEZONES = [
 # Statuses a calendar drop promotes to ``scheduled`` (implicit schedule / retry)
 # rather than merely re-timing. Because that promotion hands the row to the
 # publisher, it is gated on ``publish_directly`` — see ``reschedule_post``.
-_IMPLICIT_SCHEDULE_STATUSES = ("draft", "failed")
+_IMPLICIT_SCHEDULE_STATUSES = calendar_services.IMPLICIT_SCHEDULE_STATUSES
 
 
 def _slots_updated_response(account_id):
@@ -733,6 +735,7 @@ def calendar_view(request, workspace_id):
         "view_type": view_type,
         "target_date": target_date,
         "social_accounts": social_accounts,
+        "grid_available": grid.grid_accounts(workspace).exists(),
         "authors": authors,
         "categories": categories,
         "active_filters": active_filters,
@@ -1135,23 +1138,12 @@ def reschedule_post(request, workspace_id):
     )
     post = pp.post
 
-    # Only draggable statuses can be rescheduled (published/publishing can't).
-    if not pp.is_reschedulable:
-        return JsonResponse({"error": "Post cannot be rescheduled in its current status."}, status=400)
+    # Shared with the Instagram grid: draggable status, edit rights, and the publish privilege that
+    # dropping a draft/failed chip (an implicit schedule) needs, as every other scheduling path does.
+    denial = calendar_services.reschedule_denial(pp, request.user, request.workspace_membership)
+    if denial:
+        return JsonResponse({"error": denial[1]}, status=denial[0])
 
-    # Check RBAC
-    membership = request.workspace_membership
-    perms = membership.effective_permissions if membership else {}
-    is_own_post = post.author_id == request.user.id
-    can_edit = is_own_post or perms.get("edit_others_posts", False)
-    if not can_edit:
-        return JsonResponse({"error": "Permission denied."}, status=403)
-    # Dropping a draft/failed chip promotes it to "scheduled" below, which is the
-    # publish privilege every other scheduling path gates on (the composer's chip
-    # transition, save_post's publish-now branch, REST /schedule). Reject rather
-    # than silently degrading the drop to a time-only move.
-    if pp.status in _IMPLICIT_SCHEDULE_STATUSES and not perms.get("publish_directly", False):
-        return JsonResponse({"error": "You do not have permission to schedule this post."}, status=403)
     # The same drop hands the row to the publisher, so refuse one that can only
     # fail there — an image-only TikTok draft, a pin with no board or image.
     # Checked out here because the ValueError handler below would report it as

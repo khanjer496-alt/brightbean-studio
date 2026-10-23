@@ -37,9 +37,7 @@ def _accent_ink(hex_color: str) -> str:
 
 
 def _render(page: BioPage, request) -> str:
-    avatar = ""
-    if page.avatar_id:
-        avatar = services._image_url(page.avatar)
+    avatar = page.avatar.preview_url if page.avatar_id else ""
     return render_to_string(
         "linkinbio/public.html",
         {

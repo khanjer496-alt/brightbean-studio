@@ -7,6 +7,28 @@ from django.utils import timezone
 
 from .models import PostingSlot, Queue, QueueEntry
 
+# Statuses a drop promotes to "scheduled" (an implicit schedule / retry) rather than only moving in time.
+IMPLICIT_SCHEDULE_STATUSES = ("draft", "failed")
+
+
+def reschedule_denial(platform_post, user, membership) -> tuple[int, str] | None:
+    """Why ``user`` may not move ``platform_post`` in time, as ``(http_status, message)``; None when they may.
+
+    The one rule behind the calendar's drag-and-drop and the Instagram grid: only draggable
+    statuses move, the author or an editor of others' posts may move it, and a draft or failed row
+    (which the move would schedule) also needs the publish privilege. Approved and in-review posts
+    keep their status when re-timed, because an approval covers the content, not the time.
+    """
+    if not platform_post.is_reschedulable:
+        return 400, "Post cannot be rescheduled in its current status."
+    perms = membership.effective_permissions if membership else {}
+    if not (platform_post.post.author_id == user.id or perms.get("edit_others_posts", False)):
+        return 403, "Permission denied."
+    if platform_post.status in IMPLICIT_SCHEDULE_STATUSES and not perms.get("publish_directly", False):
+        return 403, "You do not have permission to schedule this post."
+    return None
+
+
 # Default posting slots created automatically for newly connected channels.
 DEFAULT_POSTING_SLOTS = {
     0: [time(9, 24), time(10, 10), time(11, 26), time(12, 42)],  # Monday

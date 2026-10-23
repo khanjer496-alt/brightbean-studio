@@ -196,6 +196,17 @@ class MediaAsset(models.Model):
         return self.workspace_id is None
 
     @property
+    def preview_url(self) -> str:
+        """An address that shows this asset as a picture: its thumbnail, else the file itself unless it is a video."""
+        for field in (self.thumbnail, None if self.is_video else self.file):
+            if field:
+                try:
+                    return field.url
+                except ValueError:
+                    continue
+        return ""
+
+    @property
     def aspect_ratio(self):
         if self.width and self.height:
             return round(self.width / self.height, 2)

@@ -48,7 +48,7 @@
                     <div class="flex flex-wrap gap-2">
                         <label class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface-0 px-3 text-sm text-ink"><input type="radio" name="avatar" value=""{% if not page.avatar_id %} checked{% endif %}>None</label>
                         {% for asset in media_choices %}
-                        <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface-0 p-1 text-sm text-ink"><input type="radio" name="avatar" value="{{ asset.id }}"{% if page.avatar_id == asset.id %} checked{% endif %}><img src="{% if asset.thumbnail %}{{ asset.thumbnail.url }}{% else %}{{ asset.file.url }}{% endif %}" alt="{{ asset.alt_text|default:asset.filename }}" class="h-11 w-11 rounded object-cover"></label>
+                        <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface-0 p-1 text-sm text-ink"><input type="radio" name="avatar" value="{{ asset.id }}"{% if page.avatar_id == asset.id %} checked{% endif %}><img src="{{ asset.preview_url }}" alt="{{ asset.alt_text|default:asset.filename }}" class="h-11 w-11 rounded object-cover"></label>
                         {% endfor %}
                     </div>
                     <p class="m-0 mt-1 text-xs text-ink-3">Pick from your media library's latest images.</p>
