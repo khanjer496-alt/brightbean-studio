@@ -30,7 +30,7 @@
                     <input type="hidden" name="direction" value="{{ direction }}">
                     <button type="submit" {% if not enabled %}disabled{% endif %} {% if focus_id == tile.id and enabled %}data-grid-focus{% endif %}
                             aria-label="Move this post {{ direction }}: swap times with the next {{ direction }} scheduled post"
-                            class="inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-md border border-line bg-surface-1 px-2 text-[11px] font-semibold text-ink hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40">{{ label }}</button>
+                            class="inline-flex min-h-11 min-w-11 cursor-pointer items-center justify-center rounded-md border border-line bg-surface-1 px-2 text-sm font-semibold sm:text-[11px] text-ink hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-40"><span aria-hidden="true" class="sm:hidden">{% if direction == "later" %}&larr;{% else %}&rarr;{% endif %}</span><span class="hidden sm:inline">{{ label }}</span></button>
                 </form>
                 {% endfor %}
             </div>
@@ -38,7 +38,7 @@
         </li>
         {% endfor %}
     </ul>
-    <p class="m-0 mt-3 text-xs text-ink-3">Times are shown in {{ timezone_name }}. {% if grid.upcoming_count %}Drag a scheduled post onto another to swap their times, or use its Earlier and Later buttons.{% else %}Nothing is scheduled for this account yet.{% endif %} Re-timing follows the same permissions as the calendar.</p>
+    <p class="m-0 mt-3 text-xs text-ink-3">Times are shown in {{ timezone_name }}. {% if grid.upcoming_count %}Drag a scheduled post onto another to swap their times, or use its Later and Earlier buttons (arrows on a phone).{% else %}Nothing is scheduled for this account yet.{% endif %} Re-timing follows the same permissions as the calendar.</p>
     {% else %}
     <div class="rounded-xl border border-dashed border-line p-8 text-center">
         <p class="m-0 text-[15px] font-semibold text-ink">Nothing on this grid yet</p>

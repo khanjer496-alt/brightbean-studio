@@ -73,8 +73,12 @@ class Tile:
 
     @property
     def moves(self) -> list[tuple[str, str, bool]]:
-        """The keyboard-friendly alternative to dragging: (direction, button label, enabled)."""
-        return [("earlier", "Earlier", self.can_earlier), ("later", "Later", self.can_later)]
+        """The keyboard-friendly alternative to dragging: (direction, button label, enabled).
+
+        Later first: the grid runs from the furthest-future post (top-left) forward, so a later
+        time moves a tile back towards the start and an earlier one moves it on.
+        """
+        return [("later", "Later", self.can_later), ("earlier", "Earlier", self.can_earlier)]
 
     @property
     def status_label(self) -> str:

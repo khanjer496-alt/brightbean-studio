@@ -72,7 +72,22 @@ class TestUrlValidation:
 
 class TestSlugs:
     @pytest.mark.parametrize(
-        "slug", ["admin", "api", "static", "login", "postdelegate", "instagram-help", "www", "ab", "-abc", "abc-", "a--b", "UPPER space", "a/b"]
+        "slug",
+        [
+            "admin",
+            "api",
+            "static",
+            "login",
+            "postdelegate",
+            "instagram-help",
+            "www",
+            "ab",
+            "-abc",
+            "abc-",
+            "a--b",
+            "UPPER space",
+            "a/b",
+        ],
     )
     def test_bad_or_reserved_slugs_are_refused(self, workspace, slug):
         with pytest.raises(services.BioError) as exc:

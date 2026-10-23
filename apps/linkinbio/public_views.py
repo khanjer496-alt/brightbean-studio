@@ -70,7 +70,7 @@ def _render(page: BioPage) -> str:
             "avatar_url": avatar,
             "og_image": _absolute(avatar),
             "canonical_url": canonical_url(page),
-            "description": Truncator(page.bio or f"{page.title}: links").chars(160),
+            "description": Truncator(" ".join(page.bio.split()) or f"{page.title}: links").chars(160),
             "theme_color": theme_color,
             "color_scheme": color_scheme,
             "app_url": _absolute("/"),
