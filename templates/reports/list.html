@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Reports — {{ workspace.name }} — {{ brand_short_name }}{% endblock %}
+
+{% block content %}
+<div class="flex flex-1 flex-col">
+    {% include "analytics/_nav.html" %}
+    <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <p class="m-0 max-w-2xl text-[13px] text-ink-3">Branded performance reports for your clients: build them on a schedule, email them as a PDF with a link, and share them in the client portal.</p>
+        {% if can_manage %}<a href="{% url 'reports:create' workspace_id=workspace.id %}" class="btn-brand inline-flex min-h-11 w-auto items-center px-5 py-2">New report</a>{% endif %}
+    </div>
+
+    {% if rows %}
+    <ul class="m-0 flex list-none flex-col gap-3 p-0">
+        {% for row in rows %}
+        <li class="rounded-xl border border-line bg-surface-1 p-4">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                    <a href="{% url 'reports:history' workspace_id=workspace.id report_id=row.definition.id %}" class="text-[15px] font-semibold text-ink no-underline hover:underline">{{ row.definition.name }}</a>
+                    <p class="m-0 mt-1 text-xs text-ink-3">
+                        {{ row.definition.get_range_type_display }}
+                        &middot; {% if row.definition.is_scheduled %}{{ row.definition.get_frequency_display }}{% if row.next_fire %}, next {{ row.next_fire|date:"M j, H:i" }}{% endif %}{% elif row.definition.frequency != "none" %}Schedule paused{% else %}Not scheduled{% endif %}
+                        {% if row.definition.visible_to_clients %}&middot; Shared with clients{% endif %}
+                    </p>
+                </div>
+                <div class="flex items-center gap-2">
+                    {% if row.latest %}{% include "reports/_status.html" with run=row.latest %}{% else %}<span class="text-xs text-ink-3">No reports yet</span>{% endif %}
+                </div>
+            </div>
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+                <a href="{% url 'reports:history' workspace_id=workspace.id report_id=row.definition.id %}" class="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-[13px] font-semibold text-ink-2 no-underline hover:text-ink">History</a>
+                {% if can_manage %}
+                <a href="{% url 'reports:edit' workspace_id=workspace.id report_id=row.definition.id %}" class="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-[13px] font-semibold text-ink-2 no-underline hover:text-ink">Edit</a>
+                <form method="post" action="{% url 'reports:run' workspace_id=workspace.id report_id=row.definition.id %}" class="m-0">
+                    {% csrf_token %}
+                    <button type="submit" class="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-line bg-surface-0 px-4 text-[13px] font-semibold text-ink hover:bg-surface-2">Run now</button>
+                </form>
+                {% endif %}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="rounded-xl border border-dashed border-line p-8 text-center">
+        <p class="m-0 text-[15px] font-semibold text-ink">No reports yet</p>
+        <p class="m-0 mt-1 text-[13px] text-ink-3">Create one to send clients a branded summary every week or month.</p>
+        {% if can_manage %}<a href="{% url 'reports:create' workspace_id=workspace.id %}" class="btn-brand mt-4 inline-flex min-h-11 w-auto items-center px-5 py-2">Create your first report</a>{% endif %}
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

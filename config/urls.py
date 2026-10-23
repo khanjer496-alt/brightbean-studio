@@ -39,11 +39,15 @@ urlpatterns = [
     path("workspace/<uuid:workspace_id>/", include("apps.composer.urls")),
     path("workspace/<uuid:workspace_id>/calendar/", include("apps.calendar.urls")),
     path("workspace/<uuid:workspace_id>/inbox/", include("apps.inbox.urls")),
+    # Client reports live under Analytics; listed first so "reports/" never reaches the account route.
+    path("workspace/<uuid:workspace_id>/analytics/reports/", include("apps.reports.urls")),
     path("workspace/<uuid:workspace_id>/analytics/", include("apps.analytics.urls")),
     # AI writing assistant: composer actions, and the org's own provider key.
     path("workspace/<uuid:workspace_id>/ai/", include("apps.ai_writer.urls")),
     # Outbound webhooks: endpoints and delivery log (workspace settings).
     path("workspace/<uuid:workspace_id>/webhooks/", include("apps.webhooks.urls")),
+    # Shareable report links: signed token, no login.
+    path("reports/share/", include("apps.reports.public_urls")),
     path("webhooks/", include("apps.inbox.webhook_urls")),
     path("webhooks/", include("apps.common.webhook_urls")),
     path("webhooks/", include("apps.billing.webhook_urls")),
