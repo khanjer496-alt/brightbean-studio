@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import logging
 import os
+import re
 from urllib.parse import urlencode
 
 from .base import SocialProvider
@@ -49,7 +50,14 @@ PINTEREST_MEDIA_RULES = {
 class PinterestProvider(SocialProvider):
     """Pinterest API v5 provider using OAuth 2.0."""
 
+    profile_url_template = "https://www.pinterest.com/{handle}/"
+
     media_rules = PINTEREST_MEDIA_RULES
+
+    @classmethod
+    def permalink_for(cls, platform_post_id: str, account) -> str:
+        pin_id = (platform_post_id or "").strip()
+        return f"https://www.pinterest.com/pin/{pin_id}/" if re.fullmatch(r"[0-9]{1,30}", pin_id) else ""
 
     # Source: https://sproutsocial.com/insights/best-times-to-post-on-social-media/ (published 2026-03-31; checked 2026-10-24):
     # Mon 10am-12pm, 2-3pm; Tue 10am-1pm; Wed 8am-1pm, 3pm; Thu 10-11am, 2-4pm; Fri 10-11am. Hours are the audience's local time; industry averages, not your audience.

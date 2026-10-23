@@ -1,0 +1,183 @@
+{% extends "base.html" %}
+{% block title %}{{ page.title }} — Link in bio — {{ brand_short_name }}{% endblock %}
+
+{% block content %}
+<div class="flex flex-1 flex-col">
+    <a href="{% url 'linkinbio:list' workspace_id=workspace.id %}" class="mb-3 inline-flex min-h-11 items-center text-[13px] text-ink-3 underline">&larr; All pages</a>
+    <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div class="min-w-0">
+            <h1 class="m-0 text-2xl font-semibold tracking-tight text-ink">{{ page.title }}</h1>
+            <p class="m-0 mt-1 break-all text-[13px] text-ink-3">{% if page.is_published %}<a href="{{ public_url }}" target="_blank" rel="noopener" class="text-ink-2 underline">{{ public_url }}<span class="sr-only"> (opens in a new tab)</span></a>{% else %}{{ public_url }} (hidden){% endif %}</p>
+        </div>
+    </div>
+    {% if shows_badge %}<p class="mb-4 rounded-lg border border-line bg-surface-1 p-3 text-[13px] text-ink-3">Your plan shows a "Made with PostDelegate" badge on this page. Paid plans remove it.</p>{% endif %}
+    {% if not can_manage %}<p class="mb-4 rounded-lg border border-line bg-surface-1 p-3 text-[13px] text-ink-3">You can see this page's numbers. Editing is for owners and managers.</p>{% endif %}
+
+    <div class="grid grid-cols-1 gap-6 xl:grid-cols-2">
+        <div class="flex flex-col gap-6">
+            <fieldset {% if not can_manage %}disabled{% endif %} class="m-0 min-w-0 border-0 p-0">
+            <form method="post" action="{% url 'linkinbio:save' workspace_id=workspace.id page_id=page.id %}" class="flex flex-col gap-5 rounded-xl border border-line bg-surface-1 p-4" id="settings">
+                {% csrf_token %}
+                <h2 class="m-0 text-[15px] font-semibold text-ink">Page</h2>
+                <div>
+                    <label for="f-title" class="mb-1 block text-sm font-semibold text-ink">Title</label>
+                    <input id="f-title" name="title" type="text" maxlength="80" required value="{{ page.title }}" class="form-input-styled text-sm">
+                </div>
+                <div>
+                    <label for="f-bio" class="mb-1 block text-sm font-semibold text-ink">Bio</label>
+                    <textarea id="f-bio" name="bio" rows="3" maxlength="300" class="form-input-styled text-sm">{{ page.bio }}</textarea>
+                </div>
+                <div>
+                    <label for="f-slug" class="mb-1 block text-sm font-semibold text-ink">Page address</label>
+                    <div class="flex items-center gap-2"><span class="text-sm text-ink-3" aria-hidden="true">/l/</span><input id="f-slug" name="slug" type="text" maxlength="40" required value="{{ page.slug }}" autocapitalize="none" spellcheck="false" aria-describedby="f-slug-help" class="form-input-styled text-sm"></div>
+                    <p id="f-slug-help" class="m-0 mt-1 text-xs text-ink-3">Changing it breaks links people already have to the old address.</p>
+                </div>
+                <div>
+                    <label for="f-theme" class="mb-1 block text-sm font-semibold text-ink">Theme</label>
+                    <select id="f-theme" name="theme" class="form-input-styled text-sm">
+                        {% for value, label in themes %}<option value="{{ value }}"{% if page.theme == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label for="f-accent" class="mb-1 block text-sm font-semibold text-ink">Brand accent colour</label>
+                    <input id="f-accent" name="accent_color" type="text" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="#2D5BE3" value="{{ page.accent_color }}" aria-describedby="f-accent-help" class="form-input-styled text-sm">
+                    <p id="f-accent-help" class="m-0 mt-1 text-xs text-ink-3">Optional: a hex colour such as #2D5BE3 for the buttons. Leave blank to use the theme's own.</p>
+                </div>
+                <fieldset class="m-0 min-w-0 border-0 p-0">
+                    <legend class="mb-1 text-sm font-semibold text-ink">Avatar</legend>
+                    <div class="flex flex-wrap gap-2">
+                        <label class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface-0 px-3 text-sm text-ink"><input type="radio" name="avatar" value=""{% if not page.avatar_id %} checked{% endif %}>None</label>
+                        {% for asset in media_choices %}
+                        <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface-0 p-1 text-sm text-ink"><input type="radio" name="avatar" value="{{ asset.id }}"{% if page.avatar_id == asset.id %} checked{% endif %}><img src="{{ asset.preview_url }}" alt="{{ asset.alt_text|default:asset.filename }}" class="h-11 w-11 rounded object-cover"></label>
+                        {% endfor %}
+                    </div>
+                    <p class="m-0 mt-1 text-xs text-ink-3">Pick from your media library's latest images.</p>
+                </fieldset>
+                <fieldset class="m-0 min-w-0 border-0 p-0">
+                    <legend class="mb-1 text-sm font-semibold text-ink">Social icons</legend>
+                    <div class="flex flex-col gap-1">
+                        {% for row in accounts %}
+                        <label class="flex min-h-11 cursor-pointer items-center gap-3 rounded-lg border border-line bg-surface-0 px-3 text-sm text-ink"><input type="checkbox" name="social_accounts" value="{{ row.account.id }}"{% if row.selected %} checked{% endif %}>{{ row.account.account_name }} <span class="text-xs text-ink-3">{{ row.account.get_platform_display }}{% if not row.has_profile %} &middot; no public profile address{% endif %}</span></label>
+                        {% empty %}<p class="m-0 text-xs text-ink-3">Connect an account to show its profile here.</p>{% endfor %}
+                    </div>
+                </fieldset>
+                <fieldset class="m-0 min-w-0 border-0 p-0">
+                    <legend class="mb-1 text-sm font-semibold text-ink">Latest posts</legend>
+                    <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-ink"><input type="checkbox" name="show_latest_posts"{% if page.show_latest_posts %} checked{% endif %}>Show a grid of my latest published posts</label>
+                    <label for="f-posts-account" class="mb-1 mt-2 block text-xs font-semibold text-ink-2">From</label>
+                    <select id="f-posts-account" name="posts_account" class="form-input-styled text-sm">
+                        <option value="">All accounts</option>
+                        {% for row in accounts %}<option value="{{ row.account.id }}"{% if page.posts_account_id == row.account.id %} selected{% endif %}>{{ row.account.account_name }} ({{ row.account.get_platform_display }})</option>{% endfor %}
+                    </select>
+                </fieldset>
+                <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-ink"><input type="checkbox" name="is_published"{% if page.is_published %} checked{% endif %}>Page is public</label>
+                <div>
+                    <label for="f-domain" class="mb-1 block text-sm font-semibold text-ink">Custom domain</label>
+                    <input id="f-domain" name="custom_domain" type="text" maxlength="253" placeholder="links.example.com" value="{{ page.custom_domain|default:'' }}" aria-describedby="f-domain-help" autocapitalize="none" spellcheck="false" class="form-input-styled text-sm">
+                    <p id="f-domain-help" class="m-0 mt-1 text-xs text-ink-3">Optional. Create a CNAME record for this name pointing to <strong class="font-semibold">{{ cname_target }}</strong>.{% if not custom_domains_enabled %} Serving pages on custom domains is not switched on for this installation yet, so the page stays at the address above.{% endif %}</p>
+                </div>
+                <button type="submit" class="btn-brand inline-flex min-h-11 w-auto items-center self-start px-5 py-2">Save page</button>
+            </form>
+            </fieldset>
+
+            <section id="links" aria-labelledby="links-h" class="rounded-xl border border-line bg-surface-1 p-4">
+                <h2 id="links-h" class="m-0 mb-3 text-[15px] font-semibold text-ink">Links</h2>
+                <ol class="m-0 mb-4 flex list-none flex-col gap-3 p-0">
+                    {% for row in links %}
+                    <li id="link-{{ row.link.id }}" class="rounded-lg border border-line bg-surface-0 p-3">
+                        <fieldset {% if not can_manage %}disabled{% endif %} class="m-0 min-w-0 border-0 p-0">
+                        <form method="post" action="{% url 'linkinbio:link_update' workspace_id=workspace.id page_id=page.id link_id=row.link.id %}" class="flex flex-col gap-3">
+                            {% csrf_token %}
+                            <p class="m-0 text-xs text-ink-3">{{ forloop.counter }} of {{ links|length }} &middot; {% if row.visible %}Showing now{% elif not row.link.is_active %}Hidden{% else %}Not showing right now (outside its schedule){% endif %}</p>
+                            <div><label for="t-{{ row.link.id }}" class="mb-1 block text-xs font-semibold text-ink-2">Button text</label><input id="t-{{ row.link.id }}" name="title" type="text" maxlength="100" required value="{{ row.link.title }}" class="form-input-styled text-sm"></div>
+                            <div><label for="u-{{ row.link.id }}" class="mb-1 block text-xs font-semibold text-ink-2">Web address</label><input id="u-{{ row.link.id }}" name="url" type="url" maxlength="2000" required value="{{ row.link.url }}" class="form-input-styled text-sm"></div>
+                            <div><label for="i-{{ row.link.id }}" class="mb-1 block text-xs font-semibold text-ink-2">Icon</label>
+                                <select id="i-{{ row.link.id }}" name="icon" class="form-input-styled text-sm">{% for value, label in icons %}<option value="{{ value }}"{% if row.link.icon == value %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+                            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                <div><label for="s-{{ row.link.id }}" class="mb-1 block text-xs font-semibold text-ink-2">Show from ({{ timezone_name }})</label><input id="s-{{ row.link.id }}" name="starts_at" type="datetime-local" value="{{ row.starts_local }}" class="form-input-styled text-sm"></div>
+                                <div><label for="e-{{ row.link.id }}" class="mb-1 block text-xs font-semibold text-ink-2">Hide after ({{ timezone_name }})</label><input id="e-{{ row.link.id }}" name="ends_at" type="datetime-local" value="{{ row.ends_local }}" class="form-input-styled text-sm"></div>
+                            </div>
+                            <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-ink"><input type="checkbox" name="is_active"{% if row.link.is_active %} checked{% endif %}>Show this link</label>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <button type="submit" class="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-line bg-surface-1 px-4 text-[13px] font-semibold text-ink hover:bg-surface-2">Save link</button>
+                            </div>
+                        </form>
+                        <div class="mt-2 flex flex-wrap items-center gap-2">
+                            <form method="post" action="{% url 'linkinbio:link_move' workspace_id=workspace.id page_id=page.id link_id=row.link.id %}" class="m-0">{% csrf_token %}<input type="hidden" name="direction" value="up"><button type="submit" {% if forloop.first %}disabled{% endif %} class="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-line px-4 text-[13px] font-semibold text-ink-2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-50" aria-label="Move {{ row.link.title }} up">Move up</button></form>
+                            <form method="post" action="{% url 'linkinbio:link_move' workspace_id=workspace.id page_id=page.id link_id=row.link.id %}" class="m-0">{% csrf_token %}<input type="hidden" name="direction" value="down"><button type="submit" {% if forloop.last %}disabled{% endif %} class="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-line px-4 text-[13px] font-semibold text-ink-2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-50" aria-label="Move {{ row.link.title }} down">Move down</button></form>
+                            <form method="post" action="{% url 'linkinbio:link_delete' workspace_id=workspace.id page_id=page.id link_id=row.link.id %}" class="m-0">{% csrf_token %}<button type="submit" class="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-bad px-4 text-[13px] font-semibold text-bad" aria-label="Remove {{ row.link.title }}">Remove</button></form>
+                        </div>
+                        </fieldset>
+                    </li>
+                    {% empty %}<li class="text-[13px] text-ink-3">No links yet.</li>{% endfor %}
+                </ol>
+                {% if can_manage %}
+                <form method="post" action="{% url 'linkinbio:link_add' workspace_id=workspace.id page_id=page.id %}" class="flex flex-col gap-3 border-t border-line pt-4">
+                    {% csrf_token %}
+                    <h3 class="m-0 text-sm font-semibold text-ink">Add a link</h3>
+                    <div><label for="n-title" class="mb-1 block text-xs font-semibold text-ink-2">Button text</label><input id="n-title" name="title" type="text" maxlength="100" required class="form-input-styled text-sm"></div>
+                    <div><label for="n-url" class="mb-1 block text-xs font-semibold text-ink-2">Web address</label><input id="n-url" name="url" type="url" maxlength="2000" required placeholder="https://" class="form-input-styled text-sm"></div>
+                    <div><label for="n-icon" class="mb-1 block text-xs font-semibold text-ink-2">Icon</label><select id="n-icon" name="icon" class="form-input-styled text-sm">{% for value, label in icons %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select></div>
+                    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <div><label for="n-start" class="mb-1 block text-xs font-semibold text-ink-2">Show from ({{ timezone_name }})</label><input id="n-start" name="starts_at" type="datetime-local" class="form-input-styled text-sm"></div>
+                        <div><label for="n-end" class="mb-1 block text-xs font-semibold text-ink-2">Hide after ({{ timezone_name }})</label><input id="n-end" name="ends_at" type="datetime-local" class="form-input-styled text-sm"></div>
+                    </div>
+                    <button type="submit" class="btn-brand inline-flex min-h-11 w-auto items-center self-start px-5 py-2">Add link</button>
+                </form>
+                {% endif %}
+            </section>
+        </div>
+
+        <div class="flex flex-col gap-6">
+            <section aria-labelledby="stats-h" class="rounded-xl border border-line bg-surface-1 p-4">
+                <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                    <h2 id="stats-h" class="m-0 text-[15px] font-semibold text-ink">Views and clicks</h2>
+                    <nav aria-label="Time range" class="flex gap-1">
+                        {% for d in stats_ranges %}<a href="?days={{ d }}" {% if d == stats.days %}aria-current="page"{% endif %} class="inline-flex min-h-11 items-center rounded-full border px-4 text-[13px] font-semibold no-underline {% if d == stats.days %}border-accent text-ink{% else %}border-line text-ink-3 hover:text-ink{% endif %}">{{ d }} days</a>{% endfor %}
+                    </nav>
+                </div>
+                <dl class="m-0 mb-4 grid grid-cols-3 gap-3">
+                    <div><dt class="text-xs text-ink-3">Page views</dt><dd class="m-0 text-xl font-semibold text-ink">{{ stats.totals.views }}</dd></div>
+                    <div><dt class="text-xs text-ink-3">Visitors (est.)</dt><dd class="m-0 text-xl font-semibold text-ink">{{ stats.totals.unique_visitors }}</dd></div>
+                    <div><dt class="text-xs text-ink-3">Clicks</dt><dd class="m-0 text-xl font-semibold text-ink">{{ stats.totals.clicks }}</dd></div>
+                </dl>
+                <table class="w-full border-collapse text-left text-[13px]">
+                    <caption class="mb-1 text-left text-xs text-ink-3">Clicks per link, last {{ stats.days }} days</caption>
+                    <thead><tr class="border-b border-line text-xs text-ink-3"><th scope="col" class="py-1 pr-2 font-semibold">Link</th><th scope="col" class="py-1 pr-2 text-right font-semibold">Clicks</th><th scope="col" class="py-1 text-right font-semibold">Visitors (est.)</th></tr></thead>
+                    <tbody>
+                        {% for row in stats.links %}<tr class="border-b border-line"><th scope="row" class="py-2 pr-2 font-normal text-ink">{{ row.title }}</th><td class="py-2 pr-2 text-right text-ink">{{ row.clicks }}</td><td class="py-2 text-right text-ink">{{ row.unique_clicks }}</td></tr>
+                        {% empty %}<tr><td colspan="3" class="py-3 text-ink-3">No clicks yet.</td></tr>{% endfor %}
+                    </tbody>
+                </table>
+                <p class="m-0 mt-3 text-xs text-ink-3">Counted without cookies. Addresses are never stored: a visitor is a one-way hash that changes every day, so numbers are estimates and the same person on two days counts twice. Days are UTC.</p>
+            </section>
+
+            <section id="posts" aria-labelledby="posts-h" class="rounded-xl border border-line bg-surface-1 p-4">
+                <h2 id="posts-h" class="m-0 mb-1 text-[15px] font-semibold text-ink">Where your post tiles lead</h2>
+                <p class="m-0 mb-3 text-xs text-ink-3">Give a published post a web address and its tile in the "Latest posts" grid opens it.</p>
+                <ul class="m-0 flex list-none flex-col gap-3 p-0">
+                    {% for row in post_rows %}
+                    <li>
+                        <form method="post" action="{% url 'linkinbio:post_link' workspace_id=workspace.id page_id=page.id post_id=row.post.id %}" class="flex flex-col gap-2">
+                            {% csrf_token %}
+                            <label for="pl-{{ row.post.id }}" class="text-xs font-semibold text-ink-2">{{ row.caption }}</label>
+                            <div class="flex flex-wrap items-center gap-2">
+                                <input id="pl-{{ row.post.id }}" name="url" type="url" maxlength="2000" placeholder="https://" value="{{ row.url }}" {% if not can_manage %}disabled{% endif %} class="form-input-styled min-w-0 flex-1 text-sm">
+                                {% if can_manage %}<button type="submit" class="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-line bg-surface-0 px-4 text-[13px] font-semibold text-ink hover:bg-surface-2">Save</button>{% endif %}
+                            </div>
+                        </form>
+                    </li>
+                    {% empty %}<li class="text-[13px] text-ink-3">No published posts yet.</li>{% endfor %}
+                </ul>
+            </section>
+
+            {% if can_manage %}
+            <form method="post" action="{% url 'linkinbio:delete' workspace_id=workspace.id page_id=page.id %}" class="m-0">
+                {% csrf_token %}
+                <button type="submit" class="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-bad px-5 text-[13px] font-semibold text-bad">Delete this page</button>
+            </form>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

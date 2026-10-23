@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Link in bio — {{ workspace.name }} — {{ brand_short_name }}{% endblock %}
+
+{% block content %}
+<div class="flex flex-1 flex-col">
+    <div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+            <h1 class="text-2xl font-semibold tracking-tight text-ink">Link in bio</h1>
+            <p class="mt-0.5 max-w-2xl text-[13px] text-ink-3">A page of links for your profile bio: buttons, social icons and your latest posts, with view and click counts that never use cookies.</p>
+        </div>
+    </div>
+
+    {% if pages %}
+    <ul class="m-0 mb-6 flex list-none flex-col gap-3 p-0">
+        {% for item in pages %}
+        <li class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface-1 p-4">
+            <div class="min-w-0">
+                <a href="{% url 'linkinbio:edit' workspace_id=workspace.id page_id=item.id %}" class="text-[15px] font-semibold text-ink no-underline hover:underline">{{ item.title }}</a>
+                <p class="m-0 mt-1 text-xs text-ink-3">/l/{{ item.slug }}/ &middot; {% if item.is_published %}Published{% else %}Hidden{% endif %}</p>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+                {% if item.is_published %}<a href="{% url 'linkinbio_public:page' slug=item.slug %}" target="_blank" rel="noopener" class="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-[13px] font-semibold text-ink-2 no-underline hover:text-ink">View page<span class="sr-only"> (opens in a new tab)</span></a>{% endif %}
+                <a href="{% url 'linkinbio:edit' workspace_id=workspace.id page_id=item.id %}" class="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-[13px] font-semibold text-ink-2 no-underline hover:text-ink">{% if can_manage %}Edit{% else %}Stats{% endif %}</a>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="mb-6 rounded-xl border border-dashed border-line p-8 text-center">
+        <p class="m-0 text-[15px] font-semibold text-ink">No link-in-bio page yet</p>
+        <p class="m-0 mt-1 text-[13px] text-ink-3">Create one and put its address in your Instagram, TikTok or X bio.</p>
+    </div>
+    {% endif %}
+
+    {% if can_manage %}
+    <form method="post" action="{% url 'linkinbio:create' workspace_id=workspace.id %}" class="max-w-xl rounded-xl border border-line bg-surface-1 p-4">
+        {% csrf_token %}
+        <h2 class="m-0 mb-1 text-[15px] font-semibold text-ink">New page</h2>
+        <p class="m-0 mb-3 text-xs text-ink-3">{% if page_limit is not None %}Your plan includes {{ page_limit }} page{{ page_limit|pluralize }}{% if shows_badge %}, shown with a PostDelegate badge{% endif %}.{% else %}Your plan has no limit on pages.{% endif %}</p>
+        <label for="new-title" class="mb-1 block text-sm font-semibold text-ink">Title</label>
+        <input id="new-title" name="title" type="text" maxlength="80" required class="form-input-styled text-sm">
+        <label for="new-slug" class="mb-1 mt-3 block text-sm font-semibold text-ink">Page address</label>
+        <div class="flex items-center gap-2"><span class="text-sm text-ink-3" aria-hidden="true">/l/</span><input id="new-slug" name="slug" type="text" maxlength="40" required pattern="[a-z0-9][a-z0-9\-]{1,38}[a-z0-9]" autocapitalize="none" spellcheck="false" aria-describedby="new-slug-help" class="form-input-styled text-sm"></div>
+        <p id="new-slug-help" class="m-0 mt-1 text-xs text-ink-3">3 to 40 lowercase letters, numbers or hyphens.</p>
+        <button type="submit" class="btn-brand mt-4 inline-flex min-h-11 w-auto items-center px-5 py-2">Create page</button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}

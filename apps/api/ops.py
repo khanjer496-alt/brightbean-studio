@@ -35,6 +35,10 @@ from apps.api.schemas import (
     ApplyBestTimesResponse,
     BestTimeResponse,
     BestTimesResponse,
+    BioLinkResponse,
+    BioPageResponse,
+    BioPagesListResponse,
+    BioStatsResponse,
     BrandVoiceResponse,
     CalendarEventResponse,
     CalendarEventsListResponse,
@@ -1919,3 +1923,196 @@ def get_latest_report_run(actor: Actor, report_id: uuid.UUID) -> ReportRunRespon
     if run is None:
         raise OpError(404, "This report hasn't been run yet")
     return _report_run_response(run)
+
+
+# ---------------------------------------------------------------------------
+# Link-in-bio pages
+# ---------------------------------------------------------------------------
+
+
+def _bio_pages(actor: Actor) -> QuerySet:
+    from apps.linkinbio.models import BioPage
+
+    return BioPage.objects.filter(workspace_id=actor.workspace_id).prefetch_related("links", "social_accounts")
+
+
+def _get_bio_page(actor: Actor, page_id: uuid.UUID):
+    from apps.linkinbio.models import BioPage
+
+    try:
+        return _bio_pages(actor).get(id=page_id)
+    except BioPage.DoesNotExist as exc:
+        raise OpError(404, "Page not found") from exc
+
+
+def _bio_link_response(link, now) -> BioLinkResponse:
+    return BioLinkResponse(
+        id=link.id,
+        title=link.title,
+        url=link.url,
+        icon=link.icon,
+        thumbnail_media_id=link.thumbnail_id,
+        position=link.position,
+        starts_at=link.starts_at,
+        ends_at=link.ends_at,
+        is_active=link.is_active,
+        visible_now=link.is_visible(now),
+    )
+
+
+def _bio_page_response(page) -> BioPageResponse:
+    from django.conf import settings
+
+    now = timezone.now()
+    path = f"/l/{page.slug}/"
+    return BioPageResponse(
+        id=page.id,
+        slug=page.slug,
+        path=path,
+        url=f"{settings.APP_URL.rstrip('/')}{path}",
+        title=page.title,
+        bio=page.bio,
+        theme=page.theme,
+        accent_color=page.accent_color,
+        avatar_media_id=page.avatar_id,
+        is_published=page.is_published,
+        show_latest_posts=page.show_latest_posts,
+        posts_account_id=page.posts_account_id,
+        social_account_ids=[a.id for a in page.social_accounts.all()],
+        custom_domain=page.custom_domain,
+        links=[_bio_link_response(link, now) for link in sorted(page.links.all(), key=lambda x: (x.position, x.id))],
+    )
+
+
+def _bio_refusal(exc) -> OpError:
+    return OpError(422, f"{exc.field}: {exc.message}" if exc.field else exc.message)
+
+
+def list_bio_pages(actor: Actor, *, limit: int = LIMIT_DEFAULT, cursor: str | None = None) -> BioPagesListResponse:
+    actor.require("view_analytics")
+    rows, next_cursor = _paginate(_bio_pages(actor).order_by("created_at", "id"), limit=limit, cursor=cursor)
+    return BioPagesListResponse(pages=[_bio_page_response(p) for p in rows], limit=limit, next_cursor=next_cursor)
+
+
+def get_bio_page(actor: Actor, page_id: uuid.UUID) -> BioPageResponse:
+    actor.require("view_analytics")
+    return _bio_page_response(_get_bio_page(actor, page_id))
+
+
+_BIO_PAGE_KEYS = {
+    "slug",
+    "title",
+    "bio",
+    "theme",
+    "accent_color",
+    "avatar_media_id",
+    "is_published",
+    "show_latest_posts",
+    "posts_account_id",
+    "social_account_ids",
+    "custom_domain",
+}
+
+
+def update_bio_page(actor: Actor, page_id: uuid.UUID, **fields: Any) -> BioPageResponse:
+    from apps.linkinbio import services as bio
+
+    actor.require("manage_social_accounts")
+    page = _get_bio_page(actor, page_id)
+    unknown = set(fields) - _BIO_PAGE_KEYS
+    if unknown:
+        raise OpError(422, f"Unknown field(s): {', '.join(sorted(unknown))}")
+    data = {k: v for k, v in fields.items() if k not in ("social_account_ids", "avatar_media_id", "posts_account_id")}
+    if "avatar_media_id" in fields:
+        data["avatar"] = fields["avatar_media_id"]
+    if "posts_account_id" in fields:
+        if fields["posts_account_id"] is not None and fields["posts_account_id"] not in actor.allowed_account_ids:
+            raise OpError(403, "posts_account_id is not in this key's allowlist.")
+        data["posts_account"] = fields["posts_account_id"]
+    account_ids = None
+    if fields.get("social_account_ids") is not None:
+        wanted = set(fields["social_account_ids"])
+        if not wanted <= actor.allowed_account_ids:
+            raise OpError(403, "social_account_ids includes an account outside this key's allowlist.")
+        # Icons for accounts the key can't see are left as they are.
+        hidden = {a.id for a in page.social_accounts.all()} - actor.allowed_account_ids
+        account_ids = wanted | hidden
+    try:
+        with transaction.atomic():
+            bio.update_page(page, social_account_ids=account_ids, **data)
+    except bio.BioError as exc:
+        raise _bio_refusal(exc) from exc
+    return _bio_page_response(_get_bio_page(actor, page_id))
+
+
+def _get_bio_link(actor: Actor, page, link_id: uuid.UUID):
+    link = next((x for x in page.links.all() if x.id == link_id), None)
+    if link is None:
+        raise OpError(404, "Link not found")
+    return link
+
+
+def add_bio_link(actor: Actor, page_id: uuid.UUID, **fields: Any) -> BioPageResponse:
+    from apps.linkinbio import services as bio
+
+    actor.require("manage_social_accounts")
+    page = _get_bio_page(actor, page_id)
+    data = {k: v for k, v in fields.items() if k != "thumbnail_media_id"}
+    if fields.get("thumbnail_media_id"):
+        data["thumbnail"] = fields["thumbnail_media_id"]
+    try:
+        bio.add_link(page, **data)
+    except bio.BioError as exc:
+        raise _bio_refusal(exc) from exc
+    return _bio_page_response(_get_bio_page(actor, page_id))
+
+
+def update_bio_link(actor: Actor, page_id: uuid.UUID, link_id: uuid.UUID, **fields: Any) -> BioPageResponse:
+    from apps.linkinbio import services as bio
+
+    actor.require("manage_social_accounts")
+    page = _get_bio_page(actor, page_id)
+    link = _get_bio_link(actor, page, link_id)
+    move = fields.pop("move", None)
+    data = {k: v for k, v in fields.items() if k != "thumbnail_media_id"}
+    if "thumbnail_media_id" in fields:
+        data["thumbnail"] = fields["thumbnail_media_id"]
+    try:
+        with transaction.atomic():
+            if data:
+                bio.update_link(link, **data)
+            if move:
+                bio.move_link(link, move)
+    except bio.BioError as exc:
+        raise _bio_refusal(exc) from exc
+    return _bio_page_response(_get_bio_page(actor, page_id))
+
+
+def delete_bio_link(actor: Actor, page_id: uuid.UUID, link_id: uuid.UUID) -> DeletedResponse:
+    from apps.linkinbio import services as bio
+
+    actor.require("manage_social_accounts")
+    page = _get_bio_page(actor, page_id)
+    bio.delete_link(_get_bio_link(actor, page, link_id))
+    return DeletedResponse(id=link_id)
+
+
+def get_bio_stats(actor: Actor, page_id: uuid.UUID, *, days: int = 30) -> BioStatsResponse:
+    from apps.linkinbio import services as bio
+
+    actor.require("view_analytics")
+    if days < 1 or days > bio.STATS_DAYS_MAX:
+        raise OpError(422, f"days must be between 1 and {bio.STATS_DAYS_MAX}")
+    page = _get_bio_page(actor, page_id)
+    summary = bio.stats_summary(page, days)
+    return BioStatsResponse(
+        page_id=page.id,
+        days=summary["days"],
+        start=summary["start"],
+        end=summary["end"],
+        views=summary["totals"]["views"],
+        unique_visitors=summary["totals"]["unique_visitors"],
+        clicks=summary["totals"]["clicks"],
+        series=summary["series"],
+        links=summary["links"],
+    )

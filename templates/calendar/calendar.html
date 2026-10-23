@@ -29,6 +29,9 @@
                 Calendar
             </button>
         </div>
+        {% if grid_available %}
+        <a href="{% url 'calendar:grid_index' workspace_id=workspace.id %}" class="inline-flex min-h-11 items-center rounded-full border border-line px-3.5 text-[13px] font-semibold text-stone-700 no-underline hover:bg-stone-50">Grid preview</a>
+        {% endif %}
 
     </div>
 </div>

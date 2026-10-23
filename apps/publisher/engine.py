@@ -813,7 +813,8 @@ class PublishEngine:
                 else:
                     platform_post.status = PlatformPost.Status.PUBLISHED
                     platform_post.published_at = timezone.now()
-                    # Not stored; read by the post.published webhook fired from save().
+                    platform_post.permalink = str(result.get("url") or "")[:500] or None
+                    # Read by the post.published webhook fired from save().
                     setattr(platform_post, webhook_events.PERMALINK_ATTR, result.get("url") or "")
                 platform_post.save()
 

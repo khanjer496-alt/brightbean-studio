@@ -63,6 +63,8 @@ THREADS_MEDIA_RULES = {
 class ThreadsProvider(SocialProvider):
     """Threads API provider using OAuth 2.0."""
 
+    profile_url_template = "https://www.threads.net/@{handle}"
+
     media_rules = THREADS_MEDIA_RULES
     # Each part is a reply to the one before it (``reply_to_id``).
     thread = ThreadCapability(mode=ThreadMode.REPLY_CHAIN, max_parts=25, media_per_part=True)
