@@ -9,6 +9,12 @@
     <div class="mb-5 border-b border-line pb-4">{% include "analytics/_range_controls.html" %}</div>
 
     <form method="get" class="mb-5 rounded-xl border border-line bg-surface-1 p-4" x-data="{ count: {{ picked|length }}, max: {{ max_accounts }} }">
+        {# Once a comparison is showing, the (possibly long) picker folds away behind its summary. #}
+        <details {% if not ready %}open{% endif %} class="group">
+        <summary class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-[13px] text-ink-2 {% if not ready %}hidden{% endif %}">
+            <span class="min-w-0 truncate">Comparing {% for acc in picked %}<span class="font-semibold text-ink">{{ acc.account_name }}</span>{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+            <span class="shrink-0 font-semibold text-accent group-open:hidden">Change accounts</span>
+        </summary>
         <fieldset class="m-0 border-0 p-0">
             <legend class="mb-2 text-[13px] font-semibold text-ink">Pick {{ min_accounts }} to {{ max_accounts }} accounts</legend>
             <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
@@ -27,6 +33,7 @@
         {% if range.is_custom %}<input type="hidden" name="start" value="{{ range.start|date:'Y-m-d' }}"><input type="hidden" name="end" value="{{ range.end|date:'Y-m-d' }}">{% endif %}
         {% if not range.compare %}<input type="hidden" name="compare" value="none">{% endif %}
         <button type="submit" class="btn-brand mt-3 w-auto px-5 py-2">Compare</button>
+        </details>
     </form>
 
     {% if not ready %}
@@ -34,17 +41,12 @@
     {% else %}
     <div class="flex flex-col gap-5">
         <section class="rounded-xl border border-line bg-surface-1" aria-labelledby="matrix-heading">
-            <div class="flex items-center justify-between border-b border-line px-5 py-4">
-                <h2 id="matrix-heading" class="m-0 text-[15px] font-semibold text-ink">Side by side</h2>
-                <div class="inline-flex items-center gap-0.5 rounded-full border border-line bg-surface-2 p-[3px]">
-                    {% for option in series_options %}{% include "analytics/_pill.html" with url=option.url label=option.label active=option.active %}{% endfor %}
-                </div>
-            </div>
+            <h2 id="matrix-heading" class="m-0 border-b border-line px-5 py-4 text-[15px] font-semibold text-ink">Side by side</h2>
             <div class="overflow-x-auto">
                 <table class="w-full border-collapse text-[13px]">
                     <thead>
                         <tr>
-                            <th scope="col" class="px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-ink-3">Metric</th>
+                            <th scope="col" class="sticky left-0 z-10 bg-surface-1 px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-ink-3">Metric</th>
                             {% for row in rows %}
                             <th scope="col" class="min-w-32 px-4 py-2.5 text-right font-semibold text-ink">
                                 <span class="inline-flex items-center justify-end gap-1.5">{% include "analytics/_swatch.html" with n=forloop.counter %}{{ row.account.account_name }}</span>
@@ -56,7 +58,7 @@
                     <tbody>
                         {% for metric in matrix %}
                         <tr class="border-t border-line">
-                            <th scope="row" class="whitespace-nowrap px-4 py-2.5 text-left font-medium text-ink-2">{{ metric.label }}</th>
+                            <th scope="row" class="sticky left-0 z-10 whitespace-nowrap bg-surface-1 px-4 py-2.5 text-left font-medium text-ink-2">{{ metric.label }}</th>
                             {% for cell in metric.cells %}
                             <td class="px-4 py-2.5 text-right">
                                 {% if cell.value is None %}<span class="text-ink-3">Not available</span>
@@ -71,7 +73,12 @@
         </section>
 
         <section class="rounded-xl border border-line bg-surface-1 p-5" aria-labelledby="overlay-heading">
-            <h2 id="overlay-heading" class="m-0 mb-3 text-[15px] font-semibold text-ink">{{ trend.label }} per day</h2>
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <h2 id="overlay-heading" class="m-0 text-[15px] font-semibold text-ink">{{ trend.label }} per day</h2>
+                <div class="inline-flex flex-wrap items-center gap-0.5 rounded-full border border-line bg-surface-2 p-[3px]">
+                    {% for option in series_options %}{% include "analytics/_pill.html" with url=option.url label=option.label active=option.active %}{% endfor %}
+                </div>
+            </div>
             {% include "analytics/_chart.html" with chart_id="compare-trend" chart=trend summary=trend_summary %}
         </section>
     </div>

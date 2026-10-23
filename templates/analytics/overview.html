@@ -13,9 +13,12 @@
             {% for kpi in kpis %}{% include "analytics/_kpi_card.html" %}{% endfor %}
         </section>
         {% if excluded %}
-        <p class="m-0 text-xs text-ink-3">
-            No analytics for {% for row in excluded %}{{ row.account.account_name }} ({{ row.unavailable }}){% if not forloop.last %}; {% endif %}{% endfor %}. Their posts are still counted under Posts published.
-        </p>
+        <div class="m-0 flex flex-col gap-1 text-xs text-ink-3">
+            {% for group in excluded %}
+            <p class="m-0">Not in these totals: {{ group.names|join:", " }}. {{ group.reason }}</p>
+            {% endfor %}
+            <p class="m-0">Their posts still count under Posts published.</p>
+        </div>
         {% endif %}
 
         <section class="rounded-xl border border-line bg-surface-1 p-5" aria-labelledby="trend-heading">

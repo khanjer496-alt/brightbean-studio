@@ -95,8 +95,18 @@
             boxPadding: 4,
             usePointStyle: false,
             callbacks: {
+              // The series' own colour, solid: the default reads the 12% area fill and shows a blank box.
+              labelColor: function (item) {
+                var color = item.dataset.borderColor;
+                return { borderColor: color, backgroundColor: color, borderWidth: 0, borderRadius: 2 };
+              },
               title: function (items) { return items.length ? formatDay(config.labels[items[0].dataIndex]) : ''; },
-              label: function (item) { return ' ' + item.dataset.label + ': ' + formatValue(item.raw, config.kind); },
+              label: function (item) {
+                // An aligned earlier period (compare) names its own day: the axis shows this period's.
+                var dates = config.datasets[item.datasetIndex].dates;
+                var when = dates ? ' (' + formatDay(dates[item.dataIndex]) + ')' : '';
+                return ' ' + item.dataset.label + when + ': ' + formatValue(item.raw, config.kind);
+              },
             },
           },
         },

@@ -10,6 +10,7 @@ post-detail drawer fetch. CSV exports live in ``exports``.
 from __future__ import annotations
 
 import logging
+from datetime import date
 from uuid import UUID
 
 from django.contrib.auth.decorators import login_required
@@ -225,10 +226,19 @@ def analytics_index(request: HttpRequest, workspace_id) -> HttpResponse:
             for key, label in (("exposure", "Most seen"), ("engagements", "Most engaged"))
         ],
         "trend_summary": summarize_trend(data["trend"]),
-        "excluded": [r for r in data["accounts"] if r.unavailable],
+        "excluded": _excluded_by_reason(data["accounts"]),
         **data,
     }
     return render(request, "analytics/overview.html", context)
+
+
+def _excluded_by_reason(rows) -> list[dict]:
+    """Accounts without analytics, one line per reason (six Bluesky accounts share one)."""
+    grouped: dict[str, list[str]] = {}
+    for row in rows:
+        if row.unavailable:
+            grouped.setdefault(row.unavailable, []).append(row.account.account_name)
+    return [{"reason": reason, "names": names} for reason, names in grouped.items()]
 
 
 @login_required
@@ -462,9 +472,13 @@ def analytics_account(request: HttpRequest, workspace_id, account_id) -> HttpRes
     return render(request, "analytics/index.html", context)
 
 
+def _spoken_day(iso: str) -> str:
+    return f"{date.fromisoformat(iso):%b %-d, %Y}"
+
+
 def summarize_trend(trend: dict) -> str:
     """One-sentence text equivalent of a trend chart, for assistive tech and the page."""
-    labels = trend["labels"]
+    labels = [_spoken_day(day) for day in trend["labels"]]
     parts = []
     for dataset in trend["datasets"]:
         known = [(v, d) for v, d in zip(dataset["values"], labels, strict=True) if v is not None]
