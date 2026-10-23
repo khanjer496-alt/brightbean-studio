@@ -139,6 +139,8 @@ class TikTokProvider(SocialProvider):
 
     media_rules = TIKTOK_MEDIA_RULES
 
+    writing_style = "Casual, energetic and trend-aware: a punchy hook and a few relevant hashtags. Emojis welcome."
+
     # TikTok requires PKCE on the authorization request (for desktop/native
     # apps and localhost redirect URIs); see ``_pkce_code_challenge``.
     uses_pkce = True

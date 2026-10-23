@@ -111,6 +111,10 @@ class MastodonProvider(SocialProvider):
 
     media_rules = MASTODON_MEDIA_RULES
 
+    writing_style = (
+        "Genuine and community-minded, no marketing speak. Hashtags in CamelCase for discoverability and accessibility."
+    )
+
     def __init__(self, credentials: dict | None = None):
         super().__init__(credentials)
         instance = self.credentials.get("instance_url", "")

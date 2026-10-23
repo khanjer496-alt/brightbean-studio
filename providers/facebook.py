@@ -131,6 +131,8 @@ class FacebookProvider(SocialProvider):
 
     media_rules = FACEBOOK_MEDIA_RULES
 
+    writing_style = "Warm and conversational, inviting comments. A question or call to action works well; hashtags are optional and sparing."
+
     # Publishes from hosted URLs only — the platform fetches the media
     # itself, so ``PublishContent.media_files`` is never read and the engine
     # can skip downloading the asset to local disk entirely.

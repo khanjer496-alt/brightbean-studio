@@ -61,6 +61,8 @@ class ThreadsProvider(SocialProvider):
 
     media_rules = THREADS_MEDIA_RULES
 
+    writing_style = "Casual and conversational, like talking to followers. At most one hashtag; emojis welcome."
+
     # Publishes from hosted URLs only — the platform fetches the media
     # itself, so ``PublishContent.media_files`` is never read and the engine
     # can skip downloading the asset to local disk entirely.

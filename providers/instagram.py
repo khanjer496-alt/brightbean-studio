@@ -155,6 +155,8 @@ class InstagramProvider(SocialProvider):
 
     media_rules = INSTAGRAM_MEDIA_RULES
 
+    writing_style = "Visual storytelling: a strong first line, short paragraphs, emojis welcome, and a block of relevant hashtags at the end."
+
     # Publishes from hosted URLs only — the platform fetches the media
     # itself, so ``PublishContent.media_files`` is never read and the engine
     # can skip downloading the asset to local disk entirely.

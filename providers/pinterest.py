@@ -50,6 +50,10 @@ class PinterestProvider(SocialProvider):
 
     media_rules = PINTEREST_MEDIA_RULES
 
+    writing_style = (
+        "A keyword-rich, inspiring description of what the pin shows and why to save it. Few or no hashtags."
+    )
+
     def __init__(self, credentials: dict | None = None):
         creds = dict(credentials or {})
         # Normalize: accept app_id/app_secret as aliases for client_id/client_secret

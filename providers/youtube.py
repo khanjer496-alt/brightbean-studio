@@ -153,6 +153,8 @@ class YouTubeProvider(SocialProvider):
 
     media_rules = YOUTUBE_MEDIA_RULES
 
+    writing_style = "A video description: what viewers will get in the first lines, then detail, with a call to subscribe. A few hashtags at the end."
+
     # ------------------------------------------------------------------
     # Metadata
     # ------------------------------------------------------------------

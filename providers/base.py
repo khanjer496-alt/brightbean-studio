@@ -166,6 +166,14 @@ class SocialProvider(ABC):
     # declares only what its platform documents.
     media_rules: ClassVar[dict[PostType, MediaRules]] = {}
 
+    # How a post reads on this platform, for the AI writing assistant
+    # (``apps.ai_writer``) when it adapts a caption to each network. One or two
+    # sentences of house style — length, register, hashtag and emoji habits —
+    # never the character limit, which the assistant reads from the account and
+    # enforces itself. Empty means "no particular style": the caption is only
+    # fitted to the limit.
+    writing_style: ClassVar[str] = ""
+
     # How many post ids a single ``get_post_metrics_batch`` call may carry. 1 —
     # the default — means the platform has no batch endpoint, so the analytics
     # sync keeps its one-call-per-post loop and one bad id can't abort the rest
