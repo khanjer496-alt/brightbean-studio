@@ -22,6 +22,7 @@ from ninja import Router
 
 from apps.api.limits import enforce_http_rate_limits
 from apps.api.middleware import log_audit_entry
+from apps.billing.entitlements import PlanLimitError
 from apps.mcp.protocol import (
     INVALID_PARAMS,
     INVALID_REQUEST,
@@ -94,7 +95,12 @@ def _tools_call(params: dict, context: dict[str, Any]) -> dict:
         _validate_tool_arguments(tool.input_schema, arguments)
     except _ToolValidationError as exc:
         raise JsonRpcError(INVALID_PARAMS, f"tools/call '{name}': {exc}") from exc
-    return tool.handler(arguments, context)
+    try:
+        return tool.handler(arguments, context)
+    except PlanLimitError as exc:
+        # A plan limit is the caller's to resolve (upgrade, or free something
+        # up), so it travels as a readable error rather than INTERNAL_ERROR.
+        raise JsonRpcError(INVALID_PARAMS, f"{exc.message} Manage your plan: {exc.upgrade_url}") from exc
 
 
 class _ToolValidationError(ValueError):

@@ -8,6 +8,7 @@ from datetime import datetime, timedelta
 from dateutil.relativedelta import relativedelta
 from django.utils import timezone
 
+from apps.billing.entitlements import PlanLimitError, check_can_schedule_posts
 from apps.composer.models import PlatformPost, Post, PostMedia
 from apps.composer.services import post_media_types, publish_blocker
 
@@ -113,6 +114,16 @@ def generate_recurring_posts():
                     blocked = publish_blocker(
                         pp.social_account, media_types=media_types, platform_extra=pp.platform_extra
                     )
+                    # Past the plan's monthly allowance the clone waits as a
+                    # draft too, rather than failing the whole recurrence run.
+                    if not blocked and pp.status in _RECURRING_COMMITTED_STATUSES:
+                        already_queued = sum(1 for new_pp in new_pps if new_pp.status == "scheduled")
+                        try:
+                            check_can_schedule_posts(
+                                source.workspace.organization, count=already_queued + 1, when=scheduled_dt
+                            )
+                        except PlanLimitError as exc:
+                            blocked = exc.message
                     if blocked:
                         logger.warning(
                             "Recurrence of post %s on %s left as a draft for %s: %s",
