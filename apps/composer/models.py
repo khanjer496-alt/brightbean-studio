@@ -264,6 +264,18 @@ class Post(models.Model):
     # is actually scheduled.
     proposed_publish_at = models.DateTimeField(blank=True, null=True)
 
+    # The post whose ``RecurrenceRule`` generated this one. Lets the calendar
+    # mark every occurrence of a series, and lets editing or stopping the
+    # series find the upcoming copies it made. Null for ordinary posts and for
+    # copies generated before the link existed.
+    recurrence_source = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="recurrence_occurrences",
+    )
+
     # Metadata
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -321,6 +333,25 @@ class Post(models.Model):
         if len(self.caption) <= 100:
             return self.caption
         return self.caption[:100] + "…"
+
+    @property
+    def series_rule(self):
+        """The ``RecurrenceRule`` this post belongs to, or None.
+
+        A series' first post holds the rule; every copy it generated points
+        back at that post. Cheap when the caller ``select_related``
+        ``recurrence_rule`` and ``recurrence_source__recurrence_rule``.
+        """
+        from django.core.exceptions import ObjectDoesNotExist
+
+        for post in (self, self.recurrence_source):
+            if post is None:
+                continue
+            try:
+                return post.recurrence_rule
+            except ObjectDoesNotExist:
+                continue
+        return None
 
     @property
     def platform_posts_summary(self):
