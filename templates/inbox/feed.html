@@ -151,6 +151,7 @@
 
     /* Shortcuts dialog */
     .inbox-dialog {
+        margin: auto; /* preflight zeroes the UA margin that centres a modal dialog */
         border: 1px solid var(--border); border-radius: var(--radius-lg, 12px); padding: 20px;
         background: var(--surface-1); color: var(--text-primary); width: min(420px, calc(100vw - 32px));
     }
@@ -276,6 +277,7 @@
             </div>
 
             <p class="bulk-bar-status" role="status" aria-live="polite" x-show="bulkMessage" x-cloak x-text="bulkMessage"></p>
+            <span id="inbox-poll-announce" class="sr-only" role="status" aria-live="polite"></span>
 
             <!-- Bulk action bar -->
             <form x-show="selectedCount > 0 || allMatching" x-cloak class="bulk-bar" x-ref="bulkForm"
@@ -283,11 +285,12 @@
                   hx-post="{% url 'inbox:bulk_action' workspace_id=workspace.id %}"
                   hx-target="#inbox-message-list"
                   hx-swap="innerHTML"
+                  @htmx:after-request="if ($event.detail.xhr.status === 409) selectAllMatching()"
                   @submit.prevent>
                 <input type="hidden" name="message_ids" :value="allMatching ? '' : Array.from(selected).join(',')">
                 <input type="hidden" name="select_all" :value="allMatching ? '1' : ''">
                 <input type="hidden" name="expected_count" :value="allMatching ? matchCount : ''">
-                <input type="hidden" name="filters" :value="filterQuery()">
+                <input type="hidden" name="filters" x-ref="bulkFilters">
                 <input type="hidden" name="action" :value="bulk.action">
                 <input type="hidden" name="value" :value="bulk.value">
 
@@ -370,6 +373,10 @@
         <div class="inbox-shortcut-row"><dt>Saved replies (in the reply box)</dt><dd><kbd class="inbox-kbd">/</kbd></dd></div>
         <div class="inbox-shortcut-row"><dt>This help</dt><dd><kbd class="inbox-kbd">?</kbd></dd></div>
     </dl>
+    <label class="inbox-shortcut-row mt-2 cursor-pointer">
+        <span>Single-key shortcuts</span>
+        <input type="checkbox" id="inbox-shortcuts-enabled" class="w-4 h-4 rounded border-stone-300 text-orange-500 focus:ring-orange-200 cursor-pointer" checked>
+    </label>
 </dialog>
 {% endblock %}
 
@@ -384,6 +391,7 @@ function inboxController() {
 
         allMatching: false,
         matchCount: 0,
+        matchFilters: '',
         bulk: { action: '', value: '' },
         confirming: false,
         noteText: '',
@@ -435,7 +443,8 @@ function inboxController() {
         async selectAllMatching() {
             this.bulkMessage = '';
             try {
-                const response = await fetch('{% url "inbox:bulk_count" workspace_id=workspace.id %}?' + this.filterQuery(), { credentials: 'same-origin' });
+                const filters = this.filterQuery();
+                const response = await fetch('{% url "inbox:bulk_count" workspace_id=workspace.id %}?' + filters, { credentials: 'same-origin' });
                 if (!response.ok) throw new Error(response.status);
                 const data = await response.json();
                 if (data.count > data.limit) {
@@ -443,6 +452,8 @@ function inboxController() {
                     return;
                 }
                 this.matchCount = data.count;
+                /* The action runs on the very filters that were counted and confirmed. */
+                this.matchFilters = filters;
                 this.allMatching = true;
             } catch (error) {
                 this.bulkMessage = 'Could not count the matching messages. Try again.';
@@ -465,6 +476,8 @@ function inboxController() {
         },
 
         submitBulk() {
+            /* Read at submit time: the list (and its filters) is swapped by htmx without Alpine knowing. */
+            this.$refs.bulkFilters.value = this.allMatching ? this.matchFilters : this.filterQuery();
             this.$nextTick(() => htmx.trigger(this.$refs.bulkForm, 'submit'));
         },
 

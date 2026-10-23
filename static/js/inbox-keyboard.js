@@ -9,6 +9,8 @@
  *   a      assign to me                r      focus the reply box
  *   ?      show the shortcuts
  *
+ * Single-key shortcuts can be switched off in the shortcuts dialog (WCAG
+ * 2.1.4), for people whose speech or switch input types letters.
  * Rows answer to the server (`data-triage-url`) and are swapped in place, so
  * the list keeps its scroll position and focus. The "/" picker lives on the
  * reply box (`data-saved-replies`): typing "/" at the start of a word lists
@@ -16,11 +18,29 @@
  */
 (function (root) {
     const KEYS = {
-        j: 'next', k: 'prev', Enter: 'open', e: 'resolve', r: 'reply', a: 'assign_me', u: 'unread', x: 'select', '?': 'help',
+        j: 'next', k: 'prev', Enter: 'open', ' ': 'open', e: 'resolve', r: 'reply', a: 'assign_me', u: 'unread', x: 'select', '?': 'help',
     };
     const NON_TEXT_INPUTS = ['checkbox', 'radio', 'button', 'submit', 'reset', 'range', 'color', 'file', 'image'];
     const PICKER_MAX = 8;
     const SLASH_PATTERN = /(^|\s)\/([^\s/]*)$/;
+    const SHORTCUTS_OFF_KEY = 'inbox:shortcuts-off';
+
+    function shortcutsEnabled() {
+        try {
+            return root.localStorage.getItem(SHORTCUTS_OFF_KEY) !== '1';
+        } catch (e) {
+            return true;
+        }
+    }
+
+    function setShortcutsEnabled(enabled) {
+        try {
+            if (enabled) root.localStorage.removeItem(SHORTCUTS_OFF_KEY);
+            else root.localStorage.setItem(SHORTCUTS_OFF_KEY, '1');
+        } catch (e) {
+            /* Storage blocked: the switch lasts until the page is left. */
+        }
+    }
 
     function isTypingTarget(el) {
         if (!el) return false;
@@ -44,7 +64,7 @@
         return Math.min(Math.max(current + delta, 0), length - 1);
     }
 
-    function createTriage(doc, htmx) {
+    function createTriage(doc, htmx, enabled = () => true) {
         const rows = () => Array.from(doc.querySelectorAll('#inbox-message-list .inbox-row'));
         const currentRow = () => {
             const focused = doc.activeElement && doc.activeElement.closest && doc.activeElement.closest('.inbox-row');
@@ -74,7 +94,7 @@
         }
 
         function onKeydown(event) {
-            if (doc.querySelector('dialog[open]')) return;
+            if (doc.querySelector('dialog[open]') || !enabled()) return;
             const action = triageAction(event);
             if (!action) return;
             const list = rows();
@@ -104,7 +124,7 @@
                 return;
             }
             if (!row) return;
-            // Enter only opens a row that has focus itself, never a button or link inside it.
+            // Enter and Space only open a row that has focus itself, never a button or link inside it.
             if (action === 'open') {
                 if (doc.activeElement !== row) return;
                 event.preventDefault();
@@ -229,12 +249,54 @@
         });
     }
 
+    /**
+     * Keep keyboard focus in the list when the control that had it is swapped
+     * away: the "N new" pill, "Load more" and the bulk bar all replace or hide
+     * themselves. Focus goes to the first row the swap brought in. It is never
+     * taken from anything that still holds it (the search box, for one).
+     */
+    function keepFocusInList(doc) {
+        const rows = () => Array.from(doc.querySelectorAll('#inbox-message-list .inbox-row'));
+        let pending = null;
+        doc.addEventListener('htmx:beforeRequest', (event) => {
+            const elt = event.detail && event.detail.elt;
+            const active = doc.activeElement;
+            if (!elt || !active || active === doc.body || !elt.contains(active)) return;
+            if (!elt.closest('#inbox-message-list, .bulk-bar')) return;
+            // A poll replaces the pill with a fresh one: focus stays on the pill.
+            const poll = elt.id === 'inbox-poll';
+            pending = { poll, first: elt.classList.contains('inbox-load-more') ? rows().length : 0 };
+        });
+        doc.addEventListener('htmx:afterSettle', () => {
+            if (!pending) return;
+            const { poll, first } = pending;
+            pending = null;
+            const active = doc.activeElement;
+            const lost = !active || active === doc.body || !active.isConnected || active.offsetParent === null;
+            if (!lost) return;
+            const target = poll ? doc.querySelector('#inbox-poll .inbox-new-pill') : rows()[first];
+            if (target) target.focus();
+        });
+    }
+
+    function initShortcutsSwitch(doc) {
+        const box = doc.getElementById('inbox-shortcuts-enabled');
+        if (!box) return;
+        box.checked = shortcutsEnabled();
+        box.addEventListener('change', () => setShortcutsEnabled(box.checked));
+    }
+
     const api = { isTypingTarget, triageAction, stepIndex, slashQuery, filterReplies, createTriage, createSlashPicker };
     root.inboxKeyboard = api;
 
     if (root.document) {
         const doc = root.document;
-        doc.addEventListener('keydown', createTriage(doc, { ajax: (...args) => root.htmx.ajax(...args) }).onKeydown);
+        doc.addEventListener(
+            'keydown',
+            createTriage(doc, { ajax: (...args) => root.htmx.ajax(...args) }, shortcutsEnabled).onKeydown,
+        );
+        keepFocusInList(doc);
+        initShortcutsSwitch(doc);
         // The reply box is swapped in with every opened message.
         doc.addEventListener('htmx:afterSettle', () => initSlashPickers(doc));
         initSlashPickers(doc);

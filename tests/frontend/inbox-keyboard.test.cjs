@@ -159,3 +159,21 @@ test('Escape closes the picker and other keys pass through', () => {
   assert.equal(list.hidden, true);
   assert.equal(picker.onKeydown({ key: 'Enter', preventDefault() {} }), false);
 });
+
+test('Space opens a focused row like Enter', () => {
+  const rows = [fakeRow('a')];
+  const { controller } = triage(rows, rows[0]);
+  controller.onKeydown({ ...key(' '), preventDefault() {} });
+  assert.equal(rows[0].clicked, 1);
+});
+
+test('switched-off shortcuts leave every key alone', () => {
+  const rows = [fakeRow('a')];
+  const ajax = [];
+  const doc = { activeElement: rows[0], querySelector: () => null, querySelectorAll: () => rows, getElementById: () => null };
+  const controller = kb.createTriage(doc, { ajax: (...args) => { ajax.push(args); } }, () => false);
+  for (const k of ['e', 'j', 'Enter', '?']) controller.onKeydown({ ...key(k), preventDefault() {} });
+  assert.equal(ajax.length, 0);
+  assert.equal(rows[0].clicked, 0);
+  assert.equal(rows[0].focused, 0);
+});

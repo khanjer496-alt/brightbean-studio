@@ -7,6 +7,11 @@ about what "the messages matching this filter" means.
 Pages are cut by a cursor on ``(received_at, id)`` rather than an offset, so
 messages arriving (or being resolved out of the filter) while someone scrolls
 never shift a row onto two pages or skip one.
+
+The poll counts by ``created_at`` (when the row reached us), not
+``received_at``: the scheduled syncs fetch comments with a look-back window,
+so a message can arrive minutes after one with a later ``received_at`` is
+already at the top of the list.
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ from urllib.parse import urlencode
 from django.contrib.postgres.search import SearchQuery, SearchVector
 from django.db import connection
 from django.db.models import Q
+from django.utils import timezone
 
 from .models import InboxMessage
 
@@ -28,7 +34,16 @@ MESSAGES_PER_PAGE = 50
 # The "N new messages" pill never counts past this; "99+" is as useful as the exact number.
 NEW_MESSAGES_CAP = 100
 SEARCH_CONFIG = "simple"
+# A query of plain words is matched as word prefixes ("refund" finds "refunds",
+# "refu" finds both); anything else goes through ``websearch`` syntax.
+PLAIN_SEARCH = re.compile(r"[^\W_]+(?:\s+[^\W_]+)*")
 SEARCH_SNIPPET_CHARS = 140
+
+# Poll every POLL_SECONDS; after POLL_IDLE_AFTER polls in a row with nothing
+# new, every POLL_IDLE_SECONDS until something arrives.
+POLL_SECONDS = 20
+POLL_IDLE_SECONDS = 60
+POLL_IDLE_AFTER = 15
 
 # Query parameters that define "the messages matching this filter".
 FILTER_KEYS = ("view", "platform", "account", "type", "status", "assigned", "sentiment", "date_from", "date_to", "q")
@@ -43,17 +58,23 @@ def _values(params, key):
     return [v for v in params.getlist(key) if v]
 
 
+def search_query(q):
+    """The full-text query for ``q``: word prefixes for plain words, else ``websearch`` syntax."""
+    if PLAIN_SEARCH.fullmatch(q) and "or" not in q.lower().split():
+        # Letters and digits only, so nothing in a word can be tsquery syntax.
+        return SearchQuery(" & ".join(f"{word}:*" for word in q.split()), config=SEARCH_CONFIG, search_type="raw")
+    return SearchQuery(q, config=SEARCH_CONFIG, search_type="websearch")
+
+
 def apply_search(qs, q):
     """Full-text match on message text and author, falling back to a substring match.
 
-    ``websearch`` syntax is whole-word, so a partial word ("refu") or a
-    non-Postgres database would find nothing; in that case, and when the
-    full-text query is empty, the old substring match answers instead.
+    Full-text matching works on whole words (or word prefixes), so text inside
+    a word ("fund" in "refund"), a query of punctuation or a non-Postgres
+    database would find nothing; then the old substring match answers instead.
     """
     if connection.vendor == "postgresql":
-        matched = qs.alias(search=search_vector()).filter(
-            search=SearchQuery(q, config=SEARCH_CONFIG, search_type="websearch")
-        )
+        matched = qs.alias(search=search_vector()).filter(search=search_query(q))
         if matched.exists():
             return matched
     return qs.filter(Q(body__icontains=q) | Q(sender_name__icontains=q) | Q(sender_handle__icontains=q))
@@ -131,9 +152,23 @@ def filter_pairs(params):
 # --- Cursor ---
 
 
-def encode_cursor(message):
-    raw = f"{message.received_at.isoformat()}|{message.id}"
+def _encode(raw):
     return base64.urlsafe_b64encode(raw.encode()).decode().rstrip("=")
+
+
+def _decode(value):
+    return base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)).decode()
+
+
+def _aware(stamp):
+    moment = datetime.fromisoformat(stamp)
+    if moment.tzinfo is None:
+        raise ValueError("naive timestamp")
+    return moment
+
+
+def encode_cursor(message):
+    return _encode(f"{message.received_at.isoformat()}|{message.id}")
 
 
 def decode_cursor(value):
@@ -141,12 +176,23 @@ def decode_cursor(value):
     if not value:
         return None
     try:
-        raw = base64.urlsafe_b64decode(value + "=" * (-len(value) % 4)).decode()
-        stamp, _, message_id = raw.partition("|")
-        received_at = datetime.fromisoformat(stamp)
-        if received_at.tzinfo is None:
-            return None
-        return received_at, uuid.UUID(message_id)
+        stamp, _, message_id = _decode(value).partition("|")
+        return _aware(stamp), uuid.UUID(message_id)
+    except (binascii.Error, ValueError, UnicodeDecodeError):
+        return None
+
+
+def encode_since(moment):
+    """The poll's ``since`` token: the moment the list was rendered."""
+    return _encode(moment.isoformat())
+
+
+def decode_since(value):
+    """The moment in a ``since`` token from ``encode_since``, or None when it is missing or malformed."""
+    if not value:
+        return None
+    try:
+        return _aware(_decode(value))
     except (binascii.Error, ValueError, UnicodeDecodeError):
         return None
 
@@ -154,13 +200,9 @@ def decode_cursor(value):
 def older_than(qs, cursor):
     """Rows that sort after ``cursor`` in the feed's newest-first order."""
     received_at, message_id = cursor
-    return qs.filter(Q(received_at__lt=received_at) | Q(received_at=received_at, id__lt=message_id))
-
-
-def newer_than(qs, cursor):
-    """Rows that sort before ``cursor`` in the feed's newest-first order."""
-    received_at, message_id = cursor
-    return qs.filter(Q(received_at__gt=received_at) | Q(received_at=received_at, id__gt=message_id))
+    # The redundant ``<=`` bound is what lets the index seek to the cursor
+    # instead of reading (and discarding) every newer row first.
+    return qs.filter(received_at__lte=received_at).filter(Q(received_at__lt=received_at) | Q(id__lt=message_id))
 
 
 def feed_page(workspace, params, user, cursor_value=""):
@@ -177,23 +219,33 @@ def feed_page(workspace, params, user, cursor_value=""):
         "inbox_messages": page,
         "filter_query": urlencode(pairs),
         "load_more_query": urlencode([*pairs, ("cursor", encode_cursor(page[-1]))]) if has_more else "",
-        "poll_query": urlencode([*pairs, ("since", encode_cursor(page[0]) if page and not cursor else "")]),
+        "poll_query": urlencode([*pairs, ("since", encode_since(timezone.now()))]),
+        "poll_seconds": POLL_SECONDS,
         "active_filters": active_filters,
         "current_view": view,
     }
 
 
 def new_message_count(workspace, params, user, since_value):
-    """How many messages matching the filter arrived after the ``since`` cursor (capped).
+    """How many messages matching the filter reached us after the ``since`` token (capped).
 
-    An empty or unreadable cursor counts from the start of time, so a list
-    that rendered empty still learns about its first message.
+    An empty or unreadable token counts from the start of time.
     """
     qs, _active, _view = filtered_messages(workspace, params, user)
-    cursor = decode_cursor(since_value)
-    if cursor:
-        qs = newer_than(qs, cursor)
+    since = decode_since(since_value)
+    if since:
+        qs = qs.filter(created_at__gt=since)
     return len(qs.order_by().values_list("id", flat=True)[:NEW_MESSAGES_CAP])
+
+
+def poll_backoff(params, count):
+    """``(idle, seconds)``: polls in a row that found the same count, and the next interval."""
+    try:
+        seen, idle = int(params.get("seen", "")), int(params.get("idle", ""))
+    except ValueError:
+        return 0, POLL_SECONDS
+    idle = idle + 1 if count == seen else 0
+    return idle, POLL_IDLE_SECONDS if idle >= POLL_IDLE_AFTER else POLL_SECONDS
 
 
 def unread_count(workspace):

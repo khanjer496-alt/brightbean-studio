@@ -163,6 +163,13 @@ class TestSelectAllMatching:
         other_workspace_message.refresh_from_db()
         assert other_workspace_message.status == "unread"
 
+    def test_the_form_sends_the_filters_it_counted(self, inbox_client, inbox_workspace):
+        # The list and its filters are swapped by htmx; a value bound once at
+        # page load would send stale filters (409 every time, or the wrong set).
+        html = inbox_client.get(_url("feed", inbox_workspace)).content.decode()
+        assert ':value="filterQuery()"' not in html
+        assert "this.$refs.bulkFilters.value = this.allMatching ? this.matchFilters : this.filterQuery()" in html
+
     def test_requires_the_reply_permission(self, inbox_viewer_client, inbox_workspace, make_messages):
         make_messages(2)
         assert self._post(inbox_viewer_client, inbox_workspace, action="archive", expected_count=2).status_code == 403

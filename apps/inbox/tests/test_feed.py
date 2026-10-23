@@ -104,16 +104,19 @@ class TestPagination:
 
 @pytest.mark.django_db
 class TestPoll:
-    def _cursor(self, message):
-        return feed.encode_cursor(message)
+    def _since(self):
+        return feed.encode_since(timezone.now())
 
-    def test_counts_only_messages_after_the_cursor(self, inbox_client, inbox_workspace, inbox_account, make_messages):
+    def _poll_query(self, response):
+        match = re.search(r'id="inbox-poll"[^>]*hx-get="[^"?]+\?([^"]+)"', response.content.decode(), re.S)
+        return match.group(1).replace("&amp;", "&")
+
+    def test_counts_only_messages_after_the_list_was_rendered(
+        self, inbox_client, inbox_workspace, inbox_account, make_messages
+    ):
         make_messages(3)
-        newest = InboxMessage.objects.order_by("-received_at").first()
-        assert (
-            b"new message"
-            not in inbox_client.get(_url("poll", inbox_workspace) + f"?since={self._cursor(newest)}").content
-        )
+        since = self._since()
+        assert b"new message" not in inbox_client.get(_url("poll", inbox_workspace) + f"?since={since}").content
         for i in range(2):
             InboxMessage.objects.create(
                 workspace=inbox_workspace,
@@ -122,12 +125,49 @@ class TestPoll:
                 sender_name="New",
                 received_at=timezone.now() + timedelta(seconds=i),
             )
-        response = inbox_client.get(_url("poll", inbox_workspace) + f"?since={self._cursor(newest)}")
+        response = inbox_client.get(_url("poll", inbox_workspace) + f"?since={since}")
         assert b"2 new messages" in response.content
+
+    def test_counts_a_late_synced_message_older_than_the_top_row(
+        self, inbox_client, inbox_workspace, inbox_account, make_messages
+    ):
+        make_messages(3)
+        page = inbox_client.get(_url("feed", inbox_workspace), **HTMX)
+        # A sync with a look-back window delivers a comment written before the newest row.
+        InboxMessage.objects.create(
+            workspace=inbox_workspace,
+            social_account=inbox_account,
+            platform_message_id="late-comment",
+            sender_name="Late",
+            received_at=timezone.now() - timedelta(hours=1),
+        )
+        response = inbox_client.get(_url("poll", inbox_workspace) + "?" + self._poll_query(page))
+        assert b"1 new message" in response.content
+
+    def test_signed_out_tabs_stop_polling_instead_of_following_the_login_redirect(self, client, inbox_workspace):
+        response = client.get(_url("poll", inbox_workspace), **HTMX)
+        assert response.status_code == 286
+        assert response.content == b""
+
+    def test_polls_slow_down_when_nothing_changes(self, inbox_client, inbox_workspace):
+        query = f"since={self._since()}"
+        for _ in range(feed.POLL_IDLE_AFTER + 1):
+            response = inbox_client.get(_url("poll", inbox_workspace) + "?" + query)
+            query = self._poll_query(response)
+        assert f"every {feed.POLL_IDLE_SECONDS}s" in response.content.decode()
+
+    def test_new_messages_are_announced_once(self, inbox_client, inbox_workspace, make_messages):
+        make_messages(2)
+        first = inbox_client.get(_url("poll", inbox_workspace))
+        assert 'id="inbox-poll-announce" hx-swap-oob="innerHTML">2 new messages' in first.content.decode()
+        again = inbox_client.get(_url("poll", inbox_workspace) + "?" + self._poll_query(first))
+        assert b"2 new messages" in again.content
+        assert b"inbox-poll-announce" not in again.content
+        assert f"every {feed.POLL_SECONDS}s" in again.content.decode()
 
     def test_respects_the_feed_filters(self, inbox_client, inbox_workspace, inbox_account, make_messages):
         make_messages(1)
-        newest = InboxMessage.objects.get()
+        since = self._since()
         InboxMessage.objects.create(
             workspace=inbox_workspace,
             social_account=inbox_account,
@@ -136,7 +176,6 @@ class TestPoll:
             sentiment="negative",
             received_at=timezone.now(),
         )
-        since = self._cursor(newest)
         assert b"1 new message" in inbox_client.get(_url("poll", inbox_workspace) + f"?since={since}").content
         positive = inbox_client.get(_url("poll", inbox_workspace) + f"?since={since}&sentiment=positive")
         assert b"new message" not in positive.content
@@ -146,7 +185,6 @@ class TestPoll:
         assert b"new message" not in response.content
 
     def test_refuses_non_members_and_roles_without_inbox(self, client, inbox_workspace, inbox_viewer_client, user):
-        assert client.get(_url("poll", inbox_workspace)).status_code == 302
         client.force_login(user)
         assert client.get(_url("poll", inbox_workspace)).status_code == 403
 
@@ -220,12 +258,23 @@ class TestSearch:
         _response, ids = self._search(inbox_client, inbox_workspace, "my -refund")
         assert ids == {str(corpus[2].id)}
 
-    def test_partial_words_fall_back_to_a_substring_match(self, inbox_client, inbox_workspace, corpus):
+    def test_plain_words_match_as_prefixes(self, inbox_client, inbox_workspace, corpus):
+        # "refund" must not hide "refunds", which a whole-word match would.
+        corpus[2].body = "Two refunds are missing"
+        corpus[2].save()
+        _response, ids = self._search(inbox_client, inbox_workspace, "Refund")
+        assert ids == {str(corpus[0].id), str(corpus[2].id)}
         _response, ids = self._search(inbox_client, inbox_workspace, "compil")
+        assert ids == {str(corpus[1].id)}
+        _response, ids = self._search(inbox_client, inbox_workspace, "miss two")
+        assert ids == {str(corpus[2].id)}
+
+    def test_text_inside_a_word_falls_back_to_a_substring_match(self, inbox_client, inbox_workspace, corpus):
+        _response, ids = self._search(inbox_client, inbox_workspace, "piler")
         assert ids == {str(corpus[1].id)}
 
     def test_punctuation_only_queries_do_not_error(self, inbox_client, inbox_workspace, corpus):
-        for q in ("%22", "%26%26", "-", "%27"):
+        for q in ("%22", "%26%26", "-", "%27", "a%3A*", "%21x", "it%27s", "%5C"):
             response, _ids = self._search(inbox_client, inbox_workspace, q)
             assert response.status_code == 200
 

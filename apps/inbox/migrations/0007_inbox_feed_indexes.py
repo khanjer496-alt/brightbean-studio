@@ -21,6 +21,10 @@ class Migration(migrations.Migration):
         ),
         AddIndexConcurrently(
             model_name="inboxmessage",
+            index=models.Index(fields=["workspace", "created_at"], name="inbox_msg_ws_created"),
+        ),
+        AddIndexConcurrently(
+            model_name="inboxmessage",
             index=models.Index(fields=["workspace", "assigned_to", "-received_at"], name="inbox_msg_ws_assign_recv"),
         ),
         AddIndexConcurrently(

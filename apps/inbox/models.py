@@ -122,6 +122,11 @@ class InboxMessage(models.Model):
                 fields=["workspace", "-received_at", "-id"],
                 name="inbox_msg_ws_recv_id",
             ),
+            # The feed's "N new messages" poll counts by arrival.
+            models.Index(
+                fields=["workspace", "created_at"],
+                name="inbox_msg_ws_created",
+            ),
             models.Index(
                 fields=["workspace", "assigned_to", "-received_at"],
                 name="inbox_msg_ws_assign_recv",

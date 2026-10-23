@@ -153,25 +153,37 @@ def inbox_feed(request, workspace_id):
     return render(request, "inbox/feed.html", context)
 
 
-@login_required
-@require_permission("use_inbox")
-@require_GET
 def poll_new_messages(request, workspace_id):
     """The "N new messages" pill and the sidebar's unread count, polled by the feed.
 
-    Counts messages matching the feed's filters that sort after the ``since``
-    cursor, so the list itself never moves under someone reading it.
+    Counts messages matching the feed's filters that arrived after the list
+    was rendered, so the list itself never moves under someone reading it.
     """
+    if not request.user.is_authenticated:
+        # 286 tells htmx to stop polling. A login redirect would be followed
+        # and the login page swapped into the message list.
+        return HttpResponse(status=286)
+    return _poll_new_messages(request, workspace_id)
+
+
+@login_required
+@require_permission("use_inbox")
+@require_GET
+def _poll_new_messages(request, workspace_id):
     workspace = _get_workspace(request, workspace_id)
     since = request.GET.get("since", "")
     count = inbox_feed_queries.new_message_count(workspace, request.GET, request.user, since)
+    idle, seconds = inbox_feed_queries.poll_backoff(request.GET, count)
     pairs = inbox_feed_queries.filter_pairs(request.GET)
     context = {
         "workspace": workspace,
         "new_count": count,
         "new_count_capped": count >= inbox_feed_queries.NEW_MESSAGES_CAP,
+        # Screen readers hear about new messages once, not on every poll.
+        "announce": count > 0 and str(count) != request.GET.get("seen"),
         "filter_query": urlencode(pairs),
-        "poll_query": urlencode([*pairs, ("since", since)]),
+        "poll_query": urlencode([*pairs, ("since", since), ("seen", count), ("idle", idle)]),
+        "poll_seconds": seconds,
         "oob_badge": True,
         "sidebar_unread_inbox_count": inbox_feed_queries.unread_count(workspace),
     }
