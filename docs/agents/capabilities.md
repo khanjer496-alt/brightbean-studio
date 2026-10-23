@@ -26,7 +26,7 @@ Every row is a capability of the PostDelegate web app. **Before** is what REST a
 | Content categories | none | `/categories` / `list_categories`, `create_category`, `update_category`, `delete_category` | read; `create_posts` |
 | Hashtag sets, shared signatures (read) | REST read / none | REST read / `list_hashtag_sets`, `list_signatures` | read |
 | Brand voice | none | `GET`/`PATCH /brand-voice` / `get_brand_voice`, `update_brand_voice` | read: `create_posts` or `manage_workspace_settings`; update: `manage_workspace_settings` |
-| Billing: plan, limits, usage (read-only) | none | `GET /usage` / `get_usage` | read |
+| Billing: plan, limits, usage (read-only; org owners and admins) | none | `GET /usage` / `get_usage` | read |
 | Inbox, replies | yes / yes | unchanged | `use_inbox`, `reply_from_inbox` |
 | Analytics | yes / yes | unchanged | `view_analytics` |
 | AI writing assistant | yes / yes | unchanged | `create_posts` |
