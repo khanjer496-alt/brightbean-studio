@@ -34,6 +34,7 @@ from .types import (
     PublishStatus,
     RateLimitConfig,
     ReplyResult,
+    ReviewPage,
     ThreadCapability,
     ThreadMode,
 )
@@ -193,6 +194,11 @@ class SocialProvider(ABC):
     # Short name of the study the windows come from, shown next to them ("Sprout
     # Social study, Mar 2026"). Empty with no windows of its own.
     best_time_source: ClassVar[str] = ""
+
+    # True when the platform has customer reviews the inbox can pull and answer:
+    # ``list_reviews``, ``reply_to_review`` and ``delete_review_reply`` are then
+    # implemented. The inbox sync and the review UI read this, never a platform name.
+    supports_reviews: ClassVar[bool] = False
 
     # False when the platform publishes no media at all (Reddit here): a post
     # carrying any is refused before scheduling, with a sentence naming the
@@ -580,6 +586,29 @@ class SocialProvider(ABC):
         messaging endpoint silently fails.
         """
         raise NotImplementedError(f"{self.platform_name} does not support comment replies")
+
+    # ------------------------------------------------------------------
+    # Reviews (optional - only where ``supports_reviews`` is True)
+    # ------------------------------------------------------------------
+
+    def list_reviews(
+        self, access_token: str, *, since: datetime | None = None, max_pages: int = 5, page_token: str | None = None
+    ) -> ReviewPage:
+        """Reviews of the connected location, most recently changed first.
+
+        With ``since`` the walk stops once it reaches reviews older than that
+        (plus a safety margin the provider chooses), so a routine poll costs one
+        page. ``max_pages`` bounds a first import against the platform's quota.
+        """
+        raise NotImplementedError(f"{self.platform_name} does not support reviews")
+
+    def reply_to_review(self, access_token: str, review_id: str, text: str) -> ReplyResult:
+        """Publish (or replace) the owner's public reply to a review."""
+        raise NotImplementedError(f"{self.platform_name} does not support review replies")
+
+    def delete_review_reply(self, access_token: str, review_id: str) -> bool:
+        """Remove the owner's public reply to a review. True when the platform removed it."""
+        raise NotImplementedError(f"{self.platform_name} does not support deleting review replies")
 
     # ------------------------------------------------------------------
     # Webhooks (optional - override per provider)

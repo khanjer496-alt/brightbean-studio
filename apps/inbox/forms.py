@@ -116,9 +116,10 @@ class BulkActionForm(forms.Form):
 
 
 class SavedReplyForm(forms.ModelForm):
+    # Which star band of reviews offers this reply first; "Any message" keeps it for everything.
     class Meta:
         model = SavedReply
-        fields = ["title", "body"]
+        fields = ["title", "body", "rating_band"]
         widgets = {
             "title": forms.TextInput(
                 attrs={
@@ -133,6 +134,7 @@ class SavedReplyForm(forms.ModelForm):
                     "placeholder": "Reply body. Use {sender_name}, {account_name}, {post_url} for variables.",
                 }
             ),
+            "rating_band": forms.Select(attrs={"class": "form-input w-full"}),
         }
 
 

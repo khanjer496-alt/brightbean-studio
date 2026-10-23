@@ -24,6 +24,7 @@ class EventType(models.TextChoices):
     POST_CHANGES_REQUESTED = "post.changes_requested", "Post changes requested"
     COMMENT_CREATED = "comment.created", "Approval comment created"
     INBOX_MESSAGE_RECEIVED = "inbox.message.received", "Inbox message received"
+    REVIEW_RECEIVED = "review.received", "Review received"
     ACCOUNT_DISCONNECTED = "account.disconnected", "Social account disconnected"
     WEBHOOK_TEST = "webhook.test", "Test ping"
 

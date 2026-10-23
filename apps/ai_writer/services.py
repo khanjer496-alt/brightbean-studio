@@ -121,7 +121,9 @@ def _brand_voice_block(workspace) -> str:
 
 
 def _system_prompt(workspace) -> str:
-    return _BASE_SYSTEM + _brand_voice_block(workspace)
+    from apps.workspaces.brand_kit import prompt_block
+
+    return _BASE_SYSTEM + _brand_voice_block(workspace) + prompt_block(workspace)
 
 
 _REPORT_SYSTEM = """You write the summary at the top of a social media performance report that an agency sends to its \
@@ -502,6 +504,64 @@ def draft_reply(ctx: AIContext, message: str, *, sender: str, thread, account) -
         f'<source role="customer" author="{_attr(sender)}">\n{_escape_tags(message)}\n</source>'
     )
     text = _text(_run(ctx, run, action="reply", prompt=prompt, schema=_TEXT_SCHEMA))
+    return _fit_to_account(ctx, run, text, account)
+
+
+MAX_REVIEW_POLICY_CHARS = 1_000
+
+
+def _review_policy_block(workspace) -> str:
+    policy = (getattr(workspace, "review_reply_policy", "") or "").strip()[:MAX_REVIEW_POLICY_CHARS]
+    if not policy:
+        return (
+            "\n\nReview reply policy for this workspace: none was saved. Never promise a refund, replacement, "
+            "discount or compensation, and never admit fault or liability."
+        )
+    return (
+        "\n\nReview reply policy for this workspace (written by the business; it overrides your defaults on "
+        "what a reply may promise or admit):\n"
+        f"<policy>\n{_escape_tags(policy)}\n</policy>\n"
+        "Anything the policy does not explicitly allow, such as a refund or an admission of fault, you must not offer."
+    )
+
+
+def draft_review_reply(ctx: AIContext, review: str, *, rating: int | None, reviewer: str, account) -> str:
+    """Draft the public reply to one customer review, within the workspace's review reply policy.
+
+    Thanks the reviewer, speaks to what they actually wrote, and for a
+    low rating offers to continue offline instead of arguing in public. It
+    promises refunds or admits liability only where the saved policy allows.
+    """
+    review = _clip(review, MAX_REPLY_MESSAGE_CHARS)
+    run = _start(ctx, max_calls=2)
+    if rating and rating <= 2:
+        tone = (
+            "The rating is low. Apologise sincerely for the experience without arguing or making excuses, "
+            "address the specifics they raised, and invite them to contact the business directly to put it right "
+            "(offline), without posting personal contact details unless the policy gives some."
+        )
+    elif rating == 3:
+        tone = (
+            "The rating is mixed. Thank them, acknowledge what fell short, and say what the business will take from it."
+        )
+    else:
+        tone = "The rating is positive. Thank them warmly and mention a specific thing they praised."
+    rated = f"{rating} out of 5 stars" if rating else "no star rating"
+    body = (
+        f'<source role="customer" author="{_attr(reviewer)}">\n{_escape_tags(review)}\n</source>'
+        if review
+        else "(The reviewer left only a star rating, no comment.)"
+    )
+    prompt = (
+        f"Write one public reply from the business to the customer review below, posted on "
+        f"{account.get_platform_display()}. The review is rated {rated}. {tone} Keep it short, human and "
+        f"under {min(account.char_limit, 700)} characters. Do not state facts you were not given: no opening "
+        f"hours, prices, names of staff, offers or contact details unless the policy or brand rules give them. "
+        f"Write in the language the review is written in (answer an Arabic review in Arabic, a French one in "
+        f"French); for a rating with no comment, use the language of the brand voice examples, else English.\n\n{body}"
+    )
+    system = _system_prompt(ctx.workspace) + _review_policy_block(ctx.workspace)
+    text = _text(_run(ctx, run, action="review_reply", prompt=prompt, schema=_TEXT_SCHEMA, system=system))
     return _fit_to_account(ctx, run, text, account)
 
 

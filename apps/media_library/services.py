@@ -814,13 +814,26 @@ def sweep_orphaned_media(
 
 
 def _fk_referenced_asset_ids():
-    """Collect all asset IDs referenced via foreign keys."""
+    """Collect all asset IDs referenced via foreign keys (and the brand kit's font list)."""
     from apps.composer.models import Idea, IdeaMedia, PostMedia
+    from apps.linkinbio.models import BioLink, BioPage
+    from apps.workspaces.models import BrandKit
 
     referenced = set()
     referenced.update(PostMedia.objects.values_list("media_asset_id", flat=True))
     referenced.update(IdeaMedia.objects.values_list("media_asset_id", flat=True))
     referenced.update(Idea.objects.filter(media_asset__isnull=False).values_list("media_asset_id", flat=True))
+    # Logos, bio page avatars and link thumbnails are SET_NULL foreign keys: the
+    # sweep must not empty them just because no post uses the picture.
+    referenced.update(BioPage.objects.filter(avatar__isnull=False).values_list("avatar_id", flat=True))
+    referenced.update(BioLink.objects.filter(thumbnail__isnull=False).values_list("thumbnail_id", flat=True))
+    for row in BrandKit.objects.values_list("logo_primary_id", "logo_mark_id", "logo_on_light_id", "logo_on_dark_id"):
+        referenced.update(asset_id for asset_id in row if asset_id)
+    for fonts in BrandKit.objects.exclude(fonts=[]).values_list("fonts", flat=True):
+        for font in fonts or []:
+            if isinstance(font, dict) and font.get("asset_id"):
+                referenced.add(_to_uuid(font["asset_id"]))
+    referenced.discard(None)
     return referenced
 
 

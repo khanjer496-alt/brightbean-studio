@@ -9,6 +9,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone as django_tz
 from django.views.decorators.http import require_http_methods
 
@@ -18,7 +19,8 @@ from apps.composer.models import PlatformPost, Post, Tag
 from apps.members.decorators import require_org_role
 from apps.members.models import OrgMembership, WorkspaceMembership
 from apps.social_accounts.models import SocialAccount
-from apps.workspaces.models import Workspace
+from apps.workspaces import brand_kit, brand_kit_forms
+from apps.workspaces.models import BrandKit, Workspace
 
 COMMON_TIMEZONES = [
     "US/Eastern",
@@ -46,6 +48,37 @@ COMMON_TIMEZONES = [
     "Australia/Melbourne",
     "Pacific/Auckland",
 ]
+
+
+@login_required
+@require_org_role(OrgMembership.OrgRole.ADMIN)
+@require_http_methods(["GET", "POST"])
+def brand_kit_view(request):
+    """The organization's brand kit: the fallback for every workspace that leaves a field blank."""
+    org = request.org
+    if request.method == "POST":
+        try:
+            kit = brand_kit.kit_for(organization=org)
+            brand_kit.update(kit, brand_kit_forms.kit_data_from_post(request.POST, request.POST.get("section", "")))
+        except brand_kit.BrandKitError as exc:
+            messages.error(request, str(exc))
+        else:
+            messages.success(request, "Brand kit updated.")
+        return redirect("organizations:brand_kit")
+    kit = BrandKit.objects.filter(organization=org).first() or BrandKit(organization=org)
+    return render(
+        request,
+        "organizations/brand_kit.html",
+        {
+            "organization": org,
+            "settings_active": "brand_kit",
+            "can_edit": True,
+            "inherits": False,
+            "rules_max": brand_kit.RULES_MAX,
+            "media_url": reverse("media_library_org:shared_index"),
+            **brand_kit_forms.page_context(kit),
+        },
+    )
 
 
 @login_required

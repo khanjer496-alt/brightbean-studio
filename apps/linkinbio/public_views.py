@@ -61,13 +61,16 @@ def canonical_url(page: BioPage) -> str:
 
 
 def _render(page: BioPage) -> str:
-    avatar = page.avatar.preview_url if page.avatar_id else ""
+    kit = services._brand_kit(page)
+    avatar_asset = services.effective_avatar(page, kit)
+    avatar = avatar_asset.preview_url if avatar_asset else ""
     theme_color, color_scheme = _THEME_CHROME.get(page.theme, _THEME_CHROME[BioPage.Theme.CLEAN])
     return render_to_string(
         "linkinbio/public.html",
         {
             "page": page,
             "avatar_url": avatar,
+            "accent_color": services.effective_accent(page, kit),
             "og_image": _absolute(avatar),
             "canonical_url": canonical_url(page),
             "description": Truncator(" ".join(page.bio.split()) or f"{page.title}: links").chars(160),
@@ -100,7 +103,7 @@ def public_page(request, slug):
 @require_http_methods(["GET", "HEAD"])
 def theme_css(request, slug):
     page = _published(slug)
-    accent = page.accent_color
+    accent = services.effective_accent(page)
     body = ""
     if accent:
         body = f"body.bio{{--bio-accent:{accent};--bio-accent-ink:{_accent_ink(accent)};}}\n"

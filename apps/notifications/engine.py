@@ -123,6 +123,7 @@ DEFAULT_CHANNELS: dict[str, dict[str, bool]] = {
     EventType.POST_FAILED: {Channel.IN_APP: True, Channel.EMAIL: True},
     EventType.NEW_INBOX_MESSAGE: {Channel.IN_APP: True, Channel.EMAIL: False},
     EventType.INBOX_SLA_OVERDUE: {Channel.IN_APP: True, Channel.EMAIL: True},
+    EventType.NEW_LOW_RATING_REVIEW: {Channel.IN_APP: True, Channel.EMAIL: True},
     EventType.CLIENT_APPROVAL_REQUESTED: {Channel.IN_APP: False, Channel.EMAIL: True},
     EventType.TEAM_MEMBER_INVITED: {Channel.IN_APP: False, Channel.EMAIL: True},
     EventType.SOCIAL_ACCOUNT_DISCONNECTED: {Channel.IN_APP: True, Channel.EMAIL: True},

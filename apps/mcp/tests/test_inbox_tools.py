@@ -181,6 +181,24 @@ class TestInboxReadTools:
         assert len(data["messages"]) == 1
         assert data["messages"][0]["replies"][0]["body"] == "a draft"
 
+    def test_list_filters_reviews_by_rating_and_needs_reply(self, full_client, message):
+        base = {"workspace": message.workspace, "social_account": message.social_account, "sender_name": "R"}
+        low = InboxMessage.objects.create(
+            **base, platform_message_id="rv-1", message_type="review", rating=1, received_at=timezone.now()
+        )
+        InboxMessage.objects.create(
+            **base,
+            platform_message_id="rv-2",
+            message_type="review",
+            rating=1,
+            received_at=timezone.now(),
+            extra={"review_reply": {"comment": "Sorry"}},
+        )
+        _s, body = _call(full_client, "list_inbox_messages", {"rating": 1, "needs_reply": True})
+        assert [m["id"] for m in _result_json(body)["messages"]] == [str(low.id)]
+        _s, body = _call(full_client, "list_inbox_messages", {"rating": 9})
+        assert "error" in body or _result_json(body).get("isError")
+
     def test_list_excludes_non_allowlisted_account(self, full_client, message, other_account):
         InboxMessage.objects.create(
             workspace=other_account.workspace,

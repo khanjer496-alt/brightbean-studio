@@ -156,7 +156,7 @@ Context:
                                     @click="pickSignature(signature)">
                                 <span class="block text-sm font-medium text-stone-700">
                                     <span x-text="signature.name"></span>
-                                    <span class="text-[11px] font-normal text-stone-400" x-text="signature.scope === 'personal' ? 'Mine' : 'Workspace'"></span>
+                                    <span class="text-[11px] font-normal text-stone-400" x-text="signature.scope === 'personal' ? 'Mine' : (signature.scope === 'brand' ? 'Brand kit' : 'Workspace')"></span>
                                     <span x-show="signature.is_default" class="text-[11px] font-normal text-stone-400">· default</span>
                                 </span>
                                 <span class="block text-xs text-stone-400 line-clamp-2 whitespace-pre-line" x-text="signature.body"></span>

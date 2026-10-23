@@ -185,6 +185,21 @@ class InboxMessage:
 
 
 @dataclass(frozen=True)
+class ReviewPage:
+    """One walk of a location's reviews, newest activity first.
+
+    ``messages`` are ``InboxMessage`` rows of type ``review``. ``average_rating``
+    and ``total_count`` are the platform's own all-time figures for the location
+    (None when it did not say), so analytics can show them next to what we hold.
+    """
+
+    messages: list
+    average_rating: float | None = None
+    total_count: int | None = None
+    next_page_token: str | None = None
+
+
+@dataclass(frozen=True)
 class ReplyResult:
     platform_message_id: str
     extra: dict = field(default_factory=dict)

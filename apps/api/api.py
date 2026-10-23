@@ -25,6 +25,7 @@ from apps.api.routers.analytics import router as analytics_router
 from apps.api.routers.approvals import router as approvals_router
 from apps.api.routers.best_times import router as best_times_router
 from apps.api.routers.bio import router as bio_router
+from apps.api.routers.brand_kit import router as brand_kit_router
 from apps.api.routers.brand_voice import router as brand_voice_router
 from apps.api.routers.categories import router as categories_router
 from apps.api.routers.competitors import router as competitors_router
@@ -185,6 +186,7 @@ api.add_router("/tags", tags_router)
 api.add_router("/categories", categories_router)
 api.add_router("/events", events_router)
 api.add_router("/brand-voice", brand_voice_router)
+api.add_router("/brand-kit", brand_kit_router)
 api.add_router("/usage", usage_router)
 api.add_router("/members", members_router)
 # MCP Streamable HTTP transport. Same audit + rate limits as REST, but a
@@ -418,6 +420,7 @@ _RESOURCE_SEGMENTS = {
     "categories": "categories",
     "events": "events",
     "brand-voice": "brand_voice",
+    "brand-kit": "brand_kit",
     "usage": "usage",
     "members": "members",
     "hashtag-sets": "hashtag_sets",
