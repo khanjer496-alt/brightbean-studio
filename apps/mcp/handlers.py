@@ -26,7 +26,8 @@ from ninja.errors import HttpError
 from apps.analytics.api_builders import build_account_analytics, build_post_analytics
 from apps.api.limits import check_platform_quota
 from apps.api.pagination import decode_offset_cursor, encode_offset_cursor
-from apps.api.schemas import PostResponse
+from apps.api.schemas import PostResponse, RecurrenceSpec
+from apps.calendar.services import clean_recurrence, save_recurrence
 from apps.composer.models import PlatformPost, Post
 from apps.composer.services import create_post, transition_platform_post
 from apps.inbox.models import InboxMessage, InboxReply
@@ -159,6 +160,8 @@ def _visible_posts_qs(api_key):
         Post.objects.filter(workspace_id=api_key.workspace_id)
         .filter(Exists(children))
         .exclude(Exists(children.exclude(social_account_id__in=allowed)))
+        # Serialized into every post response (PostResponse.recurrence).
+        .select_related("recurrence_rule")
     )
 
 
@@ -313,6 +316,64 @@ register_tool(
 # ---------------------------------------------------------------------------
 
 
+# The ``recurrence`` argument of the scheduling tools — RecurrenceSpec's fields.
+_RECURRENCE_INPUT_SCHEMA = {
+    "type": "object",
+    "description": (
+        "Repeat the post, like the composer's Repeat control. Copies are generated up to 90 days "
+        "ahead at the same local time (workspace timezone)."
+    ),
+    "properties": {
+        "frequency": {"type": "string", "enum": ["never", "daily", "weekly", "monthly"]},
+        "interval": {"type": "integer", "minimum": 1, "maximum": 99, "default": 1},
+        "weekdays": {
+            "type": "array",
+            "items": {"type": "integer", "minimum": 0, "maximum": 6},
+            "description": "Weekly only: 0=Monday … 6=Sunday. Defaults to the first post's weekday.",
+        },
+        "end_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Last date a copy may fall on (YYYY-MM-DD). Can't be combined with count.",
+        },
+        "count": {
+            "type": "integer",
+            "minimum": 2,
+            "description": "Total posts in the series, the first included. Can't be combined with end_date.",
+        },
+    },
+    "required": ["frequency"],
+    "additionalProperties": False,
+}
+
+
+def _parse_recurrence(args: dict, *, workspace, scheduled_at: datetime) -> RecurrenceSpec | None:
+    """The validated ``recurrence`` argument, or None when it asks for no repeat.
+
+    Checked before anything is written, like the REST routes, so a bad repeat
+    never leaves a post scheduled without it.
+    """
+    import zoneinfo
+
+    from pydantic import ValidationError
+
+    raw = args.get("recurrence")
+    if not raw:
+        return None
+    try:
+        spec = RecurrenceSpec.model_validate(raw)
+    except ValidationError as exc:
+        raise JsonRpcError(INVALID_PARAMS, f"recurrence is invalid: {exc.errors()[0]['msg']}") from exc
+    if spec.frequency == "never":
+        return None
+    ws_tz = zoneinfo.ZoneInfo(workspace.effective_timezone or "UTC")
+    try:
+        clean_recurrence(**spec.rule_fields(), start=scheduled_at.astimezone(ws_tz))
+    except ValueError as exc:
+        raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
+    return spec
+
+
 def _schedule_post(args: dict, context: dict[str, Any]) -> dict:
     # Mirrors the REST contract: scheduling sends the post into the
     # publisher's poll loop, which the composer permission model gates
@@ -329,6 +390,7 @@ def _schedule_post(args: dict, context: dict[str, Any]) -> dict:
         raise JsonRpcError(INVALID_PARAMS, "scheduled_at is required (ISO 8601)")
     scheduled_at = _parse_iso_datetime(args["scheduled_at"], "scheduled_at")
     sa = _resolve_allowed_account(api_key, args["social_account_id"])
+    repeat = _parse_recurrence(args, workspace=api_key.workspace, scheduled_at=scheduled_at)
     # Platform quota is shared with REST; ``check_platform_quota``
     # raises ``HttpError(429,...)`` which we re-shape into a JSON-RPC
     # error so MCP clients see structured feedback rather than HTTP.
@@ -339,19 +401,24 @@ def _schedule_post(args: dict, context: dict[str, Any]) -> dict:
             INVALID_PARAMS,
             f"Per-platform daily quota reached for {sa.platform}: {exc.message}",
         ) from exc
+    from django.db import transaction
+
     try:
-        post = create_post(
-            workspace=api_key.workspace,
-            social_account=sa,
-            caption=args["caption"],
-            title=args.get("title", ""),
-            first_comment=args.get("first_comment", ""),
-            internal_notes=args.get("internal_notes", ""),
-            media_asset_ids=args.get("media_asset_ids") or [],
-            scheduled_at=scheduled_at,
-            author=api_key.issued_by if api_key.issued_by_id else None,
-            status="scheduled",
-        )
+        with transaction.atomic():
+            post = create_post(
+                workspace=api_key.workspace,
+                social_account=sa,
+                caption=args["caption"],
+                title=args.get("title", ""),
+                first_comment=args.get("first_comment", ""),
+                internal_notes=args.get("internal_notes", ""),
+                media_asset_ids=args.get("media_asset_ids") or [],
+                scheduled_at=scheduled_at,
+                author=api_key.issued_by if api_key.issued_by_id else None,
+                status="scheduled",
+            )
+            if repeat is not None:
+                save_recurrence(post, **repeat.rule_fields())
     except ValueError as exc:
         raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
     return _wrap_text(_serialize_post(post, context))
@@ -365,7 +432,9 @@ register_tool(
             "The publisher polls every ~15s and will fire the post once the time elapses. "
             "Refused when the post can't publish: accounts with requires_video need a video in "
             "media_asset_ids, those with requires_media need at least one media item, and "
-            "Pinterest needs a board, which only the composer can set (use create_draft for Pinterest)."
+            "Pinterest needs a board, which only the composer can set (use create_draft for Pinterest). "
+            "Also refused when the media breaks a platform media rule (aspect ratio, resolution, length, "
+            "size or item count). Pass recurrence to repeat the post."
         ),
         input_schema={
             "type": "object",
@@ -389,6 +458,7 @@ register_tool(
                     "items": {"type": "string", "format": "uuid"},
                     "default": [],
                 },
+                "recurrence": _RECURRENCE_INPUT_SCHEMA,
             },
             "required": ["social_account_id", "caption", "scheduled_at"],
             "additionalProperties": False,
@@ -603,6 +673,12 @@ def _schedule_draft(args: dict, context: dict[str, Any]) -> dict:
     schedulable = [pp for pp in post.platform_posts.all() if pp.status in {"draft", "approved"}]
     if not schedulable:
         raise JsonRpcError(INVALID_PARAMS, "No draft or approved platform posts to schedule")
+    repeat = _parse_recurrence(args, workspace=post.workspace, scheduled_at=scheduled_at)
+    if repeat is not None and post.recurrence_source_id is not None:
+        raise JsonRpcError(
+            INVALID_PARAMS,
+            f"This post is a copy in a repeating series; change the series on post {post.recurrence_source_id}.",
+        )
 
     # Per-platform 24h quota check, one per child, BEFORE we mutate
     # anything — over-quota fails the whole call with no partial commit.
@@ -626,6 +702,9 @@ def _schedule_draft(args: dict, context: dict[str, Any]) -> dict:
                 transition_platform_post(pp, "scheduled", scheduled_at=scheduled_at)
             except ValueError as exc:
                 raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
+        if repeat is not None:
+            post.refresh_from_db()
+            save_recurrence(post, **repeat.rule_fields(), refresh=True)
     post.refresh_from_db()
     return _wrap_text(_serialize_post(post, context))
 
@@ -640,8 +719,9 @@ register_tool(
             "use schedule_post instead. Approval-required workspaces must complete human approval first. "
             "Requires both create_posts and publish_directly. "
             "Refused when the post can't publish: accounts with requires_video need a video "
-            "attached, those with requires_media need at least one media item, and a Pinterest "
-            "draft needs a board chosen in the composer."
+            "attached, those with requires_media need at least one media item, a Pinterest "
+            "draft needs a board chosen in the composer, and the media must keep within each "
+            "platform's media rules. Pass recurrence to repeat the post."
         ),
         input_schema={
             "type": "object",
@@ -651,6 +731,7 @@ register_tool(
                     "type": "string",
                     "description": "ISO 8601 UTC timestamp (e.g. 2026-06-01T14:00:00Z)",
                 },
+                "recurrence": _RECURRENCE_INPUT_SCHEMA,
             },
             "required": ["post_id", "scheduled_at"],
             "additionalProperties": False,
