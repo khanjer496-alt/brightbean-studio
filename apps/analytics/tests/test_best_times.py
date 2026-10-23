@@ -73,14 +73,14 @@ class TestScoring:
         result = best_times.compute(account, NOW)
         assert result.is_default
         assert result.sample_size == 0
-        assert result.basis_label == "Based on industry defaults"
+        assert result.basis_label == "Based on general defaults (no verified study for this network)"
         assert result.top(3)  # defaults still suggest something
 
     def test_no_posts_uses_the_providers_windows(self, account):
         result = best_times.compute(account, NOW)
         assert result.is_default
-        # Bluesky's first window is weekday mornings 08-10.
-        assert result.scores[best_times.cell_index(1, 9)] == 100
+        # Bluesky has no verified study, so the general defaults apply: Tue-Thu 10:00-13:00 first.
+        assert result.scores[best_times.cell_index(1, 10)] == 100
         assert result.scores[best_times.cell_index(6, 3)] == 0
 
     def test_posts_without_any_metrics_do_not_count(self, workspace, account):
@@ -110,6 +110,22 @@ class TestScoring:
         # nowhere near that, so the steady slot (14 posts) keeps a comparable score.
         assert scores[steady_cell] > 100 / 2.5
 
+    def test_one_viral_post_is_capped_at_a_multiple_of_the_median(self):
+        tz = zoneinfo.ZoneInfo("UTC")
+        steady = [((NOW - timedelta(days=7 * i)).replace(hour=9), 0.02) for i in range(1, 15)]
+        viral_at = (NOW - timedelta(days=2)).replace(hour=22)
+        scores, _ = best_times.score_posts([*steady, (viral_at, 2.0)], tz, NOW)
+        # A 100x post counts as at most OUTLIER_CAP x the median, so the steady slot stays close.
+        assert scores[best_times.cell_index(NOW.weekday(), 9)] > 100 / best_times.OUTLIER_CAP
+
+    def test_one_denominator_for_the_whole_account(self):
+        posts = [{"likes": 1, "views": 100}, {"likes": 1, "views": 50, "reach": 10}, {"likes": 1, "reach": 10}]
+        assert best_times.account_denominator(posts, 500) == "views"
+        assert best_times.account_denominator([{"likes": 1}], 500) == "followers"
+        assert best_times.account_denominator([{"likes": 1}], 0) is None
+        # A post missing the account's denominator is unmeasurable, not rated by another metric.
+        assert best_times.post_engagement_rate({"likes": 1, "reach": 10}, 500, denominator_key="views") is None
+
     def test_published_hour_follows_the_workspace_timezone(self, workspace, account):
         workspace.timezone = "America/New_York"
         workspace.save()
@@ -133,6 +149,17 @@ class TestScoring:
 
 
 class TestTop:
+    def test_well_sampled_cells_beat_low_confidence_ones(self):
+        scores = [0.0] * best_times.CELLS
+        counts = [0] * best_times.CELLS
+        scores[best_times.cell_index(0, 22)], counts[best_times.cell_index(0, 22)] = 100, 1
+        scores[best_times.cell_index(2, 9)], counts[best_times.cell_index(2, 9)] = 70, 5
+        result = best_times.BestTimes("posts", 20, "UTC", scores, counts)
+        assert result.is_low_confidence(best_times.cell_index(0, 22))
+        top = result.top(2)
+        assert [(t.weekday, t.hour) for t in top] == [(2, 9), (0, 22)]
+        assert result.rows()[0]["cells"][22]["low_confidence"] is True
+
     def test_top_spreads_across_days_and_hours(self):
         scores = [0.0] * best_times.CELLS
         for hour in (9, 10, 11):

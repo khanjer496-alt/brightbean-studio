@@ -900,6 +900,7 @@ _tool(
         "wall-clock time in the workspace timezone) and the 7x24 score grid behind them. `basis` is 'posts' when "
         "learned from the account's own published posts, or 'defaults' (industry averages) when it has too few posts "
         "with results; say which when you tell the user. Use it to choose a publish time or before apply_best_times. "
+        "`grid_posts` gives how many posts each cell rests on; treat cells with 1-2 posts as low confidence. "
         "`count` 1-14 (default 5). The account must be in the key's allowlist."
     ),
     ops.get_best_times,

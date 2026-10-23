@@ -136,12 +136,13 @@ class FacebookProvider(SocialProvider):
     # Comments on the Page post carry up to 8,000 characters.
     thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=8000)
 
-    # Source: Sprout Social, "Best times to post on social media" (annual study); Hootsuite, "Best time to post on Facebook".
-    # Approximate industry averages in the audience's local time, not your audience.
+    # Source: https://sproutsocial.com/insights/best-times-to-post-on-social-media/ (published 2026-03-31; checked 2026-10-24):
+    # Mon 12-1pm; Tue/Wed 12-8pm; Thu 12-2pm. Hours are the audience's local time; industry averages, not your audience.
+    best_time_source = "Sprout Social study, Mar 2026"
     best_time_windows = (
-        PeakWindow(days=(1, 2, 3), hours=(9, 10, 11)),
-        PeakWindow(days=(0, 4), hours=(9, 10, 11)),
-        PeakWindow(days=(5, 6), hours=(9, 10)),
+        PeakWindow(days=(1, 2), hours=(12, 13, 14)),
+        PeakWindow(days=(0, 3), hours=(12, 13)),
+        PeakWindow(days=(1, 2), hours=(15, 16, 17, 18, 19)),
     )
 
     writing_style = "Warm and conversational, inviting comments. A question or call to action works well; hashtags are optional and sparing."

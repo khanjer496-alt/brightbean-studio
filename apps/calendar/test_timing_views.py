@@ -96,7 +96,7 @@ class TestHeatmapPanel:
         r = world.owner.get(url("best_times_panel", world), {"social_account_id": world.account.id})
         html = r.content.decode()
         assert r.status_code == 200
-        assert "Based on industry defaults" in html and "Europe/Paris" in html
+        assert "Based on general defaults" in html and "Europe/Paris" in html
         assert html.count("<tr>") >= 8 and "Suggest slots" in html and "Top times" in html
         assert "bg-heat-" in html and 'scope="row"' in html and "<caption" in html
         assert not re.search(r"\sstyle=", html)
@@ -105,7 +105,7 @@ class TestHeatmapPanel:
         html = world.viewer.get(
             url("best_times_panel", world), {"social_account_id": world.account.id}
         ).content.decode()
-        assert "Based on industry defaults" in html and "Suggest slots" not in html
+        assert "Based on general defaults" in html and "Suggest slots" not in html
 
     def test_other_workspaces_account_is_a_404_and_junk_ids_too(self, world):
         assert (
@@ -195,7 +195,7 @@ class TestChips:
             url("best_time_chips", world), {"selected_accounts": f"{world.account.id},junk,{world.foreign.id}"}
         )
         html = r.content.decode()
-        assert r.status_code == 200 and "data-best-time-chip" in html and "industry defaults" in html
+        assert r.status_code == 200 and "data-best-time-chip" in html and "general defaults" in html
         assert len(re.findall(r"data-best-time-chip", html)) == 3
         assert not re.search(r"\sstyle=", html)
         assert str(world.foreign.id) not in html

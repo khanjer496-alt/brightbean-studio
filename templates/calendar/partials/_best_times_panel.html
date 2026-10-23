@@ -29,7 +29,7 @@ Refreshes itself when the account's slots change.
     </div>
 
     {% if best.is_default %}
-    <p class="text-xs text-stone-500 mb-2">Not enough published posts with results yet to learn from, so this shows typical busy times for {{ account.get_platform_display }}. It becomes personal once the account has {{ min_posts }} posts with analytics.</p>
+    <p class="text-xs text-stone-500 mb-2">Not enough published posts with results yet to learn from, so this shows {% if best.source %}typical busy times for {{ account.get_platform_display }} from {{ best.source }}{% else %}general weekday times, since no published study we could verify covers {{ account.get_platform_display }}{% endif %}. It becomes personal once the account has {{ min_posts }} posts with analytics.</p>
     {% endif %}
 
     <div id="suggest-slots-{{ account.id }}" class="mb-3" aria-live="polite"></div>
@@ -50,7 +50,7 @@ Refreshes itself when the account's slots change.
                 <tr>
                     <th scope="row" class="text-left font-medium pr-1">{{ row.name|slice:":3" }}</th>
                     {% for cell in row.cells %}
-                    <td class="h-5 rounded-sm text-center p-0 {% if cell.level == 1 %}bg-heat-1{% elif cell.level == 2 %}bg-heat-2{% elif cell.level == 3 %}bg-heat-3{% elif cell.level == 4 %}bg-heat-4{% else %}bg-surface-2{% endif %} {% if cell.suggested %}outline outline-2 outline-ink{% endif %} {% if cell.level %}cursor-pointer focus:outline focus:outline-2 focus:outline-accent{% endif %}"
+                    <td class="h-5 rounded-sm text-center p-0 {% if cell.level == 1 %}bg-heat-1{% elif cell.level == 2 %}bg-heat-2{% elif cell.level == 3 %}bg-heat-3{% elif cell.level == 4 %}bg-heat-4{% else %}bg-surface-2{% endif %} {% if cell.low_confidence %}heat-low{% endif %} {% if cell.suggested %}outline outline-2 outline-ink{% endif %} {% if cell.level %}cursor-pointer focus:outline focus:outline-2 focus:outline-accent{% endif %}"
                         data-tip="{{ cell.tip }}"
                         {% if cell.level %}tabindex="0"{% endif %}
                         @mouseenter="tip = $el.dataset.tip" @focus="tip = $el.dataset.tip" @click="tip = $el.dataset.tip">
@@ -75,6 +75,7 @@ Refreshes itself when the account's slots change.
         </span>
         <span class="inline-flex items-center gap-1"><span class="inline-block h-3 w-3 rounded-sm bg-surface-2" aria-hidden="true"></span>no data</span>
         <span class="inline-flex items-center gap-1"><span class="inline-block h-3 w-3 rounded-sm outline outline-2 outline-ink" aria-hidden="true"></span>suggested</span>
+        {% if has_low_confidence %}<span class="inline-flex items-center gap-1"><span class="inline-block h-3 w-3 rounded-sm bg-heat-2 heat-low" aria-hidden="true"></span>fewer than {{ min_cell_posts }} posts (low confidence)</span>{% endif %}
     </div>
 
     {% if top %}

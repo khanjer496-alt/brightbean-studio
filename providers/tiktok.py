@@ -140,12 +140,13 @@ class TikTokProvider(SocialProvider):
 
     media_rules = TIKTOK_MEDIA_RULES
 
-    # Source: Sprout Social, "Best times to post on social media" (annual study); Hootsuite, "Best time to post on TikTok".
-    # Approximate industry averages in the audience's local time, not your audience.
+    # Source: https://sproutsocial.com/insights/best-times-to-post-on-social-media/ (published 2026-03-31; checked 2026-10-24):
+    # Mon 3-5pm; Tue 2-6pm; Wed 1-8pm; Thu 1-5pm; Fri 3-5pm. Hours are the audience's local time; industry averages, not your audience.
+    best_time_source = "Sprout Social study, Mar 2026"
     best_time_windows = (
-        PeakWindow(days=(1, 2, 3), hours=(18, 19, 20, 21)),
-        PeakWindow(days=(4,), hours=(17, 18, 19)),
-        PeakWindow(days=(5, 6), hours=(10, 11, 19, 20)),
+        PeakWindow(days=(1, 2, 3), hours=(14, 15, 16)),
+        PeakWindow(days=(0, 4), hours=(15, 16)),
+        PeakWindow(days=(2,), hours=(13, 17, 18, 19)),
     )
 
     writing_style = "Casual, energetic and trend-aware: a punchy hook and a few relevant hashtags. Emojis welcome."

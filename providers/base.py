@@ -186,6 +186,9 @@ class SocialProvider(ABC):
     # one cites where the numbers come from; they are industry averages, not
     # measurements of any one audience, and the UI labels them that way.
     best_time_windows: ClassVar[tuple[PeakWindow, ...]] = ()
+    # Short name of the study the windows come from, shown next to them ("Sprout
+    # Social study, Mar 2026"). Empty with no windows of its own.
+    best_time_source: ClassVar[str] = ""
 
     # False when the platform publishes no media at all (Reddit here): a post
     # carrying any is refused before scheduling, with a sentence naming the

@@ -1594,6 +1594,7 @@ def get_best_times(actor: Actor, social_account_id: uuid.UUID, count: int = 5) -
         computed_at=best.computed_at,
         suggestions=[_best_time_row(s) for s in suggestions],
         grid=[[round(best.scores[d * 24 + h]) for h in range(24)] for d in range(7)],
+        grid_posts=[[best.counts[d * 24 + h] for h in range(24)] for d in range(7)],
     )
 
 

@@ -38,9 +38,10 @@ class TestBestTimesRest:
     def test_defaults_are_labelled_and_shaped(self, world):
         body = world.full.get(f"{BEST}?social_account_id={world.account1.id}&count=4").json()
         assert body["basis"] == "defaults" and body["sample_size"] == 0
-        assert body["basis_label"] == "Based on industry defaults"
+        assert body["basis_label"] == "Based on general defaults (no verified study for this network)"
         assert 1 <= len(body["suggestions"]) <= 4
         assert len(body["grid"]) == 7 and all(len(row) == 24 for row in body["grid"])
+        assert len(body["grid_posts"]) == 7 and not any(map(any, body["grid_posts"]))
         first = body["suggestions"][0]
         assert set(first) == {"day_of_week", "day_name", "time", "score", "posts"}
 

@@ -51,11 +51,13 @@ class PinterestProvider(SocialProvider):
 
     media_rules = PINTEREST_MEDIA_RULES
 
-    # Source: Hootsuite, "Best time to post on Pinterest"; Sprout Social, "Best times to post on social media" (annual study).
-    # Approximate industry averages in the audience's local time, not your audience.
+    # Source: https://sproutsocial.com/insights/best-times-to-post-on-social-media/ (published 2026-03-31; checked 2026-10-24):
+    # Mon 10am-12pm, 2-3pm; Tue 10am-1pm; Wed 8am-1pm, 3pm; Thu 10-11am, 2-4pm; Fri 10-11am. Hours are the audience's local time; industry averages, not your audience.
+    best_time_source = "Sprout Social study, Mar 2026"
     best_time_windows = (
-        PeakWindow(days=(4, 5, 6), hours=(20, 21, 22)),
-        PeakWindow(days=(0, 1, 2, 3), hours=(14, 15, 16)),
+        PeakWindow(days=(1, 2), hours=(10, 11, 12)),
+        PeakWindow(days=(0, 3, 4), hours=(10, 11)),
+        PeakWindow(days=(0, 2, 3), hours=(14, 15)),
     )
 
     writing_style = (

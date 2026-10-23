@@ -27,7 +27,6 @@ from .types import (
     MediaRules,
     MediaType,
     OAuthTokens,
-    PeakWindow,
     PostMetrics,
     PostType,
     PublishContent,
@@ -158,13 +157,9 @@ class YouTubeProvider(SocialProvider):
     # Top-level comments on the video carry up to 10,000 characters.
     thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=10000)
 
-    # Source: Sprout Social, "Best times to post on social media" (annual study); Hootsuite, "Best time to post on YouTube".
-    # Approximate industry averages in the audience's local time, not your audience.
-    best_time_windows = (
-        PeakWindow(days=(3, 4), hours=(15, 16, 17)),
-        PeakWindow(days=(5, 6), hours=(9, 10, 11)),
-        PeakWindow(days=(0, 1, 2), hours=(15, 16)),
-    )
+    # Unverified: Sprout Social's 2026 study has no YouTube times, Hootsuite's page is gone and Buffer's
+    # (Mar 2026) contradicts itself on long-form hours, so the generic DEFAULT_BEST_TIME_WINDOWS apply
+    # (checked 2026-10-24).
 
     writing_style = "A video description: what viewers will get in the first lines, then detail, with a call to subscribe. A few hashtags at the end."
 

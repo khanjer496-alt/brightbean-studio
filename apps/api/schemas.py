@@ -1646,6 +1646,13 @@ class BestTimesResponse(Schema):
     computed_at: dt.datetime | None = None
     suggestions: list[BestTimeResponse] = Field(..., description="The top times, spread across the week.")
     grid: list[list[int]] = Field(..., description="7 rows (Monday first) of 24 hourly scores, 0-100; 0 means no data.")
+    grid_posts: list[list[int]] = Field(
+        default_factory=list,
+        description=(
+            "Same shape as ``grid``: how many of the account's posts each score rests on (all 0 for ``defaults``). "
+            "A cell with 1-2 posts is low confidence."
+        ),
+    )
 
     @field_serializer("computed_at")
     def _serialize_dt(self, value: dt.datetime | None) -> str | None:

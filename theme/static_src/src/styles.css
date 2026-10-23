@@ -91,6 +91,12 @@
   --heat-1: #184f95; --heat-2: #256abf; --heat-3: #3987e5; --heat-4: #6da7ec;
 }
 
+/* A heatmap cell with too few posts to trust: the same ramp step, struck with
+   a 45-degree surface-coloured hatch so low confidence never rides on colour alone. */
+.heat-low {
+  background-image: repeating-linear-gradient(45deg, transparent 0 3px, var(--surface-1) 3px 5px);
+}
+
 /* Theme tokens as Tailwind colours (bg-surface-1, text-ink-2, border-line, ...). */
 @theme inline {
   --color-surface-0: var(--surface-0); --color-surface-1: var(--surface-1);

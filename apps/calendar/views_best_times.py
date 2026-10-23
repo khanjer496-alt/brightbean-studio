@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404, render
 from django.utils.dateformat import time_format
 from django.views.decorators.http import require_POST
 
-from apps.analytics.best_times import MIN_POSTS, BestTime, get_best_times, upcoming
+from apps.analytics.best_times import MIN_CELL_POSTS, MIN_POSTS, BestTime, get_best_times, upcoming
 from apps.members.decorators import require_permission
 from apps.social_accounts.models import SocialAccount
 
@@ -64,7 +64,10 @@ def _cell_tip(cell, is_default):
         return f"{when}: no data"
     if is_default:
         return f"{when}: industry default, score {cell['score']} of 100"
-    return f"{when}: score {cell['score']} of 100, from {cell['posts']} post{'s' if cell['posts'] != 1 else ''}"
+    posts = f"{cell['posts']} post{'s' if cell['posts'] != 1 else ''}"
+    if cell["low_confidence"]:
+        return f"{when}: score {cell['score']} of 100, low confidence (only {posts})"
+    return f"{when}: score {cell['score']} of 100, from {posts}"
 
 
 def _panel_context(request, workspace, account):
@@ -93,6 +96,8 @@ def _panel_context(request, workspace, account):
         "can_edit_slots": request.workspace_membership.effective_permissions.get("manage_social_accounts", False),
         "suggest_default": services.SUGGESTED_SLOTS_DEFAULT,
         "min_posts": MIN_POSTS,
+        "min_cell_posts": MIN_CELL_POSTS,
+        "has_low_confidence": any(c["low_confidence"] for row in rows for c in row["cells"]),
     }
 
 
