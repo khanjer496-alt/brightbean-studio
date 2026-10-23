@@ -41,17 +41,17 @@
                 <div>
                     <label for="f-accent" class="mb-1 block text-sm font-semibold text-ink">Brand accent colour</label>
                     <input id="f-accent" name="accent_color" type="text" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="#2D5BE3" value="{{ page.accent_color }}" aria-describedby="f-accent-help" class="form-input-styled text-sm">
-                    <p id="f-accent-help" class="m-0 mt-1 text-xs text-ink-3">Optional: a hex colour such as #2D5BE3 for the buttons. Leave blank to use the theme's own.</p>
+                    <p id="f-accent-help" class="m-0 mt-1 text-xs text-ink-3">Optional: a hex colour such as #2D5BE3 for the buttons. {% if brand_accent %}Leave blank to use your brand kit's {{ brand_accent }}.{% else %}Leave blank to use the theme's own.{% endif %}</p>
                 </div>
                 <fieldset class="m-0 min-w-0 border-0 p-0">
                     <legend class="mb-1 text-sm font-semibold text-ink">Avatar</legend>
                     <div class="flex flex-wrap gap-2">
-                        <label class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface-0 px-3 text-sm text-ink"><input type="radio" name="avatar" value=""{% if not page.avatar_id %} checked{% endif %}>None</label>
+                        <label class="flex min-h-11 cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface-0 px-3 text-sm text-ink"><input type="radio" name="avatar" value=""{% if not page.avatar_id %} checked{% endif %}>{% if brand_logo %}<img src="{{ brand_logo.preview_url }}" alt="" class="h-9 w-9 rounded object-cover">Brand kit logo{% else %}None{% endif %}</label>
                         {% for asset in media_choices %}
                         <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface-0 p-1 text-sm text-ink"><input type="radio" name="avatar" value="{{ asset.id }}"{% if page.avatar_id == asset.id %} checked{% endif %}><img src="{{ asset.preview_url }}" alt="{{ asset.alt_text|default:asset.filename }}" class="h-11 w-11 rounded object-cover"></label>
                         {% endfor %}
                     </div>
-                    <p class="m-0 mt-1 text-xs text-ink-3">Pick from your media library's latest images.</p>
+                    <p class="m-0 mt-1 text-xs text-ink-3">Pick from your media library's latest images. With none picked, the page shows your brand kit logo when there is one.</p>
                 </fieldset>
                 <fieldset class="m-0 min-w-0 border-0 p-0">
                     <legend class="mb-1 text-sm font-semibold text-ink">Social icons</legend>

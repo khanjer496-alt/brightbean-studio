@@ -289,4 +289,17 @@ def update(kit: BrandKit, data: dict) -> list[str]:
         setattr(kit, name, value)
     if values:
         kit.save(update_fields=[*values, "updated_at"])
+        _refresh_bio_pages(kit)
     return list(values)
+
+
+def _refresh_bio_pages(kit: BrandKit) -> None:
+    """Public link-in-bio pages fall back to the kit's logo and colour, so drop their cached copies."""
+    from apps.linkinbio import services as bio
+
+    if kit.workspace_id:
+        bio.invalidate_workspaces([kit.workspace_id])
+    else:
+        bio.invalidate_workspaces(
+            Workspace.objects.filter(organization_id=kit.organization_id).values_list("id", flat=True)
+        )
