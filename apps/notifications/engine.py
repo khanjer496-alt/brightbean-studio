@@ -134,6 +134,7 @@ DEFAULT_CHANNELS: dict[str, dict[str, bool]] = {
     EventType.APPROVAL_HOLD_REQUESTED: {Channel.IN_APP: True, Channel.EMAIL: True},
     EventType.CLIENT_CONNECTED_ACCOUNTS: {Channel.IN_APP: True, Channel.EMAIL: True},
     EventType.BILLING_PAYMENT_FAILED: {Channel.IN_APP: True, Channel.EMAIL: True},
+    EventType.WEBHOOK_DISABLED: {Channel.IN_APP: True, Channel.EMAIL: True},
 }
 
 # Event types considered non-critical (suppressed during quiet hours).
