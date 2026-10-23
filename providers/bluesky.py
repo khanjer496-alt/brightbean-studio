@@ -17,6 +17,7 @@ from .types import (
     AuthType,
     MediaRules,
     MediaType,
+    MentionSuggestion,
     OAuthTokens,
     PostType,
     PublishContent,
@@ -80,6 +81,8 @@ class BlueskyProvider(SocialProvider):
     media_rules = BLUESKY_MEDIA_RULES
     # Each part is a post whose ``reply`` points at the thread root and its parent.
     thread = ThreadCapability(mode=ThreadMode.REPLY_CHAIN, max_parts=25, media_per_part=True)
+
+    mention_lookup = True
 
     writing_style = (
         "Conversational and concise, like a thought shared with peers. One or two hashtags at most, few emojis."
@@ -238,6 +241,28 @@ class BlueskyProvider(SocialProvider):
             avatar_url=data.get("avatar"),
             follower_count=data.get("followersCount", 0),
         )
+
+    # ------------------------------------------------------------------
+    # Mentions
+    # ------------------------------------------------------------------
+
+    def search_mentions(self, access_token: str, query: str, limit: int = 8) -> list[MentionSuggestion]:
+        """Suggest accounts for an @mention from Bluesky's actor typeahead."""
+        resp = self._request(
+            "GET",
+            f"{self.pds_url}/xrpc/app.bsky.actor.searchActorsTypeahead",
+            params={"q": query, "limit": limit},
+            access_token=access_token,
+        )
+        return [
+            MentionSuggestion(
+                handle=actor["handle"],
+                name=actor.get("displayName") or "",
+                avatar_url=actor.get("avatar") or "",
+            )
+            for actor in resp.json().get("actors", [])
+            if actor.get("handle")
+        ]
 
     # ------------------------------------------------------------------
     # Publishing

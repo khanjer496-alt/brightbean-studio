@@ -142,6 +142,19 @@ def thread_capability_for(platform: str) -> ThreadCapability:
     return provider_cls.thread
 
 
+def mention_lookup_for(platform: str) -> bool:
+    """Whether ``platform`` can suggest accounts to @mention (``SocialProvider.mention_lookup``).
+
+    Read off the provider class like ``thread_capability_for``, so the composer
+    can decide whether to offer suggestions without building a provider. An
+    unknown platform has no lookup.
+    """
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    if provider_cls is None:
+        return False
+    return provider_cls.mention_lookup
+
+
 def get_provider(platform: str, credentials: dict | None = None) -> SocialProvider:
     """Instantiate and return a provider for the given platform.
 

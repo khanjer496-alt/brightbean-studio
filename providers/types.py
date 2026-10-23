@@ -258,6 +258,17 @@ class ThreadCapability:
         return self.mode is not ThreadMode.NONE
 
 
+@dataclass(frozen=True)
+class MentionSuggestion:
+    """One account a user can @mention, as a platform's directory returned it."""
+
+    # What goes after the "@" in the caption, in the form the platform reads
+    # back as a mention (``alice.bsky.social``, ``alice@mastodon.social``).
+    handle: str
+    name: str = ""
+    avatar_url: str = ""
+
+
 class UploadCache(Protocol):
     """Somewhere a provider can remember an upload between publish attempts.
 

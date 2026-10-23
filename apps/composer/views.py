@@ -24,6 +24,7 @@ from django.utils import timezone
 from django.utils.html import strip_tags
 from django.utils.text import get_text_list
 from django.views.decorators.http import require_GET, require_POST
+from django_ratelimit.decorators import ratelimit
 
 from apps.ai_writer.views import composer_context as ai_composer_context
 from apps.billing.entitlements import (
@@ -43,13 +44,14 @@ from apps.members.decorators import require_permission
 from apps.members.models import WorkspaceMembership
 from apps.social_accounts.models import SocialAccount
 from apps.workspaces.models import Workspace
-from providers import is_video_only, requires_media, thread_capability_for
+from providers import is_video_only, mention_lookup_for, requires_media, thread_capability_for
 from providers.tiktok import VALID_PRIVACY_LEVELS as TIKTOK_PRIVACY_LEVELS
 
 from .forms import ContentCategoryForm, PostForm
 from .models import (
     ContentCategory,
     Feed,
+    HashtagSet,
     Idea,
     IdeaGroup,
     IdeaMedia,
@@ -59,17 +61,22 @@ from .models import (
     PostMedia,
     PostTemplate,
     PostVersion,
+    Signature,
     Tag,
 )
 from .services import (
+    MENTION_QUERY_MAX,
+    default_signature,
     media_blocker,
     media_change_blocker,
     media_rule_issues,
+    mention_suggestions,
     parse_thread_parts,
     post_media_assets,
     post_media_types,
     post_thread_parts,
     publish_blocker,
+    recent_hashtags,
     require_publishable,
     resolve_thread_part_assets,
     set_post_parts,
@@ -78,6 +85,7 @@ from .services import (
     thread_started,
     thread_stopped_state,
     usable_media_types,
+    with_signature,
 )
 from .status import READONLY_STATUSES, derive_post_status
 
@@ -952,6 +960,10 @@ def compose(request, workspace_id, post_id=None):
     # primary action as "Save Draft" instead of arming "schedule for real".
     schedule_prefill_is_proposed = False
 
+    # The sign-off a new post starts with; the page also keeps it last when an
+    # AI result replaces or extends the caption.
+    signature = default_signature(workspace, request.user)
+
     # Load existing post or prepare a blank one
     if post_id:
         post = get_object_or_404(Post, id=post_id, workspace=workspace)
@@ -1007,6 +1019,8 @@ def compose(request, workspace_id, post_id=None):
         template_data = _resolve_template_data(request.GET.get("template"), workspace)
         if template_data and template_data.get("caption"):
             initial["caption"] = template_data["caption"]
+        else:
+            initial["caption"] = with_signature("", signature)
         form = PostForm(initial=initial)
         platform_post_list = []
         scoped_platform_posts = []
@@ -1055,6 +1069,8 @@ def compose(request, workspace_id, post_id=None):
             # Each of these costs two characters once the provider escapes it,
             # so the live counter can charge for them as the user types.
             "escaped_chars": acc.escaped_chars,
+            # Whether typing "@" can suggest accounts to mention on this platform.
+            "mention_lookup": mention_lookup_for(acc.platform),
             "name": acc.account_name or acc.account_handle,
             "youtube_url": f"https://www.youtube.com/channel/{acc.account_platform_id}"
             if acc.platform == "youtube"
@@ -1244,6 +1260,7 @@ def compose(request, workspace_id, post_id=None):
         "char_limits": char_limits,
         "default_first_comment": default_first_comment,
         "default_hashtags": json.dumps(default_hashtags),
+        "signature_body": signature.body if signature else "",
         "can_publish": can_publish,
         "can_approve": can_approve,
         "can_view_internal_notes": can_view_internal_notes,
@@ -4459,6 +4476,77 @@ def tag_create(request, workspace_id):
         return JsonResponse({"error": "Tag name is required."}, status=400)
     tag, created = Tag.objects.get_or_create(workspace=workspace, name=name)
     return JsonResponse({"id": str(tag.id), "name": tag.name, "created": created})
+
+
+# ---------------------------------------------------------------------------
+# Composer inserts: hashtag sets, signatures, @mention suggestions
+# ---------------------------------------------------------------------------
+
+# Per user, across every account searched. Typing pauses of 250 ms and the
+# client's own cache keep a normal writer well under it.
+MENTION_SEARCH_RATE = "60/m"
+
+
+@login_required
+@require_GET
+@require_permission("create_posts")
+def hashtag_picker(request, workspace_id):
+    """JSON for the composer's hashtag menu: saved sets and recently used tags."""
+    workspace = _get_workspace(request, workspace_id)
+    sets = HashtagSet.objects.for_workspace(workspace.id)
+    return JsonResponse(
+        {
+            "sets": [{"id": str(s.id), "name": s.name, "text": s.text, "count": len(s.hashtags)} for s in sets],
+            "recent": recent_hashtags(workspace.id),
+        }
+    )
+
+
+@login_required
+@require_GET
+@require_permission("create_posts")
+def signature_picker(request, workspace_id):
+    """JSON for the composer's signature menu: the workspace's signatures and the user's own."""
+    workspace = _get_workspace(request, workspace_id)
+    signatures = Signature.objects.available(workspace.id, request.user)
+    return JsonResponse(
+        {
+            "signatures": [
+                {
+                    "id": str(s.id),
+                    "name": s.name,
+                    "body": s.body,
+                    "scope": "personal" if s.user_id else "workspace",
+                    "is_default": s.is_default,
+                }
+                for s in signatures
+            ]
+        }
+    )
+
+
+@login_required
+@require_GET
+@require_permission("create_posts")
+@ratelimit(key="user", rate=MENTION_SEARCH_RATE, block=False)
+def mention_search(request, workspace_id):
+    """Accounts to @mention matching ``?q=``, searched on the ``?account=`` ids.
+
+    A nicety, so it never errors: a bad id, a platform without lookup, a
+    platform that is down or a user typing faster than ``MENTION_SEARCH_RATE``
+    just yields no suggestions. The rate keeps one composer from spending the
+    connected accounts' own platform rate limits.
+    """
+    workspace = _get_workspace(request, workspace_id)
+    query = request.GET.get("q", "").strip().lstrip("@")
+    account_ids = [a for a in request.GET.getlist("account") if _is_valid_uuid(a)]
+    if getattr(request, "limited", False) or not query or len(query) > MENTION_QUERY_MAX or not account_ids:
+        return JsonResponse({"results": []})
+    accounts = SocialAccount.objects.for_workspace(workspace.id).filter(
+        id__in=account_ids,
+        connection_status=SocialAccount.ConnectionStatus.CONNECTED,
+    )
+    return JsonResponse({"results": mention_suggestions(accounts, query)})
 
 
 # ── Feeds ──────────────────────────────────────────────────────────────────

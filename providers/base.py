@@ -21,6 +21,7 @@ from .types import (
     InboxMessage,
     MediaRules,
     MediaType,
+    MentionSuggestion,
     OAuthTokens,
     PostMetrics,
     PostType,
@@ -182,6 +183,13 @@ class SocialProvider(ABC):
     # rather than published as its first part alone.
     thread: ClassVar[ThreadCapability] = ThreadCapability()
 
+    # True when the platform has a directory the composer can search while a
+    # user types an "@mention", and ``search_mentions`` is implemented. Read off
+    # the class (``mention_lookup_for``) so the composer decides whether to
+    # offer suggestions without building a provider. Anything False leaves "@"
+    # as plain text.
+    mention_lookup: ClassVar[bool] = False
+
     # How many post ids a single ``get_post_metrics_batch`` call may carry. 1 —
     # the default — means the platform has no batch endpoint, so the analytics
     # sync keeps its one-call-per-post loop and one bad id can't abort the rest
@@ -270,6 +278,15 @@ class SocialProvider(ABC):
             result = self.publish_comment(access_token, root.platform_post_id, content.text)
             return PublishResult(platform_post_id=result.platform_comment_id, extra=result.extra)
         raise NotImplementedError(f"{self.platform_name} does not publish threads")
+
+    def search_mentions(self, access_token: str, query: str, limit: int = 8) -> list[MentionSuggestion]:
+        """Accounts whose handle or name matches ``query``, best match first.
+
+        Only called for a provider that sets ``mention_lookup``. Uses the
+        connected account's own credentials; a failure raises the provider's
+        usual error and the caller treats it as "no suggestions".
+        """
+        raise NotImplementedError(f"{self.platform_name} does not look up mentions")
 
     def find_thread_part(
         self,

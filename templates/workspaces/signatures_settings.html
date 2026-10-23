@@ -1,0 +1,48 @@
+{% extends "layouts/workspace_settings.html" %}
+{% block title %}Signatures - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
+{% block content %}
+<div class="max-w-2xl">
+    <h2 class="text-xl font-semibold mb-2 text-[var(--text-primary)]">Signatures</h2>
+    <p class="text-sm mb-8 text-[var(--text-secondary)]">
+        Sign-off text you add to posts. Pick one from the Signature menu in the composer, or mark one as the default to start every new post with it. Your own default wins over the workspace's.
+    </p>
+
+    <form method="POST" class="flex flex-col gap-3 mb-8">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="create">
+        <h3 class="text-sm font-semibold text-[var(--text-primary)]">New signature</h3>
+        <div>
+            <label for="new_signature_name" class="block text-xs mb-1 text-[var(--text-tertiary)]">Name</label>
+            <input id="new_signature_name" type="text" name="name" maxlength="{{ name_max }}" required
+                   placeholder="Sign-off" class="form-input-styled text-sm">
+        </div>
+        <div>
+            <label for="new_signature_body" class="block text-xs mb-1 text-[var(--text-tertiary)]">Text</label>
+            <textarea id="new_signature_body" name="body" rows="3" maxlength="{{ body_max }}" required
+                      placeholder="Thanks for reading! More at example.com"
+                      class="form-input-styled text-sm resize-y"></textarea>
+        </div>
+        {% if can_manage %}
+        <div>
+            <label for="new_signature_scope" class="block text-xs mb-1 text-[var(--text-tertiary)]">Belongs to</label>
+            <select id="new_signature_scope" name="scope" class="form-input-styled text-sm">
+                <option value="personal">Me, in every workspace</option>
+                <option value="workspace">{{ workspace.name }}, shared with everyone here</option>
+            </select>
+        </div>
+        {% endif %}
+        <label class="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+            <input type="checkbox" name="is_default"> Add to every new post
+        </label>
+        <div>
+            <button type="submit"
+                    class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer whitespace-nowrap bg-[var(--neutral-100)] text-[var(--text-primary)]">
+                Add signature
+            </button>
+        </div>
+    </form>
+
+    {% include "workspaces/partials/signature_list.html" with heading="My signatures" signatures=personal_signatures editable=True empty_text="You have no personal signatures yet." %}
+    {% include "workspaces/partials/signature_list.html" with heading="Workspace signatures" signatures=workspace_signatures editable=can_manage empty_text="This workspace has no shared signatures yet." %}
+</div>
+{% endblock %}

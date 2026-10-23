@@ -1,0 +1,79 @@
+{% extends "layouts/workspace_settings.html" %}
+{% block title %}Hashtag Sets - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
+{% block content %}
+<div class="max-w-2xl">
+    <h2 class="text-xl font-semibold mb-2 text-[var(--text-primary)]">Hashtag Sets</h2>
+    <p class="text-sm mb-8 text-[var(--text-secondary)]">
+        Save groups of hashtags you use together. In the composer, the Hashtags menu inserts a whole set at your cursor, and suggests the hashtags this workspace used lately.
+    </p>
+
+    {% if can_manage %}
+    <form method="POST" class="flex flex-col gap-3 mb-8">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="create">
+        <h3 class="text-sm font-semibold text-[var(--text-primary)]">New set</h3>
+        <div>
+            <label for="new_set_name" class="block text-xs mb-1 text-[var(--text-tertiary)]">Name</label>
+            <input id="new_set_name" type="text" name="name" maxlength="{{ name_max }}" required
+                   placeholder="Coffee launch" class="form-input-styled text-sm">
+        </div>
+        <div>
+            <label for="new_set_hashtags" class="block text-xs mb-1 text-[var(--text-tertiary)]">Hashtags</label>
+            <textarea id="new_set_hashtags" name="hashtags" rows="2" required
+                      aria-describedby="new_set_hashtags_help"
+                      placeholder="#coffee #latteart #baristalife"
+                      class="form-input-styled text-sm resize-y"></textarea>
+            <p id="new_set_hashtags_help" class="text-xs mt-1 text-[var(--text-tertiary)]">Separate with spaces or commas. Up to {{ max_hashtags }} per set.</p>
+        </div>
+        <div>
+            <button type="submit"
+                    class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer whitespace-nowrap bg-[var(--neutral-100)] text-[var(--text-primary)]">
+                Add set
+            </button>
+        </div>
+    </form>
+    {% else %}
+    <p class="text-xs mb-6 text-[var(--text-tertiary)]">Only workspace owners and managers can change hashtag sets. You can insert them from the composer.</p>
+    {% endif %}
+
+    <h3 class="text-sm font-semibold mb-3 text-[var(--text-primary)]">Saved sets</h3>
+    <ul class="flex flex-col gap-4">
+        {% for set in hashtag_sets %}
+        <li class="rounded-xl border border-[var(--border)] p-4">
+            {% if can_manage %}
+            <form method="POST" class="flex flex-col gap-3">
+                {% csrf_token %}
+                <input type="hidden" name="set_id" value="{{ set.id }}">
+                <div>
+                    <label for="set_name_{{ set.id }}" class="block text-xs mb-1 text-[var(--text-tertiary)]">Name</label>
+                    <input id="set_name_{{ set.id }}" type="text" name="name" value="{{ set.name }}" maxlength="{{ name_max }}" required
+                           class="form-input-styled text-sm">
+                </div>
+                <div>
+                    <label for="set_hashtags_{{ set.id }}" class="block text-xs mb-1 text-[var(--text-tertiary)]">Hashtags</label>
+                    <textarea id="set_hashtags_{{ set.id }}" name="hashtags" rows="2" required
+                              class="form-input-styled text-sm resize-y">{{ set.text }}</textarea>
+                </div>
+                <div class="flex flex-wrap items-center gap-3">
+                    <button type="submit" name="action" value="update"
+                            class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer whitespace-nowrap bg-[var(--neutral-100)] text-[var(--text-primary)]">
+                        Save
+                    </button>
+                    <button type="submit" name="action" value="delete" formnovalidate
+                            class="px-3 py-2 text-sm font-medium cursor-pointer whitespace-nowrap text-red-500 hover:text-red-600"
+                            x-data @click="if (!confirm('Delete this hashtag set?')) $event.preventDefault()">
+                        Delete
+                    </button>
+                </div>
+            </form>
+            {% else %}
+            <p class="text-sm font-semibold text-[var(--text-primary)]">{{ set.name }}</p>
+            <p class="text-sm mt-1 text-[var(--text-secondary)]">{{ set.text }}</p>
+            {% endif %}
+        </li>
+        {% empty %}
+        <li class="text-sm text-[var(--text-tertiary)]">No hashtag sets yet.</li>
+        {% endfor %}
+    </ul>
+</div>
+{% endblock %}

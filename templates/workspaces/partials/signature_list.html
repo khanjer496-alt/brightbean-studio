@@ -1,0 +1,48 @@
+{% comment %}
+Signatures of one owner on the signatures settings page.
+Context: heading, signatures, editable (may the viewer change them), empty_text.
+{% endcomment %}
+<section class="mb-8" aria-labelledby="signatures-{{ heading|slugify }}">
+    <h3 id="signatures-{{ heading|slugify }}" class="text-sm font-semibold mb-3 text-[var(--text-primary)]">{{ heading }}</h3>
+    <ul class="flex flex-col gap-4">
+        {% for signature in signatures %}
+        <li class="rounded-xl border border-[var(--border)] p-4">
+            {% if editable %}
+            <form method="POST" class="flex flex-col gap-3">
+                {% csrf_token %}
+                <input type="hidden" name="signature_id" value="{{ signature.id }}">
+                <div>
+                    <label for="signature_name_{{ signature.id }}" class="block text-xs mb-1 text-[var(--text-tertiary)]">Name</label>
+                    <input id="signature_name_{{ signature.id }}" type="text" name="name" value="{{ signature.name }}" maxlength="{{ name_max }}" required
+                           class="form-input-styled text-sm">
+                </div>
+                <div>
+                    <label for="signature_body_{{ signature.id }}" class="block text-xs mb-1 text-[var(--text-tertiary)]">Text</label>
+                    <textarea id="signature_body_{{ signature.id }}" name="body" rows="3" maxlength="{{ body_max }}" required
+                              class="form-input-styled text-sm resize-y">{{ signature.body }}</textarea>
+                </div>
+                <label class="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+                    <input type="checkbox" name="is_default" {% if signature.is_default %}checked{% endif %}> Add to every new post
+                </label>
+                <div class="flex flex-wrap items-center gap-3">
+                    <button type="submit" name="action" value="update"
+                            class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer whitespace-nowrap bg-[var(--neutral-100)] text-[var(--text-primary)]">
+                        Save
+                    </button>
+                    <button type="submit" name="action" value="delete" formnovalidate
+                            class="px-3 py-2 text-sm font-medium cursor-pointer whitespace-nowrap text-red-500 hover:text-red-600"
+                            x-data @click="if (!confirm('Delete this signature?')) $event.preventDefault()">
+                        Delete
+                    </button>
+                </div>
+            </form>
+            {% else %}
+            <p class="text-sm font-semibold text-[var(--text-primary)]">{{ signature.name }}{% if signature.is_default %} <span class="text-xs font-normal text-[var(--text-tertiary)]">(default)</span>{% endif %}</p>
+            <p class="text-sm mt-1 whitespace-pre-line text-[var(--text-secondary)]">{{ signature.body }}</p>
+            {% endif %}
+        </li>
+        {% empty %}
+        <li class="text-sm text-[var(--text-tertiary)]">{{ empty_text }}</li>
+        {% endfor %}
+    </ul>
+</section>

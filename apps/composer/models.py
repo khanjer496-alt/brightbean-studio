@@ -11,6 +11,8 @@ Models:
     PlatformPostPart - Per-account override and publish outcome of one thread part.
     PostVersion - Immutable snapshots for version history.
     PostTemplate - Reusable post templates.
+    HashtagSet - A named group of hashtags a workspace inserts as one.
+    Signature - Sign-off text a user or a workspace adds to posts.
     CSVImportJob - Tracks bulk CSV import jobs.
 """
 
@@ -991,6 +993,121 @@ class PostTemplate(models.Model):
     class Meta:
         db_table = "composer_post_template"
         ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+
+class HashtagSet(models.Model):
+    """A named group of hashtags, scoped to a workspace.
+
+    Inserted into a caption as one piece ("#coffee #latteart"). ``hashtags`` is
+    the normalised list, each entry with its leading ``#``; see
+    ``services.parse_hashtags``.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workspace = models.ForeignKey(
+        "workspaces.Workspace",
+        on_delete=models.CASCADE,
+        related_name="hashtag_sets",
+    )
+    name = models.CharField(max_length=100)
+    hashtags = models.JSONField(default=list)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = WorkspaceScopedManager()
+
+    class Meta:
+        db_table = "composer_hashtag_set"
+        unique_together = ("workspace", "name")
+        ordering = ["name"]
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def text(self):
+        return " ".join(self.hashtags)
+
+
+class SignatureManager(models.Manager):
+    def for_workspace(self, workspace_id):
+        return self.get_queryset().filter(workspace_id=workspace_id)
+
+    def for_user(self, user):
+        return self.get_queryset().filter(user=user)
+
+    def available(self, workspace_id, user):
+        """The signatures ``user`` may insert in ``workspace_id``: their own and the workspace's."""
+        return self.get_queryset().filter(
+            models.Q(workspace_id=workspace_id) | models.Q(user=user),
+        )
+
+
+class Signature(models.Model):
+    """Sign-off text appended to a caption, owned by a user or by a workspace.
+
+    A personal signature (``user`` set) follows the user into every workspace
+    they belong to; a workspace signature (``workspace`` set) is shared by all
+    its members. Each owner has at most one default, which the composer appends
+    to the caption of a new post.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workspace = models.ForeignKey(
+        "workspaces.Workspace",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="signatures",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="signatures",
+    )
+    name = models.CharField(max_length=100)
+    body = models.TextField()
+    is_default = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = SignatureManager()
+
+    class Meta:
+        db_table = "composer_signature"
+        ordering = ["name"]
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(workspace__isnull=False, user__isnull=True)
+                    | models.Q(workspace__isnull=True, user__isnull=False)
+                ),
+                name="signature_owned_by_workspace_or_user",
+            ),
+            models.UniqueConstraint(
+                fields=["workspace"],
+                condition=models.Q(is_default=True, workspace__isnull=False),
+                name="signature_one_default_per_workspace",
+            ),
+            models.UniqueConstraint(
+                fields=["user"],
+                condition=models.Q(is_default=True, user__isnull=False),
+                name="signature_one_default_per_user",
+            ),
+        ]
 
     def __str__(self):
         return self.name
