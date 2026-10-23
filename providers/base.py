@@ -183,6 +183,28 @@ class SocialProvider(ABC):
     # fitted to the limit.
     writing_style: ClassVar[str] = ""
 
+    # Whether a PDF "document carousel" is a native post format on this network
+    # (LinkedIn). The repurposing pipeline then renders a branded PDF from the
+    # slide texts for it. ``publishes_documents`` says whether this provider can
+    # actually publish an attached document; while it is False the PDF is saved
+    # to the media library for download and is not attached to the post.
+    document_carousel: ClassVar[bool] = False
+    publishes_documents: ClassVar[bool] = False
+
+    # Whether the platform can hand back the transcript of a video the connected
+    # account owns, through its official API (``fetch_owned_video_transcript``).
+    # ``video_id_from_url`` recognises that platform's video links.
+    owned_video_transcripts: ClassVar[bool] = False
+
+    @classmethod
+    def video_id_from_url(cls, url: str) -> str:
+        """The platform's video id in ``url``, or "" when it isn't one of its video links."""
+        return ""
+
+    def fetch_owned_video_transcript(self, access_token: str, *, video_id: str, channel_id: str) -> str | None:
+        """Plain-text transcript of ``video_id`` if ``channel_id`` owns it and captions exist, else None."""
+        return None
+
     # When this network's audience is most active, best first, used as the "best
     # time to post" until an account has enough published posts of its own to
     # learn from (see ``apps.analytics.best_times``). Empty falls back to
