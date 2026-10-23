@@ -22,10 +22,12 @@ from apps.api.routers.accounts import router as accounts_router
 from apps.api.routers.ai import router as ai_router
 from apps.api.routers.analytics import router as analytics_router
 from apps.api.routers.approvals import router as approvals_router
+from apps.api.routers.best_times import router as best_times_router
 from apps.api.routers.bio import router as bio_router
 from apps.api.routers.brand_voice import router as brand_voice_router
 from apps.api.routers.categories import router as categories_router
 from apps.api.routers.events import router as events_router
+from apps.api.routers.evergreen import router as evergreen_router
 from apps.api.routers.hashtag_sets import router as hashtag_sets_router
 from apps.api.routers.ideas import groups_router as idea_groups_router
 from apps.api.routers.ideas import router as ideas_router
@@ -127,6 +129,10 @@ api = NinjaAPI(
         "schedules a post into the next free posting slot (`create_posts` + `publish_directly`). "
         "`/slots/` manages an account's weekly posting slots (`manage_social_accounts`) and "
         "`GET /slots/next-free` finds its next open times. Both honour the key's account allowlist.\n\n"
+        "**Best times and evergreen.** `GET /best-times/` returns an account's best weekday and hour to post "
+        "(learned from its own posts, or industry defaults when it has too few) and `POST /best-times/apply` makes "
+        "them its posting slots (`manage_social_accounts`). `/evergreen/` lists, adds, pauses and removes content "
+        "that is re-posted into empty queue slots (`create_posts`).\n\n"
         "**Planning content.** `/ideas/` and `/idea-groups/` (the kanban board), `/templates/`, "
         "`/tags/`, `/categories/` and `/events/` (calendar events) are workspace content managed "
         "with `create_posts`. `/brand-voice/` reads (`create_posts` or `manage_workspace_settings`) "
@@ -166,6 +172,8 @@ api.add_router("/signatures", signatures_router)
 api.add_router("/approvals", approvals_router)
 api.add_router("/queues", queues_router)
 api.add_router("/slots", slots_router)
+api.add_router("/best-times", best_times_router)
+api.add_router("/evergreen", evergreen_router)
 api.add_router("/ideas", ideas_router)
 api.add_router("/idea-groups", idea_groups_router)
 api.add_router("/templates", templates_router)
@@ -393,6 +401,8 @@ _RESOURCE_SEGMENTS = {
     "approvals": "approvals",
     "queues": "queues",
     "slots": "slots",
+    "best-times": "best_times",
+    "evergreen": "evergreen",
     "ideas": "ideas",
     "idea-groups": "idea_groups",
     "templates": "templates",

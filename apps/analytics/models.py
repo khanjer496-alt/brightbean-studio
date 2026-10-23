@@ -160,3 +160,39 @@ class EngagementAlert(models.Model):
 
     def __str__(self) -> str:
         return f"{self.platform_post_id}: {self.engagement:g} vs typical {self.baseline:g}"
+
+
+class BestTimeSnapshot(models.Model):
+    """An account's weekday x hour posting scores, recomputed daily.
+
+    One row per account (the cache): ``apps.analytics.best_times`` fills it from
+    the account's own published posts when there are enough, otherwise from the
+    network's industry-average windows, and ``basis`` says which. ``scores`` and
+    ``counts`` are flat lists of 168 numbers indexed ``weekday * 24 + hour``
+    (0 = Monday, hour in ``timezone``): a 0-100 score, and how many of the
+    account's posts landed in that cell.
+    """
+
+    class Basis(models.TextChoices):
+        POSTS = "posts", "Your posts"
+        DEFAULTS = "defaults", "Industry defaults"
+
+    social_account = models.OneToOneField(
+        "social_accounts.SocialAccount",
+        on_delete=models.CASCADE,
+        related_name="best_time_snapshot",
+    )
+    basis = models.CharField(max_length=10, choices=Basis.choices)
+    sample_size = models.PositiveIntegerField(
+        default=0, help_text="Posts the scores were learned from (0 for defaults)."
+    )
+    timezone = models.CharField(max_length=63, help_text="The workspace timezone the hours are in.")
+    scores = models.JSONField(default=list)
+    counts = models.JSONField(default=list)
+    computed_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "analytics_best_time_snapshot"
+
+    def __str__(self) -> str:
+        return f"{self.social_account_id} best times ({self.basis}, n={self.sample_size})"

@@ -1,0 +1,12 @@
+<div x-data="{ open: true }" x-show="open" x-cloak
+     class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4"
+     role="dialog" aria-modal="true" aria-labelledby="eg-added-title">
+    <div class="w-full max-w-md rounded-t-2xl sm:rounded-2xl bg-white border border-stone-200 p-5">
+        <h2 id="eg-added-title" class="text-base font-semibold text-stone-900">Added to evergreen</h2>
+        <p class="mt-1 text-sm text-stone-500" role="status">It can go out again after {{ item.interval_days }} day{{ item.interval_days|pluralize }}, when a queue slot is free.</p>
+        <div class="mt-4 flex items-center justify-end gap-2">
+            <button type="button" class="text-sm text-stone-500 hover:text-stone-700 py-2 px-3 cursor-pointer" @click="open = false; $el.closest('[role=dialog]').parentElement.replaceChildren()">Close</button>
+            <a href="{% url 'calendar:evergreen_detail' workspace_id=workspace.id item_id=item.id %}" class="btn-brand text-sm py-2 px-4">View in library</a>
+        </div>
+    </div>
+</div>

@@ -199,6 +199,10 @@ Usage: {% include "social_accounts/partials/_account_card.html" with account=acc
             <p class="text-xs text-stone-400 mt-0.5">Set recurring time slots for when queued posts are automatically published.</p>
         </div>
         {% include "social_accounts/partials/_posting_slots_grid.html" with account=account workspace_id=workspace_id %}
+        <div hx-get="{% url 'calendar:best_times_panel' workspace_id=workspace_id %}?social_account_id={{ account.id }}"
+             hx-trigger="load" hx-swap="outerHTML">
+            <p class="mt-5 text-xs text-stone-400">Loading best times…</p>
+        </div>
     </div>
     {% endif %}
 </div>

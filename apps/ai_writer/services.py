@@ -408,6 +408,34 @@ def improve_caption(ctx: AIContext, caption: str, mode: str, *, language: str = 
     return _fit_to_account(ctx, run, text, tightest) if tightest else text
 
 
+def vary_caption(ctx: AIContext, caption: str, account) -> str:
+    """Reword a post that is going out again, so a repeat doesn't read like a copy.
+
+    Keeps the meaning, facts, links, @mentions and hashtags; changes the
+    phrasing. Fitted to ``account``'s character limit like every other action.
+    """
+    caption = _clip(caption, MAX_CAPTION_CHARS)
+    if not caption:
+        raise ValueError("There is no caption to reword.")
+    # The new wording, plus a shorten pass if it comes back too long.
+    run = _start(ctx, max_calls=2)
+    text = _text(
+        _run(
+            ctx,
+            run,
+            action="vary",
+            prompt=(
+                f"Reword this social media post for {account.get_platform_display()}. It has been posted before, so "
+                "use fresh phrasing and a different opening line while keeping the same meaning and facts. Keep "
+                f"every link, @mention and hashtag exactly as written. Keep it within {account.char_limit} "
+                f"characters.\n\n<draft>\n{_escape_tags(caption)}\n</draft>"
+            ),
+            schema=_TEXT_SCHEMA,
+        )
+    )
+    return _fit_to_account(ctx, run, text, account)
+
+
 def summarize_report(ctx: AIContext, figures: str, *, period: str, top_posts: list[str]) -> str:
     """Write "what changed and what to do next" for a client report.
 

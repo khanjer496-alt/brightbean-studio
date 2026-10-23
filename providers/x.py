@@ -81,6 +81,7 @@ from .types import (
     MediaType,
     MentionSuggestion,
     OAuthTokens,
+    PeakWindow,
     PostSetting,
     PostType,
     PublishContent,
@@ -263,6 +264,15 @@ class XProvider(SocialProvider):
     caption_counting = "weighted"
 
     media_rules = {PostType.IMAGE: _IMAGE_RULES, PostType.VIDEO: _VIDEO_RULES}
+
+    # Source: https://sproutsocial.com/insights/best-times-to-post-on-social-media/ (published 2026-03-31; checked 2026-10-24):
+    # Mon 2-3pm, 5pm; Tue-Thu 12-6pm. Hours are the audience's local time; industry averages, not your audience.
+    best_time_source = "Sprout Social study, Mar 2026"
+    best_time_windows = (
+        PeakWindow(days=(1, 2, 3), hours=(12, 13, 14)),
+        PeakWindow(days=(1, 2, 3), hours=(15, 16, 17)),
+        PeakWindow(days=(0,), hours=(14, 17)),
+    )
 
     writing_style = (
         "Short and punchy: lead with the point, plain words, at most one or two hashtags. "

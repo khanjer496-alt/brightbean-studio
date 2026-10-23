@@ -953,6 +953,8 @@ Tools added to close the coverage gaps (each is the twin of a REST route above a
 | `add_post_to_queue` / `remove_from_queue` | Schedule a post into the next free slot / take it out | `create_posts` + `publish_directly` / `create_posts` |
 | `list_posting_slots` / `find_next_free_slot` | Weekly posting slots / the account's next open times | — |
 | `create_posting_slot` / `update_posting_slot` / `delete_posting_slot` | Manage an account's posting slots | `manage_social_accounts` |
+| `get_best_times` / `apply_best_times` | An account's best times to post (own posts or industry defaults) / make them its posting slots | — / `manage_social_accounts` |
+| `list_evergreen_items` / `add_to_evergreen` / `pause_evergreen_item` / `remove_from_evergreen` | The evergreen library, re-posted into empty queue slots | `create_posts` |
 | `list_ideas` / `get_idea` / `create_idea` / `update_idea` / `delete_idea` | Ideas kanban board | `create_posts` |
 | `list_idea_groups` / `create_idea_group` / `delete_idea_group` | Kanban columns | `create_posts` |
 | `list_templates` / `get_template` / `create_template` / `update_template` / `delete_template` | Post templates | reads open; writes `create_posts` |

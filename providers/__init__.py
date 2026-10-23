@@ -26,7 +26,7 @@ from .slack import SlackProvider
 from .telegram import TelegramProvider
 from .threads import ThreadsProvider
 from .tiktok import TikTokProvider
-from .types import MediaRules, PostSetting, PostType, ThreadCapability
+from .types import MediaRules, PeakWindow, PostSetting, PostType, ThreadCapability
 from .x import XProvider
 from .youtube import YouTubeProvider
 
@@ -141,6 +141,38 @@ def writing_style_for(platform: str) -> str:
     if provider_cls is None:
         return ""
     return provider_cls.writing_style
+
+
+# Used for a network that declares no windows of its own, or whose studies
+# could not be verified (YouTube, Bluesky, Mastodon as of 2026-10-24): weekday
+# late morning to early afternoon, where the 2026 Sprout Social
+# (https://sproutsocial.com/insights/best-times-to-post-on-social-media/) and
+# Buffer (https://buffer.com/resources/best-time-to-post-social-media/) studies
+# overlap across networks. Deliberately broad and labelled "general" in the UI.
+DEFAULT_BEST_TIME_WINDOWS: tuple[PeakWindow, ...] = (
+    PeakWindow(days=(1, 2, 3), hours=(10, 11, 12, 13)),
+    PeakWindow(days=(0, 4), hours=(11, 12)),
+)
+
+
+def best_time_windows_for(platform: str) -> tuple[PeakWindow, ...]:
+    """When ``platform``'s audience is most active, best first (industry averages).
+
+    Read off the provider class (``SocialProvider.best_time_windows``) like
+    ``writing_style_for``; a network that declares none gets
+    ``DEFAULT_BEST_TIME_WINDOWS``.
+    """
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    windows = provider_cls.best_time_windows if provider_cls is not None else ()
+    return windows or DEFAULT_BEST_TIME_WINDOWS
+
+
+def best_time_source_for(platform: str) -> str:
+    """The study ``platform``'s windows come from, or "" when it uses the general defaults."""
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    if provider_cls is None or not provider_cls.best_time_windows:
+        return ""
+    return provider_cls.best_time_source
 
 
 def thread_capability_for(platform: str) -> ThreadCapability:

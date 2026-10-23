@@ -891,6 +891,143 @@ _tool(
 
 
 # ---------------------------------------------------------------------------
+# Best time to post and evergreen recycling
+# ---------------------------------------------------------------------------
+
+_tool(
+    "get_best_times",
+    (
+        "Get when an account's posts do best: its top weekday and hour combinations (day_of_week 0=Monday…6=Sunday, "
+        "wall-clock time in the workspace timezone) and the 7x24 score grid behind them. `basis` is 'posts' when "
+        "learned from the account's own published posts, or 'defaults' (industry averages) when it has too few posts "
+        "with results; say which when you tell the user. Use it to choose a publish time or before apply_best_times. "
+        "`grid_posts` gives how many posts each cell rests on; treat cells with 1-2 posts as low confidence. "
+        "`count` 1-14 (default 5). The account must be in the key's allowlist."
+    ),
+    ops.get_best_times,
+    lambda a: {"_args": (_uuid_arg(a, "social_account_id", required=True), a.get("count", 5))},
+    properties={
+        "social_account_id": _uuid_prop("Must be in the key's allowlist."),
+        "count": {"type": "integer", "minimum": 1, "maximum": 14, "default": 5},
+    },
+    required=["social_account_id"],
+    read_only=True,
+)
+
+_tool(
+    "apply_best_times",
+    (
+        "Make an account's best times its weekly posting slots. mode 'replace' (default) swaps the existing slots for "
+        "the suggestions, 'add' keeps them and adds the missing ones. Posts that already have a time keep it. Call "
+        "with preview true first to see what would be added and removed without changing anything, and confirm with "
+        "the user before replacing. Needs manage_social_accounts."
+    ),
+    ops.apply_best_times,
+    lambda a: {
+        "social_account_id": _uuid_arg(a, "social_account_id", required=True),
+        "count": a.get("count", 5),
+        "mode": a.get("mode", "replace"),
+        "preview": bool(a.get("preview", False)),
+    },
+    properties={
+        "social_account_id": _uuid_prop(),
+        "count": {"type": "integer", "minimum": 1, "maximum": 14, "default": 5},
+        "mode": {"type": "string", "enum": ["replace", "add"], "default": "replace"},
+        "preview": {"type": "boolean", "default": False, "description": "Report the change without writing it."},
+    },
+    required=["social_account_id"],
+)
+
+_tool(
+    "list_evergreen_items",
+    (
+        "List the evergreen library: content that is re-posted into empty queue slots, with its category, minimum "
+        "interval in days, repeat count and limit, whether it is paused and when it last went out. Filter by account, "
+        "category or paused. Needs create_posts. Paginated."
+    ),
+    ops.list_evergreen,
+    lambda a: {
+        "social_account_id": _uuid_arg(a, "social_account_id"),
+        "category_id": _uuid_arg(a, "category_id"),
+        "paused": a.get("paused"),
+        **_page(a),
+    },
+    properties={
+        "social_account_id": _uuid_prop(),
+        "category_id": _uuid_prop(),
+        "paused": {"type": "boolean", "description": "true for paused items only, false for active only."},
+        **_list_props(),
+    },
+    read_only=True,
+)
+
+
+def _add_evergreen_args(a: dict) -> dict[str, Any]:
+    from pydantic import ValidationError
+
+    from apps.api.schemas import AddEvergreenRequest
+
+    try:
+        payload = AddEvergreenRequest.model_validate(a)
+    except ValidationError as exc:
+        err = exc.errors()[0]
+        raise JsonRpcError(INVALID_PARAMS, f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}") from exc
+    return {"_args": (payload,)}
+
+
+_tool(
+    "add_to_evergreen",
+    (
+        "Add content to the evergreen library so it is re-posted into empty queue slots: give exactly one of post_id "
+        "(a published post; one item per published channel, or only social_account_id), template_id or idea_id (both "
+        "need social_account_id). Options: interval_days (never more often than this, default 30), max_repeats (empty "
+        "for no limit), category_id or category_name (a new name creates it, e.g. 'Evergreen: Tips'), vary_with_ai "
+        "(reword with the AI writer and brand voice; the original is the fallback) and pre_approved (repeats skip the "
+        "approval workflow; needs approve_posts). 409 if the post is already in the library for that channel. Needs "
+        "create_posts."
+    ),
+    ops.add_evergreen,
+    _add_evergreen_args,
+    properties={
+        "post_id": _uuid_prop(),
+        "template_id": _uuid_prop(),
+        "idea_id": _uuid_prop(),
+        "social_account_id": _uuid_prop(),
+        "category_id": _uuid_prop(),
+        "category_name": _text_prop(max_length=100),
+        "interval_days": {"type": "integer", "minimum": 1, "maximum": 3650, "default": 30},
+        "max_repeats": {"type": "integer", "minimum": 1, "maximum": 1000},
+        "vary_with_ai": {"type": "boolean", "default": False},
+        "pre_approved": {"type": "boolean", "default": False},
+    },
+    idempotent=True,
+)
+
+_tool(
+    "pause_evergreen_item",
+    (
+        "Pause an evergreen item so it is skipped when queues are filled, or resume it with paused false. Find ids "
+        "with list_evergreen_items. Needs create_posts."
+    ),
+    ops.update_evergreen,
+    lambda a: {
+        "_args": (_uuid_arg(a, "item_id", required=True), {"is_paused": bool(a.get("paused", True))}),
+    },
+    properties={"item_id": _uuid_prop(), "paused": {"type": "boolean", "default": True}},
+    required=["item_id"],
+)
+
+_tool(
+    "remove_from_evergreen",
+    "Take an item out of the evergreen library. Posts already made from it stay. Needs create_posts.",
+    ops.remove_evergreen,
+    lambda a: {"_args": (_uuid_arg(a, "item_id", required=True),)},
+    properties={"item_id": _uuid_prop()},
+    required=["item_id"],
+)
+
+
+# ---------------------------------------------------------------------------
 # Client reports
 # ---------------------------------------------------------------------------
 
