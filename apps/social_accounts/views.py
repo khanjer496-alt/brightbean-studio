@@ -76,7 +76,11 @@ def _get_configured_platforms(org_id):
     # we register a per-instance OAuth app on first connect and persist it in
     # MastodonAppRegistration.
     for platform, provider_cls in PROVIDER_REGISTRY.items():
-        if provider_cls().auth_type in (AuthType.SESSION, AuthType.INSTANCE_OAUTH):
+        # ``user_supplied_credentials``: the customer brings their own developer
+        # app (X) and enters its credentials on the platform's connect form.
+        if provider_cls().auth_type in (AuthType.SESSION, AuthType.INSTANCE_OAUTH) or (
+            provider_cls.user_supplied_credentials
+        ):
             configured.add(platform)
 
     return configured
@@ -271,13 +275,17 @@ def connect_platform(request, workspace_id):
     if connect_url_name:
         return redirect(connect_url_name, workspace_id=workspace_id)
 
-    # Standard OAuth flow
+    return _start_oauth(request, workspace_id, platform)
+
+
+def _start_oauth(request, workspace_id, platform):
+    """Send the user to ``platform``'s authorization page (state, nonce and PKCE verifier set up)."""
     provider = _get_provider_for_platform(platform, request.org.id)
     apply_analytics_scope_flag(provider, platform)
     nonce = secrets.token_urlsafe(32)
     state = _sign_state(workspace_id, platform, request.user.id, nonce)
 
-    # PKCE verifier (e.g. TikTok); round-trips via the session alongside the nonce.
+    # PKCE verifier (e.g. TikTok, X); round-trips via the session alongside the nonce.
     code_verifier = issue_pkce_verifier(provider)
 
     # Store nonce in session to prevent replay
@@ -366,7 +374,10 @@ def oauth_callback(request, platform):
         if platform == PlatformCredential.Platform.MASTODON:
             extra_creds = _resolve_mastodon_extra_creds(session_data)
 
-        provider = _get_provider_for_platform(platform, request.org.id, **extra_creds)
+        # The workspace's organization, not ``request.org``: this URL names no
+        # workspace, so the middleware cannot say which of the user's organizations
+        # the connection is for, and X's app credentials belong to one of them.
+        provider = _get_provider_for_platform(platform, ws_membership.workspace.organization_id, **extra_creds)
         redirect_uri = redirect_uri_from_request(request)
         tokens = provider.exchange_code(code, redirect_uri, **pkce_kwargs(session_data.get("code_verifier")))
 
@@ -481,6 +492,7 @@ def oauth_callback(request, platform):
             refresh_token=tokens.refresh_token,
             expires_in=tokens.expires_in,
             instance_url=extra_creds.get("instance_url", ""),
+            platform_data=(profile.extra or {}).get("account_data"),
         )
         messages.success(request, f"Connected {profile.name} successfully.")
 
@@ -822,6 +834,73 @@ def connect_telegram(request, workspace_id):
     codes.pop(str(workspace_id), None)
     request.session[TELEGRAM_CODE_SESSION_KEY] = codes
     return redirect("calendar:calendar", workspace_id=workspace_id)
+
+
+# ------------------------------------------------------------------
+# X Connect (the customer's own developer app)
+# ------------------------------------------------------------------
+
+
+@csp_update(FORM_ACTION="'self' https:")
+@login_required
+@require_permission("manage_social_accounts")
+@ratelimit(key="user", rate="20/m", method="POST", block=True)
+def connect_x(request, workspace_id):
+    """Collect the customer's own X app credentials, then start OAuth 2.0 + PKCE against that app.
+
+    X bills API use to the owner of the developer app, so there are no platform-wide
+    credentials: the Client ID and Secret are stored as the organisation's encrypted
+    ``PlatformCredential``. The secret is never sent back to the page; leaving it blank
+    keeps the saved one.
+    """
+    platform = PlatformCredential.Platform.X
+    saved = PlatformCredential.objects.for_org(request.org.id).filter(platform=platform).first()
+    saved_credentials = dict(saved.credentials) if saved else {}
+
+    def render_form(client_id=""):
+        return render(
+            request,
+            "social_accounts/x_connect.html",
+            {
+                "workspace_id": workspace_id,
+                "callback_url": _build_redirect_uri(request, platform),
+                "client_id": client_id or saved_credentials.get("client_id", ""),
+                "has_secret": bool(saved_credentials.get("client_secret")),
+            },
+        )
+
+    if request.method == "GET":
+        return render_form()
+
+    client_id = request.POST.get("client_id", "").strip()
+    client_secret = request.POST.get("client_secret", "").strip() or saved_credentials.get("client_secret", "")
+    if not client_id or not client_secret:
+        messages.error(request, "Enter the Client ID and Client Secret of your X app.")
+        return render_form(client_id)
+
+    try:
+        check_can_add_channel(request.org)
+    except PlanLimitError as exc:
+        messages.error(request, exc.message)
+        return render_form(client_id)
+
+    credentials = {"client_id": client_id, "client_secret": client_secret}
+    if (
+        saved_credentials.get("client_id") not in (None, client_id)
+        and SocialAccount.objects.filter(workspace__organization=request.org, platform=platform).exists()
+    ):
+        # Tokens belong to the app that issued them: switching apps would break every connected X account.
+        messages.error(
+            request,
+            "X accounts are already connected through your current X app. Disconnect them before using another app.",
+        )
+        return render_form(client_id)
+    if saved is None:
+        PlatformCredential.objects.create(organization=request.org, platform=platform, credentials=credentials)
+    elif saved_credentials != credentials:
+        saved.credentials = credentials
+        saved.save()
+    return _start_oauth(request, workspace_id, platform)
 
 
 # ------------------------------------------------------------------
@@ -1202,6 +1281,7 @@ def _create_or_update_account(
     facebook_user_token_expires_at=None,
     messaging_access=None,
     authorizing_user=None,
+    platform_data=None,
 ):
     """Create or update a SocialAccount from OAuth results."""
     token_expires_at = None
@@ -1209,6 +1289,8 @@ def _create_or_update_account(
         token_expires_at = timezone.now() + timedelta(seconds=expires_in)
 
     analytics_defaults = {}
+    if platform_data is not None:
+        analytics_defaults["platform_data"] = platform_data
     if platform == "youtube":
         from apps.organizations.models import Organization
 

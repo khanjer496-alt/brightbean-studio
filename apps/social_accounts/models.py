@@ -69,6 +69,11 @@ class SocialAccount(models.Model):
     analytics_checked_at = models.DateTimeField(blank=True, null=True)
     analytics_credentials_version = models.PositiveIntegerField(default=0)
 
+    # What the platform told us about the account when it was connected and a
+    # provider needs later (X Premium raises the post length). Set from
+    # ``AccountProfile.extra["account_data"]``; empty for platforms that need none.
+    platform_data = models.JSONField(default=dict, blank=True)
+
     # Instance URL for Mastodon and Bluesky PDS
     instance_url = models.URLField(max_length=500, blank=True, default="")
 
@@ -405,11 +410,14 @@ class SocialAccount(models.Model):
         limit = self.PLATFORM_CHAR_LIMITS.get(self.platform)
         if limit is not None:
             return limit
-        # A platform with no entry above states its own limit on the provider.
+        # A platform with no entry above states its own limit on the provider,
+        # which may raise it for this account (X Premium).
         from providers import PROVIDER_REGISTRY
 
         provider_cls = PROVIDER_REGISTRY.get(self.platform)
-        return provider_cls().max_caption_length if provider_cls else 2200
+        if provider_cls is None:
+            return 2200
+        return provider_cls.char_limit_for_account(self) or provider_cls().max_caption_length
 
     @property
     def post_settings(self) -> list[dict]:
@@ -591,6 +599,7 @@ class SocialAccount(models.Model):
             "discord": "dc",
             "slack": "sl",
             "reddit": "rd",
+            "x": "x",
         }
         return icons.get(self.platform, self.platform[:2])
 

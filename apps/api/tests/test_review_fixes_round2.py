@@ -336,11 +336,11 @@ class TestPlatformLimitKeysMatchChoices:
         fake = SocialAccount(platform="facebook")
         assert resolve_platform_limit(fake) == 200
 
-    def test_dead_twitter_x_keys_are_gone(self):
-        # We never had Twitter/X in PlatformCredential.Platform; those
-        # keys were dead code that should not survive cleanup.
+    def test_dead_twitter_key_is_gone(self):
+        # The platform is "x" (PlatformCredential.Platform.X); "twitter" was
+        # never a platform value and must not survive as dead code.
         assert "twitter" not in PLATFORM_DAILY_POST_LIMIT
-        assert "x" not in PLATFORM_DAILY_POST_LIMIT
+        assert "x" in PLATFORM_DAILY_POST_LIMIT
 
     def test_every_key_in_map_is_a_real_platform_choice(self):
         from apps.credentials.models import PlatformCredential
