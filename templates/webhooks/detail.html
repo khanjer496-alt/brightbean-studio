@@ -1,0 +1,114 @@
+{% extends "layouts/workspace_settings.html" %}
+{% block title %}Webhook endpoint - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
+{% block content %}
+<div class="max-w-3xl">
+    <a href="{% url 'webhooks:list' workspace_id=workspace.id %}" class="inline-flex items-center min-h-11 text-sm underline text-[var(--text-secondary)]">&larr; Webhooks</a>
+    <h2 class="text-xl font-semibold mb-2 break-all text-[var(--text-primary)]">{{ endpoint.url }}</h2>
+
+    {% if endpoint.disabled_at %}
+    <p role="alert" class="alert-error mb-6">
+        {{ endpoint.disabled_reason }} Fix the receiver, then tick &ldquo;Send events to this endpoint&rdquo; below and save.
+    </p>
+    {% endif %}
+
+    {% if new_secret %}
+    <section aria-labelledby="secret-heading" class="alert-info mb-8">
+        <h3 id="secret-heading" class="text-sm font-semibold mb-1">Your signing secret</h3>
+        <p class="mb-2">Copy it now. For your security it is not shown again; rotate it if you lose it.</p>
+        <code class="block p-3 font-mono text-sm break-all rounded-lg select-all bg-[var(--surface-0)] text-[var(--text-primary)]">{{ new_secret }}</code>
+    </section>
+    {% endif %}
+
+    <form method="POST" action="{% url 'webhooks:update' workspace_id=workspace.id endpoint_id=endpoint.id %}" class="flex flex-col gap-6 mb-8">
+        {% csrf_token %}
+        {% include "webhooks/_form_fields.html" %}
+        <div>
+            <button type="submit"
+                    class="btn-primary-hover min-h-11 px-5 py-2 text-sm font-medium text-white rounded-full cursor-pointer bg-[var(--primary)]">
+                Save changes
+            </button>
+        </div>
+    </form>
+
+    <section aria-labelledby="actions-heading" class="mb-10 p-4 rounded-lg border border-[var(--border)] bg-[var(--surface-0)]">
+        <h3 id="actions-heading" class="text-sm font-semibold mb-3 text-[var(--text-primary)]">Secret and testing</h3>
+        <p class="text-xs mb-4 text-[var(--text-tertiary)]">
+            Signing secret ends in <span class="font-mono">&hellip;{{ endpoint.secret_hint }}</span>.
+        </p>
+        <div class="flex flex-wrap gap-3">
+            <form method="POST" action="{% url 'webhooks:test' workspace_id=workspace.id endpoint_id=endpoint.id %}">
+                {% csrf_token %}
+                <button type="submit" class="btn-neutral min-h-11 px-5 py-2 text-sm font-medium rounded-full cursor-pointer bg-[var(--neutral-100)] text-[var(--text-primary)]">
+                    Send test event
+                </button>
+            </form>
+            <form method="POST" action="{% url 'webhooks:rotate_secret' workspace_id=workspace.id endpoint_id=endpoint.id %}">
+                {% csrf_token %}
+                <button type="submit" class="btn-neutral min-h-11 px-5 py-2 text-sm font-medium rounded-full cursor-pointer bg-[var(--neutral-100)] text-[var(--text-primary)]">
+                    Rotate secret
+                </button>
+            </form>
+            <form method="POST" action="{% url 'webhooks:delete' workspace_id=workspace.id endpoint_id=endpoint.id %}">
+                {% csrf_token %}
+                <button type="submit" class="btn-danger-soft min-h-11 px-5 py-2 text-sm font-medium rounded-full cursor-pointer bg-[var(--error-50)] text-[var(--error-700)]">
+                    Delete endpoint
+                </button>
+            </form>
+        </div>
+    </section>
+
+    <section aria-labelledby="log-heading">
+        <h3 id="log-heading" class="text-base font-semibold mb-1 text-[var(--text-primary)]">Recent deliveries</h3>
+        <p class="text-xs mb-4 text-[var(--text-tertiary)]">The last {{ delivery_log_limit }}, kept for 30 days. Failed deliveries are retried after 1 minute, 5 minutes, 30 minutes, 2 hours and 12 hours.</p>
+        {% for delivery in deliveries %}
+        <details class="mb-2 rounded-lg border border-[var(--border)] bg-[var(--surface-0)]">
+            <summary class="flex flex-wrap items-center gap-x-3 gap-y-1 min-h-11 px-4 py-2 cursor-pointer">
+                {% if delivery.status == "delivered" %}
+                <span class="px-2 py-0.5 text-xs rounded-full bg-[var(--success-50)] text-[var(--success-700)]">Delivered</span>
+                {% elif delivery.status == "failed" %}
+                <span class="px-2 py-0.5 text-xs rounded-full bg-[var(--error-50)] text-[var(--error-700)]">Failed</span>
+                {% else %}
+                <span class="px-2 py-0.5 text-xs rounded-full bg-[var(--warning-50)] text-[var(--warning-700)]">Pending</span>
+                {% endif %}
+                <span class="font-mono text-xs text-[var(--text-primary)]">{{ delivery.event_type }}</span>
+                <span class="text-xs text-[var(--text-secondary)]">
+                    {% if delivery.last_status_code %}HTTP {{ delivery.last_status_code }}{% else %}No response{% endif %}
+                    {% if delivery.last_duration_ms is not None %}&middot; {{ delivery.last_duration_ms }} ms{% endif %}
+                    &middot; {{ delivery.attempts }} attempt{{ delivery.attempts|pluralize }}
+                </span>
+                <span class="text-xs text-[var(--text-tertiary)]">{{ delivery.created_at|timesince }} ago</span>
+            </summary>
+            <div class="px-4 pb-4 flex flex-col gap-3">
+                {% if delivery.last_error %}<p class="text-xs text-[var(--error-700)]">{{ delivery.last_error }}</p>{% endif %}
+                {% if delivery.status == "pending" and delivery.next_attempt_at %}
+                <p class="text-xs text-[var(--text-secondary)]">Next attempt {{ delivery.next_attempt_at|timeuntil }} from now.</p>
+                {% endif %}
+                <p class="font-mono text-xs break-all text-[var(--text-tertiary)]">Delivery {{ delivery.id }}</p>
+                <div>
+                    <h4 class="text-xs font-semibold mb-1 text-[var(--text-primary)]">Request body</h4>
+                    <pre tabindex="0" class="p-3 overflow-x-auto text-xs rounded-lg bg-[var(--surface-1)] text-[var(--text-primary)]">{{ delivery.payload_pretty }}</pre>
+                </div>
+                <div>
+                    <h4 class="text-xs font-semibold mb-1 text-[var(--text-primary)]">Response body</h4>
+                    {% if delivery.response_body %}
+                    <pre tabindex="0" class="p-3 overflow-x-auto text-xs rounded-lg bg-[var(--surface-1)] text-[var(--text-primary)]">{{ delivery.response_body }}</pre>
+                    {% else %}
+                    <p class="text-xs text-[var(--text-tertiary)]">Empty.</p>
+                    {% endif %}
+                </div>
+                <form method="POST" action="{% url 'webhooks:resend' workspace_id=workspace.id endpoint_id=endpoint.id delivery_id=delivery.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn-neutral min-h-11 px-5 py-2 text-sm font-medium rounded-full cursor-pointer bg-[var(--neutral-100)] text-[var(--text-primary)]">
+                        Resend
+                    </button>
+                </form>
+            </div>
+        </details>
+        {% empty %}
+        <p class="p-6 text-sm text-center rounded-lg border border-dashed border-[var(--border)] text-[var(--text-secondary)]">
+            Nothing has been sent to this endpoint yet. Use &ldquo;Send test event&rdquo; to try it.
+        </p>
+        {% endfor %}
+    </section>
+</div>
+{% endblock %}

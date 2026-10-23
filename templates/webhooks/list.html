@@ -1,0 +1,47 @@
+{% extends "layouts/workspace_settings.html" %}
+{% block title %}Webhooks - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
+{% block content %}
+<div class="max-w-3xl">
+    <div class="flex flex-wrap items-start justify-between gap-4 mb-2">
+        <h2 class="text-xl font-semibold text-[var(--text-primary)]">Webhooks</h2>
+        <a href="{% url 'webhooks:create' workspace_id=workspace.id %}"
+           class="btn-primary-hover inline-flex items-center min-h-11 px-5 py-2 text-sm font-medium text-white rounded-full bg-[var(--primary)]">
+            Add endpoint
+        </a>
+    </div>
+    <p class="text-sm mb-8 text-[var(--text-secondary)]">
+        Get a signed HTTPS request at your own server when something happens in {{ workspace.name }}: a post goes out or fails, an approval is decided, a message arrives. The webhook guide (<span class="font-mono">docs/agents/webhooks.md</span>) lists the payloads and shows how to check signatures.
+    </p>
+
+    {% if endpoints %}
+    <ul class="flex flex-col gap-3">
+        {% for endpoint in endpoints %}
+        <li>
+            <a href="{% url 'webhooks:detail' workspace_id=workspace.id endpoint_id=endpoint.id %}"
+               class="block p-4 rounded-lg border border-[var(--border)] bg-[var(--surface-0)] focus-ring">
+                <div class="flex flex-wrap items-center gap-2 mb-1">
+                    <span class="text-sm font-semibold break-all text-[var(--text-primary)]">{{ endpoint.url }}</span>
+                    {% if endpoint.is_enabled %}
+                    <span class="px-2 py-0.5 text-xs rounded-full bg-[var(--success-50)] text-[var(--success-700)]">Active</span>
+                    {% else %}
+                    <span class="px-2 py-0.5 text-xs rounded-full bg-[var(--warning-50)] text-[var(--warning-700)]">Off</span>
+                    {% endif %}
+                </div>
+                {% if endpoint.description %}
+                <p class="text-xs mb-1 text-[var(--text-secondary)]">{{ endpoint.description }}</p>
+                {% endif %}
+                <p class="text-xs text-[var(--text-tertiary)]">
+                    {{ endpoint.event_types|length }} event{{ endpoint.event_types|length|pluralize }}
+                    {% if endpoint.disabled_reason %} &middot; {{ endpoint.disabled_reason }}{% endif %}
+                </p>
+            </a>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="p-6 text-sm text-center rounded-lg border border-dashed border-[var(--border)] text-[var(--text-secondary)]">
+        No endpoints yet. Add one to start receiving events.
+    </p>
+    {% endif %}
+</div>
+{% endblock %}
