@@ -1,0 +1,189 @@
+{% extends "layouts/workspace_settings.html" %}
+{% block title %}Autonomy - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
+{% block content %}
+<div class="max-w-3xl">
+    <h2 class="text-xl font-semibold mb-2 text-[var(--text-primary)]">Autonomy</h2>
+    <p class="text-sm mb-8 text-[var(--text-secondary)]">
+        Decide how much agents and automations may do on their own here. People are never held back by these settings: they follow your roles and approval workflow. Everything an agent or automation does is recorded in <a class="underline" href="{% url 'autonomy:activity' workspace_id=workspace.id %}">Activity</a>, with the reason.
+    </p>
+
+    {% if messages %}
+    <div class="mb-6 space-y-2" role="status">
+        {% for message in messages %}<p class="text-sm rounded-lg border px-3 py-2 {% if message.tags == 'error' %}border-red-200 bg-red-50 text-red-800{% else %}border-emerald-200 bg-emerald-50 text-emerald-800{% endif %}">{{ message }}</p>{% endfor %}
+    </div>
+    {% endif %}
+
+    <section class="mb-10 rounded-xl border p-5 {% if policy.crisis_paused %}border-red-300 bg-red-50{% else %}border-stone-200 bg-white{% endif %}" aria-labelledby="crisis-title">
+        <h3 id="crisis-title" class="text-base font-semibold {% if policy.crisis_paused %}text-red-900{% else %}text-[var(--text-primary)]{% endif %}">Crisis pause</h3>
+        <p class="text-sm mt-1 mb-4 {% if policy.crisis_paused %}text-red-800{% else %}text-[var(--text-secondary)]{% endif %}">
+            {% if policy.crisis_paused %}
+            Crisis pause is <strong>on</strong>. Every autonomous action is stopped, and posts and replies already queued by agents or automations are held. Turn it off to let them continue.
+            {% else %}
+            One switch to stop every autonomous action immediately and hold what is already queued. Use it when something is happening in the world and nothing automated should go out. Posts your team scheduled are not affected.
+            {% endif %}
+        </p>
+        {% if can_pause %}
+        <form method="post" {% if not policy.crisis_paused %}x-data @submit="if (!confirm('Pause every autonomous action now? Queued automated posts and replies will be held until you resume.')) $event.preventDefault()"{% endif %}>
+            {% csrf_token %}
+            <input type="hidden" name="section" value="crisis">
+            {% if policy.crisis_paused %}
+            <input type="hidden" name="crisis_paused" value="0">
+            <button type="submit" class="px-5 py-2.5 text-sm font-semibold rounded-full cursor-pointer bg-white text-red-900 border border-red-300 hover:bg-red-100">Resume autonomous actions</button>
+            {% else %}
+            <input type="hidden" name="crisis_paused" value="1">
+            <button type="submit" class="px-5 py-2.5 text-sm font-semibold rounded-full cursor-pointer bg-red-600 text-white hover:bg-red-700">Pause all autonomous actions</button>
+            {% endif %}
+        </form>
+        {% else %}
+        <p class="text-xs text-[var(--text-tertiary)]">Only people who can approve posts can change crisis pause.</p>
+        {% endif %}
+    </section>
+
+    <form method="post" class="mb-10" aria-labelledby="levels-title">
+        {% csrf_token %}
+        <input type="hidden" name="section" value="levels">
+        <h3 id="levels-title" class="text-base font-semibold mb-1 text-[var(--text-primary)]">The dial</h3>
+        <p class="text-sm mb-5 text-[var(--text-secondary)]">One level per kind of action. The safe default is Draft only: agents prepare things and a person approves them.</p>
+        <div class="flex flex-col gap-6">
+            {% for row in rows %}
+            <fieldset class="rounded-xl border border-stone-200 bg-white p-4">
+                <legend class="px-1 text-sm font-semibold text-[var(--text-primary)]">{{ row.label }}</legend>
+                <p class="text-xs mb-3 text-[var(--text-tertiary)]">For example: {{ row.example }}</p>
+                <div class="flex flex-col gap-2">
+                    {% for option in row.options %}
+                    <label class="flex items-start gap-3 rounded-lg border border-stone-200 p-3 cursor-pointer has-[:checked]:border-stone-800 has-[:checked]:bg-stone-50">
+                        <input type="radio" name="{{ row.field }}" value="{{ option.value }}" class="mt-1" {% if row.value == option.value %}checked{% endif %} {% if not can_configure %}disabled{% endif %}>
+                        <span>
+                            <span class="block text-sm font-medium text-[var(--text-primary)]">{{ option.label }}</span>
+                            <span class="block text-xs text-[var(--text-secondary)]">{{ option.help }}</span>
+                        </span>
+                    </label>
+                    {% endfor %}
+                </div>
+            </fieldset>
+            {% endfor %}
+            <div>
+                <label for="undo_delay_minutes" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Undo window (minutes)</label>
+                <p id="undo_help" class="text-xs mb-2 text-[var(--text-tertiary)]">Autonomous posts and replies wait this long in “Going out soon” so someone can undo or hold them. 0 sends them straight away.</p>
+                <input id="undo_delay_minutes" name="undo_delay_minutes" type="number" min="0" max="60" value="{{ policy.undo_delay_minutes }}" aria-describedby="undo_help" class="form-input-styled text-sm w-28" {% if not can_configure %}disabled{% endif %}>
+            </div>
+        </div>
+        {% if can_configure %}<div class="mt-5"><button type="submit" class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer whitespace-nowrap bg-[var(--neutral-100)] text-[var(--text-primary)]">Save the dial</button></div>{% endif %}
+    </form>
+
+    <form method="post" class="mb-10" aria-labelledby="overrides-title">
+        {% csrf_token %}
+        <input type="hidden" name="section" value="overrides">
+        <h3 id="overrides-title" class="text-base font-semibold mb-1 text-[var(--text-primary)]">Per-account overrides</h3>
+        <p class="text-sm mb-5 text-[var(--text-secondary)]">Give a channel its own level. “Use workspace level” follows the dial above. Handy for letting one low-risk channel run on its own while the rest stay under review.</p>
+        {% if override_rows %}
+        <div class="flex flex-col gap-4">
+            {% for row in override_rows %}
+            <fieldset class="rounded-xl border border-stone-200 bg-white p-4">
+                <legend class="px-1 text-sm font-semibold text-[var(--text-primary)]">{{ row.account.account_name|default:row.account.account_handle }} <span class="font-normal text-[var(--text-tertiary)]">· {{ row.account.get_platform_display }}</span></legend>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {% for field in row.fields %}
+                    <div>
+                        <label for="{{ field.name }}" class="block text-xs font-medium mb-1 text-[var(--text-secondary)]">{{ field.label }}</label>
+                        <select id="{{ field.name }}" name="{{ field.name }}" class="form-input text-sm w-full" {% if not can_configure %}disabled{% endif %}>
+                            <option value="">Use workspace level</option>
+                            {% for value, label in field.options %}<option value="{{ value }}" {% if field.value == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+                        </select>
+                    </div>
+                    {% endfor %}
+                    <div>
+                        <label for="{{ row.cap_name }}" class="block text-xs font-medium mb-1 text-[var(--text-secondary)]">Autonomous posts per day</label>
+                        <input id="{{ row.cap_name }}" name="{{ row.cap_name }}" type="number" min="0" max="100" value="{{ row.cap_value }}" placeholder="Workspace limit" class="form-input text-sm w-full" {% if not can_configure %}disabled{% endif %}>
+                    </div>
+                </div>
+            </fieldset>
+            {% endfor %}
+        </div>
+        {% if can_configure %}<div class="mt-5"><button type="submit" class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer whitespace-nowrap bg-[var(--neutral-100)] text-[var(--text-primary)]">Save overrides</button></div>{% endif %}
+        {% else %}
+        <p class="text-sm text-[var(--text-tertiary)]">Connect a channel to give it its own level.</p>
+        {% endif %}
+    </form>
+
+    <form method="post" class="mb-10" aria-labelledby="guardrails-title">
+        {% csrf_token %}
+        <input type="hidden" name="section" value="guardrails">
+        <h3 id="guardrails-title" class="text-base font-semibold mb-1 text-[var(--text-primary)]">Guardrails</h3>
+        <p class="text-sm mb-5 text-[var(--text-secondary)]">At “Auto with guardrails”, an action that trips any check below is held as a draft for a person instead of going out. “Full auto” only applies the blocked phrases and crisis pause.</p>
+
+        <div class="flex flex-col gap-6">
+            <div>
+                <label for="blocked_phrases" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Blocked words and phrases</label>
+                <p id="blocked_help" class="text-xs mb-2 text-[var(--text-tertiary)]">One per line. Anything that contains one is refused outright, at every level except Off.</p>
+                <textarea id="blocked_phrases" name="blocked_phrases" rows="4" aria-describedby="blocked_help" class="form-input-styled text-sm resize-y" {% if not can_configure %}disabled{% endif %}>{{ blocked_phrases_text }}</textarea>
+            </div>
+
+            <fieldset class="rounded-xl border border-stone-200 bg-white p-4">
+                <legend class="px-1 text-sm font-semibold text-[var(--text-primary)]">Needs a person's review</legend>
+                <div class="flex flex-col gap-2">
+                    <label class="flex items-center gap-2 text-sm text-[var(--text-primary)]"><input type="checkbox" name="review_links" {% if policy.review_links %}checked{% endif %} {% if not can_configure %}disabled{% endif %}> Contains a link</label>
+                    <label class="flex items-center gap-2 text-sm text-[var(--text-primary)]"><input type="checkbox" name="review_mentions" {% if policy.review_mentions %}checked{% endif %} {% if not can_configure %}disabled{% endif %}> Mentions another account (@name)</label>
+                    <label class="flex items-center gap-2 text-sm text-[var(--text-primary)]"><input type="checkbox" name="review_prices" {% if policy.review_prices %}checked{% endif %} {% if not can_configure %}disabled{% endif %}> Prices, discounts or offers</label>
+                    <label class="flex items-center gap-2 text-sm text-[var(--text-primary)]"><input type="checkbox" name="review_sensitive" {% if policy.review_sensitive %}checked{% endif %} {% if not can_configure %}disabled{% endif %}> Health, financial or legal claims</label>
+                </div>
+            </fieldset>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                    <label for="max_posts_per_day" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Autonomous posts per account per day</label>
+                    <input id="max_posts_per_day" name="max_posts_per_day" type="number" min="0" max="100" value="{{ policy.max_posts_per_day }}" class="form-input-styled text-sm w-28" {% if not can_configure %}disabled{% endif %}>
+                </div>
+                <div>
+                    <label for="max_replies_per_day" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Autonomous replies per account per day</label>
+                    <input id="max_replies_per_day" name="max_replies_per_day" type="number" min="0" max="500" value="{{ policy.max_replies_per_day }}" class="form-input-styled text-sm w-28" {% if not can_configure %}disabled{% endif %}>
+                </div>
+            </div>
+
+            <fieldset class="rounded-xl border border-stone-200 bg-white p-4">
+                <legend class="px-1 text-sm font-semibold text-[var(--text-primary)]">Quiet hours</legend>
+                <label class="flex items-center gap-2 text-sm mb-3 text-[var(--text-primary)]"><input type="checkbox" name="quiet_hours_enabled" {% if policy.quiet_hours_enabled %}checked{% endif %} {% if not can_configure %}disabled{% endif %}> Hold anything that would go out during these hours ({{ workspace.effective_timezone }})</label>
+                <div class="flex flex-wrap items-center gap-3">
+                    <div>
+                        <label for="quiet_start" class="block text-xs mb-1 text-[var(--text-secondary)]">From</label>
+                        <input id="quiet_start" name="quiet_start" type="time" value="{{ policy.quiet_start|time:'H:i' }}" class="form-input text-sm" {% if not can_configure %}disabled{% endif %}>
+                    </div>
+                    <div>
+                        <label for="quiet_end" class="block text-xs mb-1 text-[var(--text-secondary)]">To</label>
+                        <input id="quiet_end" name="quiet_end" type="time" value="{{ policy.quiet_end|time:'H:i' }}" class="form-input text-sm" {% if not can_configure %}disabled{% endif %}>
+                    </div>
+                </div>
+            </fieldset>
+
+            <fieldset class="rounded-xl border border-stone-200 bg-white p-4">
+                <legend class="px-1 text-sm font-semibold text-[var(--text-primary)]">AI checks (optional)</legend>
+                <p class="text-xs mb-3 text-[var(--text-tertiary)]">Each check asks the AI assistant to read the text before it goes out. It counts against your plan's daily AI requests. If the AI can't be reached, the action is held rather than let through.</p>
+                <div class="flex flex-col gap-4">
+                    <div>
+                        <label class="flex items-center gap-2 text-sm text-[var(--text-primary)]"><input type="checkbox" name="ai_risk_check" {% if policy.ai_risk_check %}checked{% endif %} {% if not can_configure %}disabled{% endif %}> Risk check: hold risky or misleading wording</label>
+                        <label for="ai_risk_threshold" class="block text-xs mt-2 mb-1 text-[var(--text-secondary)]">Hold at a risk score of (0 to 1)</label>
+                        <input id="ai_risk_threshold" name="ai_risk_threshold" type="number" min="0" max="1" step="0.05" value="{{ policy.ai_risk_threshold }}" class="form-input text-sm w-28" {% if not can_configure %}disabled{% endif %}>
+                    </div>
+                    <div>
+                        <label class="flex items-center gap-2 text-sm text-[var(--text-primary)]"><input type="checkbox" name="ai_voice_check" {% if policy.ai_voice_check %}checked{% endif %} {% if not can_configure %}disabled{% endif %}> Brand voice check: hold text that drifts from your <a class="underline" href="{% url 'workspaces:brand_voice_settings' workspace_id=workspace.id %}">brand voice</a></label>
+                        <label for="ai_voice_threshold" class="block text-xs mt-2 mb-1 text-[var(--text-secondary)]">Hold at a drift score of (0 to 1)</label>
+                        <input id="ai_voice_threshold" name="ai_voice_threshold" type="number" min="0" max="1" step="0.05" value="{{ policy.ai_voice_threshold }}" class="form-input text-sm w-28" {% if not can_configure %}disabled{% endif %}>
+                    </div>
+                </div>
+            </fieldset>
+        </div>
+        {% if can_configure %}<div class="mt-5"><button type="submit" class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer whitespace-nowrap bg-[var(--neutral-100)] text-[var(--text-primary)]">Save guardrails</button></div>{% endif %}
+    </form>
+
+    <form method="post" aria-labelledby="clients-title">
+        {% csrf_token %}
+        <input type="hidden" name="section" value="clients">
+        <h3 id="clients-title" class="text-base font-semibold mb-1 text-[var(--text-primary)]">Client portal</h3>
+        <label class="flex items-start gap-2 text-sm text-[var(--text-primary)]">
+            <input type="checkbox" name="client_visible" class="mt-1" {% if policy.client_visible %}checked{% endif %} {% if not can_configure %}disabled{% endif %}>
+            <span>Show clients what was published or sent automatically. They see who did it, what and when. Guardrail details, held items and refusals stay private to your team.</span>
+        </label>
+        {% if can_configure %}<div class="mt-4"><button type="submit" class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer whitespace-nowrap bg-[var(--neutral-100)] text-[var(--text-primary)]">Save</button></div>
+        {% else %}<p class="mt-3 text-xs text-[var(--text-tertiary)]">Only workspace owners can change autonomy settings.</p>{% endif %}
+    </form>
+</div>
+{% endblock %}

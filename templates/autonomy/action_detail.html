@@ -1,0 +1,95 @@
+{% extends "base.html" %}
+{% load tz %}
+
+{% block title %}{{ action.actor_name }} - Activity - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
+
+{% block page_header %}
+<div class="flex flex-wrap items-center justify-between gap-2 mb-6">
+    <div>
+        <h1 class="text-base font-semibold text-stone-900">{{ action.actor_name }} · {{ action.get_action_type_display }}</h1>
+        <p class="text-sm text-stone-500 mt-1">{{ action.created_at|timezone:workspace.effective_timezone|date:"M j, Y H:i" }} · {{ action.get_actor_type_display }}{% if action.account_label %} · {{ action.account_label }}{% endif %}</p>
+    </div>
+    <a href="{% url 'autonomy:activity' workspace_id=workspace.id %}" class="text-sm text-stone-500 hover:text-stone-700">Back to Activity</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-3xl space-y-5">
+    {% if messages %}
+    <div class="space-y-2" role="status">
+        {% for message in messages %}<p class="text-sm rounded-lg border px-3 py-2 {% if message.tags == 'error' %}border-red-200 bg-red-50 text-red-800{% else %}border-emerald-200 bg-emerald-50 text-emerald-800{% endif %}">{{ message }}</p>{% endfor %}
+    </div>
+    {% endif %}
+
+    <section class="bg-white border border-stone-200 rounded-xl p-5" aria-labelledby="decision-title">
+        <h2 id="decision-title" class="text-sm font-semibold text-stone-900 mb-2">What happened</h2>
+        <div class="flex flex-wrap items-center gap-2 mb-3">
+            {% include "autonomy/partials/decision_badge.html" %}
+            {% if action.level %}<span class="inline-flex items-center rounded-full border border-stone-200 px-2 py-0.5 text-xs text-stone-600">Policy level: {{ action.level }}</span>{% endif %}
+            {% if action.ai_used %}<span class="inline-flex items-center rounded-full border border-stone-200 px-2 py-0.5 text-xs text-stone-600">AI used</span>{% endif %}
+            {% if action.risk_score is not None %}<span class="inline-flex items-center rounded-full border border-stone-200 px-2 py-0.5 text-xs text-stone-600">AI risk {{ action.risk_score|floatformat:2 }}</span>{% endif %}
+        </div>
+        <p class="text-sm text-stone-700 break-words">{{ action.summary|default:"Allowed by the workspace's autonomy policy." }}</p>
+        <p class="mt-2 text-xs text-stone-500">Operation: {{ action.operation }}</p>
+        {% if action.undone_at %}<p class="mt-2 text-sm text-stone-700">Undone {{ action.undone_at|timezone:workspace.effective_timezone|date:"M j, H:i" }}{% if action.undone_by %} by {{ action.undone_by.display_name }}{% endif %}.</p>{% endif %}
+        {% if action.review_outcome %}<p class="mt-2 text-sm text-stone-700">Reviewed: {{ action.review_outcome }}{% if action.reviewed_by %} by {{ action.reviewed_by.display_name }}{% endif %}.</p>{% endif %}
+        {% if action.platform_delete_result %}<p class="mt-2 text-sm text-stone-700">Delete from platform: {{ action.platform_delete_result }}</p>{% endif %}
+    </section>
+
+    {% if action.guardrail_results %}
+    <section class="bg-white border border-stone-200 rounded-xl p-5" aria-labelledby="checks-title">
+        <h2 id="checks-title" class="text-sm font-semibold text-stone-900 mb-2">Guardrail checks</h2>
+        <ul class="space-y-1.5">
+            {% for check in failed_checks %}
+            <li class="text-sm text-red-800"><span class="font-medium">Failed: {{ check.label }}</span> — {{ check.reason }}</li>
+            {% endfor %}
+            {% for check in passed_checks %}
+            <li class="text-sm text-stone-600"><span class="font-medium">Passed: {{ check.label }}</span>{% if check.reason %} — {{ check.reason }}{% endif %}</li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
+    {% if action.final_text %}
+    <section class="bg-white border border-stone-200 rounded-xl p-5" aria-labelledby="text-title">
+        <h2 id="text-title" class="text-sm font-semibold text-stone-900 mb-2">{% if diff %}Changed from the source{% else %}Text{% endif %}</h2>
+        {% if diff %}
+        <p class="text-sm leading-relaxed whitespace-pre-wrap break-words">{% for tok in diff %}{% if tok.k == 'same' %}<span class="text-stone-600">{{ tok.t }}</span>{% elif tok.k == 'add' %}<ins class="rounded px-0.5 bg-green-100 text-green-800 no-underline">{{ tok.t }}</ins>{% else %}<del class="rounded px-0.5 bg-red-100 text-red-800">{{ tok.t }}</del>{% endif %}{% endfor %}</p>
+        {% else %}
+        <p class="text-sm leading-relaxed whitespace-pre-wrap break-words text-stone-700">{{ action.final_text }}</p>
+        {% endif %}
+    </section>
+    {% endif %}
+
+    <section class="bg-white border border-stone-200 rounded-xl p-5" aria-labelledby="links-title">
+        <h2 id="links-title" class="text-sm font-semibold text-stone-900 mb-2">Open</h2>
+        <ul class="text-sm space-y-1">
+            {% if action.post_id %}<li><a href="{% url 'composer:compose_edit' workspace_id=workspace.id post_id=action.post_id %}" class="text-stone-700 underline hover:text-stone-900">The post</a></li>{% endif %}
+            {% if action.reply_id and action.reply %}<li><a href="{% url 'inbox:feed' workspace_id=workspace.id %}" class="text-stone-700 underline hover:text-stone-900">The conversation in the inbox</a></li>{% endif %}
+            {% if not action.post_id and not action.reply_id %}<li class="text-stone-500">Nothing was created.</li>{% endif %}
+        </ul>
+    </section>
+
+    <section class="flex flex-wrap items-center gap-2" aria-label="Actions">
+        {% if action.decision == "held" and not action.review_outcome %}
+            {% if can_review and can_release %}
+            <form method="post" action="{% url 'autonomy:action_run' workspace_id=workspace.id action_id=action.id verb='approve' %}">{% csrf_token %}<button type="submit" class="btn-brand text-sm py-2 px-4">Approve and schedule</button></form>
+            {% endif %}
+            {% if can_review %}
+            <form method="post" action="{% url 'autonomy:action_run' workspace_id=workspace.id action_id=action.id verb='dismiss' %}">{% csrf_token %}<button type="submit" class="px-4 py-2 text-sm font-semibold text-stone-700 border border-stone-200 rounded-full hover:bg-stone-50 cursor-pointer">Dismiss</button></form>
+            {% endif %}
+        {% endif %}
+        {% if action.is_pending_release and can_undo %}
+            <form method="post" action="{% url 'autonomy:action_run' workspace_id=workspace.id action_id=action.id verb='undo' %}">{% csrf_token %}<button type="submit" class="px-4 py-2 text-sm font-semibold text-red-700 border border-red-200 rounded-full hover:bg-red-50 cursor-pointer">Undo</button></form>
+            {% if action.held_at and not action.hold_released_at %}
+                {% if can_release %}<form method="post" action="{% url 'autonomy:action_run' workspace_id=workspace.id action_id=action.id verb='release' %}">{% csrf_token %}<button type="submit" class="px-4 py-2 text-sm font-semibold text-stone-700 border border-stone-200 rounded-full hover:bg-stone-50 cursor-pointer">Release</button></form>{% endif %}
+            {% else %}
+            <form method="post" action="{% url 'autonomy:action_run' workspace_id=workspace.id action_id=action.id verb='hold' %}">{% csrf_token %}<button type="submit" class="px-4 py-2 text-sm font-semibold text-stone-700 border border-stone-200 rounded-full hover:bg-stone-50 cursor-pointer">Hold</button></form>
+            {% endif %}
+        {% endif %}
+        {% if can_delete %}
+        <form method="post" action="{% url 'autonomy:action_run' workspace_id=workspace.id action_id=action.id verb='delete' %}" x-data @submit="if (!confirm('Delete this post from the platform? This cannot be undone.')) $event.preventDefault()">{% csrf_token %}<button type="submit" class="px-4 py-2 text-sm font-semibold text-red-700 border border-red-200 rounded-full hover:bg-red-50 cursor-pointer">Delete from platform</button></form>
+        {% endif %}
+    </section>
+</div>
+{% endblock %}

@@ -9,6 +9,7 @@ from django.views.decorators.http import require_GET, require_http_methods, requ
 
 from apps.approvals import services as approval_services
 from apps.approvals.models import ApprovalAction, PostComment
+from apps.autonomy.service import client_visible_actions
 from apps.common.htmx import toast_response
 from apps.composer.models import Post
 from apps.members.models import WorkspaceMembership
@@ -311,7 +312,7 @@ def portal_published(request):
 @portal_auth_required
 @require_GET
 def portal_activity(request):
-    """Client's own approval actions."""
+    """Client's own approval actions, and the automated activity the team chose to share."""
     workspace = request.portal_workspace
 
     actions = (
@@ -329,6 +330,7 @@ def portal_activity(request):
         {
             "workspace": workspace,
             "actions": actions,
+            "automated": list(client_visible_actions(workspace)),
         },
     )
 
