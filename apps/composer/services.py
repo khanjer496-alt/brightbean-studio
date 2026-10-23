@@ -742,19 +742,45 @@ def clean_post_settings(platform: str, settings: dict[str, Any] | None) -> dict[
     """``settings`` restricted to what ``platform`` declares, or ``ValueError``.
 
     The API and MCP take the same keys the composer's form does. An undeclared
-    key would be stored and silently ignored at publish time, so it is refused
-    where the caller can still fix it.
+    key would be stored and silently ignored at publish time, and a value of
+    the wrong type (``"false"`` for a checkbox) would publish wrongly, so both
+    are refused where the caller can still fix them.
     """
     from providers import post_settings_for
 
     if not settings:
         return {}
-    declared = {field.key for field in post_settings_for(platform)}
-    unknown = sorted(set(settings) - declared)
+    declared = {field.key: field for field in post_settings_for(platform)}
+    unknown = sorted(set(settings) - set(declared))
     if unknown:
         allowed = ", ".join(sorted(declared)) or "none"
         raise ValueError(f"Unknown post setting(s) {unknown} for {platform}; this platform accepts: {allowed}.")
-    return {key: value for key, value in settings.items() if value is not None and value != ""}
+    cleaned: dict[str, Any] = {}
+    for key, value in settings.items():
+        if value is None or value == "":
+            continue
+        if declared[key].kind == "checkbox":
+            if not isinstance(value, bool):
+                raise ValueError(f"Post setting {key!r} must be true or false.")
+        elif isinstance(value, str):
+            value = value.strip()
+        else:
+            raise ValueError(f"Post setting {key!r} must be a string.")
+        cleaned[key] = value
+    return cleaned
+
+
+def replace_post_settings(platform: str, platform_extra: dict | None, settings: dict[str, Any]) -> dict:
+    """``platform_extra`` with the keys ``platform`` declares replaced by ``settings``.
+
+    A declared key missing from ``settings`` is cleared; anything else already
+    stored (state the publisher keeps there) stays.
+    """
+    from providers import post_settings_for
+
+    declared = {field.key for field in post_settings_for(platform)}
+    kept = {key: value for key, value in (platform_extra or {}).items() if key not in declared}
+    return {**kept, **settings}
 
 
 def parse_post_settings(platform: str, get, account_id) -> dict:

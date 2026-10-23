@@ -343,3 +343,46 @@ class TestApiAndMcp:
         )
         assert "error" not in result, result
         assert PlatformPost.objects.get(social_account=reddit).platform_extra == {"subreddit": "python"}
+
+    def patch(self, client, post_id, **body):
+        return client.patch(f"/api/v1/posts/{post_id}", data=json.dumps(body), content_type="application/json")
+
+    def test_patch_replaces_the_settings_like_create_stores_them(self, api_client, reddit):
+        draft = self.create(api_client, reddit, post_settings={"subreddit": "python", "nsfw": True})
+        pp = PlatformPost.objects.get(social_account=reddit)
+        pp.platform_extra = {**pp.platform_extra, "publisher_state": "kept"}
+        pp.save()
+
+        response = self.patch(api_client, draft.json()["id"], post_settings={"subreddit": "django"})
+        assert response.status_code == 200, response.content
+        pp.refresh_from_db()
+        # Declared keys are replaced (nsfw cleared), the publisher's own state stays.
+        assert pp.platform_extra == {"subreddit": "django", "publisher_state": "kept"}
+        assert response.json()["platform_posts"][0]["post_settings"] == {"subreddit": "django"}
+
+    def test_patch_without_post_settings_leaves_them(self, api_client, reddit):
+        draft = self.create(api_client, reddit, post_settings={"subreddit": "python"})
+        assert self.patch(api_client, draft.json()["id"], caption="New").status_code == 200
+        assert PlatformPost.objects.get(social_account=reddit).platform_extra == {"subreddit": "python"}
+
+    def test_patch_refuses_unknown_keys_and_wrong_types(self, api_client, reddit):
+        draft = self.create(api_client, reddit, post_settings={"subreddit": "python"})
+        post_id = draft.json()["id"]
+        assert self.patch(api_client, post_id, post_settings={"board_id": "b"}).status_code == 422
+        response = self.patch(api_client, post_id, post_settings={"subreddit": "python", "nsfw": "false"})
+        assert response.status_code == 422
+        assert "true or false" in response.json()["detail"]
+        assert PlatformPost.objects.get(social_account=reddit).platform_extra == {"subreddit": "python"}
+
+    def test_patch_keeps_a_scheduled_post_publishable(self, api_client, reddit):
+        scheduled = self.create(
+            api_client, reddit, action="schedule", scheduled_at=_when(), post_settings={"subreddit": "python"}
+        )
+        response = self.patch(api_client, scheduled.json()["id"], post_settings={"nsfw": True})
+        assert response.status_code == 422
+        assert "Subreddit is required" in response.json()["detail"]
+        assert PlatformPost.objects.get(social_account=reddit).platform_extra == {"subreddit": "python"}
+
+    def test_create_refuses_a_checkbox_that_is_not_a_boolean(self, api_client, reddit):
+        response = self.create(api_client, reddit, post_settings={"subreddit": "python", "nsfw": "yes"})
+        assert response.status_code == 422

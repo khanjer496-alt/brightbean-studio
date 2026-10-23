@@ -106,12 +106,8 @@ class TestHtml:
     def test_unsupported_tags_are_escaped(self):
         assert to_telegram_html("<script>x</script>") == "&lt;script&gt;x&lt;/script&gt;"
 
-
     def test_an_ampersand_in_a_link_is_escaped(self):
-        assert (
-            to_telegram_html('<a href="https://x.io/?a=1&b=2">x</a>')
-            == '<a href="https://x.io/?a=1&amp;b=2">x</a>'
-        )
+        assert to_telegram_html('<a href="https://x.io/?a=1&b=2">x</a>') == '<a href="https://x.io/?a=1&amp;b=2">x</a>'
 
 
 class TestConnect:
@@ -196,9 +192,7 @@ class TestPublish:
 
         p = provider()
         with patch.object(p, "_request", side_effect=request), pytest.raises(APIError) as exc:
-            p.publish_post(
-                "-100", PublishContent(text="x" * 1500, media_files=[str(photo)], media_types=["image"])
-            )
+            p.publish_post("-100", PublishContent(text="x" * 1500, media_files=[str(photo)], media_types=["image"]))
         assert exc.value.ambiguous_write is True
 
     def test_text_goes_through_send_message_as_html(self):

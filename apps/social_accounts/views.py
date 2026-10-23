@@ -796,7 +796,9 @@ def connect_telegram(request, workspace_id):
             profile=profile,
             access_token=profile.platform_id,
         )
-        messages.success(request, f"Connected {profile.name} on Telegram. You can remove the code from its description.")
+        messages.success(
+            request, f"Connected {profile.name} on Telegram. You can remove the code from its description."
+        )
     except PlanLimitError as exc:
         messages.error(request, exc.message)
         return redirect("social_accounts:list", workspace_id=workspace_id)

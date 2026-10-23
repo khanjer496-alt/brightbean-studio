@@ -86,6 +86,7 @@ from .services import (
     post_thread_parts,
     publish_blocker,
     recent_hashtags,
+    replace_post_settings,
     require_publishable,
     resolve_thread_part_assets,
     set_post_parts,
@@ -397,9 +398,9 @@ def _sync_platform_posts(request, post, workspace, initial_status=None):
             # flair); rebuild only those keys so anything else already stored
             # stays, and gate on the panel marker so a save from somewhere that
             # never rendered the panel can't wipe them.
-            declared = {field.key for field in post_settings_for(account.platform)}
-            kept = {k: v for k, v in (pp.platform_extra or {}).items() if k not in declared}
-            pp.platform_extra = {**kept, **parse_post_settings(account.platform, request.POST.get, acc_id)}
+            pp.platform_extra = replace_post_settings(
+                account.platform, pp.platform_extra, parse_post_settings(account.platform, request.POST.get, acc_id)
+            )
 
         pp.save()
 

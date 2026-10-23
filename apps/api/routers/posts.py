@@ -44,8 +44,10 @@ from apps.api.schemas import (
 from apps.calendar.services import clean_recurrence, save_recurrence, stop_recurrence
 from apps.composer.models import Post
 from apps.composer.services import (
+    clean_post_settings,
     create_post,
     media_change_blocker,
+    replace_post_settings,
     resolve_thread_part_assets,
     set_post_parts,
     sync_post_scheduled_at,
@@ -432,8 +434,15 @@ def update(request, post_id: uuid.UUID, payload: UpdatePostRequest):
         if reason:
             raise HttpError(422, reason)
 
+    settings_by_child: dict = {}
+    if payload.post_settings is not None:
+        settings_by_child = _post_settings_by_child(post, payload.post_settings)
+
     with transaction.atomic():
         update_fields: list[str] = []
+        for pp, platform_extra in settings_by_child.items():
+            pp.platform_extra = platform_extra
+            pp.save(update_fields=["platform_extra", "updated_at"])
         if payload.caption is not None:
             post.caption = payload.caption
             update_fields.append("caption")
@@ -489,6 +498,8 @@ def update(request, post_id: uuid.UUID, payload: UpdatePostRequest):
 
         if update_fields:
             post.save(update_fields=[*update_fields, "updated_at"])
+        elif settings_by_child and part_specs is None:
+            post.save(update_fields=["updated_at"])
 
         sync_post_scheduled_at(post)
 
@@ -500,6 +511,40 @@ def update(request, post_id: uuid.UUID, payload: UpdatePostRequest):
     post.refresh_from_db()
     log_audit_entry(request, action="post.update", target_id=post.id, status_code=200)
     return _post_to_response(request, post)
+
+
+def _post_settings_by_child(post, settings: dict) -> dict:
+    """The ``platform_extra`` each child gets from a PATCH's ``post_settings``, or ``HttpError`` 422.
+
+    Each child takes the keys its own platform declares, replaced as the
+    composer replaces them; a key no child's platform declares is refused, and
+    a scheduled child must stay publishable.
+    """
+    from providers import post_settings_error_for, post_settings_for
+
+    result = {}
+    used: set[str] = set()
+    for pp in post.platform_posts.select_related("social_account"):
+        platform = pp.social_account.platform
+        declared = {field.key for field in post_settings_for(platform)}
+        if not declared:
+            continue
+        mine = {key: value for key, value in settings.items() if key in declared}
+        used.update(mine)
+        try:
+            cleaned = clean_post_settings(platform, mine)
+        except ValueError as exc:
+            raise HttpError(422, str(exc)) from exc
+        platform_extra = replace_post_settings(platform, pp.platform_extra, cleaned)
+        if pp.status == "scheduled":
+            reason = post_settings_error_for(platform, platform_extra)
+            if reason:
+                raise HttpError(422, f"{pp.social_account.get_platform_display()}: {reason}")
+        result[pp] = platform_extra
+    unknown = sorted(set(settings) - used)
+    if unknown:
+        raise HttpError(422, f"Unknown post setting(s) {unknown}: none of this post's accounts declare them.")
+    return result
 
 
 @router.post("/{post_id}/schedule", response=PostResponse, summary="Schedule a draft or approved post")

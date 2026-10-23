@@ -411,6 +411,13 @@ class UpdatePostRequest(Schema):
             "Changing it replaces the upcoming unpublished copies. Omit (or send null) to leave it unchanged."
         ),
     )
+    post_settings: dict[str, Any] | None = Field(
+        None,
+        description=(
+            "Replace the per-post settings (as on create). Each account takes the keys its platform declares; "
+            "a declared key left out is cleared. Omit (or send null) to leave them unchanged."
+        ),
+    )
 
 
 class ScheduleRequest(Schema):
@@ -433,6 +440,13 @@ class PlatformPostPartSummary(Schema):
     publish_error: str = ""
 
 
+def _saved_post_settings(pp: PlatformPost) -> dict[str, Any]:
+    from providers import post_settings_for
+
+    declared = {field.key for field in post_settings_for(pp.social_account.platform)}
+    return {key: value for key, value in (pp.platform_extra or {}).items() if key in declared}
+
+
 class PlatformPostSummary(Schema):
     id: uuid.UUID
     social_account_id: uuid.UUID
@@ -451,6 +465,9 @@ class PlatformPostSummary(Schema):
     )
     thread_error: str = ""
     thread_parts: list[PlatformPostPartSummary] = Field(default_factory=list)
+    post_settings: dict[str, Any] = Field(
+        default_factory=dict, description="The per-post settings this account's platform declares, as saved."
+    )
 
     @field_serializer("scheduled_at", "published_at")
     def _serialize_dt(self, value: dt.datetime | None) -> str | None:
@@ -475,6 +492,7 @@ class PlatformPostSummary(Schema):
             publish_error=pp.publish_error or "",
             thread_status=pp.thread_status,
             thread_error=pp.thread_error or "",
+            post_settings=_saved_post_settings(pp),
             thread_parts=[
                 PlatformPostPartSummary(
                     part_id=state.part_id,
