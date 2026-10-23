@@ -129,7 +129,8 @@ class RecurrenceRule(models.Model):
     """Defines how a post recurs (daily, weekly, monthly).
 
     The background task generates individual Post records for each
-    recurrence up to 90 days ahead.
+    recurrence up to 90 days ahead. The series stops at ``end_date`` or after
+    ``count`` posts, whichever the rule sets; with neither it runs on.
     """
 
     class Frequency(models.TextChoices):
@@ -148,10 +149,23 @@ class RecurrenceRule(models.Model):
         default=1,
         help_text="Repeat every N frequency units (e.g., every 2 weeks).",
     )
+    weekdays = models.JSONField(
+        default=list,
+        blank=True,
+        help_text=(
+            "Weekly rules only: the days to post on, 0=Monday … 6=Sunday, in the "
+            "workspace timezone. Empty = the weekday of the first post."
+        ),
+    )
     end_date = models.DateField(
         null=True,
         blank=True,
         help_text="Stop generating recurrences after this date. Null = indefinite.",
+    )
+    count = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        help_text="Total posts in the series, counting the first. Null = no limit.",
     )
     last_generated_at = models.DateTimeField(
         null=True,
@@ -167,6 +181,19 @@ class RecurrenceRule(models.Model):
 
     def __str__(self):
         return f"RecurrenceRule({self.frequency} every {self.interval}) for {self.post_id}"
+
+    @property
+    def summary(self):
+        """The rule in words, e.g. "Every Tuesday and Thursday until 31 Dec"."""
+        from .services import recurrence_summary
+
+        return recurrence_summary(
+            self.frequency,
+            interval=self.interval,
+            weekdays=self.weekdays,
+            end_date=self.end_date,
+            count=self.count,
+        )
 
 
 class CustomCalendarEvent(models.Model):

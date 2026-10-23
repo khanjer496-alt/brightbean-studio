@@ -25,6 +25,7 @@ from .types import (
     AuthType,
     CommentResult,
     InboxMessage,
+    MediaRules,
     MediaType,
     OAuthTokens,
     PostMetrics,
@@ -96,8 +97,39 @@ FACEBOOK_REEL_MAX_DURATION_SEC = 90
 FACEBOOK_MAX_ATTACHED_MEDIA = 10
 
 
+# What Facebook Page posts accept, per post type.
+# Reels: https://developers.facebook.com/docs/video-api/guides/reels-publishing
+# Photos: https://developers.facebook.com/docs/graph-api/reference/page/photos/
+FACEBOOK_MEDIA_RULES = {
+    PostType.REEL: MediaRules(
+        source="https://developers.facebook.com/docs/video-api/guides/reels-publishing",
+        max_items=1,
+        media_types=frozenset({"video"}),
+        recommended_aspect_ratio=9 / 16,
+        min_width=540,
+        min_height=960,
+        min_duration=FACEBOOK_REEL_MIN_DURATION_SEC,
+        max_duration=FACEBOOK_REEL_MAX_DURATION_SEC,
+        advisory=frozenset({"min_resolution"}),
+    ),
+    # The docs ask for photos under 4 MB rather than refusing larger ones.
+    PostType.IMAGE: MediaRules(
+        source="https://developers.facebook.com/docs/graph-api/reference/page/photos/",
+        max_items=FACEBOOK_MAX_ATTACHED_MEDIA,
+        max_image_bytes=4 * 1024 * 1024,
+        advisory=frozenset({"max_image_bytes"}),
+    ),
+    PostType.VIDEO: MediaRules(
+        source="https://developers.facebook.com/docs/video-api/guides/publishing",
+        published_items=1,
+    ),
+}
+
+
 class FacebookProvider(SocialProvider):
     """Facebook Graph API v25.0 provider."""
+
+    media_rules = FACEBOOK_MEDIA_RULES
 
     # Publishes from hosted URLs only — the platform fetches the media
     # itself, so ``PublishContent.media_files`` is never read and the engine

@@ -54,6 +54,9 @@ html[data-theme="postdelegate"] :where(.bg-orange-50,.bg-orange-100):not([data-p
 html[data-theme="postdelegate"] :where(.bg-orange-500,.bg-orange-600):not([data-platform-preview], [data-platform-preview] *) { background-color: var(--primary); }
 html[data-theme="postdelegate"] :where(.text-orange-500,.text-orange-600,.text-orange-700):not([data-platform-preview], [data-platform-preview] *) { color: #c3b5ff; }
 html[data-theme="postdelegate"] :where(.border-orange-100,.border-orange-200,.border-orange-300):not([data-platform-preview], [data-platform-preview] *) { border-color: var(--primary-ring); }
+/* Checked toggles and day chips (peer-checked:bg-orange-500) follow the primary colour too. */
+html[data-theme="postdelegate"] :where(.peer:checked ~ .peer-checked\:bg-orange-500):not([data-platform-preview], [data-platform-preview] *) { background-color: var(--primary); }
+html[data-theme="postdelegate"] :where(.peer:checked ~ .peer-checked\:border-orange-500):not([data-platform-preview], [data-platform-preview] *) { border-color: var(--primary); }
 html[data-theme="postdelegate"] :where(.hover\:bg-orange-50,.hover\:bg-orange-100):hover:not([data-platform-preview], [data-platform-preview] *) { background-color: var(--primary-muted); }
 .pd-main { border-color: var(--border); }
 html[data-theme="postdelegate"] textarea:not([data-platform-preview] *) { background-color: var(--surface-1); color: var(--text-primary); border-color: var(--border); }

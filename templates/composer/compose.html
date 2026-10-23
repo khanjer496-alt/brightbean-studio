@@ -548,6 +548,9 @@
                             </div>
                         </div>
 
+                        <!-- Platform media checks, filled by each preview round-trip -->
+                        {% include "composer/partials/media_issues.html" with media_issue_groups=None oob=False %}
+
                         <!-- Bottom bar: media library + char counter -->
                         <div class="flex items-center justify-between px-4 py-2 border-t border-stone-100">
                             <button type="button" @click="showMediaPicker = true"
@@ -585,6 +588,7 @@
                             <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1">Publish as</label>
                             <select :name="'facebook_post_type_' + accId"
                                     x-model="facebookPostType"
+                                    @change="triggerPreviewUpdate()"
                                     :disabled="charLimits[accId]?.platform !== 'facebook' || !hasSingleVideoAttached"
                                     class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all">
                                 <option value="video">Regular Page video</option>
@@ -1509,7 +1513,7 @@
                             </div>
 
                             <!-- Schedule sub-view -->
-                            <div id="publish-schedule-view" class="hidden p-4">
+                            <div id="publish-schedule-view" class="hidden p-4 max-h-[75vh] overflow-y-auto">
                                 <div class="flex items-center gap-2 mb-4">
                                     <button type="button" id="publish-schedule-back" class="w-6 h-6 rounded-md hover:bg-stone-100 flex items-center justify-center transition-colors">
                                         <svg class="w-4 h-4 text-stone-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
@@ -1531,6 +1535,8 @@
                                         Timezone: {{ workspace.effective_timezone }}
                                     </div>
                                 </div>
+
+                                {% include "composer/partials/repeat_panel.html" %}
 
                                 <div id="schedule-error" class="hidden text-xs text-red-500 mt-1"></div>
 
@@ -2913,6 +2919,61 @@ function composerApp() {
     };
 }
 
+/* ── Repeat control (Schedule Post panel) ─────────────────────── */
+// Words the setting the way apps.calendar.services.recurrence_summary does.
+function repeatPanel() {
+    const initial = JSON.parse(document.getElementById('composer-recurrence').textContent);
+    const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const UNITS = { daily: 'day', weekly: 'week', monthly: 'month' };
+    return {
+        frequency: initial.frequency,
+        interval: initial.interval || 1,
+        weekdays: initial.weekdays || [],
+        end: initial.end,
+        endDate: initial.end_date || '',
+        count: initial.count || 4,
+        // True while the publish button is set to a queue action; opening the
+        // Schedule sub-view clears it so the control can be edited.
+        queued: (document.getElementById('publish-action-btn')?.value || '').startsWith('add_to_queue'),
+
+        get unitLabel() {
+            const unit = UNITS[this.frequency] || '';
+            return this.interval > 1 ? unit + 's' : unit;
+        },
+
+        onFrequencyChange() {
+            // A weekly series with no day picked repeats on the first post's weekday.
+            if (this.frequency !== 'weekly' || this.weekdays.length) return;
+            const dateVal = document.querySelector('input[name="scheduled_date"]')?.value;
+            if (!dateVal) return;
+            const jsDay = new Date(dateVal + 'T00:00:00').getDay();
+            this.weekdays = [(jsDay + 6) % 7];
+        },
+
+        get summary() {
+            if (this.frequency === 'never') return '';
+            const n = Number(this.interval) || 1;
+            const unit = UNITS[this.frequency];
+            let text;
+            const days = [...this.weekdays].map(Number).sort((a, b) => a - b).map(d => DAY_NAMES[d]);
+            if (this.frequency === 'weekly' && days.length) {
+                const names = days.length > 1 ? days.slice(0, -1).join(', ') + ' and ' + days[days.length - 1] : days[0];
+                text = n === 1 ? 'Every ' + names : 'Every ' + n + ' weeks on ' + names;
+            } else {
+                text = n === 1 ? 'Every ' + unit : 'Every ' + n + ' ' + unit + 's';
+            }
+            if (this.end === 'on' && this.endDate) {
+                const [y, m, d] = this.endDate.split('-').map(Number);
+                text += ' until ' + d + ' ' + MONTHS[m - 1] + (y === new Date().getFullYear() ? '' : ' ' + y);
+            } else if (this.end === 'after' && this.count) {
+                text += ', ' + this.count + ' times';
+            }
+            return text;
+        },
+    };
+}
+
 /* ── Publish Split-Button (vanilla JS) ────────────────────────── */
 (function() {
     const anchor = document.getElementById('publish-anchor');
@@ -2939,12 +3000,18 @@ function composerApp() {
     function showPopover() { popover.classList.remove('hidden'); }
     function hidePopover() { popover.classList.add('hidden'); showMenu(); }
     function showMenu() { menu.classList.remove('hidden'); scheduleView.classList.add('hidden'); }
-    function showSchedule() { menu.classList.add('hidden'); scheduleView.classList.remove('hidden'); }
+    function showSchedule() {
+        menu.classList.add('hidden');
+        scheduleView.classList.remove('hidden');
+        window.dispatchEvent(new CustomEvent('publish-mode-change', { detail: { mode: 'schedule' } }));
+    }
 
     function setMode(mode, label, actionLabelText, iconKey) {
         modeLabel.textContent = label;
         actionLabel.textContent = actionLabelText;
         actionBtn.value = mode;
+        // The Repeat control (repeat_panel.html) stands down for queue actions.
+        window.dispatchEvent(new CustomEvent('publish-mode-change', { detail: { mode: mode } }));
         if (icons[iconKey]) {
             modeIcon.innerHTML = icons[iconKey];
         }

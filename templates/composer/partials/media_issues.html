@@ -1,0 +1,30 @@
+{% comment %}
+Platform media checks for the selected accounts, shown under the composer's media row.
+Context: media_issue_groups (list of {account, issues} from the preview endpoint), oob (swap in from the preview response).
+Errors block scheduling; warnings are advice. Rendered empty on page load; each preview round-trip swaps the contents, keeping the live region in place.
+{% endcomment %}
+<div id="composer-media-issues" aria-live="polite"{% if oob %} hx-swap-oob="innerHTML"{% endif %}>
+    {% if media_issue_groups %}
+    <div class="px-4 pb-3 space-y-2">
+    {% for group in media_issue_groups %}
+    <div class="rounded-lg border px-3 py-2 {% if group.has_error %}border-red-200 bg-red-50{% else %}border-amber-200 bg-amber-50{% endif %}">
+        <div class="flex items-center gap-1.5 mb-1">
+            {% include "partials/_platform_icon.html" with platform=group.account.platform size="sm" %}
+            <span class="text-[11px] font-semibold text-stone-700 truncate">{{ group.account.account_name|default:group.account.account_handle }}</span>
+            <span class="ml-auto text-[10px] font-semibold uppercase tracking-wider {% if group.has_error %}text-red-600{% else %}text-amber-700{% endif %}">
+                {% if group.has_error %}Can't schedule{% else %}Check media{% endif %}
+            </span>
+        </div>
+        <ul class="space-y-0.5">
+            {% for issue in group.issues %}
+            <li class="text-[11px] leading-snug {% if issue.is_error %}text-red-700{% else %}text-amber-800{% endif %}">
+                <span class="sr-only">{% if issue.is_error %}Error:{% else %}Warning:{% endif %}</span>
+                {{ issue.message }}
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endfor %}
+    </div>
+    {% endif %}
+</div>

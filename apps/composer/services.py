@@ -13,6 +13,7 @@ status transitions so audit + idempotency live in one place.
 from __future__ import annotations
 
 import copy
+import dataclasses
 import datetime as dt
 import uuid
 from collections.abc import Iterable
@@ -179,7 +180,7 @@ def create_post(
         reason = publish_blocker(
             social_account,
             media_types=usable_media_types(asset_map.values()),
-        )
+        ) or media_rules_blocker(social_account, [asset_map[u] for _mid, u in resolved if u is not None])
         if reason:
             raise ValueError(reason)
 
@@ -458,6 +459,219 @@ def media_blocker(social_account, *, media_types) -> str:
     return ""
 
 
+def post_media_assets(post, *, excluding=None) -> list:
+    """``post``'s attached ``MediaAsset``s the publisher would upload, in order.
+
+    ``excluding`` (a ``PostMedia``) answers for the post as it would be once
+    that attachment is removed.
+    """
+    attachments = _usable_attachments().filter(post_id=post.pk).select_related("media_asset").order_by("position")
+    if excluding is not None:
+        attachments = attachments.exclude(pk=excluding.pk)
+    return [pm.media_asset for pm in attachments]
+
+
+def media_assets_by_post(post_ids) -> dict:
+    """``post_media_assets`` for many posts in one query; absent ids have none."""
+    by_post: dict = {}
+    rows = _usable_attachments().filter(post_id__in=post_ids).select_related("media_asset")
+    for pm in rows.order_by("post_id", "position"):
+        by_post.setdefault(pm.post_id, []).append(pm.media_asset)
+    return by_post
+
+
+MEDIA_ISSUE_ERROR = "error"
+MEDIA_ISSUE_WARNING = "warning"
+
+
+@dataclasses.dataclass(frozen=True)
+class MediaIssue:
+    """One way a post's media breaks a platform's ``MediaRules``.
+
+    An ``error`` stops the post being scheduled; a ``warning`` is shown and
+    the user decides.
+    """
+
+    level: str
+    message: str
+
+    @property
+    def is_error(self) -> bool:
+        return self.level == MEDIA_ISSUE_ERROR
+
+
+# How a post type is named in a media issue ("… in a carousel").
+_POST_TYPE_NOUNS = {
+    "image": "an image post",
+    "video": "a video post",
+    "carousel": "a carousel",
+    "reel": "a Reel",
+    "story": "a Story",
+    "short": "a Short",
+    "pin": "a Pin",
+}
+
+# Ratios worth naming the usual way; anything else reads as "1.33:1".
+_RATIO_LABELS = {1.0: "1:1", 0.8: "4:5", 0.5625: "9:16", 1.7778: "16:9", 0.6667: "2:3", 1.91: "1.91:1"}
+
+# A shape this close to a recommended one counts as matching it.
+_RECOMMENDED_RATIO_TOLERANCE = 0.05
+
+# Slack on a hard ratio bound, so a 1080x1350 image (exactly 4:5) is never
+# refused over rounding.
+_RATIO_EPSILON = 0.005
+
+
+def _ratio_label(ratio: float) -> str:
+    return _RATIO_LABELS.get(round(ratio, 4)) or f"{ratio:.2f}:1"
+
+
+def _size_label(width, height) -> str:
+    """A resolution bound, which may set only one side: "360x360px", "1080px wide"."""
+    if width and height:
+        return f"{width}x{height}px"
+    return f"{width}px wide" if width else f"{height}px tall"
+
+
+def _duration_label(seconds: float) -> str:
+    # Seconds up to two minutes, so a 90-second limit reads as "90s".
+    if seconds < 120:
+        return f"{seconds:g}s" if seconds == int(seconds) else f"{seconds:.1f}s"
+    minutes, secs = divmod(int(round(seconds)), 60)
+    return f"{minutes} min" if not secs else f"{minutes}:{secs:02d} min"
+
+
+def media_rule_issues(social_account, assets, *, platform_extra: dict | None = None) -> list[MediaIssue]:
+    """Where ``assets`` break the media rules ``social_account``'s platform declares.
+
+    ``assets`` are the post's ``MediaAsset``s in attachment order. The post
+    type is the one the publisher would pick for them (``_resolve_post_type``),
+    so the rules checked are the ones the platform will apply. A dimension or
+    duration the library hasn't measured (0) is not checked.
+    """
+    from django.template.defaultfilters import filesizeformat
+
+    from apps.media_library.models import MediaAsset
+    from apps.publisher.engine import PublishEngine
+    from providers import is_video_only, media_rules_for
+
+    platform = social_account.platform
+    assets = [a for a in assets if a.file]
+    # The publisher drops everything but video for these (see _dispatch_to_provider).
+    if is_video_only(platform):
+        assets = [a for a in assets if a.media_type == MediaAsset.MediaType.VIDEO]
+    if not assets:
+        return []
+    post_type = PublishEngine._resolve_post_type(platform, platform_extra or {}, len(assets), assets[0].media_type)
+    rules = media_rules_for(platform, post_type)
+    if rules is None:
+        return []
+
+    name = social_account.get_platform_display()
+    noun = _POST_TYPE_NOUNS.get(post_type.value, "a post")
+    issues: list[MediaIssue] = []
+
+    def add(limit, message):
+        level = MEDIA_ISSUE_WARNING if limit in rules.advisory else MEDIA_ISSUE_ERROR
+        issues.append(MediaIssue(level, message))
+
+    if rules.max_items is not None and len(assets) > rules.max_items:
+        add("max_items", f"{name} takes at most {rules.max_items} items in {noun}; this post has {len(assets)}.")
+    elif rules.published_items is not None and len(assets) > rules.published_items:
+        first = "the first item is" if rules.published_items == 1 else f"the first {rules.published_items} items are"
+        issues.append(
+            MediaIssue(MEDIA_ISSUE_WARNING, f"Only {first} published to {name}; this post has {len(assets)}.")
+        )
+
+    for asset in assets:
+        label = asset.filename or "This file"
+        is_video = asset.media_type == MediaAsset.MediaType.VIDEO
+
+        if rules.media_types is not None and asset.media_type not in rules.media_types:
+            kind = asset.get_media_type_display()
+            add("media_types", f"{name} doesn't take {kind} files in {noun} ({label}).")
+            continue
+
+        if asset.width and asset.height:
+            ratio = asset.width / asset.height
+            too_narrow = rules.min_aspect_ratio is not None and ratio < rules.min_aspect_ratio - _RATIO_EPSILON
+            too_wide = rules.max_aspect_ratio is not None and ratio > rules.max_aspect_ratio + _RATIO_EPSILON
+            if too_narrow or too_wide:
+                if rules.min_aspect_ratio is not None and rules.max_aspect_ratio is not None:
+                    allowed = (
+                        f"between {_ratio_label(rules.min_aspect_ratio)} and {_ratio_label(rules.max_aspect_ratio)}"
+                    )
+                elif too_wide:
+                    allowed = f"no wider than {_ratio_label(rules.max_aspect_ratio)}"
+                else:
+                    allowed = f"no narrower than {_ratio_label(rules.min_aspect_ratio)}"
+                add(
+                    "aspect_ratio",
+                    f"{label} is {_ratio_label(ratio)}; {name} takes media {allowed} in {noun}. "
+                    "Crop it to fit in the media library.",
+                )
+            elif (
+                rules.recommended_aspect_ratio is not None
+                and abs(ratio - rules.recommended_aspect_ratio) / rules.recommended_aspect_ratio
+                > _RECOMMENDED_RATIO_TOLERANCE
+            ):
+                issues.append(
+                    MediaIssue(
+                        MEDIA_ISSUE_WARNING,
+                        f"{name} recommends {_ratio_label(rules.recommended_aspect_ratio)} for {noun}; "
+                        f"{label} is {_ratio_label(ratio)} and may be cropped.",
+                    )
+                )
+
+            if (rules.min_width and asset.width < rules.min_width) or (
+                rules.min_height and asset.height < rules.min_height
+            ):
+                add(
+                    "min_resolution",
+                    f"{label} is {asset.width}x{asset.height}px; {name} needs at least "
+                    f"{_size_label(rules.min_width, rules.min_height)}.",
+                )
+            if (rules.max_width and asset.width > rules.max_width) or (
+                rules.max_height and asset.height > rules.max_height
+            ):
+                add(
+                    "max_resolution",
+                    f"{label} is {asset.width}x{asset.height}px; {name} takes at most "
+                    f"{_size_label(rules.max_width, rules.max_height)}.",
+                )
+
+        if is_video and asset.duration:
+            if rules.min_duration and asset.duration < rules.min_duration:
+                add(
+                    "min_duration",
+                    f"{label} is {_duration_label(asset.duration)} long; {name} needs at least "
+                    f"{_duration_label(rules.min_duration)} in {noun}.",
+                )
+            if rules.max_duration is not None and asset.duration > rules.max_duration:
+                add(
+                    "max_duration",
+                    f"{label} is {_duration_label(asset.duration)} long; {name} takes at most "
+                    f"{_duration_label(rules.max_duration)} in {noun}.",
+                )
+
+        limit_name, max_bytes = (
+            ("max_video_bytes", rules.max_video_bytes) if is_video else ("max_image_bytes", rules.max_image_bytes)
+        )
+        if max_bytes is not None and asset.file_size > max_bytes:
+            add(
+                limit_name,
+                f"{label} is {filesizeformat(asset.file_size)}; {name} takes files up to {filesizeformat(max_bytes)}.",
+            )
+
+    return issues
+
+
+def media_rules_blocker(social_account, assets, *, platform_extra: dict | None = None) -> str:
+    """The first ``media_rule_issues`` error for ``social_account``, or ""."""
+    issues = media_rule_issues(social_account, assets, platform_extra=platform_extra)
+    return next((issue.message for issue in issues if issue.is_error), "")
+
+
 def publish_blocker(social_account, *, media_types, platform_extra: dict | None = None) -> str:
     """Why a post can't publish to ``social_account`` as it stands, or "".
 
@@ -476,11 +690,15 @@ def publish_blocker(social_account, *, media_types, platform_extra: dict | None 
     return ""
 
 
-def require_publishable(platform_post, *, media_types=None) -> None:
+def require_publishable(platform_post, *, media_types=None, assets=None) -> None:
     """Raise ``ValueError`` if ``platform_post`` is certain to fail at publish time.
 
-    ``media_types`` lets a caller checking many rows answer it for all of them
-    in one query (``media_types_by_post``) instead of one per row.
+    Also refuses media that breaks a blocking platform media rule
+    (``media_rules_blocker``) — checked here, where a post is scheduled, and
+    not in ``publish_blocker``, so a post scheduled before a rule existed
+    still gets its attempt. ``media_types`` and ``assets`` let a caller
+    checking many rows answer them for all of them in one query
+    (``media_types_by_post``, ``media_assets_by_post``) instead of one per row.
     """
     if media_types is None:
         media_types = post_media_types(platform_post.post)
@@ -489,18 +707,23 @@ def require_publishable(platform_post, *, media_types=None) -> None:
         media_types=media_types,
         platform_extra=platform_post.platform_extra,
     )
+    if not reason:
+        if assets is None:
+            assets = post_media_assets(platform_post.post)
+        reason = media_rules_blocker(platform_post.social_account, assets, platform_extra=platform_post.platform_extra)
     if reason:
         raise ValueError(reason)
 
 
-def media_change_blocker(post, *, media_types_after) -> str:
+def media_change_blocker(post, *, media_types_after, assets_after=None) -> str:
     """Why a media change would strand a scheduled row, or "".
 
     Scheduling checks the post as it stood then; this stops the media a
     platform needs being taken away afterwards — the video from a TikTok post,
     the last image from a pin — which would leave the row queued to fail. Only
     rows already ``scheduled`` count; anything else is checked again when it is
-    scheduled.
+    scheduled. ``assets_after``, when given, also holds the new media to the
+    platform's blocking media rules (``media_rules_blocker``).
     """
     from apps.composer.models import PlatformPost
     from providers import is_video_only
@@ -514,4 +737,8 @@ def media_change_blocker(post, *, media_types_after) -> str:
                 f"This post is scheduled to {platform}, which needs {need} on it. "
                 f"Keep one on the post, or unschedule it for {platform} first."
             )
+        if assets_after is not None:
+            reason = media_rules_blocker(child.social_account, assets_after, platform_extra=child.platform_extra)
+            if reason:
+                return reason
     return ""

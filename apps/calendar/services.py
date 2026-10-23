@@ -505,3 +505,198 @@ def repair_future_published_scheduled_at(*, workspace_id=None, apply=True):
         "queue_entry_count": queue_entry_count,
         "applied": bool(apply and rows),
     }
+
+
+# ---------------------------------------------------------------------------
+# Recurring posts
+# ---------------------------------------------------------------------------
+
+WEEKDAY_NAMES = ("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")
+
+# Upper bound on "every N days/weeks/months"; anything larger is a typo.
+RECURRENCE_MAX_INTERVAL = 99
+
+
+def clean_recurrence(frequency, *, interval=1, weekdays=None, end_date=None, count=None, start=None):
+    """Validate a repeat setting and return it as ``RecurrenceRule`` fields.
+
+    ``start`` is the series' first post time; a weekly rule without weekdays
+    takes its weekday (in the workspace timezone), and an end date before it
+    is refused. Raises ``ValueError`` with a message fit to show the user.
+    """
+    from .models import RecurrenceRule
+
+    if frequency not in RecurrenceRule.Frequency.values:
+        raise ValueError("Choose how often the post repeats: daily, weekly or monthly.")
+    try:
+        interval = int(interval)
+    except (TypeError, ValueError):
+        raise ValueError("The repeat interval must be a whole number.") from None
+    if not 1 <= interval <= RECURRENCE_MAX_INTERVAL:
+        raise ValueError(f"The repeat interval must be between 1 and {RECURRENCE_MAX_INTERVAL}.")
+
+    days = []
+    if frequency == RecurrenceRule.Frequency.WEEKLY:
+        try:
+            days = sorted({int(w) for w in weekdays or []})
+        except (TypeError, ValueError):
+            raise ValueError("Weekdays must be numbers from 0 (Monday) to 6 (Sunday).") from None
+        if any(not 0 <= w <= 6 for w in days):
+            raise ValueError("Weekdays must be numbers from 0 (Monday) to 6 (Sunday).")
+        if not days and start is not None:
+            days = [start.weekday()]
+
+    if end_date is not None and count is not None:
+        raise ValueError("A series can end on a date or after a number of posts, not both.")
+    if count is not None:
+        try:
+            count = int(count)
+        except (TypeError, ValueError):
+            raise ValueError("The number of posts must be a whole number.") from None
+        if count < 2:
+            raise ValueError("A repeating post needs at least 2 posts in the series.")
+    if end_date is not None and start is not None and end_date < start.date():
+        raise ValueError("The series can't end before its first post.")
+
+    return {"frequency": frequency, "interval": interval, "weekdays": days, "end_date": end_date, "count": count}
+
+
+def recurrence_summary(frequency, *, interval=1, weekdays=None, end_date=None, count=None):
+    """Describe a repeat setting, e.g. "Every Tuesday and Thursday until 31 Dec".
+
+    Mirrors ``repeatPanel().summary`` in the composer, which words the same
+    setting live as it is edited.
+    """
+    from django.utils.dateformat import format as date_format
+    from django.utils.text import get_text_list
+
+    interval = interval or 1
+    units = {"daily": "day", "weekly": "week", "monthly": "month"}
+    unit = units.get(frequency, "")
+    if frequency == "weekly" and weekdays:
+        names = get_text_list([WEEKDAY_NAMES[w] for w in sorted(weekdays)], "and")
+        text = f"Every {names}" if interval == 1 else f"Every {interval} weeks on {names}"
+    else:
+        text = f"Every {unit}" if interval == 1 else f"Every {interval} {unit}s"
+
+    if end_date is not None:
+        fmt = "j M" if end_date.year == timezone.localdate().year else "j M Y"
+        text += f" until {date_format(end_date, fmt)}"
+    elif count:
+        text += f", {count} times"
+    return text
+
+
+def recurrence_initial(post):
+    """The composer's Repeat control state for ``post`` — never repeating if none."""
+    rule = None
+    if post is not None and post.pk:
+        rule = post.series_rule if post.recurrence_source_id is None else None
+    if rule is None or not rule.is_active:
+        return {"frequency": "never", "interval": 1, "weekdays": [], "end": "never", "end_date": "", "count": None}
+    return {
+        "frequency": rule.frequency,
+        "interval": rule.interval,
+        "weekdays": list(rule.weekdays or []),
+        "end": "on" if rule.end_date else ("after" if rule.count else "never"),
+        "end_date": rule.end_date.isoformat() if rule.end_date else "",
+        "count": rule.count,
+    }
+
+
+def remove_upcoming_occurrences(post):
+    """Delete the copies ``post``'s series has queued but not yet published.
+
+    Copies already publishing or published are history and stay. Returns the
+    number of copies removed.
+    """
+    from apps.composer.models import PlatformPost, Post
+
+    upcoming_ids = list(
+        Post.objects.filter(recurrence_source=post, scheduled_at__gt=timezone.now())
+        .exclude(platform_posts__status__in=PlatformPost.PROTECTED_STATUSES)
+        .values_list("id", flat=True)
+        .distinct()
+    )
+    if not upcoming_ids:
+        return 0
+    _total, by_model = Post.objects.filter(id__in=upcoming_ids).delete()
+    return by_model.get(Post._meta.label, 0)
+
+
+def save_recurrence(post, *, frequency, interval=1, weekdays=None, end_date=None, count=None, refresh=False):
+    """Make ``post`` the first of a repeating series, or update its series.
+
+    When the rule changes (or ``refresh`` says the first post moved), the
+    upcoming copies made under the old rule are replaced; then the copies the
+    lookahead window needs are generated straight away rather than at the next
+    hourly sweep. A post still waiting for approval has only a proposed time:
+    its rule is kept, and copies start once it is approved and scheduled.
+    Raises ``ValueError`` for an invalid setting.
+    """
+    from django.db import transaction
+
+    from .models import RecurrenceRule
+    from .tasks import generate_occurrences
+
+    start = post.scheduled_at or post.proposed_publish_at
+    if not start:
+        raise ValueError("Schedule the post before making it repeat.")
+    ws_tz = zoneinfo.ZoneInfo(post.workspace.effective_timezone or "UTC")
+    fields = clean_recurrence(
+        frequency,
+        interval=interval,
+        weekdays=weekdays,
+        end_date=end_date,
+        count=count,
+        start=start.astimezone(ws_tz),
+    )
+
+    with transaction.atomic():
+        rule = RecurrenceRule.objects.select_for_update().filter(post=post).first()
+        changed = refresh or rule is None or not rule.is_active
+        if rule is None:
+            rule = RecurrenceRule(post=post)
+        for name, value in fields.items():
+            if getattr(rule, name) != value:
+                changed = True
+                setattr(rule, name, value)
+        rule.is_active = True
+        rule.save()
+        if changed:
+            remove_upcoming_occurrences(post)
+    generate_occurrences(rule)
+    return rule
+
+
+def stop_recurrence(post):
+    """End ``post``'s series: no more copies, and the upcoming ones are removed.
+
+    Returns the number of upcoming copies removed; 0 when it wasn't repeating.
+    """
+    from .models import RecurrenceRule
+
+    updated = RecurrenceRule.objects.filter(post=post, is_active=True).update(is_active=False)
+    if not updated:
+        return 0
+    return remove_upcoming_occurrences(post)
+
+
+def refresh_series(post):
+    """Regenerate ``post``'s upcoming copies after its first post moved.
+
+    Copies are placed relative to the first post, so moving it (a calendar
+    drag) replaces the unpublished copies with ones at the new time. Returns
+    the number of copies generated; 0 when ``post`` doesn't start a series.
+    """
+    from django.db import transaction
+
+    from .models import RecurrenceRule
+    from .tasks import generate_occurrences
+
+    with transaction.atomic():
+        rule = RecurrenceRule.objects.select_for_update().filter(post=post, is_active=True).first()
+        if rule is None:
+            return 0
+        remove_upcoming_occurrences(post)
+        return generate_occurrences(rule)

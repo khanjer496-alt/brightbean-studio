@@ -37,9 +37,11 @@ from apps.api.middleware import (
 from apps.api.schemas import (
     CreatePostRequest,
     PostResponse,
+    RecurrenceSpec,
     ScheduleRequest,
     UpdatePostRequest,
 )
+from apps.calendar.services import clean_recurrence, save_recurrence, stop_recurrence
 from apps.composer.models import Post
 from apps.composer.services import (
     create_post,
@@ -99,6 +101,21 @@ def _can_view_internal_notes(request: HttpRequest) -> bool:
     return bool(membership and membership.effective_permissions.get("create_posts", False))
 
 
+def _check_recurrence(spec: RecurrenceSpec, *, workspace, scheduled_at) -> None:
+    """422 unless ``spec`` can repeat a post first scheduled at ``scheduled_at``.
+
+    Run before anything is written, so a bad repeat never leaves a post
+    scheduled without it.
+    """
+    import zoneinfo
+
+    ws_tz = zoneinfo.ZoneInfo(workspace.effective_timezone or "UTC")
+    try:
+        clean_recurrence(**spec.rule_fields(), start=scheduled_at.astimezone(ws_tz))
+    except ValueError as exc:
+        raise HttpError(422, str(exc)) from exc
+
+
 def _post_to_response(request: HttpRequest, post: Post) -> PostResponse:
     return PostResponse.from_post(post, include_internal_notes=_can_view_internal_notes(request))
 
@@ -124,7 +141,7 @@ def _get_workspace_post(request: HttpRequest, post_id: uuid.UUID) -> Post:
     from django.http import Http404
 
     post = get_object_or_404(
-        Post.objects.prefetch_related("platform_posts__social_account"),
+        Post.objects.prefetch_related("platform_posts__social_account").select_related("recurrence_rule"),
         id=post_id,
         workspace_id=request.api_key.workspace_id,  # type: ignore[attr-defined]
     )
@@ -164,6 +181,11 @@ def create(request, payload: CreatePostRequest):
     social_account = _resolve_account(request, payload.social_account_id)
     if payload.action == "schedule" and payload.scheduled_at is None:
         raise HttpError(422, "scheduled_at is required when action='schedule'.")
+    repeat = payload.recurrence if payload.recurrence and payload.recurrence.frequency != "never" else None
+    if repeat is not None:
+        if payload.action != "schedule":
+            raise HttpError(422, "recurrence needs action='schedule': only a scheduled post can repeat.")
+        _check_recurrence(repeat, workspace=request.api_key.workspace, scheduled_at=payload.scheduled_at)
 
     # Build the platform_overrides dict and validate that each override's
     # social_account_id matches one of the post's target accounts. In the
@@ -251,6 +273,8 @@ def create(request, payload: CreatePostRequest):
                 status="scheduled" if payload.action == "schedule" else "draft",
                 platform_overrides=platform_overrides,
             )
+            if repeat is not None:
+                save_recurrence(post, **repeat.rule_fields())
             body = _post_to_response(request, post)
             status_code = 201
             log_audit_entry(
@@ -311,6 +335,21 @@ def update(request, post_id: uuid.UUID, payload: UpdatePostRequest):
     if payload.scheduled_at is not None and post.platform_posts.filter(status="scheduled").exists():
         _require_perm(request, "publish_directly")
 
+    # Repeating hands each generated copy to the publisher too, so starting or
+    # changing a series takes the same permission; stopping one doesn't.
+    repeat = payload.recurrence if payload.recurrence and payload.recurrence.frequency != "never" else None
+    if payload.recurrence is not None and post.recurrence_source_id is not None:
+        raise HttpError(
+            422,
+            f"This post is a copy in a repeating series; change the series on post {post.recurrence_source_id}.",
+        )
+    if repeat is not None:
+        _require_perm(request, "publish_directly")
+        first_at = payload.scheduled_at or post.scheduled_at
+        if first_at is None or not post.platform_posts.filter(status="scheduled").exists():
+            raise HttpError(422, "Only a scheduled post can repeat; schedule it first.")
+        _check_recurrence(repeat, workspace=post.workspace, scheduled_at=first_at)
+
     # ---- Validate-everything-first.
     #
     # Codex review found two bugs in the previous implementation:
@@ -342,7 +381,9 @@ def update(request, post_id: uuid.UUID, payload: UpdatePostRequest):
         # media, would leave it queued to fail after the schedule route had
         # checked it.
         reason = media_change_blocker(
-            post, media_types_after=usable_media_types(resolved_assets[mid] for mid in wanted_media)
+            post,
+            media_types_after=usable_media_types(resolved_assets[mid] for mid in wanted_media),
+            assets_after=[resolved_assets[mid] for mid in wanted_media],
         )
         if reason:
             raise HttpError(422, reason)
@@ -397,6 +438,11 @@ def update(request, post_id: uuid.UUID, payload: UpdatePostRequest):
 
         sync_post_scheduled_at(post)
 
+        if repeat is not None:
+            save_recurrence(post, **repeat.rule_fields(), refresh=payload.scheduled_at is not None)
+        elif payload.recurrence is not None:
+            stop_recurrence(post)
+
     post.refresh_from_db()
     log_audit_entry(request, action="post.update", target_id=post.id, status_code=200)
     return _post_to_response(request, post)
@@ -418,6 +464,14 @@ def schedule(request, post_id: uuid.UUID, payload: ScheduleRequest):
     schedulable = list(post.platform_posts.filter(status__in=["draft", "approved"]))
     if not schedulable:
         raise HttpError(409, "No draft or approved platform posts to schedule.")
+    repeat = payload.recurrence if payload.recurrence and payload.recurrence.frequency != "never" else None
+    if repeat is not None:
+        if post.recurrence_source_id is not None:
+            raise HttpError(
+                422,
+                f"This post is a copy in a repeating series; change the series on post {post.recurrence_source_id}.",
+            )
+        _check_recurrence(repeat, workspace=post.workspace, scheduled_at=payload.scheduled_at)
 
     # Quota check is per-account, so we evaluate it once per child before
     # we touch any state. Doing the checks first means an over-quota
@@ -439,6 +493,9 @@ def schedule(request, post_id: uuid.UUID, payload: ScheduleRequest):
                 transition_platform_post(pp, "scheduled", scheduled_at=payload.scheduled_at)
             except ValueError as exc:
                 raise HttpError(422, str(exc)) from exc
+        if repeat is not None:
+            post.refresh_from_db()
+            save_recurrence(post, **repeat.rule_fields(), refresh=True)
 
     post.refresh_from_db()
     log_audit_entry(request, action="post.schedule", target_id=post.id, status_code=200)

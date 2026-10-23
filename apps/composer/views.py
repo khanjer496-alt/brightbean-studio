@@ -61,6 +61,8 @@ from .models import (
 from .services import (
     media_blocker,
     media_change_blocker,
+    media_rule_issues,
+    post_media_assets,
     post_media_types,
     publish_blocker,
     require_publishable,
@@ -523,6 +525,159 @@ def _validate_required_media(request, post, workspace, action):
     return JsonResponse({"errors": {"media": " ".join(sentences)}}, status=400)
 
 
+def _recurrence_from_form(request):
+    """The composer Repeat control's setting, or None when the form has none.
+
+    ``{"frequency": "never"}`` asks to stop a series; anything else is the
+    keyword arguments for ``save_recurrence``, not yet validated. The legacy
+    ``make_recurring`` flag still turns repeating on for older form posts.
+    Raises ``ValueError`` for a value that can't be read.
+    """
+    data = request.POST
+    legacy = bool(data.get("make_recurring"))
+    if "recurrence_panel" not in data and not legacy:
+        return None
+    frequency = data.get("recurrence_frequency", "weekly" if legacy else "never")
+    if frequency == "never":
+        return {"frequency": "never"}
+
+    end = data.get("recurrence_end") or ("on" if data.get("recurrence_end_date") else "never")
+    end_date = None
+    count = None
+    if end == "on":
+        from datetime import date as date_cls
+
+        try:
+            end_date = date_cls.fromisoformat(data.get("recurrence_end_date", ""))
+        except ValueError:
+            raise ValueError("Pick the date the series ends.") from None
+    elif end == "after":
+        count = data.get("recurrence_count", "")
+        if not count.strip().isdigit():
+            raise ValueError("Enter how many times the post repeats.")
+    return {
+        "frequency": frequency,
+        "interval": data.get("recurrence_interval") or 1,
+        "weekdays": data.getlist("recurrence_weekdays"),
+        "end_date": end_date,
+        "count": count,
+    }
+
+
+def _recurrence_error(recurrence, post, workspace):
+    """A 400 response if ``recurrence`` can't repeat ``post``, else None.
+
+    The series starts at the post's scheduled time or, for a post sent for
+    approval, its proposed one. Checked before anything is written.
+    """
+    import zoneinfo
+
+    from apps.calendar.services import clean_recurrence
+
+    start = post.scheduled_at or post.proposed_publish_at
+    if start is None:
+        return JsonResponse(
+            {"errors": {"recurrence": "Pick a date and time for the first post to repeat."}}, status=400
+        )
+    ws_tz = zoneinfo.ZoneInfo(workspace.effective_timezone or "UTC")
+    try:
+        clean_recurrence(**recurrence, start=start.astimezone(ws_tz))
+    except ValueError as exc:
+        return JsonResponse({"errors": {"recurrence": str(exc)}}, status=400)
+    return None
+
+
+def _save_approval_recurrence(post, recurrence):
+    """Keep the Repeat setting of a post sent for approval.
+
+    The rule is saved now and its copies start once the post is approved and
+    scheduled (``generate_occurrences`` waits for a committed first post), each
+    carrying that approval. ``never`` stops a series the post already had.
+    """
+    from apps.calendar.services import save_recurrence, stop_recurrence
+
+    if recurrence is None:
+        return
+    if recurrence["frequency"] == "never":
+        stop_recurrence(post)
+    else:
+        save_recurrence(post, **recurrence)
+
+
+def _composer_media_assets(request, post, workspace) -> list:
+    """The post's media assets in order — for a post never saved, its uploads.
+
+    The asset-level counterpart of ``_composer_media_types``.
+    """
+    if not post._state.adding:
+        return post_media_assets(post)
+    # A post that has never been saved keeps its uploads in the session until
+    # save_post attaches them, after this check has run.
+    assets = []
+    pending_ids = request.session.get(f"pending_media_{workspace.id}", [])
+    if pending_ids:
+        by_id = {str(a.id): a for a in MediaAsset.objects.filter(id__in=pending_ids, workspace=workspace)}
+        assets = [by_id[str(i)] for i in pending_ids if str(i) in by_id]
+    return assets
+
+
+def _composer_platform_extras(request, accounts, post=None) -> dict:
+    """Each account's platform_extra as this form would leave it, for media checks.
+
+    Starts from the saved rows and applies the form's post-type choice
+    (``<platform>_post_type_<account id>``, e.g. a Facebook Reel), which
+    decides which of the platform's media rules apply. Keyed by account id.
+    """
+    saved = {}
+    if post is not None and not post._state.adding:
+        saved = dict(
+            PlatformPost.objects.filter(post=post, social_account__in=accounts).values_list(
+                "social_account_id", "platform_extra"
+            )
+        )
+    extras = {}
+    for account in accounts:
+        extra = dict(saved.get(account.id) or {})
+        hint = request.POST.get(f"{account.platform}_post_type_{account.id}", "").strip()
+        if hint:
+            extra["post_type"] = hint
+        extras[account.id] = extra
+    return extras
+
+
+def _composer_media_issues(request, post, workspace, accounts) -> dict:
+    """``media_rule_issues`` per selected account, keyed by account id."""
+    assets = _composer_media_assets(request, post, workspace)
+    if not assets:
+        return {}
+    extras = _composer_platform_extras(request, accounts, post)
+    return {
+        str(account.id): media_rule_issues(account, assets, platform_extra=extras[account.id]) for account in accounts
+    }
+
+
+def _validate_platform_media_rules(request, post, workspace, action):
+    """Refuse to schedule media a selected platform's rules say it will reject.
+
+    Covers what ``_validate_required_media`` doesn't: shape, resolution,
+    length, size and item count, as each provider declares them
+    (``SocialProvider.media_rules``). Warnings never block; the composer's
+    preview shows them as the post is edited.
+    """
+    if action not in _PUBLISH_COMMITTING_ACTIONS:
+        return None
+    selected_ids = _parse_selected_account_ids(request.POST.get("selected_accounts", ""))
+    if not selected_ids:
+        return None
+    accounts = list(SocialAccount.objects.filter(id__in=selected_ids, workspace=workspace))
+    issues = _composer_media_issues(request, post, workspace, accounts)
+    errors = [issue.message for account_issues in issues.values() for issue in account_issues if issue.is_error]
+    if not errors:
+        return None
+    # Two accounts on one platform hit the same rule; say it once.
+    return JsonResponse({"errors": {"media": " ".join(dict.fromkeys(errors))}}, status=400)
+
+
 def _save_version(post, user):
     """Create a PostVersion snapshot."""
     from apps.social_accounts.youtube_compliance import authored_youtube_settings
@@ -906,10 +1061,19 @@ def compose(request, workspace_id, post_id=None):
         elif cid:
             extra["cover_image_asset_id"] = None
 
+    # Repeat control: a series' first post edits the series; a copy it
+    # generated links back to that post instead.
+    from apps.calendar.services import WEEKDAY_NAMES, recurrence_initial
+
+    series_rule = post.series_rule if post else None
+
     context = {
         "workspace": workspace,
         "post": post,
         "form": form,
+        "recurrence_initial": recurrence_initial(post),
+        "series_rule": series_rule if series_rule and series_rule.is_active else None,
+        "weekday_names": WEEKDAY_NAMES,
         "social_accounts": social_accounts,
         "selected_account_ids": [str(aid) for aid in selected_account_ids],
         "platform_extras": platform_extras,
@@ -1101,9 +1265,11 @@ def save_post(request, workspace_id, post_id=None):
         if readonly_error is not None:
             return readonly_error
         _orig_content = _base_content_snapshot(post)
+        _orig_scheduled_at = post.scheduled_at
         form = PostForm(request.POST, instance=post)
     else:
         _orig_content = None
+        _orig_scheduled_at = None
         form = PostForm(request.POST)
 
     if not form.is_valid():
@@ -1126,9 +1292,18 @@ def save_post(request, workspace_id, post_id=None):
     if media_error is not None:
         return media_error
 
+    media_rules_error = _validate_platform_media_rules(request, post, workspace, action)
+    if media_rules_error is not None:
+        return media_rules_error
+
     allowance_error = _scheduled_post_allowance_error(request, post, workspace, action, form)
     if allowance_error is not None:
         return allowance_error
+
+    try:
+        recurrence = _recurrence_from_form(request)
+    except ValueError as exc:
+        return JsonResponse({"errors": {"recurrence": str(exc)}}, status=400)
 
     # Handle action — note that Post itself no longer carries an editorial
     # status: every transition below operates on the PlatformPost children,
@@ -1245,6 +1420,10 @@ def save_post(request, workspace_id, post_id=None):
     elif action == "submit_for_approval":
         # Save post first so it has a PK, then delegate to approval service
         _capture_proposed_publish_at(post, post_id, workspace, form, clear_when_blank=False)
+        if recurrence is not None and recurrence["frequency"] != "never":
+            recurrence_error = _recurrence_error(recurrence, post, workspace)
+            if recurrence_error is not None:
+                return recurrence_error
         post.save()
         # Sync platform posts before submitting
         _sync_platform_posts(request, post, workspace, initial_status="draft")
@@ -1252,6 +1431,7 @@ def save_post(request, workspace_id, post_id=None):
         from apps.approvals.services import submit_for_review
 
         submit_for_review(post, request.user, workspace)
+        _save_approval_recurrence(post, recurrence)
         if request.htmx:
             return HttpResponse(
                 status=204,
@@ -1264,12 +1444,17 @@ def save_post(request, workspace_id, post_id=None):
     elif action == "resubmit_for_approval":
         # Resubmit after changes requested or rejection
         _capture_proposed_publish_at(post, post_id, workspace, form, clear_when_blank=False)
+        if recurrence is not None and recurrence["frequency"] != "never":
+            recurrence_error = _recurrence_error(recurrence, post, workspace)
+            if recurrence_error is not None:
+                return recurrence_error
         post.save()
         _sync_platform_posts(request, post, workspace, initial_status="draft")
         _save_version(post, request.user)
         from apps.approvals.services import resubmit_post
 
         resubmit_post(post, request.user, workspace)
+        _save_approval_recurrence(post, recurrence)
         if request.htmx:
             return HttpResponse(
                 status=204,
@@ -1285,6 +1470,24 @@ def save_post(request, workspace_id, post_id=None):
         _capture_proposed_publish_at(post, post_id, workspace, form)
     # Fall through (save_draft / unknown action): persist below; existing
     # children are left as-is, new children default to draft via initial_status.
+
+    # A series starts when the post is scheduled; one already repeating can be
+    # re-set from any save that keeps its schedule. Checked before anything is
+    # written so a bad setting leaves the post as it was.
+    from apps.calendar.models import RecurrenceRule
+    from apps.calendar.services import save_recurrence, stop_recurrence
+
+    repeating = post.pk is not None and RecurrenceRule.objects.filter(post=post, is_active=True).exists()
+    apply_recurrence = (
+        recurrence is not None
+        and recurrence["frequency"] != "never"
+        and post.scheduled_at is not None
+        and (action == "schedule" or repeating)
+    )
+    if apply_recurrence:
+        recurrence_error = _recurrence_error(recurrence, post, workspace)
+        if recurrence_error is not None:
+            return recurrence_error
 
     post.save()
 
@@ -1309,36 +1512,6 @@ def save_post(request, workspace_id, post_id=None):
 
     # Sync any new tags to the Tag model
     _sync_tags_to_model(workspace, post.tags)
-
-    # Handle recurring post creation
-    make_recurring = request.POST.get("make_recurring")
-    if make_recurring and action == "schedule" and post.scheduled_at:
-        from apps.calendar.models import RecurrenceRule
-
-        frequency = request.POST.get("recurrence_frequency", "weekly")
-        interval_str = request.POST.get("recurrence_interval", "1")
-        end_date_str = request.POST.get("recurrence_end_date", "")
-        try:
-            interval_val = int(interval_str)
-        except (ValueError, TypeError):
-            interval_val = 1
-        end_date_val = None
-        if end_date_str:
-            try:
-                from datetime import date as date_cls
-
-                end_date_val = date_cls.fromisoformat(end_date_str)
-            except (ValueError, TypeError):
-                pass
-        RecurrenceRule.objects.update_or_create(
-            post=post,
-            defaults={
-                "frequency": frequency,
-                "interval": interval_val,
-                "end_date": end_date_val,
-                "is_active": True,
-            },
-        )
 
     # Sync platform posts (newly-created rows inherit ``initial_status`` for
     # this action — e.g. "scheduled" for schedule/publish_now, "draft" for
@@ -1376,6 +1549,13 @@ def save_post(request, workspace_id, post_id=None):
         else:
             target_only = scoped_ids
         _transition_post_children(post, pending_target, only=target_only)
+
+    # The series is set up once the children have their final status, which
+    # is what each generated copy inherits.
+    if apply_recurrence:
+        save_recurrence(post, **recurrence, refresh=_orig_scheduled_at != post.scheduled_at)
+    elif recurrence is not None and recurrence["frequency"] == "never" and repeating:
+        stop_recurrence(post)
 
     # Save version
     _save_version(post, request.user)
@@ -1603,10 +1783,13 @@ def preview(request, workspace_id):
 
     media_items = []
     post_id_str = request.POST.get("_autosave_post_id", "")
+    # The post the media checks below read from; unsaved until autosave runs.
+    rules_post = Post(workspace=workspace)
 
     if post_id_str:
         try:
             post_obj = Post.objects.get(id=post_id_str, workspace=workspace)
+            rules_post = post_obj
             for att in post_obj.media_attachments.select_related("media_asset").all():
                 asset = att.media_asset
                 media_items.append(
@@ -1633,6 +1816,17 @@ def preview(request, workspace_id):
                     }
                 )
 
+    # Each selected platform's media rules, re-checked on every round-trip so
+    # the composer shows errors and warnings as media and accounts change.
+    issues_by_account = _composer_media_issues(request, rules_post, workspace, [p["account"] for p in previews])
+    media_issue_groups = []
+    for p in previews:
+        issues = issues_by_account.get(str(p["account"].id), [])
+        if issues:
+            media_issue_groups.append(
+                {"account": p["account"], "issues": issues, "has_error": any(i.is_error for i in issues)}
+            )
+
     return render(
         request,
         "composer/partials/preview_panel.html",
@@ -1640,6 +1834,8 @@ def preview(request, workspace_id):
             "previews": previews,
             "workspace": workspace,
             "media_items": media_items,
+            "media_issue_groups": media_issue_groups,
+            "media_issues_oob": True,
         },
     )
 
@@ -2514,7 +2710,11 @@ def remove_media(request, workspace_id, post_id, media_id):
         # last image off a pin, would leave it queued to fail. Plain text,
         # because the global htmx error toast shows the body as-is and a 4xx
         # doesn't swap.
-        reason = media_change_blocker(post, media_types_after=post_media_types(post, excluding=attachment))
+        reason = media_change_blocker(
+            post,
+            media_types_after=post_media_types(post, excluding=attachment),
+            assets_after=post_media_assets(post, excluding=attachment),
+        )
         if reason:
             return HttpResponse(reason, status=400, content_type="text/plain")
     PostMedia.objects.filter(id=media_id, post=post).delete()

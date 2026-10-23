@@ -174,6 +174,49 @@ class RateLimitConfig:
     extra: dict = field(default_factory=dict)
 
 
+@dataclass(frozen=True)
+class MediaRules:
+    """What a platform accepts as the media of one post of a given ``PostType``.
+
+    Declared per provider in ``SocialProvider.media_rules`` and checked by the
+    composer and the API before a post is scheduled, against the metadata the
+    media library stores for each attachment. Every limit is optional: ``None``
+    (or ``0`` for a minimum) means the platform sets none worth checking.
+
+    A broken limit blocks scheduling, because the platform would refuse the
+    post. Name a limit in ``advisory`` to warn instead — for one the platform
+    only recommends, or whose official value isn't firm enough to refuse a
+    post over. The names are ``max_items``, ``media_types``, ``aspect_ratio``
+    (both bounds), ``min_resolution``, ``max_resolution``, ``min_duration``,
+    ``max_duration``, ``max_image_bytes`` and ``max_video_bytes``.
+    ``recommended_aspect_ratio`` and ``published_items`` only ever warn.
+    Ratios are width / height (9:16 is 0.5625).
+    """
+
+    # The platform's documentation the limits were taken from.
+    source: str = ""
+    # Attachments one post may carry.
+    max_items: int | None = None
+    # Attachments this provider actually sends; any beyond are dropped with a
+    # warning. Set where the platform takes more than the provider implements.
+    published_items: int | None = None
+    # ``MediaAsset.media_type`` values the post type takes (image, video, gif).
+    media_types: frozenset[str] | None = None
+    min_aspect_ratio: float | None = None
+    max_aspect_ratio: float | None = None
+    recommended_aspect_ratio: float | None = None
+    min_width: int = 0
+    min_height: int = 0
+    max_width: int | None = None
+    max_height: int | None = None
+    # Video length, in seconds.
+    min_duration: float = 0
+    max_duration: float | None = None
+    max_image_bytes: int | None = None
+    max_video_bytes: int | None = None
+    advisory: frozenset[str] = frozenset()
+
+
 class UploadCache(Protocol):
     """Somewhere a provider can remember an upload between publish attempts.
 

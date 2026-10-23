@@ -19,6 +19,7 @@ from .types import (
     AuthType,
     CommentResult,
     InboxMessage,
+    MediaRules,
     MediaType,
     OAuthTokens,
     PostMetrics,
@@ -92,8 +93,33 @@ def escape_commentary(text: str) -> str:
     return escaped
 
 
+# What LinkedIn posts accept. A multi-image post takes up to 20 images, but
+# this provider sends the first only, so extra images are flagged.
+# https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/multiimage-post-api
+# Videos run 3 seconds to 30 minutes; the documented 500 MB ceiling has been
+# raised for some members, so size only warns.
+# https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/videos-api
+LINKEDIN_MEDIA_RULES = {
+    PostType.IMAGE: MediaRules(
+        source="https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/multiimage-post-api",
+        max_items=20,
+        published_items=1,
+    ),
+    PostType.VIDEO: MediaRules(
+        source="https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/videos-api",
+        published_items=1,
+        min_duration=3,
+        max_duration=30 * 60,
+        max_video_bytes=500 * 1024 * 1024,
+        advisory=frozenset({"max_video_bytes"}),
+    ),
+}
+
+
 class LinkedInProvider(SocialProvider):
     """LinkedIn Marketing API v2 provider."""
+
+    media_rules = LINKEDIN_MEDIA_RULES
 
     # ------------------------------------------------------------------
     # Metadata

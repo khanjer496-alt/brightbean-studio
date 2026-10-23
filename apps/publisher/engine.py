@@ -36,7 +36,7 @@ from apps.approvals.policy import approval_allows_publish
 from apps.common.db import in_worker_thread, release_idle_connection
 from apps.common.worker import SHUTDOWN_REQUESTED
 from apps.composer.models import PlatformPost
-from apps.composer.services import publish_blocker, usable_media_types
+from apps.composer.services import media_rules_blocker, post_media_assets, publish_blocker, usable_media_types
 from apps.credentials.models import resolve_platform_credentials
 from apps.media_library.storage import download_to_path
 from apps.social_accounts.error_messages import (
@@ -646,6 +646,24 @@ class PublishEngine:
                 reason="approval proof failed at publish chokepoint",
             )
             return {"success": False, "error": "approval required"}
+
+        # Media a platform's rules say it will refuse (a Reel over its length,
+        # an image outside the feed's shapes) fails here with the sentence the
+        # composer shows, rather than costing an upload the platform rejects.
+        # Only blocking rules count; advisory ones never stop a post. Scheduling
+        # checks this too — this catches media changed or a row scheduled
+        # some other way since.
+        media_reason = media_rules_blocker(
+            account, post_media_assets(platform_post.post), platform_extra=platform_post.platform_extra
+        )
+        if media_reason:
+            self._fail_permanently(
+                platform_post,
+                f"media rules: {media_reason}",
+                user_message=media_reason,
+                reason="media breaks a blocking platform media rule",
+            )
+            return {"success": False, "error": media_reason}
 
         # Check rate limits
         rate_state = RateLimitState.objects.filter(

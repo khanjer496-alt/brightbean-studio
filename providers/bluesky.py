@@ -15,6 +15,7 @@ from .exceptions import PublishError
 from .types import (
     AccountProfile,
     AuthType,
+    MediaRules,
     MediaType,
     OAuthTokens,
     PostType,
@@ -46,6 +47,25 @@ def _access_jwt_expires_in(access_jwt: str) -> int | None:
     return max(0, exp - int(time.time()))
 
 
+# What a Bluesky post embeds: up to 4 images of at most 1,000,000 bytes each
+# (the lexicon's blob limit), or one video of up to 3 minutes and 100 MB.
+# https://docs.bsky.app/docs/advanced-guides/posts#images-embeds
+# https://docs.bsky.app/docs/tutorials/video
+BLUESKY_MEDIA_RULES = {
+    PostType.IMAGE: MediaRules(
+        source="https://docs.bsky.app/docs/advanced-guides/posts#images-embeds",
+        published_items=4,
+        max_image_bytes=1_000_000,
+    ),
+    PostType.VIDEO: MediaRules(
+        source="https://docs.bsky.app/docs/tutorials/video",
+        published_items=1,
+        max_duration=3 * 60,
+        max_video_bytes=100 * 1024 * 1024,
+    ),
+}
+
+
 class BlueskyProvider(SocialProvider):
     """AT Protocol / Bluesky provider.
 
@@ -54,6 +74,8 @@ class BlueskyProvider(SocialProvider):
 
     - ``pds_url`` – PDS base URL (defaults to ``https://bsky.social``)
     """
+
+    media_rules = BLUESKY_MEDIA_RULES
 
     def __init__(self, credentials: dict | None = None):
         super().__init__(credentials)
