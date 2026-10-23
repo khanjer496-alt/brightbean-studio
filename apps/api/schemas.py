@@ -1621,6 +1621,178 @@ class NextFreeSlotsResponse(Schema):
 
 
 # ---------------------------------------------------------------------------
+# /best-times
+# ---------------------------------------------------------------------------
+
+
+class BestTimeResponse(Schema):
+    day_of_week: int = Field(..., description="0=Monday … 6=Sunday.")
+    day_name: str
+    time: str = Field(..., description="``HH:MM`` wall-clock time in the workspace timezone.")
+    score: float = Field(..., description="0-100, relative to the account's best cell (100).")
+    posts: int = Field(
+        ..., description="Published posts of the account that landed in this cell; 0 for industry defaults."
+    )
+
+
+class BestTimesResponse(Schema):
+    social_account_id: uuid.UUID
+    timezone: str = Field(..., description="The workspace timezone the days and hours are in.")
+    basis: Literal["posts", "defaults"] = Field(
+        ..., description="``posts`` when learned from the account's own posts, ``defaults`` for industry averages."
+    )
+    basis_label: str = Field(..., description='Human wording of the basis, e.g. "Based on your 42 posts".')
+    sample_size: int = Field(..., description="Posts the scores were learned from; 0 for ``defaults``.")
+    computed_at: dt.datetime | None = None
+    suggestions: list[BestTimeResponse] = Field(..., description="The top times, spread across the week.")
+    grid: list[list[int]] = Field(..., description="7 rows (Monday first) of 24 hourly scores, 0-100; 0 means no data.")
+    grid_posts: list[list[int]] = Field(
+        default_factory=list,
+        description=(
+            "Same shape as ``grid``: how many of the account's posts each score rests on (all 0 for ``defaults``). "
+            "A cell with 1-2 posts is low confidence."
+        ),
+    )
+
+    @field_serializer("computed_at")
+    def _serialize_dt(self, value: dt.datetime | None) -> str | None:
+        return _serialize_utc_z(value)
+
+
+class ApplyBestTimesRequest(Schema):
+    social_account_id: uuid.UUID
+    count: int = Field(5, ge=1, le=14, description="How many suggested times to apply.")
+    mode: Literal["replace", "add"] = Field(
+        "replace", description="``replace`` swaps the account's posting slots for the suggestions; ``add`` keeps them."
+    )
+    preview: bool = Field(False, description="``true`` only reports what would change and writes nothing.")
+
+
+class ApplyBestTimesResponse(Schema):
+    social_account_id: uuid.UUID
+    mode: str
+    applied: bool
+    basis_label: str
+    add: list[str] = Field(..., description='Slots that would be / were added, e.g. ``"Tue 09:00"``.')
+    remove: list[str] = Field(..., description="Slots that would be / were removed.")
+    slots: list[PostingSlotResponse] = Field(
+        ..., description="The account's posting slots after the change (or as they are now, on a preview)."
+    )
+
+
+# ---------------------------------------------------------------------------
+# /evergreen
+# ---------------------------------------------------------------------------
+
+
+class EvergreenRepeatResponse(Schema):
+    id: uuid.UUID
+    post_id: uuid.UUID | None = None
+    scheduled_for: dt.datetime
+    outcome: str = Field(..., description="``scheduled`` or ``awaiting_approval``.")
+    wording: str = Field(..., description="``original`` or ``ai``.")
+    approval: str = Field(
+        "not_required", description="``not_required``, ``pre_approved`` or ``review``: how it got past approval."
+    )
+    text: str = Field("", description="The exact text the recycling task wrote.")
+    status: str | None = Field(None, description="The repeat's current post status, when the post still exists.")
+    engagements: int | None = None
+    reach: int | None = None
+    engagement_rate: float | None = Field(None, description="Percent; null when it can't be measured.")
+
+    @field_serializer("scheduled_for")
+    def _serialize_dt(self, value: dt.datetime) -> str | None:
+        return _serialize_utc_z(value)
+
+
+class EvergreenItemResponse(Schema):
+    id: uuid.UUID
+    social_account_id: uuid.UUID
+    category_id: uuid.UUID | None = None
+    category_name: str
+    source_kind: str = Field(..., description="``post``, ``template`` or ``idea``.")
+    source_post_id: uuid.UUID | None = None
+    caption: str
+    media_asset_ids: list[str]
+    interval_days: int = Field(..., description="Never posted again sooner than this many days after it last went out.")
+    max_repeats: int | None = Field(None, description="Stops after this many repeats; null means no limit.")
+    repeat_count: int
+    vary_with_ai: bool
+    pre_approved: bool
+    is_paused: bool
+    last_posted_at: dt.datetime | None = None
+    next_eligible_at: dt.datetime | None = None
+    last_skip_reason: str = ""
+
+    @field_serializer("last_posted_at", "next_eligible_at")
+    def _serialize_dt(self, value: dt.datetime | None) -> str | None:
+        return _serialize_utc_z(value)
+
+    @classmethod
+    def from_item(cls, item) -> EvergreenItemResponse:
+        return cls(
+            id=item.id,
+            social_account_id=item.social_account_id,
+            category_id=item.category_id,
+            category_name=item.category_name,
+            source_kind=item.source_kind,
+            source_post_id=item.source_post_id,
+            caption=item.caption,
+            media_asset_ids=[str(i) for i in item.media_asset_ids or []],
+            interval_days=item.interval_days,
+            max_repeats=item.max_repeats,
+            repeat_count=item.repeat_count,
+            vary_with_ai=item.vary_with_ai,
+            pre_approved=item.pre_approved,
+            is_paused=item.is_paused,
+            last_posted_at=item.last_posted_at,
+            next_eligible_at=item.next_eligible_at,
+            last_skip_reason=item.last_skip_reason,
+        )
+
+
+class EvergreenListResponse(Schema):
+    items: list[EvergreenItemResponse]
+    limit: int
+    next_cursor: str | None = Field(None, description="Pass back as ``cursor`` for the next page; null on the last.")
+
+
+class EvergreenDetailResponse(EvergreenItemResponse):
+    repeats: list[EvergreenRepeatResponse] = Field(..., description="Every repeat, newest first, with its results.")
+
+
+class AddEvergreenRequest(Schema):
+    post_id: uuid.UUID | None = Field(
+        None,
+        description="A published post. One item is made per published platform target (or only ``social_account_id``).",
+    )
+    template_id: uuid.UUID | None = Field(None, description="A post template; needs ``social_account_id``.")
+    idea_id: uuid.UUID | None = Field(None, description="A kanban idea; needs ``social_account_id``.")
+    social_account_id: uuid.UUID | None = None
+    category_id: uuid.UUID | None = None
+    category_name: str | None = Field(
+        None, max_length=100, description='Creates the category when new, e.g. "Evergreen: Tips".'
+    )
+    interval_days: int = Field(30, ge=1, le=3650)
+    max_repeats: int | None = Field(None, ge=1, le=1000)
+    vary_with_ai: bool = Field(
+        False, description="Reword with the AI writer and the workspace brand voice; falls back to the original."
+    )
+    pre_approved: bool = Field(False, description="Skip the approval workflow for repeats. Needs ``approve_posts``.")
+
+
+class UpdateEvergreenRequest(Schema):
+    is_paused: bool | None = None
+    category_id: uuid.UUID | None = None
+    category_name: str | None = Field(None, max_length=100)
+    interval_days: int | None = Field(None, ge=1, le=3650)
+    max_repeats: int | None = Field(None, ge=1, le=1000)
+    clear_max_repeats: bool = Field(False, description="``true`` removes the repeat limit.")
+    vary_with_ai: bool | None = None
+    pre_approved: bool | None = Field(None, description="Needs ``approve_posts``.")
+
+
+# ---------------------------------------------------------------------------
 # /ideas, /idea-groups, /templates, /tags, /categories, /events
 # ---------------------------------------------------------------------------
 

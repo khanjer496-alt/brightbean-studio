@@ -713,3 +713,67 @@ def refresh_series(post):
             return 0
         remove_upcoming_occurrences(post)
         return generate_occurrences(rule)
+
+
+# ---------------------------------------------------------------------------
+# Suggested posting slots (best time to post)
+# ---------------------------------------------------------------------------
+
+SUGGESTED_SLOTS_DEFAULT = 5
+SUGGESTED_SLOTS_MAX = 14
+SLOT_MODES = ("replace", "add")
+
+
+def suggest_slots(social_account, count=SUGGESTED_SLOTS_DEFAULT):
+    """The account's best ``count`` weekday/hour slots and the grid they came from.
+
+    Returns ``(best_times, suggestions)``: ``best_times`` says whether the
+    scores come from the account's own posts or industry defaults, and
+    ``suggestions`` are ``BestTime`` rows sorted by day and hour.
+    """
+    from apps.analytics.best_times import get_best_times
+
+    count = max(1, min(int(count), SUGGESTED_SLOTS_MAX))
+    best = get_best_times(social_account)
+    return best, sorted(best.top(count), key=lambda s: (s.weekday, s.hour))
+
+
+def plan_slot_changes(social_account, suggestions, mode="replace"):
+    """What applying ``suggestions`` would do: ``(to_add, to_remove, kept)`` as lists of ``(weekday, time)``/slots.
+
+    ``replace`` swaps every posting slot for the suggestions; ``add`` keeps the
+    existing slots and only adds the missing ones. Nothing is written.
+    """
+    if mode not in SLOT_MODES:
+        raise ValueError(f"mode must be one of {', '.join(SLOT_MODES)}.")
+    wanted = {(s.weekday, time(s.hour, 0)) for s in suggestions}
+    existing = list(PostingSlot.objects.filter(social_account=social_account))
+    existing_keys = {(slot.day_of_week, slot.time) for slot in existing}
+    to_add = sorted(wanted - existing_keys)
+    kept = [slot for slot in existing if (slot.day_of_week, slot.time) in wanted or mode == "add"]
+    to_remove = [slot for slot in existing if slot not in kept]
+    return to_add, to_remove, kept
+
+
+def apply_suggested_slots(social_account, suggestions, mode="replace"):
+    """Write ``suggestions`` as the account's posting slots; returns ``(added, removed)`` counts.
+
+    Posts already holding a time keep it: slots only decide where *future*
+    queue entries go. Idempotent: applying the same suggestions twice changes
+    nothing the second time.
+    """
+    from django.db import transaction
+
+    suggestions = list(suggestions)
+    if not suggestions:
+        raise ValueError("There are no suggested times to apply.")
+    with transaction.atomic():
+        list(type(social_account).objects.select_for_update().filter(pk=social_account.pk))
+        to_add, to_remove, _kept = plan_slot_changes(social_account, suggestions, mode)
+        if to_remove:
+            PostingSlot.objects.filter(id__in=[slot.id for slot in to_remove]).delete()
+        PostingSlot.objects.bulk_create(
+            [PostingSlot(social_account=social_account, day_of_week=day, time=at) for day, at in to_add],
+            ignore_conflicts=True,
+        )
+    return len(to_add), len(to_remove)

@@ -1,0 +1,49 @@
+{% comment %}
+Preview of "Suggest slots": what would be added or removed, with a confirm form.
+Context: account, workspace_id, best, suggestions, labels, tokens, mode, counts, to_add, to_remove, kept_count, count.
+{% endcomment %}
+<div class="rounded-xl border border-stone-200 bg-stone-50 p-4" role="group" aria-labelledby="suggest-title-{{ account.id }}">
+    <p id="suggest-title-{{ account.id }}" class="text-sm font-semibold text-stone-800">Suggested slots</p>
+    <p class="text-xs text-stone-500 mt-0.5">{{ best.basis_label }}. Posts that already have a time keep it.</p>
+
+    <form hx-get="{% url 'calendar:suggest_slots_preview' workspace_id=workspace_id %}"
+          hx-trigger="change"
+          hx-target="#suggest-slots-{{ account.id }}"
+          hx-swap="innerHTML"
+          class="mt-3 flex flex-wrap items-end gap-x-5 gap-y-2">
+        <input type="hidden" name="social_account_id" value="{{ account.id }}">
+        <div>
+            <label for="suggest-count-{{ account.id }}" class="block text-xs font-medium text-stone-600 mb-1">How many</label>
+            <select id="suggest-count-{{ account.id }}" name="count" class="text-sm px-3 py-2 rounded-lg border border-stone-200 outline-none focus:border-orange-500">
+                {% for n in counts %}<option value="{{ n }}" {% if n == count %}selected{% endif %}>{{ n }} times</option>{% endfor %}
+            </select>
+        </div>
+        <fieldset>
+            <legend class="block text-xs font-medium text-stone-600 mb-1">Apply as</legend>
+            <label class="inline-flex items-center gap-1.5 text-sm text-stone-700 mr-3"><input type="radio" name="mode" value="replace" {% if mode == "replace" %}checked{% endif %}> Replace my slots</label>
+            <label class="inline-flex items-center gap-1.5 text-sm text-stone-700"><input type="radio" name="mode" value="add" {% if mode == "add" %}checked{% endif %}> Add to my slots</label>
+        </fieldset>
+    </form>
+
+    <ul class="mt-3 flex flex-wrap gap-1.5" aria-label="Suggested times">
+        {% for label in labels %}
+        <li class="inline-flex items-center rounded-full border border-stone-200 bg-white px-2.5 py-1 text-xs font-medium text-stone-800">{{ label }}</li>
+        {% endfor %}
+    </ul>
+
+    <dl class="mt-3 space-y-1 text-xs text-stone-600">
+        <div><dt class="inline font-semibold">Adds:</dt> <dd class="inline">{% if to_add %}{{ to_add|join:", " }}{% else %}nothing, they are already slots{% endif %}</dd></div>
+        <div><dt class="inline font-semibold">Removes:</dt> <dd class="inline">{% if to_remove %}{{ to_remove|join:", " }}{% else %}nothing{% endif %}</dd></div>
+        <div><dt class="inline font-semibold">Keeps:</dt> <dd class="inline">{{ kept_count }} existing slot{{ kept_count|pluralize }}</dd></div>
+    </dl>
+
+    <form hx-post="{% url 'calendar:suggest_slots_apply' workspace_id=workspace_id %}" hx-swap="none" class="mt-4 flex flex-wrap items-center gap-2">
+        {% csrf_token %}
+        <input type="hidden" name="social_account_id" value="{{ account.id }}">
+        <input type="hidden" name="mode" value="{{ mode }}">
+        {% for token in tokens %}<input type="hidden" name="slots" value="{{ token }}">{% endfor %}
+        <button type="submit" class="btn-brand text-sm py-2 px-4">{% if mode == "replace" %}Replace slots{% else %}Add slots{% endif %}</button>
+        <button type="button" class="text-sm text-stone-500 hover:text-stone-700 py-2 px-3 cursor-pointer"
+                @click="document.getElementById('suggest-slots-{{ account.id }}').replaceChildren()">Cancel</button>
+    </form>
+</div>

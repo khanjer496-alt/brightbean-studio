@@ -84,6 +84,9 @@ class BlueskyProvider(SocialProvider):
 
     mention_lookup = True
 
+    # Unverified: none of the Sprout Social, Hootsuite or Buffer studies covers Bluesky, so the generic
+    # DEFAULT_BEST_TIME_WINDOWS apply (checked 2026-10-24).
+
     writing_style = (
         "Conversational and concise, like a thought shared with peers. One or two hashtags at most, few emojis."
     )

@@ -23,6 +23,7 @@ from .types import (
     MediaType,
     MentionSuggestion,
     OAuthTokens,
+    PeakWindow,
     PostMetrics,
     PostSetting,
     PostType,
@@ -177,6 +178,17 @@ class SocialProvider(ABC):
     # enforces itself. Empty means "no particular style": the caption is only
     # fitted to the limit.
     writing_style: ClassVar[str] = ""
+
+    # When this network's audience is most active, best first, used as the "best
+    # time to post" until an account has enough published posts of its own to
+    # learn from (see ``apps.analytics.best_times``). Empty falls back to
+    # ``DEFAULT_BEST_TIME_WINDOWS`` in ``providers``. Each provider that declares
+    # one cites where the numbers come from; they are industry averages, not
+    # measurements of any one audience, and the UI labels them that way.
+    best_time_windows: ClassVar[tuple[PeakWindow, ...]] = ()
+    # Short name of the study the windows come from, shown next to them ("Sprout
+    # Social study, Mar 2026"). Empty with no windows of its own.
+    best_time_source: ClassVar[str] = ""
 
     # False when the platform publishes no media at all (Reddit here): a post
     # carrying any is refused before scheduling, with a sentence naming the

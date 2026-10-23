@@ -8,7 +8,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 from django.db import IntegrityError, transaction
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -344,8 +344,14 @@ class MentionSearchTests(ComposerTestCase):
         self.assertEqual(len(results[0]["name"]), 100)
         self.assertNotIn("jwt", json.dumps(results))
 
+    # The limiter's window is fixed and offset per key (the user's id, so it
+    # moves with how many users earlier tests made): pin the clock so the 63
+    # requests can't straddle a window edge and start a fresh count midway.
+    # RATELIMIT_ENABLE follows the env's DEBUG in base settings, so set it.
+    @override_settings(RATELIMIT_ENABLE=True)
+    @patch("django_ratelimit.core.time.time", return_value=1_800_000_000.0)
     @patch("apps.publisher.engine._provider_and_access_token")
-    def test_searches_are_rate_limited_per_user(self, mock_provider):
+    def test_searches_are_rate_limited_per_user(self, mock_provider, _clock):
         provider = MagicMock()
         provider.search_mentions.return_value = [MentionSuggestion(handle="a.bsky.social")]
         mock_provider.return_value = (provider, "jwt")
