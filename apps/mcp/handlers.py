@@ -26,7 +26,14 @@ from ninja.errors import HttpError
 from apps.analytics.api_builders import build_account_analytics, build_post_analytics
 from apps.api.limits import check_platform_quota
 from apps.api.pagination import decode_offset_cursor, encode_offset_cursor
-from apps.api.schemas import PostResponse, RecurrenceSpec, ThreadPart
+from apps.api.schemas import (
+    PostResponse,
+    RecurrenceSpec,
+    ThreadPart,
+    WebhookDeliveryResponse,
+    WebhookEndpointResponse,
+    WebhookEndpointWithSecretResponse,
+)
 from apps.calendar.services import clean_recurrence, save_recurrence
 from apps.composer.models import PlatformPost, Post
 from apps.composer.services import create_post, transition_platform_post
@@ -41,6 +48,10 @@ from apps.inbox.services import (
 from apps.mcp.protocol import INVALID_PARAMS, JsonRpcError
 from apps.mcp.tools import Tool, register_tool
 from apps.social_accounts.models import SocialAccount
+from apps.webhooks import services as webhook_services
+from apps.webhooks.models import SUBSCRIBABLE_EVENT_TYPES, WebhookDelivery, WebhookEndpoint
+from apps.webhooks.models import DeliveryStatus as WebhookDeliveryStatus
+from apps.webhooks.services import WebhookError
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -1965,5 +1976,309 @@ register_tool(
             "additionalProperties": False,
         },
         handler=_adapt_caption,
+    )
+)
+
+
+# ---------------------------------------------------------------------------
+# Tools: outbound webhooks (same services as the REST /webhooks routes)
+# ---------------------------------------------------------------------------
+
+_MCP_WEBHOOK_DELIVERY_LIMIT_DEFAULT = 50
+_MCP_WEBHOOK_DELIVERY_LIMIT_MAX = 100
+
+
+def _require_webhook_access(context: dict[str, Any]) -> None:
+    """The REST webhook routes' check: a managing permission, and a key covering every account."""
+    if not webhook_services.can_manage(context["membership"].effective_permissions):
+        raise JsonRpcError(
+            INVALID_PARAMS, f"Permission denied: needs one of {', '.join(webhook_services.MANAGE_PERMISSIONS)}"
+        )
+    if not webhook_services.key_covers_workspace(context["api_key"]):
+        raise JsonRpcError(
+            INVALID_PARAMS,
+            "Webhooks report on every account in the workspace, so they need a key that covers all of its accounts.",
+        )
+
+
+def _get_webhook_endpoint(args: dict, context: dict[str, Any]) -> WebhookEndpoint:
+    if "endpoint_id" not in args:
+        raise JsonRpcError(INVALID_PARAMS, "endpoint_id is required")
+    endpoint_id = _parse_uuid(args["endpoint_id"], "endpoint_id")
+    try:
+        return WebhookEndpoint.objects.get(id=endpoint_id, workspace=context["workspace"])
+    except WebhookEndpoint.DoesNotExist as exc:
+        raise JsonRpcError(INVALID_PARAMS, "Webhook endpoint not found") from exc
+
+
+def _list_webhook_endpoints(args: dict, context: dict[str, Any]) -> dict:
+    _require_webhook_access(context)
+    endpoints = WebhookEndpoint.objects.filter(workspace=context["workspace"])
+    return _wrap_text(
+        {"endpoints": [WebhookEndpointResponse.from_endpoint(e).model_dump(mode="json") for e in endpoints]}
+    )
+
+
+def _create_webhook_endpoint(args: dict, context: dict[str, Any]) -> dict:
+    _require_webhook_access(context)
+    for field in ("url", "event_types"):
+        if field not in args:
+            raise JsonRpcError(INVALID_PARAMS, f"{field} is required")
+    user = context["api_key"].issued_by
+    try:
+        endpoint, secret = webhook_services.create_endpoint(
+            context["workspace"],
+            url=args["url"],
+            event_types=args["event_types"],
+            description=args.get("description", ""),
+            is_enabled=args.get("is_enabled", True),
+            created_by=user,
+        )
+    except WebhookError as exc:
+        raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
+    return _wrap_text(
+        WebhookEndpointWithSecretResponse.from_endpoint_and_secret(endpoint, secret).model_dump(mode="json")
+    )
+
+
+def _update_webhook_endpoint(args: dict, context: dict[str, Any]) -> dict:
+    _require_webhook_access(context)
+    endpoint = _get_webhook_endpoint(args, context)
+    changes = {k: args[k] for k in ("url", "event_types", "description", "is_enabled") if k in args}
+    try:
+        webhook_services.update_endpoint(endpoint, **changes)
+    except WebhookError as exc:
+        raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
+    return _wrap_text(WebhookEndpointResponse.from_endpoint(endpoint).model_dump(mode="json"))
+
+
+def _delete_webhook_endpoint(args: dict, context: dict[str, Any]) -> dict:
+    _require_webhook_access(context)
+    endpoint = _get_webhook_endpoint(args, context)
+    endpoint_id = str(endpoint.id)
+    endpoint.delete()
+    return _wrap_text({"deleted": True, "endpoint_id": endpoint_id})
+
+
+def _rotate_webhook_secret(args: dict, context: dict[str, Any]) -> dict:
+    _require_webhook_access(context)
+    endpoint = _get_webhook_endpoint(args, context)
+    secret = webhook_services.rotate_secret(endpoint)
+    return _wrap_text(
+        WebhookEndpointWithSecretResponse.from_endpoint_and_secret(endpoint, secret).model_dump(mode="json")
+    )
+
+
+def _send_webhook_test(args: dict, context: dict[str, Any]) -> dict:
+    _require_webhook_access(context)
+    endpoint = _get_webhook_endpoint(args, context)
+    delivery = webhook_services.send_test_event(endpoint)
+    return _wrap_text(WebhookDeliveryResponse.from_delivery(delivery).model_dump(mode="json"))
+
+
+def _list_webhook_deliveries(args: dict, context: dict[str, Any]) -> dict:
+    _require_webhook_access(context)
+    endpoint = _get_webhook_endpoint(args, context)
+    status = args.get("status")
+    if status is not None and status not in WebhookDeliveryStatus.values:
+        raise JsonRpcError(INVALID_PARAMS, f"status must be one of {', '.join(WebhookDeliveryStatus.values)}")
+    raw_limit = args.get("limit")
+    try:
+        limit = _MCP_WEBHOOK_DELIVERY_LIMIT_DEFAULT if raw_limit is None else int(raw_limit)
+    except (TypeError, ValueError) as exc:
+        raise JsonRpcError(
+            INVALID_PARAMS, f"limit must be an integer between 1 and {_MCP_WEBHOOK_DELIVERY_LIMIT_MAX}"
+        ) from exc
+    if limit < 1 or limit > _MCP_WEBHOOK_DELIVERY_LIMIT_MAX:
+        raise JsonRpcError(INVALID_PARAMS, f"limit must be between 1 and {_MCP_WEBHOOK_DELIVERY_LIMIT_MAX}")
+    try:
+        offset = decode_offset_cursor(args.get("cursor"))
+    except ValueError as exc:
+        raise JsonRpcError(INVALID_PARAMS, "cursor is not a valid pagination cursor") from exc
+
+    qs = endpoint.deliveries.all()
+    if status:
+        qs = qs.filter(status=status)
+    rows = list(qs[offset : offset + limit + 1])
+    has_more = len(rows) > limit
+    rows = rows[:limit]
+    return _wrap_text(
+        {
+            "deliveries": [WebhookDeliveryResponse.from_delivery(d).model_dump(mode="json") for d in rows],
+            "limit": limit,
+            "next_cursor": encode_offset_cursor(offset + limit) if has_more else None,
+        }
+    )
+
+
+def _resend_webhook_delivery(args: dict, context: dict[str, Any]) -> dict:
+    _require_webhook_access(context)
+    endpoint = _get_webhook_endpoint(args, context)
+    if "delivery_id" not in args:
+        raise JsonRpcError(INVALID_PARAMS, "delivery_id is required")
+    delivery_id = _parse_uuid(args["delivery_id"], "delivery_id")
+    try:
+        delivery = endpoint.deliveries.get(id=delivery_id)
+    except WebhookDelivery.DoesNotExist as exc:
+        raise JsonRpcError(INVALID_PARAMS, "Webhook delivery not found") from exc
+    try:
+        webhook_services.resend(delivery)
+    except WebhookError as exc:
+        raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
+    return _wrap_text(WebhookDeliveryResponse.from_delivery(delivery).model_dump(mode="json"))
+
+
+_WEBHOOK_ENDPOINT_ID_SCHEMA = {"type": "string", "format": "uuid", "description": "From list_webhook_endpoints."}
+_WEBHOOK_EVENT_TYPES_SCHEMA = {
+    "type": "array",
+    "items": {"type": "string", "enum": list(SUBSCRIBABLE_EVENT_TYPES)},
+    "minItems": 1,
+    "description": "Events the endpoint is told about.",
+}
+_WEBHOOK_NOTE = (
+    "Requires manage_workspace_settings or manage_social_accounts, and a key that covers every account in the "
+    "workspace."
+)
+
+register_tool(
+    Tool(
+        name="list_webhook_endpoints",
+        description=f"List the workspace's outbound webhook endpoints (never the secrets). {_WEBHOOK_NOTE}",
+        input_schema={"type": "object", "properties": {}, "additionalProperties": False},
+        handler=_list_webhook_endpoints,
+        read_only=True,
+    )
+)
+register_tool(
+    Tool(
+        name="create_webhook_endpoint",
+        description=(
+            "Create an outbound webhook endpoint. The URL must be a public http(s) address. The response "
+            f"includes the signing `secret`, shown only now (rotate it to get another). {_WEBHOOK_NOTE}"
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "url": {"type": "string", "maxLength": 2000},
+                "event_types": _WEBHOOK_EVENT_TYPES_SCHEMA,
+                "description": {"type": "string", "maxLength": 255},
+                "is_enabled": {"type": "boolean", "default": True},
+            },
+            "required": ["url", "event_types"],
+            "additionalProperties": False,
+        },
+        handler=_create_webhook_endpoint,
+    )
+)
+register_tool(
+    Tool(
+        name="update_webhook_endpoint",
+        description=(
+            "Change a webhook endpoint's url, event_types, description or is_enabled. Setting is_enabled to "
+            f"true also clears an automatic shut-off. {_WEBHOOK_NOTE}"
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "endpoint_id": _WEBHOOK_ENDPOINT_ID_SCHEMA,
+                "url": {"type": "string", "maxLength": 2000},
+                "event_types": _WEBHOOK_EVENT_TYPES_SCHEMA,
+                "description": {"type": "string", "maxLength": 255},
+                "is_enabled": {"type": "boolean"},
+            },
+            "required": ["endpoint_id"],
+            "additionalProperties": False,
+        },
+        handler=_update_webhook_endpoint,
+    )
+)
+register_tool(
+    Tool(
+        name="delete_webhook_endpoint",
+        description=f"Delete a webhook endpoint and its delivery log. {_WEBHOOK_NOTE}",
+        input_schema={
+            "type": "object",
+            "properties": {"endpoint_id": _WEBHOOK_ENDPOINT_ID_SCHEMA},
+            "required": ["endpoint_id"],
+            "additionalProperties": False,
+        },
+        handler=_delete_webhook_endpoint,
+    )
+)
+register_tool(
+    Tool(
+        name="rotate_webhook_secret",
+        description=(
+            "Replace a webhook endpoint's signing secret. The old one stops working at once; the new one is "
+            f"returned only in this response. {_WEBHOOK_NOTE}"
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {"endpoint_id": _WEBHOOK_ENDPOINT_ID_SCHEMA},
+            "required": ["endpoint_id"],
+            "additionalProperties": False,
+        },
+        handler=_rotate_webhook_secret,
+    )
+)
+register_tool(
+    Tool(
+        name="send_webhook_test",
+        description=(
+            "Queue a `webhook.test` ping to an endpoint (even a turned-off one). Read the result with "
+            f"list_webhook_deliveries. {_WEBHOOK_NOTE}"
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {"endpoint_id": _WEBHOOK_ENDPOINT_ID_SCHEMA},
+            "required": ["endpoint_id"],
+            "additionalProperties": False,
+        },
+        handler=_send_webhook_test,
+    )
+)
+register_tool(
+    Tool(
+        name="list_webhook_deliveries",
+        description=(
+            "List an endpoint's recent deliveries, newest first, with status code, duration, attempt count, "
+            "the request payload and a truncated response. Optional `status` (pending/delivered/failed) and "
+            "`limit` (default 50, max 100); when more remain `next_cursor` is non-null — pass it back as "
+            f"`cursor`. {_WEBHOOK_NOTE}"
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "endpoint_id": _WEBHOOK_ENDPOINT_ID_SCHEMA,
+                "status": {"type": "string", "enum": list(WebhookDeliveryStatus.values)},
+                "limit": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": _MCP_WEBHOOK_DELIVERY_LIMIT_MAX,
+                    "default": _MCP_WEBHOOK_DELIVERY_LIMIT_DEFAULT,
+                },
+                "cursor": {"type": "string", "description": "Opaque cursor from a previous call's next_cursor."},
+            },
+            "required": ["endpoint_id"],
+            "additionalProperties": False,
+        },
+        handler=_list_webhook_deliveries,
+        read_only=True,
+    )
+)
+register_tool(
+    Tool(
+        name="resend_webhook_delivery",
+        description=(f"Send a delivery again: same payload, same delivery id, fresh retry schedule. {_WEBHOOK_NOTE}"),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "endpoint_id": _WEBHOOK_ENDPOINT_ID_SCHEMA,
+                "delivery_id": {"type": "string", "format": "uuid"},
+            },
+            "required": ["endpoint_id", "delivery_id"],
+            "additionalProperties": False,
+        },
+        handler=_resend_webhook_delivery,
     )
 )

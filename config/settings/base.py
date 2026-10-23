@@ -105,6 +105,7 @@ LOCAL_APPS = [
     "apps.analytics",
     "apps.billing",
     "apps.ai_writer",
+    "apps.webhooks",
     "theme",
 ]
 

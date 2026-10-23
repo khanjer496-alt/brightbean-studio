@@ -18,6 +18,8 @@ from apps.composer.models import PlatformPost, Post
 from apps.members.models import WorkspaceMembership
 from apps.notifications.engine import notify
 from apps.notifications.models import EventType
+from apps.webhooks import events as webhook_events
+from apps.webhooks.models import EventType as WebhookEventType
 
 from .models import ApprovalAction, ApprovalReminder
 from .policy import clear_final_approval, mark_final_approval
@@ -221,6 +223,9 @@ def approve_post(target, user, workspace, comment=""):
             )
             _notify_clients(post, workspace)
 
+    if not advanced_to_client:
+        webhook_events.approval_event(WebhookEventType.POST_APPROVED, post, workspace, user, moved, comment)
+
     # Only tell the author "approved" when the post actually reached approved —
     # in two-stage mode an internal approval that advances to pending_client is
     # not done yet (the client still has to sign off, which re-enters this fn).
@@ -263,6 +268,8 @@ def request_changes(target, user, workspace, comment):
         else:
             for pp in moved:
                 _record_action(post, pp, user, ApprovalAction.ActionType.CHANGES_REQUESTED, comment)
+
+    webhook_events.approval_event(WebhookEventType.POST_CHANGES_REQUESTED, post, workspace, user, moved, comment)
 
     if post.author and post.author != user:
         notify(

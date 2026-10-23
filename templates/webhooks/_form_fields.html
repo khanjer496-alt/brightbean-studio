@@ -1,0 +1,38 @@
+{# Shared by the create page and the endpoint detail page. Expects ``values`` and ``event_choices``. #}
+<div>
+    <label for="webhook-url" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Endpoint URL</label>
+    <p id="webhook-url-help" class="text-xs mb-2 text-[var(--text-tertiary)]">A public https:// address that accepts POST requests.</p>
+    <input type="url" id="webhook-url" name="url" required maxlength="2000" inputmode="url" autocomplete="off"
+           placeholder="https://example.com/postdelegate-webhook" value="{{ values.url }}"
+           aria-describedby="webhook-url-help" class="form-input-styled text-sm">
+</div>
+
+<div>
+    <label for="webhook-description" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">
+        Description <span class="font-normal text-[var(--text-tertiary)]">(optional)</span>
+    </label>
+    <input type="text" id="webhook-description" name="description" maxlength="255" autocomplete="off"
+           placeholder="e.g. Sync published posts to our CMS" value="{{ values.description }}"
+           class="form-input-styled text-sm">
+</div>
+
+<fieldset>
+    <legend class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Events</legend>
+    <p class="text-xs mb-2 text-[var(--text-tertiary)]">Choose what this endpoint is told about.</p>
+    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {% for value, label, checked in event_choices %}
+        <label class="flex items-start gap-3 min-h-11 px-3 py-2 rounded-lg cursor-pointer border border-[var(--border)] bg-[var(--surface-0)]">
+            <input type="checkbox" name="event_types" value="{{ value }}" class="w-4 h-4 mt-1"{% if checked %} checked{% endif %}>
+            <span>
+                <span class="block text-sm text-[var(--text-primary)]">{{ label }}</span>
+                <span class="block font-mono text-xs text-[var(--text-tertiary)]">{{ value }}</span>
+            </span>
+        </label>
+        {% endfor %}
+    </div>
+</fieldset>
+
+<label class="flex items-center gap-3 min-h-11 cursor-pointer">
+    <input type="checkbox" name="is_enabled" class="w-4 h-4"{% if values.is_enabled %} checked{% endif %}>
+    <span class="text-sm text-[var(--text-primary)]">Send events to this endpoint</span>
+</label>

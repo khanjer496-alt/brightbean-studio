@@ -41,6 +41,10 @@ If a thread stops part-way, `get_post` shows the platform post's `thread_status`
 
 On a `comments` account a thread can't also carry a `first_comment` — both are comments on the first post and could interleave — so scheduling one is refused; make the first comment a part instead.
 
+## Webhooks
+
+To be told when posts publish or fail, approvals are decided or messages arrive, add an outbound webhook endpoint (needs `manage_workspace_settings` or `manage_social_accounts`, and a key covering every account in the workspace). See [webhooks.md](webhooks.md).
+
 ## Current limits
 
 Provider approval and live publishing verification are still launch requirements. AI text/image/video generation is not bundled or enabled merely by connecting MCP; an external agent may create content using its own tools. The app currently supports REST/MCP; no dedicated PostDelegate CLI is shipped.

@@ -1,0 +1,22 @@
+{% extends "layouts/workspace_settings.html" %}
+{% block title %}Add webhook endpoint - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
+{% block content %}
+<div class="max-w-2xl">
+    <a href="{% url 'webhooks:list' workspace_id=workspace.id %}" class="inline-flex items-center min-h-11 text-sm underline text-[var(--text-secondary)]">&larr; Webhooks</a>
+    <h2 class="text-xl font-semibold mb-2 text-[var(--text-primary)]">Add webhook endpoint</h2>
+    <p class="text-sm mb-8 text-[var(--text-secondary)]">
+        We generate a signing secret and show it once after you save.
+    </p>
+
+    <form method="POST" class="flex flex-col gap-6">
+        {% csrf_token %}
+        {% include "webhooks/_form_fields.html" %}
+        <div>
+            <button type="submit"
+                    class="btn-primary-hover min-h-11 px-5 py-2 text-sm font-medium text-white rounded-full cursor-pointer bg-[var(--primary)]">
+                Create endpoint
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

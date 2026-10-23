@@ -11,6 +11,7 @@ from django.utils import timezone
 from apps.members.models import WorkspaceMembership
 from apps.notifications.engine import notify
 from apps.notifications.models import EventType
+from apps.webhooks import events as webhook_events
 
 from .models import PostComment
 
@@ -52,6 +53,8 @@ def create_comment(post, author, body, visibility, parent_id=None, attachment=No
         visibility=visibility,
         attachment=attachment,
     )
+
+    webhook_events.comment_created(comment)
 
     # Parse @mentions and notify
     workspace = post.workspace

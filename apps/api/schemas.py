@@ -1122,3 +1122,116 @@ class ErrorResponse(Schema):
     remaining: int | None = None
     retry_after: int | None = None
     reset_at: dt.datetime | None = None
+
+
+# ---------------------------------------------------------------------------
+# /webhooks
+# ---------------------------------------------------------------------------
+
+
+class WebhookEndpointResponse(Schema):
+    id: uuid.UUID
+    url: str
+    description: str = ""
+    is_enabled: bool
+    event_types: list[str]
+    secret_hint: str = Field(..., description="Last characters of the signing secret, to tell secrets apart.")
+    consecutive_failures: int = Field(0, description="Failed attempts in a row; reset by any success.")
+    disabled_at: dt.datetime | None = Field(
+        None, description="Set when the endpoint was turned off after repeated failures."
+    )
+    disabled_reason: str = ""
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+    @field_serializer("disabled_at", "created_at", "updated_at")
+    def _serialize_dt(self, value: dt.datetime | None) -> str | None:
+        return _serialize_utc_z(value)
+
+    @classmethod
+    def from_endpoint(cls, endpoint) -> WebhookEndpointResponse:
+        return cls(
+            id=endpoint.id,
+            url=endpoint.url,
+            description=endpoint.description,
+            is_enabled=endpoint.is_enabled,
+            event_types=list(endpoint.event_types),
+            secret_hint=endpoint.secret_hint,
+            consecutive_failures=endpoint.consecutive_failures,
+            disabled_at=endpoint.disabled_at,
+            disabled_reason=endpoint.disabled_reason,
+            created_at=endpoint.created_at,
+            updated_at=endpoint.updated_at,
+        )
+
+
+class WebhookEndpointWithSecretResponse(WebhookEndpointResponse):
+    secret: str = Field(..., description="The signing secret. Returned this once only; rotate it to get a new one.")
+
+    @classmethod
+    def from_endpoint_and_secret(cls, endpoint, secret: str) -> WebhookEndpointWithSecretResponse:
+        return cls(**WebhookEndpointResponse.from_endpoint(endpoint).model_dump(), secret=secret)
+
+
+class WebhookEndpointsListResponse(Schema):
+    endpoints: list[WebhookEndpointResponse]
+
+
+class CreateWebhookEndpointRequest(Schema):
+    url: str = Field(..., max_length=2000, description="Public http(s) URL that accepts POST requests.")
+    event_types: list[str] = Field(..., min_length=1, description="Event types to subscribe to, e.g. `post.published`.")
+    description: str = Field("", max_length=255)
+    is_enabled: bool = True
+
+
+class UpdateWebhookEndpointRequest(Schema):
+    url: str | None = Field(None, max_length=2000)
+    event_types: list[str] | None = Field(None, min_length=1)
+    description: str | None = Field(None, max_length=255)
+    is_enabled: bool | None = Field(None, description="Setting this to true also clears an automatic shut-off.")
+
+
+class WebhookDeliveryResponse(Schema):
+    id: uuid.UUID = Field(..., description="Sent as the `PostDelegate-Delivery` header; stable across retries.")
+    event_id: uuid.UUID
+    event_type: str
+    status: str = Field(..., description="`pending`, `delivered` or `failed`.")
+    attempts: int
+    last_status_code: int | None = None
+    last_duration_ms: int | None = None
+    last_error: str = ""
+    response_body: str = Field("", description="First 2,000 characters of the receiver's response.")
+    next_attempt_at: dt.datetime | None = None
+    last_attempt_at: dt.datetime | None = None
+    delivered_at: dt.datetime | None = None
+    created_at: dt.datetime
+    payload: dict = Field(..., description="The exact JSON body that is sent.")
+
+    @field_serializer("next_attempt_at", "last_attempt_at", "delivered_at", "created_at")
+    def _serialize_dt(self, value: dt.datetime | None) -> str | None:
+        return _serialize_utc_z(value)
+
+    @classmethod
+    def from_delivery(cls, delivery) -> WebhookDeliveryResponse:
+        return cls(
+            id=delivery.id,
+            event_id=delivery.event_id,
+            event_type=delivery.event_type,
+            status=delivery.status,
+            attempts=delivery.attempts,
+            last_status_code=delivery.last_status_code,
+            last_duration_ms=delivery.last_duration_ms,
+            last_error=delivery.last_error,
+            response_body=delivery.response_body,
+            next_attempt_at=delivery.next_attempt_at,
+            last_attempt_at=delivery.last_attempt_at,
+            delivered_at=delivery.delivered_at,
+            created_at=delivery.created_at,
+            payload=delivery.payload,
+        )
+
+
+class WebhookDeliveriesListResponse(Schema):
+    deliveries: list[WebhookDeliveryResponse]
+    limit: int
+    next_cursor: str | None = None
