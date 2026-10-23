@@ -670,6 +670,12 @@ PLATFORM_CREDENTIALS_FROM_ENV = {
         "client_secret": env("PLATFORM_DISCORD_CLIENT_SECRET", default=""),
         "bot_token": env("PLATFORM_DISCORD_BOT_TOKEN", default=""),
     },
+    # Slack - OAuth v2 install of the app; each workspace's bot token posts to
+    # the channels the user picks.
+    "slack": {
+        "client_id": env("PLATFORM_SLACK_CLIENT_ID", default=""),
+        "client_secret": env("PLATFORM_SLACK_CLIENT_SECRET", default=""),
+    },
 }
 
 # Publishing engine

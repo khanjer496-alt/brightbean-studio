@@ -135,6 +135,7 @@ BACKFILL_DAYS_PER_PLATFORM: dict[str, int] = {
     "devto": 0,
     "telegram": 0,
     "discord": 0,
+    "slack": 0,
 }
 DEFAULT_BACKFILL_DAYS = 90
 

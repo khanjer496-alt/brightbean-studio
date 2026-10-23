@@ -21,6 +21,7 @@ from .linkedin_company import LinkedInCompanyProvider
 from .linkedin_personal import LinkedInPersonalProvider
 from .mastodon import MastodonProvider
 from .pinterest import PinterestProvider
+from .slack import SlackProvider
 from .telegram import TelegramProvider
 from .threads import ThreadsProvider
 from .tiktok import TikTokProvider
@@ -46,6 +47,7 @@ PROVIDER_REGISTRY: dict[str, type[SocialProvider]] = {
     "devto": DevtoProvider,
     "telegram": TelegramProvider,
     "discord": DiscordProvider,
+    "slack": SlackProvider,
 }
 
 # Characters a platform escapes in the caption it publishes. Each one costs two

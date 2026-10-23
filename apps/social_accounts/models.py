@@ -582,6 +582,7 @@ class SocialAccount(models.Model):
             "devto": "dv",
             "telegram": "tg",
             "discord": "dc",
+            "slack": "sl",
         }
         return icons.get(self.platform, self.platform[:2])
 

@@ -40,6 +40,7 @@ class TestConnectPageVisibility:
         [
             ("telegram", {"bot_token": "123:ABC"}),
             ("discord", {"client_id": "app", "client_secret": "shh", "bot_token": "bot"}),
+            ("slack", {"client_id": "app", "client_secret": "shh"}),
         ],
     )
     def test_offered_when_configured_and_hidden_when_not(
@@ -222,3 +223,67 @@ class TestDiscordConnect:
 
         assert _supports_connection_link("discord") is False
         assert _supports_connection_link("facebook") is True
+
+
+@pytest.mark.django_db
+class TestSlackConnect:
+    @pytest.fixture(autouse=True)
+    def configured(self, settings):
+        settings.PLATFORM_CREDENTIALS_FROM_ENV = {
+            **settings.PLATFORM_CREDENTIALS_FROM_ENV,
+            "slack": {"client_id": "app", "client_secret": "shh"},
+        }
+
+    def test_connect_redirects_to_the_slack_install(self, authenticated_client, workspace):
+        response = authenticated_client.post(connect_url(workspace), {"platform": "slack"})
+        assert response.url.startswith("https://slack.com/oauth/v2/authorize?")
+
+    def test_no_member_channels_explains_how_to_invite_the_app(self, authenticated_client, workspace, user):
+        url, state = start_oauth(authenticated_client, workspace, user, "slack")
+        with (
+            patch("providers.slack.SlackProvider.exchange_code"),
+            patch("providers.slack.SlackProvider.list_destinations", return_value=[]),
+        ):
+            response = authenticated_client.get(url, {"code": "abc", "state": state}, follow=True)
+        assert "/invite" in response.content.decode()
+
+    def test_every_picked_channel_keeps_the_workspace_bot_token(self, authenticated_client, workspace):
+        session = authenticated_client.session
+        session["oauth_page_select"] = {
+            "workspace_id": str(workspace.id),
+            "platform": "slack",
+            "user_tokens": {"access_token": "", "refresh_token": None, "expires_in": None},
+            "pages": [
+                {"id": "C1", "name": "#general", "handle": "Acme", "access_token": "xoxb-1", "page_id": "T1"},
+                {"id": "G1", "name": "#secret", "handle": "Acme", "access_token": "xoxb-1", "page_id": "T1"},
+            ],
+        }
+        session.save()
+        authenticated_client.post(reverse("social_accounts:select_account"), {"selected_pages": ["C1", "G1"]})
+        accounts = SocialAccount.objects.filter(workspace=workspace, platform="slack")
+        assert {a.account_platform_id for a in accounts} == {"C1", "G1"}
+        assert {a.oauth_access_token for a in accounts} == {"xoxb-1"}
+        assert all(a.token_expires_at is None for a in accounts)
+
+    def test_publish_credentials_carry_the_channel(self, workspace):
+        from apps.publisher.engine import _resolve_publish_credentials
+
+        account = SocialAccount.objects.create(
+            workspace=workspace, platform="slack", account_platform_id="C1", account_name="#general"
+        )
+        assert _resolve_publish_credentials(account)["channel_id"] == "C1"
+
+    def test_disconnecting_one_channel_does_not_revoke_the_shared_token(self, authenticated_client, workspace):
+        account = SocialAccount.objects.create(
+            workspace=workspace,
+            platform="slack",
+            account_platform_id="C1",
+            account_name="#general",
+            oauth_access_token="xoxb-1",
+        )
+        assert account.revokes_platform_grant_on_disconnect is False
+        with patch("providers.slack.SlackProvider._request", side_effect=AssertionError("no request")):
+            authenticated_client.post(
+                reverse("social_accounts:disconnect", kwargs={"workspace_id": workspace.id, "account_id": account.id})
+            )
+        assert not SocialAccount.objects.filter(pk=account.pk).exists()

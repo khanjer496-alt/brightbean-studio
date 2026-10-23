@@ -450,7 +450,7 @@ def oauth_callback(request, platform):
                 messages.warning(
                     request,
                     f"No {provider.platform_name} channels were found that {settings.BRAND_NAME} can post to. "
-                    "Check the app has access to a channel, then reconnect.",
+                    + (provider.no_destinations_hint or "Check the app has access to a channel, then reconnect."),
                 )
                 return redirect("social_accounts:list", workspace_id=workspace_id)
             existing_ids = set(

@@ -79,6 +79,8 @@ PLATFORM_DAILY_POST_LIMIT: dict[str, int] = {
     "telegram": 200,
     # Messages to a community channel; Discord's own limits are per route.
     "discord": 200,
+    # Roughly one message a second per channel is Slack's own ceiling.
+    "slack": 200,
 }
 
 _DEFAULT_FALLBACK = 50

@@ -81,6 +81,7 @@ A free hosted version is available at [brightbean.xyz/studio](https://brightbean
 | <img src="https://cdn.simpleicons.org/devdotto/000000" width="16" height="16"> DEV.to | ✓ | — | — | — |
 | <img src="https://cdn.simpleicons.org/telegram" width="16" height="16"> Telegram | ✓ | — | — | — |
 | <img src="https://cdn.simpleicons.org/discord" width="16" height="16"> Discord | ✓ | — | — | — |
+| <img src="https://cdn.simpleicons.org/slack" width="16" height="16"> Slack | ✓ | — | — | — |
 
 ---
 
@@ -764,6 +765,16 @@ One Discord application with a bot posts to every connected server.
 4. Set `PLATFORM_DISCORD_CLIENT_ID`, `PLATFORM_DISCORD_CLIENT_SECRET` and `PLATFORM_DISCORD_BOT_TOKEN`
 
 Users click **Connect**, choose a server and approve the bot (View Channel, Send Messages, Attach Files, Embed Links, Read Message History), then tick the text channels to connect. Each channel is one account. Messages are Markdown (2000 characters) with up to 10 attachments; thread parts and first comments are sent as replies. `@everyone` and `@here` are never pinged.
+
+### Slack
+
+1. Create an app at [api.slack.com/apps](https://api.slack.com/apps) (from scratch)
+2. Under **OAuth & Permissions**, add the redirect `https://<your-domain>/social-accounts/callback/slack/` and the bot scopes `chat:write`, `files:write`, `channels:read` and `groups:read`
+3. Leave **Token Rotation** off: every channel of a workspace shares one bot token
+4. Copy the **Client ID** and **Client Secret** into `PLATFORM_SLACK_CLIENT_ID` and `PLATFORM_SLACK_CLIENT_SECRET`
+5. Under **Manage Distribution**, activate public distribution if workspaces other than your own will install it
+
+Users click **Connect**, approve the app for their workspace and tick the channels to connect. Slack only lists channels the app has been added to, so a channel needs `/invite @app` first. Messages use Slack mrkdwn; files are uploaded into the message's thread; thread parts and first comments are replies in that thread.
 
 ## Inbox: Backfill Historical Messages
 

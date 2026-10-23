@@ -212,6 +212,9 @@ class SocialProvider(ABC):
     # user pick which become accounts, like Facebook Pages.
     has_destination_picker: ClassVar[bool] = False
 
+    # Shown when the destination picker finds nothing to offer, and what to do about it.
+    no_destinations_hint: ClassVar[str] = ""
+
     # False when the platform can't be connected through a client connection
     # link (``apps.onboarding``), whose page only runs the plain OAuth flow.
     supports_connection_link: ClassVar[bool] = True
