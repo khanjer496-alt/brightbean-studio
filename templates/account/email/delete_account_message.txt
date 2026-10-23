@@ -1,0 +1,10 @@
+{% load account %}{% autoescape off %}{% user_display user as user_display %}Hi {{ user_display }},
+
+Someone signed in to your {{ brand_name }} account asked to delete it permanently. To finish, open the link below while signed in and press the final button:
+
+{{ delete_url }}
+
+The link works for {{ expires_minutes }} minutes. If you didn't ask for this, ignore this email and sign out of other devices and secure the account you sign in with, since someone may have access to your session.
+
+- The {{ brand_name }} team
+{% endautoescape %}

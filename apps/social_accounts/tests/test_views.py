@@ -530,7 +530,10 @@ class TestOAuthCallbackView:
 
         assert response.status_code == 302
         assert response.url == reverse("social_accounts:select_account")
-        mock_provider.get_profile.assert_not_called()
+        # The profile is read only to record the Meta user id for the data
+        # deletion callback; it never becomes a connected account.
+        assert SocialAccount.objects.count() == 0
+        assert "meta_user_id" in authenticated_client.session["oauth_page_select"]["user_tokens"]
         page_data = authenticated_client.session["oauth_page_select"]
         assert page_data["platform"] == "instagram"
         assert page_data["pages"][0]["id"] == "17841400000000000"

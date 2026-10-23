@@ -1,7 +1,10 @@
+import logging
 import uuid
 
 from django.conf import settings
-from django.db import models
+from django.db import models, transaction
+
+logger = logging.getLogger(__name__)
 
 
 class Organization(models.Model):
@@ -57,6 +60,27 @@ class Organization(models.Model):
         sub = getattr(self, "intelligence_subscription", None)
         return bool(sub and sub.status == "active")
 
+    def _stored_files(self):
+        """(storage, name) of every upload this organization's rows point at."""
+        from apps.approvals.models import PostComment
+        from apps.composer.models import CSVImportJob
+        from apps.media_library.models import MediaAsset, MediaAssetVersion
+        from apps.workspaces.models import Workspace
+
+        sources = [
+            (MediaAsset.objects.filter(organization=self), ("file", "thumbnail")),
+            (MediaAssetVersion.objects.filter(media_asset__organization=self), ("file", "thumbnail")),
+            (Workspace.objects.filter(organization=self), ("icon",)),
+            (CSVImportJob.objects.filter(workspace__organization=self), ("file",)),
+            (PostComment.objects.filter(post__workspace__organization=self), ("attachment",)),
+        ]
+        files = []
+        for queryset, fields in sources:
+            storages = [queryset.model._meta.get_field(field).storage for field in fields]
+            for names in queryset.values_list(*fields).iterator():
+                files += [(storage, name) for storage, name in zip(storages, names, strict=True) if name]
+        return files
+
     def hard_delete(self, requesting_user=None):
         """Hard-delete this org and settle every member's account.
 
@@ -84,7 +108,11 @@ class Organization(models.Model):
         if ws_ids:
             User.objects.filter(last_workspace_id__in=ws_ids).update(last_workspace_id=None)
 
+        stored_files = self._stored_files()
         self.delete()  # CASCADE: workspaces, memberships, credentials, media, etc.
+        # Deleting rows leaves their uploads in storage; remove them once the
+        # rows are really gone, so a rolled-back delete keeps working files.
+        transaction.on_commit(lambda: _delete_stored_files(stored_files))
 
         requesting_user_id = requesting_user.pk if requesting_user else None
         for uid in member_ids:
@@ -96,3 +124,12 @@ class Organization(models.Model):
             except User.DoesNotExist:
                 continue
             provision_organization_and_workspace(user)
+
+
+def _delete_stored_files(stored_files):
+    """Best-effort: a file that is already gone, or a storage hiccup, must not undo the deletion."""
+    for storage, name in stored_files:
+        try:
+            storage.delete(name)
+        except Exception:
+            logger.warning("Could not delete stored file %s of a deleted organization", name)

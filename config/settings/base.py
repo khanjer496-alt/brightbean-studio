@@ -30,9 +30,21 @@ BRAND_NAME = env("BRAND_NAME", default="BrightBean Studio")
 BRAND_SHORT_NAME = env("BRAND_SHORT_NAME", default="Brightbean")
 BRAND_LEGAL_NAME = env("BRAND_LEGAL_NAME", default="")
 BRAND_WEBSITE_URL = env("BRAND_WEBSITE_URL", default=APP_URL).rstrip("/")
-BRAND_TERMS_URL = env("BRAND_TERMS_URL", default="https://postdelegate.com/terms")
-BRAND_PRIVACY_URL = env("BRAND_PRIVACY_URL", default="https://postdelegate.com/privacy")
+# The legal pages are served by apps.legal under /legal/. Point these elsewhere
+# only if the policies are hosted on another site.
+BRAND_TERMS_URL = env("BRAND_TERMS_URL", default=f"{APP_URL.rstrip('/')}/legal/terms/")
+BRAND_PRIVACY_URL = env("BRAND_PRIVACY_URL", default=f"{APP_URL.rstrip('/')}/legal/privacy/")
 BRAND_SUPPORT_EMAIL = env("BRAND_SUPPORT_EMAIL", default="support@postdelegate.com")
+# Values the legal pages (apps.legal) print. The text itself is a draft for the
+# owner's legal review; the facts that vary per deployment live here.
+LEGAL_ENTITY_NAME = env("LEGAL_ENTITY_NAME", default="Nasida Apps LLC")
+LEGAL_ENTITY_JURISDICTION = env(
+    "LEGAL_ENTITY_JURISDICTION", default="a limited liability company organized in Wyoming, USA"
+)
+LEGAL_ADDRESS = env("LEGAL_ADDRESS", default="[Registered business address to be completed]")
+LEGAL_EFFECTIVE_DATE = env("LEGAL_EFFECTIVE_DATE", default="[Effective date to be completed]")
+LEGAL_GOVERNING_LAW = env("LEGAL_GOVERNING_LAW", default="the State of Wyoming, USA")
+LEGAL_EMAIL_PROVIDER = env("LEGAL_EMAIL_PROVIDER", default="Resend")
 # Sidebar "leave a review" card. Off unless a review page is configured.
 REVIEW_BANNER_URL = env("REVIEW_BANNER_URL", default="")
 # AGPL-3.0 §13: users interacting over the network are offered the source of
@@ -106,6 +118,7 @@ LOCAL_APPS = [
     "apps.billing",
     "apps.ai_writer",
     "apps.webhooks",
+    "apps.legal",
     "theme",
 ]
 

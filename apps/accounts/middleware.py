@@ -27,6 +27,8 @@ EXEMPT_PATH_PREFIXES = (
     "/accounts/google/",
     "/accounts/3rdparty/",
     "/health/",
+    # Terms and privacy must stay readable before the terms are accepted.
+    "/legal/",
     "/static/",
     # Uploaded media, served by config/urls.py when SERVE_MEDIA is on. No view
     # backs these URLs, so a redirect here just turns every <img>/<video> on
