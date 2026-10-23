@@ -102,7 +102,7 @@ def _post_rows(accounts: Sequence[SocialAccount], rng: AnalyticsRange) -> Iterat
     ]
     queryset = rollup.posts_queryset(accounts, rng).prefetch_related("post__media_attachments__media_asset")
     for chunk in batched(queryset.iterator(chunk_size=POST_CHUNK), POST_CHUNK):
-        for row in rollup.post_rows(chunk, rng.tz):
+        for row in rollup.post_rows(chunk, accounts, rng.tz):
             yield [
                 row["published_at"].isoformat(timespec="minutes"),
                 row["account"].account_name,

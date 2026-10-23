@@ -104,6 +104,28 @@ def test_comparison_uses_only_accounts_present_in_both_periods(mixed, rng):
 
 
 @pytest.mark.django_db
+def test_an_account_connected_part_way_through_the_previous_period_cannot_read_as_growth(mixed, rng):
+    ig, li, tt, bs = mixed
+    # Instagram's history starts on the last day of the previous period: 100 then, 700 now.
+    add_daily(ig, "views", {rng.previous_end: 100.0})
+    fill_days(li, "impressions", rng.previous_start, rng.previous_end, 50)  # fully reported: flat
+    rows = rollup.collect([ig, li], rng)
+
+    assert _kpi(rollup.kpis(rows, compare=True), "exposure")["delta"] == 0.0  # LinkedIn alone
+    ig_cells = {c["key"]: c for c in rollup.account_cells(next(r for r in rows if r.account == ig), True)}
+    assert ig_cells["exposure"]["delta"] is None
+
+
+@pytest.mark.django_db
+def test_a_lagging_current_period_still_compares(workspace, rng):
+    yt = make_account(workspace, "youtube", "yt")
+    fill_days(yt, "views", rng.previous_start, rng.previous_end, 10)
+    fill_days(yt, "views", rng.start, rng.end - timedelta(days=2), 10)  # last two days not reported yet
+    exposure = _kpi(rollup.kpis(rollup.collect([yt], rng), compare=True), "exposure")
+    assert exposure["delta"] == pytest.approx((50 - 70) / 70 * 100, abs=0.1)
+
+
+@pytest.mark.django_db
 def test_no_baseline_means_no_delta(mixed, rng):
     exposure = _kpi(rollup.kpis(rollup.collect(list(mixed), rng), compare=True), "exposure")
     assert exposure["delta"] is None

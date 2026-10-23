@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import date as dt_date
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, NamedTuple
 
 from django.conf import settings
@@ -212,7 +212,10 @@ def sum_post_deltas(
     ``rows`` are ``(post_id, published_at, date, value, captured_at)`` for ONE
     account and ONE metric, ordered by ``(post_id, date)``. Split out so the
     workspace rollup can fetch every account's rows in a single query and feed
-    each (account, metric) group through the same rules.
+    each (account, metric) group through the same rules. ``published_at`` may
+    also be the publish date (UTC), which is all the walk reads from it, and
+    ``captured_at`` may be ``None`` when the caller aggregates freshness itself:
+    both save decoding a timestamp per row on large scans.
     """
     out: dict[dt_date, float] = defaultdict(float)
     observed: set[dt_date] = set()
@@ -230,7 +233,7 @@ def sum_post_deltas(
             max_captured = captured_at
         if first_obs_for_post:
             first_obs_for_post = False
-            pub_day = published_at.date() if published_at is not None else None
+            pub_day = published_at.date() if isinstance(published_at, datetime) else published_at
             if pub_day is None or pub_day > day:
                 # No publish date or it's after the snapshot (data oddity);
                 # credit the snapshot day if in window — least-bad guess.

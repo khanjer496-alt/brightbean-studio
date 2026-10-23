@@ -15,7 +15,9 @@ Rules that keep the numbers truthful:
   lags 2-3 days) and before the first one the account wasn't being measured.
 * A total is the sum over the accounts that report it, and says how many that
   was. A change vs. the previous period compares only the accounts that
-  reported in BOTH periods, so an account joining mid-way can't read as growth.
+  reported in BOTH periods, and only when the earlier period is at least as
+  completely reported as the current one, so an account connected part-way
+  through the previous period can't read as growth.
 * Accounts on :data:`NATIVE_ONLY_PLATFORMS` contribute their reported counts
   but never feed a calculated figure (engagements, engagement rate).
 """
@@ -25,11 +27,11 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import UTC, date
 from itertools import groupby
 from typing import Any
 
-from django.db.models import Count
+from django.db.models import Count, Max
 from django.db.models.functions import TruncDate
 
 from apps.composer.models import PlatformPost
@@ -143,50 +145,60 @@ def load_account_data(accounts: Sequence[SocialAccount], start: date, end: date)
     if not data or not wanted:
         return data
 
-    captured: dict[tuple[Any, str], Any] = {}
-    rows = AccountInsightsSnapshot.objects.filter(
+    account_rows = AccountInsightsSnapshot.objects.filter(
         social_account_id__in=list(data),
         metric_key__in=wanted,
         date__gte=start,
         date__lte=end,
-    ).values_list("social_account_id", "metric_key", "date", "value", "captured_at")
-    for account_id, metric, day, value, captured_at in rows:
-        if metric not in platform_metrics[account_id]:
-            continue
-        data[account_id].values[metric][day] = value
-        key = (account_id, metric)
-        if key not in captured or captured_at > captured[key]:
-            captured[key] = captured_at
+    )
+    captured = {
+        (row["social_account_id"], row["metric_key"]): row["latest"]
+        for row in account_rows.values("social_account_id", "metric_key").annotate(latest=Max("captured_at"))
+    }
+    for account_id, metric, day, value in account_rows.values_list("social_account_id", "metric_key", "date", "value"):
+        if metric in platform_metrics[account_id]:
+            data[account_id].values[metric][day] = value
 
     fallback_ids = [a.id for a in accounts if a.platform not in NATIVE_ONLY_PLATFORMS]
     fallback_metrics = [m for m in wanted if services.supports_post_fallback(m)]
     if fallback_ids and fallback_metrics:
-        post_rows = (
-            PostInsightsSnapshot.objects.filter(
-                platform_post__social_account_id__in=fallback_ids,
-                metric_key__in=fallback_metrics,
-                date__gte=start,
-                date__lte=end,
+        snapshots = PostInsightsSnapshot.objects.filter(
+            platform_post__social_account_id__in=fallback_ids,
+            metric_key__in=fallback_metrics,
+            date__gte=start,
+            date__lte=end,
+        )
+        # Freshness per (account, metric) comes from one aggregate, and the walk
+        # reads the publish *date*: decoding two timestamps on every one of the
+        # (possibly hundreds of thousands of) rows dominated the page time.
+        fallback_captured = {
+            (row["platform_post__social_account_id"], row["metric_key"]): row["latest"]
+            for row in snapshots.values("platform_post__social_account_id", "metric_key").annotate(
+                latest=Max("captured_at")
             )
+        }
+        post_rows = (
+            snapshots.annotate(published_day=TruncDate("platform_post__published_at", tzinfo=UTC))
             .order_by("platform_post__social_account_id", "metric_key", "platform_post_id", "date")
             .values_list(
                 "platform_post__social_account_id",
                 "metric_key",
                 "platform_post_id",
-                "platform_post__published_at",
+                "published_day",
                 "date",
                 "value",
-                "captured_at",
             )
         )
-        for (account_id, metric), group in groupby(post_rows.iterator(chunk_size=2000), key=lambda r: (r[0], r[1])):
+        for (account_id, metric), group in groupby(post_rows.iterator(chunk_size=5000), key=lambda r: (r[0], r[1])):
             if metric not in platform_metrics[account_id]:
                 continue
-            daily, fallback_captured, observed = services.sum_post_deltas((r[2:] for r in group), start, end)
+            daily, _, observed = services.sum_post_deltas(((*r[2:], None) for r in group), start, end)
             if not observed:
                 continue
             if services.prefers_post_series(
-                captured.get((account_id, metric)), fallback_captured, data[account_id].has(metric)
+                captured.get((account_id, metric)),
+                fallback_captured.get((account_id, metric)),
+                data[account_id].has(metric),
             ):
                 for day in observed:
                     data[account_id].values[metric][day] = daily.get(day, 0.0)
@@ -206,6 +218,8 @@ class Window:
     engagements: float | None = None
     new_followers: float | None = None
     posts: int = 0
+    # Share of the window's days inside the account's reported span (0..1).
+    coverage: float = 0.0
 
     @property
     def rate(self) -> float | None:
@@ -223,6 +237,17 @@ class AccountMetrics:
     current: Window
     previous: Window
     data: AccountData | None = field(default=None, repr=False)
+
+    @property
+    def comparable(self) -> bool:
+        """Whether a change vs. the previous period means something for this account.
+
+        Not when the earlier period is less completely reported than the current
+        one (the account was connected, or its history starts, part-way through
+        it): the gap would read as growth. A current period that is the less
+        complete one (YouTube's trailing days) only understates, so it stays.
+        """
+        return self.previous.coverage >= self.current.coverage
 
     def series(self, key: str, days: Sequence[date]) -> list[float | None]:
         """Daily values of ``key`` (see :data:`SERIES_LABELS`) over ``days``."""
@@ -247,14 +272,8 @@ class AccountMetrics:
         # Lifetime totals: a day's gain is its total minus the previous total.
         totals = self.data.values[metric]
         ordered = sorted(totals)
-        out: list[float | None] = []
-        for day in days:
-            if day not in totals or day == ordered[0]:
-                out.append(None)
-                continue
-            previous = ordered[ordered.index(day) - 1]
-            out.append(max(totals[day] - totals[previous], 0.0))
-        return out
+        previous = dict(zip(ordered[1:], ordered, strict=False))
+        return [max(totals[day] - totals[previous[day]], 0.0) if day in previous else None for day in days]
 
 
 def _window(data: AccountData | None, days: Sequence[date], posts: int) -> Window:
@@ -263,7 +282,10 @@ def _window(data: AccountData | None, days: Sequence[date], posts: int) -> Windo
     metric = exposure_metric(data)
     parts = engagement_parts(data)
     growth = growth_metric(data)
+    span = data.span(list(data.values))
+    covered = sum(1 for d in days if span[0] <= d <= span[1]) if span else 0
     return Window(
+        coverage=covered / len(days) if days else 0.0,
         exposure=data.total([metric], days) if metric else None,
         engagements=data.total(parts, days) if parts else None,
         new_followers=_follower_gain(data, growth, days) if growth else None,
@@ -274,7 +296,8 @@ def _window(data: AccountData | None, days: Sequence[date], posts: int) -> Windo
 def _follower_gain(data: AccountData, metric: str, days: Sequence[date]) -> float | None:
     if metric != "followers":
         return data.total([metric], days)
-    points = sorted((d, v) for d, v in data.values[metric].items() if d in set(days))
+    window = set(days)
+    points = sorted((d, v) for d, v in data.values[metric].items() if d in window)
     return max(points[-1][1] - points[0][1], 0.0) if len(points) >= 2 else None
 
 
@@ -352,7 +375,7 @@ def _pct(current: float, previous: float) -> float | None:
 
 def _matched_delta(rows: Sequence[AccountMetrics], getter) -> float | None:
     """% change over the accounts that reported in both periods."""
-    pairs = [(getter(r.current), getter(r.previous)) for r in rows]
+    pairs = [(getter(r.current), getter(r.previous)) for r in rows if r.comparable]
     pairs = [(c, p) for c, p in pairs if c is not None and p is not None]
     return _pct(sum(c for c, _ in pairs), sum(p for _, p in pairs)) if pairs else None
 
@@ -364,7 +387,7 @@ def _combined_rate(windows: Iterable[Window]) -> float | None:
 
 
 def _matched_rate_delta(rows: Sequence[AccountMetrics]) -> float | None:
-    both = [r for r in rows if r.current.rate is not None and r.previous.rate is not None]
+    both = [r for r in rows if r.comparable and r.current.rate is not None and r.previous.rate is not None]
     if not both:
         return None
     return _pct(_combined_rate(r.current for r in both) or 0.0, _combined_rate(r.previous for r in both) or 0.0)
@@ -381,7 +404,9 @@ def kpis(rows: Sequence[AccountMetrics], compare: bool) -> list[dict[str, Any]]:
             values = [r.current.posts for r in rows]
             value = float(sum(values))
             previous = float(sum(r.previous.posts for r in rows)) if compare else None
-            delta = _matched_delta(rows, lambda w: w.posts) if compare else None
+            # Post counts come from our own records, complete in both periods.
+            pairs = [(r.current.posts, r.previous.posts) for r in rows]
+            delta = _pct(sum(c for c, _ in pairs), sum(p for _, p in pairs)) if compare else None
         elif key == "engagement_rate":
             values = [r.current.rate for r in rows]
             value = _combined_rate(r.current for r in rows)
@@ -417,7 +442,13 @@ def account_cells(row: AccountMetrics, compare: bool) -> list[dict[str, Any]]:
             value, previous = row.current.rate, row.previous.rate
         else:
             value, previous = getattr(row.current, key), getattr(row.previous, key)
-        has_delta = compare and key != "followers" and value is not None and previous is not None
+        has_delta = (
+            compare
+            and key != "followers"
+            and (key == "posts" or row.comparable)
+            and value is not None
+            and previous is not None
+        )
         cells.append(
             {
                 "key": key,
@@ -482,7 +513,19 @@ def trend(rows: Sequence[AccountMetrics], rng: AnalyticsRange, key: str) -> dict
         "labels": [d.isoformat() for d in days],
         "datasets": [
             {"label": "This period", "values": combined(days)},
-            *([{"label": "Previous period", "values": combined(previous_days), "muted": True}] if rng.compare else []),
+            *(
+                [
+                    {
+                        "label": "Previous period",
+                        "values": combined(previous_days),
+                        "muted": True,
+                        # The x axis carries this period's dates; tooltips name the earlier day.
+                        "dates": [d.isoformat() for d in previous_days],
+                    }
+                ]
+                if rng.compare
+                else []
+            ),
         ],
     }
 
@@ -523,7 +566,19 @@ def posts_queryset(accounts: Sequence[SocialAccount], rng: AnalyticsRange):
             published_at__gte=lo,
             published_at__lt=hi,
         )
-        .select_related("social_account", "post")
+        .select_related("post")
+        # Every post in the range is loaded (formats average all of them), so
+        # only the columns the rows read: Post is a wide model.
+        .only(
+            "id",
+            "post_id",
+            "social_account_id",
+            "status",
+            "published_at",
+            "platform_specific_caption",
+            "post__id",
+            "post__caption",
+        )
         .order_by("-published_at", "id")
     )
 
@@ -550,7 +605,15 @@ def post_row(post: PlatformPost, stats: dict[str, float], tz) -> dict[str, Any]:
     }
 
 
-def post_rows(posts: Sequence[PlatformPost], tz) -> list[dict[str, Any]]:
+def post_rows(posts: Sequence[PlatformPost], accounts: Sequence[SocialAccount], tz) -> list[dict[str, Any]]:
+    """Rows for :func:`posts_queryset` results, reusing the already-loaded ``accounts``.
+
+    Joining ``social_account`` per post would build (and decrypt the tokens of)
+    one account instance per post; there are only ever a handful of accounts.
+    """
+    by_id = {a.id: a for a in accounts}
+    for p in posts:
+        p.social_account = by_id[p.social_account_id]
     metrics = sorted({m for p in posts for m in post_metrics_for(p.social_account.platform)})
     stats = services._latest_post_stats([p.id for p in posts], metrics)
     return [post_row(p, stats.get(p.id, {}), tz) for p in posts]
@@ -599,7 +662,7 @@ def overview(
     """Everything the overview page, the export and the API need, in one shot."""
     rows = collect(accounts, rng)
     posts = list(posts_queryset(accounts, rng).prefetch_related("post__media_attachments__media_asset"))
-    post_data = post_rows(posts, rng.tz)
+    post_data = post_rows(posts, accounts, rng.tz)
     series = series if series in SERIES_LABELS else DEFAULT_SERIES
     return {
         "range": rng,
