@@ -58,9 +58,9 @@ Shows all published/partially_published platform posts. Loaded via HTMX into #ta
                     {% endwith %}
                 </td>
                 <td class="px-4 py-3">
-                    <span class="post-chip status-{{ pp.status }} inline-flex">
+                    <span class="post-chip status-{{ pp.display_status }} inline-flex">
                         <span class="chip-dot"></span>
-                        {{ pp.get_status_display }}
+                        {{ pp.display_status_label }}
                     </span>
                     {% if pp.status == "failed" and pp.publish_error %}
                     <p class="text-[11px] text-red-500 mt-1 max-w-[220px] truncate" title="{{ pp.publish_error }}">{{ pp.publish_error }}</p>
@@ -82,7 +82,10 @@ Shows all published/partially_published platform posts. Loaded via HTMX into #ta
                     {% endif %}
                 </td>
                 <td class="px-4 py-3 text-sm text-stone-600 max-w-xs truncate">
-                    {{ pp.post.title|default:pp.post.caption_snippet|default:"(no caption)" }}
+                    <span class="inline-flex items-center gap-1.5 max-w-full">
+                        <span class="truncate">{{ pp.post.title|default:pp.post.caption_snippet|default:"(no caption)" }}</span>
+                        {% include "calendar/partials/_thread_badge.html" with post=pp.post pp=pp %}
+                    </span>
                 </td>
                 <td class="px-4 py-3">
                     <div class="flex items-center gap-1.5">

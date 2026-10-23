@@ -49,6 +49,7 @@ Shows all scheduled platform posts grouped by date. Loaded via HTMX into #tab-co
                         <!-- Title / caption -->
                         <p class="text-sm text-stone-600 leading-relaxed">
                             {{ pp.post.title|default:pp.post.caption_snippet|default:"(no caption)" }}
+                            {% include "calendar/partials/_thread_badge.html" with post=pp.post pp=pp %}
                         </p>
 
                         <!-- Media thumbnails -->

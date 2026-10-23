@@ -6,7 +6,8 @@ This module implements the core publish loop:
 3. Dispatch platform posts in parallel.
 4. Handle retries with exponential backoff.
 5. Post first comment after 2-minute delay.
-6. Update per-platform status and log results.
+6. Publish a thread's later parts, one background task per part.
+7. Update per-platform status and log results.
 
 Status is owned entirely by ``PlatformPost`` — the parent ``Post`` exposes an
 aggregate ``status`` property derived from its children (see
@@ -35,8 +36,15 @@ from django.utils import timezone
 from apps.approvals.policy import approval_allows_publish
 from apps.common.db import in_worker_thread, release_idle_connection
 from apps.common.worker import SHUTDOWN_REQUESTED
-from apps.composer.models import PlatformPost
-from apps.composer.services import media_rules_blocker, post_media_assets, publish_blocker, usable_media_types
+from apps.composer.models import PlatformPost, PlatformPostPart
+from apps.composer.services import (
+    media_rules_blocker,
+    platform_post_thread_blocker,
+    post_media_assets,
+    publish_blocker,
+    thread_parts_for,
+    usable_media_types,
+)
 from apps.credentials.models import resolve_platform_credentials
 from apps.media_library.storage import download_to_path
 from apps.social_accounts.error_messages import (
@@ -47,6 +55,7 @@ from apps.social_accounts.error_messages import (
     PUBLISH_INTERRUPTED_MESSAGE,
     PUBLISH_RATE_LIMIT_MESSAGE,
     PUBLISH_UNCONFIRMED_MESSAGE,
+    THREAD_PART_AMBIGUOUS_MESSAGE,
     exhausted_publish_message,
     friendly_first_comment_error,
     friendly_publish_error,
@@ -54,7 +63,7 @@ from apps.social_accounts.error_messages import (
 )
 from providers import VIDEO_POST_TYPES, get_provider
 from providers.exceptions import APIError, ProviderError, PublishError, RateLimitError
-from providers.types import PostType, PublishContent, PublishState
+from providers.types import PostType, PublishContent, PublishResult, PublishState
 
 from .models import PublishLog, RateLimitState
 
@@ -418,6 +427,15 @@ def _resolve_extra_asset(platform_post, asset_id, label):
     return None
 
 
+def _public_media_url(asset, app_url: str) -> str:
+    """The URL a provider fetches ``asset`` from: presigned, or absolute on local storage."""
+    url = asset.file.url
+    if url.startswith("/"):
+        # Local storage: make absolute using APP_URL
+        url = f"{app_url}{url}"
+    return url
+
+
 class PublishEngine:
     """Orchestrates the publishing of scheduled posts."""
 
@@ -593,6 +611,7 @@ class PublishEngine:
         )
         for pp in refreshed:
             self._maybe_schedule_first_comment(pp)
+            self._maybe_start_thread(pp)
 
         return True
 
@@ -625,6 +644,59 @@ class PublishEngine:
         PlatformPost.objects.filter(pk=platform_post.pk).update(
             first_comment_status=PlatformPost.FirstCommentStatus.PENDING
         )
+
+    def _maybe_start_thread(self, platform_post):
+        """Queue the second part of a freshly published thread, once.
+
+        Called from the same three places as ``_maybe_schedule_first_comment``.
+        Each part then queues the next itself, after that part's delay, so a
+        thread with an hour between parts holds no worker for that hour.
+        """
+        if platform_post.status != PlatformPost.Status.PUBLISHED:
+            return
+        if platform_post.thread_status != PlatformPost.ThreadStatus.NONE:
+            return
+        first = platform_post.post.thread_parts.order_by("position", "created_at").first()
+        if first is None:
+            return
+        # Mark and enqueue in one transaction, as ``resume_thread`` does: the
+        # task row lives in the same database, so either the thread is marked
+        # posting with its task queued or neither happened. The conditional
+        # update makes a second caller (the retry and confirmation paths can
+        # both get here) queue nothing.
+        with transaction.atomic():
+            started = PlatformPost.objects.filter(
+                pk=platform_post.pk, thread_status=PlatformPost.ThreadStatus.NONE
+            ).update(thread_status=PlatformPost.ThreadStatus.PENDING, thread_error="")
+            if started:
+                _publish_thread_part_task(str(platform_post.id), str(first.id), schedule=first.delay_seconds)
+        if started:
+            platform_post.thread_status = PlatformPost.ThreadStatus.PENDING
+
+    def reap_stalled_thread_parts(self):
+        """Settle thread parts whose worker died while posting them.
+
+        A part is claimed into ``posting`` just before the platform is called,
+        so one still there long after was in flight when the worker stopped.
+        Whether it went out is unknown, so it is never re-sent: it becomes
+        ``unconfirmed`` and the thread partial, which shows the author where it
+        stopped and lets them resume once they have checked.
+        """
+        stale_before = timezone.now() - timedelta(seconds=_stale_publishing_timeout())
+        stalled = PlatformPostPart.objects.filter(
+            status=PlatformPostPart.Status.POSTING, updated_at__lt=stale_before
+        ).select_related("platform_post__social_account", "platform_post__post__author", "part")
+        settled = 0
+        for state in stalled:
+            claimed = PlatformPostPart.objects.filter(pk=state.pk, status=PlatformPostPart.Status.POSTING).update(
+                status=PlatformPostPart.Status.UNCONFIRMED,
+                publish_error=THREAD_PART_AMBIGUOUS_MESSAGE,
+                updated_at=timezone.now(),
+            )
+            if claimed:
+                _stop_thread(state.platform_post, state.part, THREAD_PART_AMBIGUOUS_MESSAGE)
+                settled += 1
+        return settled
 
     def _publish_platform_post(self, platform_post, media_cache=None):
         """Publish a single PlatformPost to its target platform.
@@ -664,6 +736,18 @@ class PublishEngine:
                 reason="media breaks a blocking platform media rule",
             )
             return {"success": False, "error": media_reason}
+
+        # A thread the platform can't carry fails before its first part goes
+        # out — publishing that alone would strand every part after it.
+        thread_reason = platform_post_thread_blocker(platform_post)
+        if thread_reason:
+            self._fail_permanently(
+                platform_post,
+                f"thread: {thread_reason}",
+                user_message=thread_reason,
+                reason="thread the platform can't publish",
+            )
+            return {"success": False, "error": thread_reason}
 
         # Check rate limits
         rate_state = RateLimitState.objects.filter(
@@ -912,11 +996,7 @@ class PublishEngine:
                     primary_video_duration = asset.duration or None
 
                 # Collect the public/presigned URL for this asset
-                url = asset.file.url
-                if url.startswith("/"):
-                    # Local storage: make absolute using APP_URL
-                    url = f"{app_url}{url}"
-                media_urls.append(url)
+                media_urls.append(_public_media_url(asset, app_url))
                 media_types.append(asset.media_type)
 
                 if needs_local_media:
@@ -1318,6 +1398,7 @@ class PublishEngine:
                 if result.get("success"):
                     self._sync_parent_published_at(pp.post)
                     self._maybe_schedule_first_comment(pp)
+                    self._maybe_start_thread(pp)
             except Exception:
                 logger.exception("Error retrying PlatformPost %s", pp.id)
 
@@ -1505,6 +1586,7 @@ class PublishEngine:
         self._drop_queue_entry(platform_post)
         self._sync_parent_published_at(platform_post.post)
         self._maybe_schedule_first_comment(platform_post)
+        self._maybe_start_thread(platform_post)
         logger.info("Confirmed publish of PlatformPost %s as %s", platform_post.id, platform_post_id)
 
     def _update_rate_limit(self, account, result):
@@ -1835,3 +1917,363 @@ def _post_first_comment_task(platform_post_id):
 
     _mark_first_comment_posted(platform_post, getattr(result, "platform_comment_id", ""))
     logger.info("Posted first comment for PlatformPost %s", platform_post.id)
+
+
+# ---------------------------------------------------------------------------
+# Threads
+# ---------------------------------------------------------------------------
+
+# Each part retries on its own budget. The parts before it are live, so a
+# failure here never touches them — it only decides whether this part gets
+# another go or the thread stops for the author to resume.
+THREAD_PART_MAX_RETRIES = getattr(settings, "PUBLISHER_THREAD_PART_MAX_RETRIES", 3)
+THREAD_PART_RETRY_BACKOFF = [60, 300, 1800]  # 1min, 5min, 30min
+PartStatus = PlatformPostPart.Status
+ThreadStatus = PlatformPost.ThreadStatus
+
+# Keys of ``platform_extra`` that describe the first post rather than the
+# account, so a later part must not inherit them.
+_FIRST_POST_ONLY_EXTRA = ("post_type", "link_url", "thumbnail_asset_id", "cover_image_asset_id")
+
+
+def _can_reconcile_thread_parts(provider) -> bool:
+    """Whether this provider can check for an already-published thread part.
+
+    Same identity test as ``_can_reconcile_comments``: a provider answers when
+    it overrides ``find_thread_part``, or — for a comments-mode thread, where
+    the base implementation asks ``find_own_comment`` — when it can find its
+    own comments.
+    """
+    from providers.base import SocialProvider
+    from providers.types import ThreadMode
+
+    implementation = getattr(type(provider), "find_thread_part", None)
+    if implementation is not None and implementation is not SocialProvider.find_thread_part:
+        return True
+    return provider.thread.mode is ThreadMode.COMMENTS and _can_reconcile_comments(provider)
+
+
+def _thread_part_states(platform_post, parts) -> dict:
+    """The ``PlatformPostPart`` for each of ``parts`` on this account, created as needed."""
+    states = {state.part_id: state for state in platform_post.part_states.all()}
+    for part in parts:
+        if part.id not in states:
+            states[part.id], _ = PlatformPostPart.objects.get_or_create(platform_post=platform_post, part=part)
+    return states
+
+
+def _published_ref(state) -> PublishResult:
+    """A published part as the ``parent`` the next part replies to."""
+    return PublishResult(platform_post_id=state.platform_part_id, url=state.url or None, extra=state.response or {})
+
+
+def _stop_thread(platform_post, part, user_message: str) -> None:
+    """Mark the thread partial — the first post and some parts are live — and tell the author.
+
+    Best-effort like ``_notify_publish_failed``: the part's own row already
+    records what happened, and nothing here may raise into the task runner.
+    """
+    position = part.position + 1 if part is not None else None
+    stored = (f"The thread stopped at part {position}. {user_message}" if position else user_message)[:2000]
+    try:
+        PlatformPost.objects.filter(pk=platform_post.pk).update(
+            thread_status=ThreadStatus.PARTIAL,
+            thread_error=stored,
+        )
+    except Exception:
+        logger.exception("Could not record the stopped thread on PlatformPost %s", platform_post.id)
+        return
+    platform_post.thread_status = ThreadStatus.PARTIAL
+    platform_post.thread_error = stored
+    try:
+        from apps.notifications.engine import notify
+        from apps.notifications.models import EventType
+
+        author = platform_post.post.author
+        if not author:
+            return
+        platform = platform_post.social_account.get_platform_display()
+        notify(
+            author,
+            EventType.POST_FAILED,
+            title=f"{platform} thread was only partly published",
+            body=stored,
+            data={
+                "post_id": str(platform_post.post_id),
+                "platform_post_id": str(platform_post.id),
+                "platform": platform_post.social_account.platform,
+            },
+        )
+    except Exception:
+        logger.exception("Could not notify the author that the thread on PlatformPost %s stopped", platform_post.id)
+
+
+def _mark_thread_part_published(state, result) -> None:
+    """Record a part that is live on the platform. Never raises, like ``_mark_first_comment_posted``."""
+    try:
+        PlatformPostPart.objects.filter(pk=state.pk).update(
+            status=PartStatus.PUBLISHED,
+            platform_part_id=str(result.platform_post_id or "")[:255],
+            url=str(result.url or "")[:500],
+            response=result.extra if isinstance(result.extra, dict) else {},
+            publish_error="",
+            published_at=timezone.now(),
+            updated_at=timezone.now(),
+        )
+    except Exception:
+        logger.exception(
+            "Thread part %s is PUBLISHED on the platform but could not be recorded. "
+            "It still reads posting; the stalled-part sweep will mark it unconfirmed rather than re-send it.",
+            state.pk,
+        )
+
+
+def _continue_thread(platform_post, parts, index) -> None:
+    """Queue the part after ``parts[index]``, after its delay, or finish the thread."""
+    if index + 1 < len(parts):
+        following = parts[index + 1]
+        _publish_thread_part_task(str(platform_post.id), str(following.id), schedule=following.delay_seconds)
+        return
+    PlatformPost.objects.filter(pk=platform_post.pk).update(thread_status=ThreadStatus.COMPLETE, thread_error="")
+    logger.info("Published every part of the thread on PlatformPost %s", platform_post.id)
+
+
+def _hold_back_part(platform_post, state, part) -> None:
+    """Park a part whose write may have landed as ``unconfirmed`` and stop the thread there."""
+    PlatformPostPart.objects.filter(pk=state.pk).update(
+        status=PartStatus.UNCONFIRMED,
+        publish_error=THREAD_PART_AMBIGUOUS_MESSAGE,
+        updated_at=timezone.now(),
+    )
+    _stop_thread(platform_post, part, THREAD_PART_AMBIGUOUS_MESSAGE)
+
+
+def _record_thread_part_failure(platform_post, state, part, exc, *, ambiguous: bool, can_reconcile: bool) -> None:
+    """Persist a part's failure, and re-queue it when another attempt can help.
+
+    The same three outcomes as a publish: a retry on the backoff ladder, a
+    permanent failure, or — when the write may have landed and the provider
+    can't check — ``unconfirmed``, which is never re-sent on its own.
+    """
+    user_message = friendly_publish_error(exc)
+    if ambiguous and not can_reconcile:
+        logger.warning("Thread part %s outcome is unknown; stopping the thread: %s", state.pk, exc)
+        _hold_back_part(platform_post, state, part)
+        return
+
+    retryable = ambiguous or _is_retryable_first_comment_failure(exc)
+    if retryable and state.retry_count < THREAD_PART_MAX_RETRIES:
+        retry_at = getattr(exc, "resets_at", None)
+        backoff = None
+        if retry_at is not None:
+            try:
+                backoff = max(1, math.ceil((retry_at - timezone.now()).total_seconds()))
+            except (AttributeError, TypeError):
+                backoff = None
+        if backoff is None:
+            index = min(state.retry_count, len(THREAD_PART_RETRY_BACKOFF) - 1)
+            backoff = getattr(exc, "retry_after", None) or THREAD_PART_RETRY_BACKOFF[index]
+        PlatformPostPart.objects.filter(pk=state.pk).update(
+            status=PartStatus.PENDING,
+            publish_error=user_message[:2000],
+            retry_count=F("retry_count") + 1,
+            updated_at=timezone.now(),
+        )
+        _publish_thread_part_task(str(platform_post.id), str(part.id), schedule=backoff)
+        logger.info("Retrying thread part %s in %ss: %s", state.pk, backoff, exc)
+        return
+
+    if ambiguous:
+        # Out of attempts while the outcome is still unknown: the same
+        # held-back state as a write nobody can check.
+        _hold_back_part(platform_post, state, part)
+        return
+
+    stored = exhausted_publish_message(user_message) if retryable else user_message
+    logger.warning("Thread part %s failed: %s", state.pk, exc)
+    PlatformPostPart.objects.filter(pk=state.pk).update(
+        status=PartStatus.FAILED,
+        publish_error=stored[:2000],
+        updated_at=timezone.now(),
+    )
+    _stop_thread(platform_post, part, stored)
+
+
+def _thread_part_content(platform_post, provider, part, caption, assets, media_cache) -> PublishContent:
+    """The ``PublishContent`` for one later part, built like the first post's."""
+    if not provider.thread.media_per_part:
+        assets = []
+    if set(provider.supported_post_types) <= VIDEO_POST_TYPES:
+        assets = [asset for asset in assets if asset.media_type == "video"]
+    app_url = getattr(settings, "APP_URL", "").rstrip("/")
+    media_urls = [_public_media_url(asset, app_url) for asset in assets]
+    media_files = [media_cache.path_for(asset) for asset in assets] if provider.needs_local_media else []
+    extra = {"tags": platform_post.post.tags or []}
+    extra.update(
+        {key: value for key, value in (platform_post.platform_extra or {}).items() if key not in _FIRST_POST_ONLY_EXTRA}
+    )
+    first_type = assets[0].media_type if assets else None
+    return PublishContent(
+        text=caption or "",
+        media_files=media_files,
+        media_urls=media_urls,
+        media_types=[asset.media_type for asset in assets],
+        post_type=PublishEngine._resolve_post_type(
+            platform=platform_post.social_account.platform,
+            platform_extra={},
+            media_count=len(assets),
+            first_media_type=first_type,
+        ),
+        extra=extra,
+        video_duration_sec=next((a.duration or None for a in assets if a.media_type == "video"), None),
+        # One key per part per account, so a provider honouring idempotency
+        # (Mastodon) can't publish the same part twice across retries.
+        idempotency_key=f"brightbean-{platform_post.id}-part-{part.id}",
+        upload_cache=_provider_upload_cache,
+        should_stop=SHUTDOWN_REQUESTED.is_set,
+    )
+
+
+@background(schedule=0)
+def _publish_thread_part_task(platform_post_id, part_id):
+    """Publish one later part of a thread, then queue the next after its delay.
+
+    One task per part rather than one loop per thread: a delay between parts
+    is the next task's schedule, so no worker sleeps through it, and a part
+    that fails retries on its own without re-running the parts before it.
+    The part is claimed (``pending`` → ``posting``) before the platform is
+    called, so a duplicate task for the same part does nothing.
+    """
+    platform_post = (
+        PlatformPost.objects.select_related("social_account__workspace__organization", "post__author")
+        .filter(pk=platform_post_id)
+        .first()
+    )
+    if platform_post is None:
+        logger.warning("PlatformPost %s not found for thread part %s.", platform_post_id, part_id)
+        return
+    parts_with_content = thread_parts_for(platform_post)
+    parts = [part for part, _caption, _assets in parts_with_content]
+    index = next((i for i, part in enumerate(parts) if str(part.id) == str(part_id)), None)
+    if index is None:
+        logger.info("Thread part %s is no longer on PlatformPost %s; nothing to publish.", part_id, platform_post.id)
+        return
+    part, caption, assets = parts_with_content[index]
+
+    if platform_post.status != PlatformPost.Status.PUBLISHED or not platform_post.platform_post_id:
+        _stop_thread(
+            platform_post, part, "The first post's id on the platform wasn't recorded, so the thread couldn't continue."
+        )
+        return
+
+    states = _thread_part_states(platform_post, parts)
+    if any(states[earlier.id].status != PartStatus.PUBLISHED for earlier in parts[:index]):
+        # Only the part right after the live ones may go out; anything else
+        # is a stale task from before a resume.
+        logger.info("Skipping thread part %s: an earlier part is not live.", part.id)
+        return
+    state = states[part.id]
+    claimed = PlatformPostPart.objects.filter(pk=state.pk, status=PartStatus.PENDING).update(
+        status=PartStatus.POSTING, updated_at=timezone.now()
+    )
+    if not claimed:
+        logger.info("Thread part %s is already %s; skipping.", state.pk, state.status)
+        return
+
+    # No ``extra`` for the root: ``platform_extra`` is the author's input, not
+    # the platform's response, so a reply chain that needs more than the id
+    # (Bluesky's cid) looks the root up itself.
+    root = PublishResult(platform_post_id=platform_post.platform_post_id)
+    parent = _published_ref(states[parts[index - 1].id]) if index else root
+
+    try:
+        provider, access_token = _provider_and_access_token(platform_post.social_account)
+    except Exception as exc:
+        _record_thread_part_failure(platform_post, state, part, exc, ambiguous=False, can_reconcile=False)
+        return
+    can_reconcile = _can_reconcile_thread_parts(provider)
+
+    # A retry may follow an attempt that published before failing. Ask first.
+    if state.retry_count and can_reconcile:
+        try:
+            existing = provider.find_thread_part(access_token, root=root, parent=parent, text=caption or "")
+        except Exception as exc:
+            logger.warning("Could not check for an existing thread part %s; not re-sending it yet.", state.pk)
+            _record_thread_part_failure(platform_post, state, part, exc, ambiguous=True, can_reconcile=True)
+            return
+        if existing:
+            logger.info("Thread part %s was already published as %s", state.pk, existing)
+            _mark_thread_part_published(state, PublishResult(platform_post_id=existing))
+            _continue_thread(platform_post, parts, index)
+            return
+
+    media_cache = _SharedMediaCache()
+    try:
+        try:
+            content = _thread_part_content(platform_post, provider, part, caption, assets, media_cache)
+        except Exception as exc:
+            # Nothing was sent yet, so this is an ordinary retryable failure.
+            _record_thread_part_failure(platform_post, state, part, exc, ambiguous=False, can_reconcile=can_reconcile)
+            return
+        try:
+            result = provider.publish_thread_part(access_token, content, root=root, parent=parent)
+        except ProviderError as exc:
+            _record_thread_part_failure(
+                platform_post,
+                state,
+                part,
+                exc,
+                ambiguous=bool(getattr(exc, "ambiguous_write", False)),
+                can_reconcile=can_reconcile,
+            )
+            return
+        except Exception as exc:
+            # As in _dispatch_to_provider: once inside the provider call, an
+            # unclassified error may follow a committed write.
+            logger.exception("Unexpected error publishing thread part %s", state.pk)
+            _record_thread_part_failure(platform_post, state, part, exc, ambiguous=True, can_reconcile=can_reconcile)
+            return
+    finally:
+        media_cache.cleanup()
+
+    _mark_thread_part_published(state, result)
+    logger.info("Published thread part %s on PlatformPost %s", part.id, platform_post.id)
+    _continue_thread(platform_post, parts, index)
+
+
+def resume_thread(platform_post, *, confirm_unconfirmed: bool = False) -> None:
+    """Pick a partially published thread back up from the first part that isn't live.
+
+    The parts already live are never touched. The stopped part is put back to
+    ``pending`` with a fresh retry budget. An ``unconfirmed`` part may already
+    be live, so re-sending it needs ``confirm_unconfirmed`` — the author
+    saying they checked the platform and it isn't there.
+    Raises ``ValueError`` when the thread isn't stopped part-way, or the
+    stopped part is unconfirmed and that wasn't confirmed.
+    """
+    if platform_post.thread_status != ThreadStatus.PARTIAL:
+        raise ValueError("This thread isn't stopped part-way, so there is nothing to resume.")
+    parts = [part for part, _caption, _assets in thread_parts_for(platform_post)]
+    states = _thread_part_states(platform_post, parts)
+    stopped = next((part for part in parts if states[part.id].status != PartStatus.PUBLISHED), None)
+    if stopped is not None and states[stopped.id].status == PartStatus.UNCONFIRMED and not confirm_unconfirmed:
+        raise ValueError(
+            f"Part {stopped.position + 1} may already be live on "
+            f"{platform_post.social_account.get_platform_display()}. Check the thread there, then confirm "
+            "it isn't posted before resuming — otherwise it would be published twice."
+        )
+    if stopped is None:
+        PlatformPost.objects.filter(pk=platform_post.pk).update(thread_status=ThreadStatus.COMPLETE, thread_error="")
+        return
+    with transaction.atomic():
+        claimed = PlatformPost.objects.filter(pk=platform_post.pk, thread_status=ThreadStatus.PARTIAL).update(
+            thread_status=ThreadStatus.PENDING, thread_error=""
+        )
+        if not claimed:
+            raise ValueError("This thread is already being resumed.")
+        PlatformPostPart.objects.filter(pk=states[stopped.id].pk).exclude(status=PartStatus.POSTING).update(
+            status=PartStatus.PENDING, retry_count=0, publish_error="", updated_at=timezone.now()
+        )
+        _publish_thread_part_task(str(platform_post.id), str(stopped.id), schedule=0)
+    platform_post.thread_status = ThreadStatus.PENDING
+    platform_post.thread_error = ""

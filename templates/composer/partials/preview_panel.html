@@ -1,6 +1,6 @@
 {% comment %}
 Preview Panel - platform-specific post previews.
-Context: previews (list of dicts with account, title, caption, first_comment, char_count, char_limit, is_over_limit, truncated_caption, needs_title), media_items, workspace.
+Context: previews (list of dicts with account, title, caption, first_comment, char_count, char_limit, is_over_limit, truncated_caption, needs_title, thread), media_items, workspace.
 Optional: media_issue_groups + media_issues_oob - the preview endpoint swaps the media checks under the composer's media row.
 {% endcomment %}
 {% if media_issues_oob %}{% include "composer/partials/media_issues.html" with oob=True %}{% endif %}
@@ -550,6 +550,8 @@ Optional: media_issue_groups + media_issues_oob - the preview endpoint swaps the
         </div>
         {% endif %}
         </div>
+
+        {% include "composer/partials/thread_preview.html" with thread=p.thread %}
 
         {% if p.is_over_limit %}
         <div class="px-3 py-2 border-t border-red-100 bg-red-50/50 flex items-center gap-1.5 text-[11px] font-medium text-red-500">

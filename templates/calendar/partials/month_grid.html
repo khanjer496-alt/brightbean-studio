@@ -56,7 +56,7 @@ Enhanced with: holidays, custom events, category colors, recurring badges.
 
             {% for pp in day.posts %}
             <a href="{% url 'composer:compose_edit' workspace_id=workspace.id post_id=pp.post_id %}?account={{ pp.social_account_id }}"
-               class="post-chip status-{{ pp.status }}{% if pp.is_reschedulable %} is-draggable{% endif %}"
+               class="post-chip status-{{ pp.display_status }}{% if pp.is_reschedulable %} is-draggable{% endif %}"
                title="{% if pp.is_reschedulable %}Move or open{% else %}Open{% endif %}"
                {% if pp.is_reschedulable %}draggable="true" data-platform-post-id="{{ pp.id }}"{% else %}draggable="false"{% endif %}>
                 {% if pp.is_bulk_selectable %}{% include "calendar/partials/_select_checkbox.html" with pp_id=pp.id %}{% endif %}
@@ -74,6 +74,7 @@ Enhanced with: holidays, custom events, category colors, recurring badges.
                 {% endwith %}
                 <span class="truncate">{{ pp.post.title|default:pp.post.caption_snippet|truncatechars:28 }}</span>
                 {% include "calendar/partials/_recurrence_badge.html" with post=pp.post %}
+                {% include "calendar/partials/_thread_badge.html" with post=pp.post pp=pp %}
             </a>
             {% endfor %}
 

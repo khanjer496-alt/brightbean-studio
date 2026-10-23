@@ -45,6 +45,30 @@ def publish_fingerprint(platform_post) -> str:
         },
         "media": media,
     }
+    # A thread's later parts are publishable content too. Added only when
+    # there are any, so a single post hashes exactly as it did before threads
+    # existed and its recorded approval stays valid.
+    parts = list(post.thread_parts.order_by("position", "created_at"))
+    if parts:
+        overrides = dict(
+            platform_post.part_states.exclude(platform_specific_caption__isnull=True).values_list(
+                "part_id", "platform_specific_caption"
+            )
+        )
+        payload["parts"] = [
+            {
+                "caption": part.caption,
+                "caption_override": overrides.get(part.id),
+                "delay_seconds": part.delay_seconds,
+                "is_finisher": part.is_finisher,
+                "media": list(
+                    part.media_attachments.order_by("position", "id").values(
+                        "media_asset_id", "media_asset__file", "position", "alt_text"
+                    )
+                ),
+            }
+            for part in parts
+        ]
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str).encode("utf-8")
     return hashlib.sha256(encoded).hexdigest()
 

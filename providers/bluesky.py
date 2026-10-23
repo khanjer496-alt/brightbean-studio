@@ -22,6 +22,8 @@ from .types import (
     PublishContent,
     PublishResult,
     RateLimitConfig,
+    ThreadCapability,
+    ThreadMode,
 )
 
 logger = logging.getLogger(__name__)
@@ -76,6 +78,8 @@ class BlueskyProvider(SocialProvider):
     """
 
     media_rules = BLUESKY_MEDIA_RULES
+    # Each part is a post whose ``reply`` points at the thread root and its parent.
+    thread = ThreadCapability(mode=ThreadMode.REPLY_CHAIN, max_parts=25, media_per_part=True)
 
     writing_style = (
         "Conversational and concise, like a thought shared with peers. One or two hashtags at most, few emojis."
@@ -241,6 +245,57 @@ class BlueskyProvider(SocialProvider):
 
     def publish_post(self, access_token: str, content: PublishContent) -> PublishResult:
         """Publish a post to Bluesky via com.atproto.repo.createRecord."""
+        return self._create_post(access_token, content)
+
+    def publish_thread_part(
+        self,
+        access_token: str,
+        content: PublishContent,
+        *,
+        root: PublishResult,
+        parent: PublishResult,
+    ) -> PublishResult:
+        """Publish a thread part as a reply to ``parent`` within ``root``'s thread.
+
+        A Bluesky reply names both the thread root and its direct parent as
+        strong refs (uri + cid), so the part lands under the right post and the
+        whole chain still reads as one thread.
+        """
+        reply = {
+            "root": self._strong_ref(access_token, root),
+            "parent": self._strong_ref(access_token, parent),
+        }
+        return self._create_post(access_token, content, reply=reply)
+
+    def _strong_ref(self, access_token: str, target: PublishResult) -> dict:
+        """The ``{uri, cid}`` ref a reply needs for an already-published post.
+
+        The cid is in the createRecord response recorded when the post went
+        out. A row published before that response was kept has only the uri,
+        so ask the PDS for the record rather than fail the part.
+        """
+        uri = target.platform_post_id
+        cid = (target.extra or {}).get("cid")
+        if not cid:
+            # at://<did>/<collection>/<rkey>
+            repo, collection, rkey = uri.removeprefix("at://").split("/", 2)
+            data = self._request(
+                "GET",
+                f"{self.pds_url}/xrpc/com.atproto.repo.getRecord",
+                access_token=access_token,
+                params={"repo": repo, "collection": collection, "rkey": rkey},
+            ).json()
+            cid = data.get("cid", "")
+        if not uri or not cid:
+            raise PublishError(
+                "Could not find the Bluesky post this part replies to.",
+                platform=self.platform_name,
+                retryable=False,
+            )
+        return {"uri": uri, "cid": cid}
+
+    def _create_post(self, access_token: str, content: PublishContent, *, reply: dict | None = None) -> PublishResult:
+        """Create one ``app.bsky.feed.post`` record, as a reply when ``reply`` is given."""
         # Validate grapheme length
         grapheme_count = len(content.text) if content.text else 0
         if grapheme_count > self.max_caption_length:
@@ -265,6 +320,9 @@ class BlueskyProvider(SocialProvider):
             "text": content.text or "",
             "createdAt": now,
         }
+
+        if reply:
+            record["reply"] = reply
 
         # Parse facets (links, mentions, hashtags)
         facets = self._parse_facets(content.text or "", access_token)

@@ -86,6 +86,7 @@ def create_post(
     author=None,
     status: str = "draft",
     platform_overrides: dict[Any, dict[str, str | None]] | None = None,
+    parts: list[ThreadPartSpec] | None = None,
 ):
     """Create a ``Post`` + one ``PlatformPost`` for ``social_account``.
 
@@ -114,6 +115,10 @@ def create_post(
     * Media assets are attached in order by their position in
       ``media_asset_ids``. They must already live in the workspace's
       media library.
+    * ``parts`` are the thread's later parts (``ThreadPartSpec``); the
+      caption and media above are its first. Their media must live in the
+      workspace's library too, and a scheduled thread must be one the
+      platform can publish (``thread_blocker``).
 
     Returns the persisted ``Post`` with one ``PlatformPost`` child.
     """
@@ -186,6 +191,18 @@ def create_post(
 
     override = (platform_overrides or {}).get(social_account.id) or {}
 
+    part_specs = list(parts or [])
+    part_assets = resolve_thread_part_assets(workspace, part_specs)
+    if status == "scheduled":
+        override_comment = override.get("first_comment")
+        reason = thread_blocker(
+            social_account,
+            spec_thread_parts(social_account, part_specs, part_assets),
+            first_comment=first_comment if override_comment is None else override_comment,
+        )
+        if reason:
+            raise ValueError(reason)
+
     with transaction.atomic():
         post = Post.objects.create(
             workspace=workspace,
@@ -222,6 +239,8 @@ def create_post(
                 media_asset=asset_map[u],
                 position=position,
             )
+        if part_specs:
+            set_post_parts(post, part_specs, asset_map=part_assets)
 
     # Keep the aggregate column consistent — the publisher polls
     # PlatformPost directly so this is just for listings/UI, but the
@@ -314,10 +333,11 @@ def clone_post(post, *, author=None):
     """Create a fresh DRAFT duplicate of *post* (Clone / Repost).
 
     Copies caption, title, first comment, internal notes, tags, category, every
-    per-platform override (``platform_specific_*`` + ``platform_extra``) and all
-    media attachments. The copy starts as a ``draft`` with no schedule, so a
-    published (or any) post can be re-edited and re-queued without touching the
-    original. ``author`` defaults to the source author.
+    per-platform override (``platform_specific_*`` + ``platform_extra``), all
+    media attachments, and the thread's later parts with their overrides. The
+    copy starts as a ``draft`` with no schedule, so a published (or any) post
+    can be re-edited and re-queued without touching the original. ``author``
+    defaults to the source author.
     """
     from django.db import transaction
 
@@ -370,7 +390,41 @@ def clone_post(post, *, author=None):
                     for pm in media
                 ]
             )
+        _clone_thread_parts(post, new_post)
     return new_post
+
+
+def _clone_thread_parts(post, new_post) -> None:
+    """Copy ``post``'s thread parts, their media and per-account overrides onto ``new_post``."""
+    from apps.composer.models import PlatformPostPart, PostPart, PostPartMedia
+
+    new_children = {pp.social_account_id: pp for pp in new_post.platform_posts.all()}
+    for part in post_thread_parts(post):
+        new_part = PostPart.objects.create(
+            post=new_post,
+            position=part.position,
+            caption=part.caption,
+            delay_seconds=part.delay_seconds,
+            is_finisher=part.is_finisher,
+        )
+        PostPartMedia.objects.bulk_create(
+            [
+                PostPartMedia(part=new_part, media_asset=pm.media_asset, position=pm.position, alt_text=pm.alt_text)
+                for pm in part.media_attachments.all()
+            ]
+        )
+        overrides = part.platform_states.exclude(platform_specific_caption__isnull=True).select_related("platform_post")
+        PlatformPostPart.objects.bulk_create(
+            [
+                PlatformPostPart(
+                    platform_post=new_children[state.platform_post.social_account_id],
+                    part=new_part,
+                    platform_specific_caption=state.platform_specific_caption,
+                )
+                for state in overrides
+                if state.platform_post.social_account_id in new_children
+            ]
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -694,7 +748,8 @@ def require_publishable(platform_post, *, media_types=None, assets=None) -> None
     """Raise ``ValueError`` if ``platform_post`` is certain to fail at publish time.
 
     Also refuses media that breaks a blocking platform media rule
-    (``media_rules_blocker``) — checked here, where a post is scheduled, and
+    (``media_rules_blocker``) and a thread the platform can't publish
+    (``platform_post_thread_blocker``) — checked here, where a post is scheduled, and
     not in ``publish_blocker``, so a post scheduled before a rule existed
     still gets its attempt. ``media_types`` and ``assets`` let a caller
     checking many rows answer them for all of them in one query
@@ -711,6 +766,10 @@ def require_publishable(platform_post, *, media_types=None, assets=None) -> None
         if assets is None:
             assets = post_media_assets(platform_post.post)
         reason = media_rules_blocker(platform_post.social_account, assets, platform_extra=platform_post.platform_extra)
+    if not reason:
+        # A thread the platform can't carry would publish its first part and
+        # then strand the rest, so it is refused here with everything else.
+        reason = platform_post_thread_blocker(platform_post)
     if reason:
         raise ValueError(reason)
 
@@ -742,3 +801,305 @@ def media_change_blocker(post, *, media_types_after, assets_after=None) -> str:
             if reason:
                 return reason
     return ""
+
+
+# ---------------------------------------------------------------------------
+# Threads
+# ---------------------------------------------------------------------------
+
+
+@dataclasses.dataclass
+class ThreadPartSpec:
+    """One later part of a thread, as the composer, the API or MCP describe it.
+
+    ``caption_overrides`` maps a social account id to that account's caption
+    for this part — the part-level ``platform_specific_caption``. ``None`` (or
+    a missing key) means the part's own caption.
+    """
+
+    caption: str = ""
+    media_asset_ids: list = dataclasses.field(default_factory=list)
+    delay_seconds: int = 0
+    is_finisher: bool = False
+    caption_overrides: dict = dataclasses.field(default_factory=dict)
+
+
+def _as_uuid(value):
+    try:
+        return value if isinstance(value, uuid.UUID) else uuid.UUID(str(value))
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
+def parse_thread_parts(raw) -> list[ThreadPartSpec]:
+    """``ThreadPartSpec``s from the composer's JSON thread payload.
+
+    Raises ``ValueError`` on a shape the composer never sends, so a crafted
+    request is refused rather than half-applied.
+    """
+    from apps.composer.models import PostPart
+
+    if raw in (None, ""):
+        return []
+    if not isinstance(raw, list):
+        raise ValueError("Thread parts must be a list.")
+    specs = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ValueError("Each thread part must be an object.")
+        try:
+            delay = int(item.get("delay_seconds") or 0)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("A thread part's delay must be a whole number of seconds.") from exc
+        if not 0 <= delay <= PostPart.MAX_DELAY_SECONDS:
+            raise ValueError("A thread part can wait at most 24 hours after the part before it.")
+        overrides = item.get("caption_overrides") or {}
+        if not isinstance(overrides, dict):
+            raise ValueError("Thread part overrides must be an object.")
+        specs.append(
+            ThreadPartSpec(
+                caption=str(item.get("caption") or ""),
+                media_asset_ids=list(item.get("media_asset_ids") or []),
+                delay_seconds=delay,
+                is_finisher=bool(item.get("is_finisher")),
+                caption_overrides={
+                    str(acc_id): (None if text is None else str(text)) for acc_id, text in overrides.items()
+                },
+            )
+        )
+    return specs
+
+
+def resolve_thread_part_assets(workspace, specs) -> dict:
+    """Every ``MediaAsset`` the parts name, keyed by id, in one query.
+
+    Fails closed like ``create_post``: an id that is malformed or outside the
+    workspace's library raises ``ValueError``.
+    """
+    from apps.media_library.models import MediaAsset
+
+    wanted = [(mid, _as_uuid(mid)) for spec in specs for mid in spec.media_asset_ids]
+    if not wanted:
+        return {}
+    found = {a.id: a for a in MediaAsset.objects.filter(id__in=[u for _, u in wanted if u], workspace=workspace)}
+    missing = [mid for mid, u in wanted if u is None or u not in found]
+    if missing:
+        raise ValueError(f"Media asset(s) not found in workspace {workspace.id}: {missing}")
+    return found
+
+
+def _ordered_specs(specs) -> list:
+    """``specs`` with the finisher moved last; at most one finisher."""
+    finishers = [spec for spec in specs if spec.is_finisher]
+    if len(finishers) > 1:
+        raise ValueError("A thread can have only one finisher.")
+    return [spec for spec in specs if not spec.is_finisher] + finishers
+
+
+def spec_thread_parts(social_account, specs, asset_map) -> list[tuple[str, list]]:
+    """``(caption, assets)`` per part as ``social_account`` would publish ``specs``."""
+    key = str(social_account.id)
+    parts = []
+    for spec in _ordered_specs(specs):
+        override = spec.caption_overrides.get(key)
+        caption = spec.caption if override is None else override
+        parts.append((caption, [asset_map[_as_uuid(mid)] for mid in spec.media_asset_ids]))
+    return parts
+
+
+def set_post_parts(post, specs, *, asset_map=None) -> None:
+    """Replace ``post``'s thread parts with ``specs``, in order.
+
+    ``asset_map`` is ``resolve_thread_part_assets`` for the same specs, when the
+    caller already has it. Overrides are stored only for accounts the post
+    targets. Refused once any part has gone out on any account: those rows are
+    the record of what is live, and replacing the parts would delete it.
+    """
+    from django.db import transaction
+
+    from apps.composer.models import PlatformPostPart, PostPart, PostPartMedia
+
+    specs = _ordered_specs(specs)
+    if asset_map is None:
+        asset_map = resolve_thread_part_assets(post.workspace, specs)
+    if thread_started(post):
+        raise ValueError("This thread has already started publishing, so its parts can't be changed.")
+
+    children = {str(pp.social_account_id): pp for pp in post.platform_posts.all()}
+    with transaction.atomic():
+        post.thread_parts.all().delete()
+        for position, spec in enumerate(specs, start=1):
+            part = PostPart.objects.create(
+                post=post,
+                position=position,
+                caption=spec.caption,
+                delay_seconds=spec.delay_seconds,
+                is_finisher=spec.is_finisher,
+            )
+            seen = set()
+            for media_position, mid in enumerate(spec.media_asset_ids):
+                asset = asset_map[_as_uuid(mid)]
+                if asset.id in seen:
+                    continue
+                seen.add(asset.id)
+                PostPartMedia.objects.create(part=part, media_asset=asset, position=media_position)
+            for acc_id, text in spec.caption_overrides.items():
+                child = children.get(str(acc_id))
+                if child is not None and text is not None:
+                    PlatformPostPart.objects.create(platform_post=child, part=part, platform_specific_caption=text)
+
+
+def post_thread_parts(post) -> list:
+    """``post``'s thread parts in order, with their media."""
+    return list(post.thread_parts.prefetch_related("media_attachments__media_asset").order_by("position", "created_at"))
+
+
+def thread_parts_for(platform_post, parts=None) -> list[tuple]:
+    """``(part, caption, assets)`` per thread part as ``platform_post``'s account publishes it.
+
+    ``caption`` honours the account's override; ``assets`` are the part's
+    attached ``MediaAsset``s the publisher would upload, in order.
+    """
+    if parts is None:
+        parts = post_thread_parts(platform_post.post)
+    if not parts:
+        return []
+    overrides = dict(
+        platform_post.part_states.exclude(platform_specific_caption__isnull=True).values_list(
+            "part_id", "platform_specific_caption"
+        )
+    )
+    result = []
+    for part in parts:
+        caption = overrides.get(part.id, part.caption)
+        assets = [pm.media_asset for pm in part.media_attachments.all() if pm.media_asset.file]
+        result.append((part, caption, assets))
+    return result
+
+
+def thread_blocker(social_account, parts, *, first_comment: str = "") -> str:
+    """Why ``social_account`` can't publish these later thread parts, or "".
+
+    ``parts`` is ``(caption, assets)`` per part after the first post. The
+    rules come from the platform's ``ThreadCapability``: whether it takes a
+    thread at all, how many parts, how long each may be, and whether a part
+    can carry media — which then has to pass the platform's media rules like
+    the first post's does.
+
+    ``first_comment`` is the comment this account would post on the first
+    post. A ``COMMENTS`` thread refuses one: both are comments on the same
+    post, queued on different delays, so the first comment could land in the
+    middle of the thread. The author moves it into the thread instead.
+    """
+    from providers import thread_capability_for
+    from providers.types import ThreadMode
+
+    if not parts:
+        return ""
+    capability = thread_capability_for(social_account.platform)
+    name = social_account.get_platform_display()
+    if not capability.supports_threads:
+        return f"{name} can't publish a thread. Remove the extra parts, or publish this to {name} as a single post."
+    if capability.mode is ThreadMode.COMMENTS and not social_account.supports_first_comment():
+        return (
+            f"{name} adds a thread's later parts as comments, and this account can't post comments. "
+            "Remove the extra parts for it."
+        )
+    if capability.mode is ThreadMode.COMMENTS and (first_comment or "").strip():
+        return (
+            f"{name} adds a thread's later parts as comments, so it can't also post a first comment. "
+            "Move the first comment into the thread as part 2, or remove it."
+        )
+    if 1 + len(parts) > capability.max_parts:
+        return f"{name} takes at most {capability.max_parts} parts in a thread; this one has {1 + len(parts)}."
+
+    limit = capability.part_max_length or social_account.char_limit
+    noun = "comment" if capability.mode is ThreadMode.COMMENTS else "post"
+    for number, (caption, assets) in enumerate(parts, start=2):
+        if not (caption or "").strip() and not assets:
+            return f"Part {number} of the thread is empty. Write something in it or remove it."
+        length = social_account.caption_wire_length(caption or "")
+        if length > limit:
+            return f"Part {number} is {length} characters; {name} takes at most {limit} per {noun}."
+        if assets and not capability.media_per_part:
+            return f"{name} adds later parts as comments, which can't carry media. Remove the media from part {number}."
+        if assets:
+            reason = media_rules_blocker(social_account, assets)
+            if reason:
+                return f"Part {number}: {reason}"
+    return ""
+
+
+def platform_post_thread_blocker(platform_post, parts=None) -> str:
+    """``thread_blocker`` for the thread ``platform_post`` would publish."""
+    return thread_blocker(
+        platform_post.social_account,
+        [(caption, assets) for _part, caption, assets in thread_parts_for(platform_post, parts)],
+        first_comment=_account_first_comment(platform_post, platform_post.effective_first_comment),
+    )
+
+
+def _account_first_comment(platform_post, first_comment) -> str:
+    """The first comment ``platform_post`` would actually post: none where the account can't comment."""
+    return first_comment if platform_post.social_account.supports_first_comment() else ""
+
+
+def thread_change_blocker(post, specs=None, asset_map=None, *, first_comment=None) -> str:
+    """Why changing the thread or first comment would strand a scheduled row, or "".
+
+    The thread counterpart of ``media_change_blocker``: only rows already
+    ``scheduled`` count, the rest are checked when they are scheduled.
+    ``specs`` (with ``asset_map``) replaces the parts and ``first_comment``
+    the post's first comment; ``None`` keeps what is stored.
+    """
+    from apps.composer.models import PlatformPost
+
+    children = post.platform_posts.filter(status=PlatformPost.Status.SCHEDULED).select_related("social_account")
+    for child in children:
+        if specs is None:
+            parts = [(caption, assets) for _part, caption, assets in thread_parts_for(child)]
+        else:
+            parts = spec_thread_parts(child.social_account, specs, asset_map or {})
+        comment = child.effective_first_comment
+        if first_comment is not None and child.platform_specific_first_comment is None:
+            comment = first_comment
+        reason = thread_blocker(child.social_account, parts, first_comment=_account_first_comment(child, comment))
+        if reason:
+            return reason
+    return ""
+
+
+def thread_started(post) -> bool:
+    """Whether any account has begun publishing ``post``'s thread.
+
+    True once a first post with parts is live (its ``thread_status`` leaves
+    ``none`` the moment the second part is queued, possibly hours before that
+    part's row exists) or any part has left ``pending``. From then on the
+    parts are the record of what is live and can't be replaced.
+    """
+    from apps.composer.models import PlatformPost, PlatformPostPart
+
+    if post.platform_posts.exclude(thread_status=PlatformPost.ThreadStatus.NONE).exists():
+        return True
+    return (
+        PlatformPostPart.objects.filter(platform_post__post=post)
+        .exclude(status=PlatformPostPart.Status.PENDING)
+        .exists()
+    )
+
+
+def thread_stopped_state(platform_post):
+    """The ``PlatformPostPart`` a partial thread stopped at, or None.
+
+    The first part in order that isn't live — the one a resume re-sends.
+    """
+    from apps.composer.models import PlatformPostPart
+
+    if not platform_post.is_thread_partial:
+        return None
+    return (
+        PlatformPostPart.objects.filter(platform_post=platform_post)
+        .exclude(status=PlatformPostPart.Status.PUBLISHED)
+        .order_by("part__position", "part__created_at")
+        .first()
+    )

@@ -7,6 +7,7 @@ import json
 import logging
 import time
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import datetime
 from functools import partial
 from urllib.parse import urlencode
@@ -29,6 +30,8 @@ from .types import (
     PublishResult,
     RateLimitConfig,
     ReplyResult,
+    ThreadCapability,
+    ThreadMode,
     UploadCache,
 )
 
@@ -110,6 +113,8 @@ class MastodonProvider(SocialProvider):
     """
 
     media_rules = MASTODON_MEDIA_RULES
+    # Each part is a status replying to the one before it (``in_reply_to_id``).
+    thread = ThreadCapability(mode=ThreadMode.REPLY_CHAIN, max_parts=25, media_per_part=True)
 
     writing_style = (
         "Genuine and community-minded, no marketing speak. Hashtags in CamelCase for discoverability and accessibility."
@@ -364,6 +369,24 @@ class MastodonProvider(SocialProvider):
             platform_post_id=data["id"],
             url=data.get("url"),
             extra=data,
+        )
+
+    def publish_thread_part(
+        self,
+        access_token: str,
+        content: PublishContent,
+        *,
+        root: PublishResult,
+        parent: PublishResult,
+    ) -> PublishResult:
+        """Publish a thread part as a status replying to the part before it.
+
+        Goes through ``publish_post`` so a part gets the same media upload,
+        visibility and ``Idempotency-Key`` handling as the first post.
+        """
+        return self.publish_post(
+            access_token,
+            replace(content, extra={**content.extra, "in_reply_to_id": parent.platform_post_id}),
         )
 
     def publish_comment(self, access_token: str, post_id: str, text: str) -> CommentResult:

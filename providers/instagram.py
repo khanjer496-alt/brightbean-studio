@@ -47,6 +47,8 @@ from .types import (
     PublishResult,
     RateLimitConfig,
     ReplyResult,
+    ThreadCapability,
+    ThreadMode,
 )
 
 logger = logging.getLogger(__name__)
@@ -154,6 +156,8 @@ class InstagramProvider(SocialProvider):
     """Instagram Graph API provider (via Facebook Graph API v25.0)."""
 
     media_rules = INSTAGRAM_MEDIA_RULES
+    # Instagram comments share the caption's 2,200-character limit.
+    thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=2200)
 
     writing_style = "Visual storytelling: a strong first line, short paragraphs, emojis welcome, and a block of relevant hashtags at the end."
 

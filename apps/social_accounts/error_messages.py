@@ -83,6 +83,14 @@ PUBLISH_UNCONFIRMED_MESSAGE = (
     "Check the account before publishing again — it may already be live."
 )
 
+# A thread part whose write may have landed. The parts before it are live and
+# untouched; the rest wait for the author, because re-sending it could post it
+# twice.
+THREAD_PART_AMBIGUOUS_MESSAGE = (
+    "The platform did not confirm whether this part was published, so the rest of the thread was held back "
+    "to avoid a duplicate. Check the post, then resume the thread."
+)
+
 # A failed webhook subscription costs real-time delivery, not delivery itself:
 # the inbox still polls comments every few minutes. The copy says so, so nobody
 # reads a missing subscription as a broken inbox.

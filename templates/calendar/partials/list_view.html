@@ -20,9 +20,9 @@ Context: posts, workspace.
             <tr class="border-b border-stone-100 hover:bg-stone-50 transition-colors duration-100 cursor-pointer"
                 @click="window.location='{% url 'composer:compose_edit' workspace_id=workspace.id post_id=post.id %}'">
                 <td class="px-4 py-3">
-                    <span class="post-chip status-{{ post.status }} inline-flex">
+                    <span class="post-chip status-{{ post.display_status }} inline-flex">
                         <span class="chip-dot"></span>
-                        {{ post.get_status_display }}
+                        {{ post.display_status_label }}
                     </span>
                 </td>
                 <td class="px-4 py-3 text-xs text-stone-500 tabular-nums whitespace-nowrap">
@@ -34,7 +34,10 @@ Context: posts, workspace.
                     {% endif %}
                 </td>
                 <td class="px-4 py-3 text-sm text-stone-600 max-w-xs truncate">
-                    {{ post.caption_snippet|default:"(no caption)" }}
+                    <span class="inline-flex items-center gap-1.5 max-w-full">
+                        <span class="truncate">{{ post.caption_snippet|default:"(no caption)" }}</span>
+                        {% include "calendar/partials/_thread_badge.html" with post=post %}
+                    </span>
                 </td>
                 <td class="px-4 py-3">
                     <div class="flex gap-1">

@@ -1,4 +1,4 @@
-"""``/api/v1/posts/*`` — create, read, update, schedule, cancel.
+"""``/api/v1/posts/*`` — create, read, update, schedule, cancel, resume a thread.
 
 Every write path:
 
@@ -46,7 +46,10 @@ from apps.composer.models import Post
 from apps.composer.services import (
     create_post,
     media_change_blocker,
+    resolve_thread_part_assets,
+    set_post_parts,
     sync_post_scheduled_at,
+    thread_change_blocker,
     transition_platform_post,
     usable_media_types,
 )
@@ -141,7 +144,11 @@ def _get_workspace_post(request: HttpRequest, post_id: uuid.UUID) -> Post:
     from django.http import Http404
 
     post = get_object_or_404(
-        Post.objects.prefetch_related("platform_posts__social_account").select_related("recurrence_rule"),
+        Post.objects.prefetch_related(
+            "platform_posts__social_account",
+            "platform_posts__part_states__part",
+            "thread_parts__media_attachments",
+        ).select_related("recurrence_rule"),
         id=post_id,
         workspace_id=request.api_key.workspace_id,  # type: ignore[attr-defined]
     )
@@ -208,6 +215,19 @@ def create(request, payload: CreatePostRequest):
             "first_comment": ov.first_comment,
         }
 
+    # Same rule for each part's overrides: the single-account API has one
+    # child, so an override for any other account could never apply.
+    for part in payload.parts:
+        for ov in part.platform_overrides:
+            if ov.social_account_id != payload.social_account_id:
+                raise HttpError(
+                    422,
+                    (
+                        f"parts[*].platform_overrides[*].social_account_id must match the post's "
+                        f"social_account_id ({payload.social_account_id}); got {ov.social_account_id}."
+                    ),
+                )
+
     # ---- Atomic claim-first idempotency. Three early-out branches
     # before we do *any* mutating work, so concurrent identical retries
     # can never both reach create_post:
@@ -272,6 +292,7 @@ def create(request, payload: CreatePostRequest):
                 author=request.user if not request.user.is_anonymous else None,
                 status="scheduled" if payload.action == "schedule" else "draft",
                 platform_overrides=platform_overrides,
+                parts=[part.to_spec() for part in payload.parts],
             )
             if repeat is not None:
                 save_recurrence(post, **repeat.rule_fields())
@@ -388,6 +409,28 @@ def update(request, post_id: uuid.UUID, payload: UpdatePostRequest):
         if reason:
             raise HttpError(422, reason)
 
+    part_specs = None
+    part_assets: dict = {}
+    if payload.parts is not None:
+        part_specs = [part.to_spec() for part in payload.parts]
+        child_ids = {str(pp.social_account_id) for pp in post.platform_posts.all()}
+        foreign = {acc for spec in part_specs for acc in spec.caption_overrides if acc not in child_ids}
+        if foreign:
+            raise HttpError(
+                422, f"parts[*].platform_overrides name accounts this post doesn't target: {sorted(foreign)}"
+            )
+        try:
+            part_assets = resolve_thread_part_assets(post.workspace, part_specs)
+        except ValueError as exc:
+            raise HttpError(422, str(exc)) from exc
+    if payload.parts is not None or payload.first_comment is not None:
+        # As with media: a scheduled post may be edited, but not into a thread
+        # its platform would publish only the first part of — nor into a
+        # comments-mode thread that also carries a first comment.
+        reason = thread_change_blocker(post, part_specs, part_assets, first_comment=payload.first_comment)
+        if reason:
+            raise HttpError(422, reason)
+
     with transaction.atomic():
         update_fields: list[str] = []
         if payload.caption is not None:
@@ -432,6 +475,16 @@ def update(request, post_id: uuid.UUID, payload: UpdatePostRequest):
                     media_asset=resolved_assets[mid],
                     position=position,
                 )
+
+        if part_specs is not None:
+            try:
+                set_post_parts(post, part_specs, asset_map=part_assets)
+            except ValueError as exc:
+                raise HttpError(409, str(exc)) from exc
+            # The parts are the post's content too; touch it so "modified
+            # since" readers see the change.
+            if not update_fields:
+                post.save(update_fields=["updated_at"])
 
         if update_fields:
             post.save(update_fields=[*update_fields, "updated_at"])
@@ -528,4 +581,39 @@ def cancel(request, post_id: uuid.UUID):
 
     post.refresh_from_db()
     log_audit_entry(request, action="post.cancel", target_id=post.id, status_code=200)
+    return _post_to_response(request, post)
+
+
+@router.post(
+    "/{post_id}/resume-thread",
+    response=PostResponse,
+    summary="Resume a partially published thread from the part where it stopped",
+)
+def resume_thread_route(request, post_id: uuid.UUID, confirm_unconfirmed: bool = False):
+    """Restart each stopped thread on the post at the part where it stopped.
+
+    ``?confirm_unconfirmed=true`` is required when that part is
+    ``unconfirmed``: the platform may already have published it, and resuming
+    sends it again, so the caller confirms they checked the platform first.
+    """
+    enforce_http_rate_limits(request, is_write=True)
+    # Resuming publishes the rest of the thread, so it takes the same
+    # permission as scheduling it did.
+    _require_perm(request, "create_posts")
+    _require_perm(request, "publish_directly")
+    post = _get_workspace_post(request, post_id)
+
+    from apps.publisher.engine import resume_thread
+
+    stopped = [pp for pp in post.platform_posts.all() if pp.is_thread_partial]
+    if not stopped:
+        raise HttpError(409, "No thread on this post is stopped part-way.")
+    for pp in stopped:
+        try:
+            resume_thread(pp, confirm_unconfirmed=confirm_unconfirmed)
+        except ValueError as exc:
+            raise HttpError(409, str(exc)) from exc
+
+    post = _get_workspace_post(request, post_id)
+    log_audit_entry(request, action="post.resume_thread", target_id=post.id, status_code=200)
     return _post_to_response(request, post)

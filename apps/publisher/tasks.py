@@ -44,6 +44,12 @@ def confirm_pending_publishes():
     """
     from apps.publisher.engine import PublishEngine
 
-    settled = PublishEngine().confirm_pending_publishes()
+    engine = PublishEngine()
+    settled = engine.confirm_pending_publishes()
     if settled:
         logger.info("Publish confirmation sweep settled %d platform post(s)", settled)
+    # Thread parts left in ``posting`` by a dead worker are the same problem
+    # one level down, and the same sweep is where they get looked at.
+    stalled = engine.reap_stalled_thread_parts()
+    if stalled:
+        logger.info("Publish confirmation sweep held back %d stalled thread part(s)", stalled)
