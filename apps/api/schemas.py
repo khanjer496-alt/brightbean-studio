@@ -929,6 +929,56 @@ class UpdateReplyRequest(Schema):
 
 
 # ---------------------------------------------------------------------------
+# AI writing assistant (apps.ai_writer)
+# ---------------------------------------------------------------------------
+
+
+class GenerateCaptionRequest(Schema):
+    prompt: str = Field(
+        ...,
+        min_length=1,
+        max_length=2_000,
+        description="What the post should say, e.g. 'Announce our spring sale: 20% off this weekend'.",
+    )
+    social_account_ids: list[uuid.UUID] = Field(
+        default_factory=list,
+        max_length=25,
+        description=(
+            "Accounts the caption is for (must be in this key's allowlist). The caption is kept within "
+            "the smallest of their character limits. Omit for a caption with no length target."
+        ),
+    )
+
+
+class GenerateCaptionResponse(Schema):
+    caption: str
+
+
+class AdaptCaptionRequest(Schema):
+    caption: str = Field(..., min_length=1, max_length=10_000, description="The caption to adapt.")
+    social_account_ids: list[uuid.UUID] = Field(
+        ...,
+        min_length=1,
+        max_length=25,
+        description="Accounts to adapt it for (must be in this key's allowlist).",
+    )
+
+
+class AdaptedCaption(Schema):
+    social_account_id: uuid.UUID
+    platform: str
+    caption: str = Field(
+        ..., description="Ready to send as this account's ``platform_overrides`` caption when creating the post."
+    )
+    length: int = Field(..., description="Length as the platform counts it (after any escaping).")
+    char_limit: int
+
+
+class AdaptCaptionResponse(Schema):
+    captions: list[AdaptedCaption]
+
+
+# ---------------------------------------------------------------------------
 # Error envelope (used by the exception handler in api.py)
 # ---------------------------------------------------------------------------
 

@@ -19,6 +19,7 @@ from ninja.openapi.docs import Swagger
 
 from apps.api.auth import ApiKeyAuth, McpAuth
 from apps.api.routers.accounts import router as accounts_router
+from apps.api.routers.ai import router as ai_router
 from apps.api.routers.analytics import router as analytics_router
 from apps.api.routers.inbox import router as inbox_router
 from apps.api.routers.me import router as me_router
@@ -80,6 +81,13 @@ api = NinjaAPI(
         "set yet. Create Pinterest posts as drafts and schedule them from the "
         "composer after choosing a board. The same rule applies to PATCHing "
         "the media of a scheduled post.\n\n"
+        "**AI writing assistant.** `POST /ai/caption` writes a caption from a "
+        "prompt and `POST /ai/adapt` rewrites one for each account, within each "
+        "platform's character limit and in the workspace's brand voice. Both "
+        "return text only — pass it to `POST /posts/`. They answer 404 when the "
+        "AI assistant isn't configured for the organization, and with "
+        "`BILLING_ENABLED` count against the plan's daily AI allowance (402 "
+        "`ai_request_limit` once it is used up).\n\n"
         "**Deleting posts.** Posts cannot be deleted via the API in v1. "
         "Cancel a scheduled post with `POST /posts/{id}/cancel`; remove "
         "drafts from the workspace's drafts list in the web UI. Published "
@@ -100,6 +108,7 @@ api.add_router("/posts", posts_router)
 api.add_router("/media", media_router)
 api.add_router("/analytics", analytics_router)
 api.add_router("/inbox", inbox_router)
+api.add_router("/ai", ai_router)
 # MCP Streamable HTTP transport. Same audit + rate limits as REST, but a
 # wider auth class: ``McpAuth`` accepts both bb_studio_ keys AND OAuth 2.1
 # access tokens (Claude Desktop's native connector flow). Mounted last so

@@ -1699,3 +1699,126 @@ register_tool(
         handler=_send_reply,
     )
 )
+
+
+# ---------------------------------------------------------------------------
+# Tools: AI writing assistant — same services as REST /ai/* and the composer
+# ---------------------------------------------------------------------------
+
+
+def _ai_context(context: dict[str, Any]):
+    from apps.ai_writer.models import AIRequestLog
+    from apps.ai_writer.services import AIContext
+
+    api_key = context["api_key"]
+    return AIContext(
+        workspace=api_key.workspace,
+        user=api_key.issued_by if api_key.issued_by_id else None,
+        source=AIRequestLog.Source.MCP,
+    )
+
+
+def _resolve_allowed_accounts(api_key, ids: list) -> list[SocialAccount]:
+    return [_resolve_allowed_account(api_key, i) for i in dict.fromkeys(ids)]
+
+
+def _generate_caption(args: dict, context: dict[str, Any]) -> dict:
+    from apps.ai_writer.client import AIError
+    from apps.ai_writer.services import write_caption
+
+    _require_perm(context, "create_posts")
+    accounts = _resolve_allowed_accounts(context["api_key"], args.get("social_account_ids") or [])
+    try:
+        caption = write_caption(_ai_context(context), args["prompt"], accounts)
+    except (AIError, ValueError) as exc:
+        raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
+    return _wrap_text({"caption": caption})
+
+
+register_tool(
+    Tool(
+        name="generate_caption",
+        description=(
+            "Write a social media caption with the workspace's AI writing assistant, in its brand voice. "
+            "Pass social_account_ids to keep it within the smallest of those accounts' character limits. "
+            "Returns {caption}; nothing is saved — pass it to create_draft or schedule_post. Counts against "
+            "the plan's daily AI allowance. Requires the create_posts permission."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "prompt": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 2000,
+                    "description": "What the post should say.",
+                },
+                "social_account_ids": {
+                    "type": "array",
+                    "items": {"type": "string", "format": "uuid"},
+                    "maxItems": 25,
+                    "default": [],
+                    "description": "Accounts the caption is for, from this key's allowlist (see list_accounts).",
+                },
+            },
+            "required": ["prompt"],
+            "additionalProperties": False,
+        },
+        handler=_generate_caption,
+    )
+)
+
+
+def _adapt_caption(args: dict, context: dict[str, Any]) -> dict:
+    from apps.ai_writer.client import AIError
+    from apps.ai_writer.services import adapt_for_networks
+
+    _require_perm(context, "create_posts")
+    accounts = _resolve_allowed_accounts(context["api_key"], args["social_account_ids"])
+    try:
+        adapted = adapt_for_networks(_ai_context(context), args["caption"], accounts)
+    except (AIError, ValueError) as exc:
+        raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
+    return _wrap_text(
+        {
+            "captions": [
+                {
+                    "social_account_id": str(sa.id),
+                    "platform": sa.platform,
+                    "caption": adapted[str(sa.id)],
+                    "length": sa.caption_wire_length(adapted[str(sa.id)]),
+                    "char_limit": sa.char_limit,
+                }
+                for sa in accounts
+            ]
+        }
+    )
+
+
+register_tool(
+    Tool(
+        name="adapt_caption",
+        description=(
+            "Rewrite a caption for each account with the AI writing assistant: each network's style, the "
+            "workspace's brand voice, and within each account's character limit. Returns one caption per "
+            "social_account_id, ready to use as that account's override; nothing is saved. Counts against "
+            "the plan's daily AI allowance. Requires the create_posts permission."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "caption": {"type": "string", "minLength": 1, "maxLength": 10000},
+                "social_account_ids": {
+                    "type": "array",
+                    "items": {"type": "string", "format": "uuid"},
+                    "minItems": 1,
+                    "maxItems": 25,
+                    "description": "Accounts to adapt it for, from this key's allowlist (see list_accounts).",
+                },
+            },
+            "required": ["caption", "social_account_ids"],
+            "additionalProperties": False,
+        },
+        handler=_adapt_caption,
+    )
+)
