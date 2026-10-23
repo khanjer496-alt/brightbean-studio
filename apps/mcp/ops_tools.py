@@ -1292,3 +1292,118 @@ _tool(
     required=["page_id"],
     read_only=True,
 )
+
+
+# ---------------------------------------------------------------------------
+# Repurposing: one source into several outputs
+# ---------------------------------------------------------------------------
+
+_REPURPOSE_KINDS = ["thread", "post", "carousel", "standalone", "video_script", "newsletter", "hashtags"]
+
+
+def _create_repurpose_job_args(a: dict) -> dict[str, Any]:
+    outputs = a.get("outputs")
+    if not isinstance(outputs, list) or not outputs:
+        raise JsonRpcError(INVALID_PARAMS, "outputs is required")
+    parsed = []
+    for item in outputs:
+        if not isinstance(item, dict) or item.get("kind") not in _REPURPOSE_KINDS:
+            raise JsonRpcError(INVALID_PARAMS, f"outputs[].kind must be one of {', '.join(_REPURPOSE_KINDS)}")
+        parsed.append(
+            {
+                "kind": item["kind"],
+                "social_account_ids": _uuid_list_arg(item, "social_account_ids") or [],
+                "count": item.get("count"),
+            }
+        )
+    return {
+        "source_type": a.get("source_type"),
+        "url": a.get("url"),
+        "text": a.get("text"),
+        "post_id": _uuid_arg(a, "post_id"),
+        "media_asset_id": _uuid_arg(a, "media_asset_id"),
+        "outputs": parsed,
+        "origin": "mcp",
+    }
+
+
+_tool(
+    "create_repurpose_job",
+    (
+        "Turn one source into several outputs with the AI writer: threads (accounts that take threads), long-form "
+        "posts, carousels (caption + slide texts; a branded PDF is saved to the media library for networks that "
+        "take PDF carousels), standalone posts or quotes, a short-video script, a newsletter blurb or a hashtag set. "
+        "source_type is url (url), text (text), post (post_id of a published post), video (url, plus text with the "
+        "transcript unless it is a video on a connected channel with captions) or pdf (media_asset_id of a PDF in "
+        "the media library). Its AI requests are reserved against the plan's daily allowance up front. The job is "
+        "queued: poll get_repurpose_job until 'succeeded', then accept_repurpose_outputs. Source text is treated as "
+        "data, never as instructions. Needs create_posts; accounts must be on this key's allowlist."
+    ),
+    ops.create_repurpose_job,
+    _create_repurpose_job_args,
+    properties={
+        "source_type": {"type": "string", "enum": ["url", "text", "post", "video", "pdf"]},
+        "url": _text_prop("Page link, or video link for video.", max_length=2000),
+        "text": _text_prop("The text, or a video's transcript.", max_length=60_000),
+        "post_id": _uuid_prop("A published post, for source_type post."),
+        "media_asset_id": _uuid_prop("A PDF in the media library, for source_type pdf."),
+        "outputs": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 12,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "enum": _REPURPOSE_KINDS},
+                    "social_account_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}},
+                    "count": {"type": "integer", "minimum": 1, "maximum": 10, "description": "Slides or posts."},
+                },
+                "required": ["kind"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    required=["source_type", "outputs"],
+    idempotent=True,
+)
+
+_tool(
+    "get_repurpose_job",
+    (
+        "Read a repurposing job: status (queued, running, succeeded, failed, cancelled), AI requests used, and its "
+        "outputs with text, parts, per-network character counts and warnings. Needs create_posts."
+    ),
+    ops.get_repurpose_job,
+    lambda a: {"_args": (_uuid_arg(a, "job_id", required=True),)},
+    properties={"job_id": _uuid_prop("ID from create_repurpose_job.")},
+    required=["job_id"],
+    read_only=True,
+)
+
+_tool(
+    "accept_repurpose_outputs",
+    (
+        "Save chosen outputs of a repurposing job as draft posts (one per account; thread parts included), ideas "
+        "(scripts, newsletter blurbs) or a hashtag set. Drafts enter the workspace's approval workflow; nothing is "
+        "scheduled or published. Each draft's internal notes record the source. Needs create_posts."
+    ),
+    ops.accept_repurpose_outputs,
+    lambda a: {
+        "_args": (_uuid_arg(a, "job_id", required=True),),
+        "output_ids": _uuid_list_arg(a, "output_ids") or [],
+    },
+    properties={
+        "job_id": _uuid_prop(),
+        "output_ids": {"type": "array", "minItems": 1, "maxItems": 100, "items": {"type": "string", "format": "uuid"}},
+    },
+    required=["job_id", "output_ids"],
+)
+
+_tool(
+    "cancel_repurpose_job",
+    "Stop a queued repurposing job at once, or a running one before its next AI request. Outputs already written stay. Needs create_posts.",
+    ops.cancel_repurpose_job,
+    lambda a: {"_args": (_uuid_arg(a, "job_id", required=True),)},
+    properties={"job_id": _uuid_prop()},
+    required=["job_id"],
+)

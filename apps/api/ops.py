@@ -73,6 +73,8 @@ from apps.api.schemas import (
     ReportResponse,
     ReportRunResponse,
     ReportsListResponse,
+    RepurposeJobResponse,
+    RepurposeOutputResponse,
     SignaturesListResponse,
     SignatureSummary,
     TagResponse,
@@ -2143,3 +2145,171 @@ def get_bio_stats(actor: Actor, page_id: uuid.UUID, *, days: int = 30) -> BioSta
         series=summary["series"],
         links=summary["links"],
     )
+
+
+# ---------------------------------------------------------------------------
+# Repurposing
+# ---------------------------------------------------------------------------
+
+
+def _repurpose_job_response(job) -> RepurposeJobResponse:
+    return RepurposeJobResponse(
+        id=job.id,
+        status=job.status,
+        source_type=job.source_type,
+        source_url=job.source_url,
+        source_label=job.source_label,
+        error=job.error,
+        model=job.model,
+        ai_requests_reserved=job.calls_reserved,
+        ai_requests_made=job.calls_made,
+        input_tokens=job.input_tokens,
+        output_tokens=job.output_tokens,
+        created_at=job.created_at,
+        finished_at=job.finished_at,
+        outputs=[
+            RepurposeOutputResponse(
+                id=o.id,
+                kind=o.kind,
+                status=o.status,
+                social_account_id=o.social_account_id,
+                title=o.title,
+                text=o.text,
+                parts=[str(p) for p in o.parts],
+                warnings=list(o.warnings),
+                char_count=o.char_count,
+                char_limit=o.char_limit,
+                post_id=o.post_id,
+                idea_id=o.idea_id,
+                document_media_asset_id=o.document_id,
+            )
+            for o in job.outputs.all()
+        ],
+    )
+
+
+def _get_repurpose_job(actor: Actor, job_id: uuid.UUID):
+    """A job in this workspace whose target accounts are all on the key's allowlist (else 404)."""
+    from apps.repurpose.models import RepurposeJob
+
+    actor.require("create_posts")
+    job = RepurposeJob.objects.filter(workspace_id=actor.workspace_id, id=job_id).prefetch_related("outputs").first()
+    allowed = {str(i) for i in actor.allowed_account_ids}
+    if job is None or not set(job.target_account_ids) <= allowed:
+        raise OpError(404, "Repurpose job not found")
+    return job
+
+
+def create_repurpose_job(
+    actor: Actor,
+    *,
+    source_type: str,
+    outputs: list[dict],
+    url: str | None = None,
+    text: str | None = None,
+    post_id: uuid.UUID | None = None,
+    media_asset_id: uuid.UUID | None = None,
+    origin: str = "api",
+) -> RepurposeJobResponse:
+    """Queue a repurposing run: reserve its AI requests, read the source, and return the pending job.
+
+    Poll ``get_repurpose_job``; nothing is saved as a draft until ``accept_repurpose_outputs``.
+    """
+    from apps.ai_writer.client import AIError
+    from apps.billing.entitlements import PlanLimitError
+    from apps.repurpose import outputs as repurpose_outputs
+    from apps.repurpose import services as repurpose_services
+    from apps.repurpose import sources
+
+    actor.require("create_posts")
+    for item in outputs:
+        for account_id in item.get("social_account_ids") or []:
+            if account_id not in actor.allowed_account_ids:
+                raise OpError(403, "social_account_id is not in this key's allowlist.")
+    try:
+        requests = repurpose_outputs.parse_requests(
+            actor.workspace,
+            [
+                {"kind": o["kind"], "account_ids": o.get("social_account_ids") or [], "count": o.get("count")}
+                for o in outputs
+            ],
+            allowed_ids=actor.allowed_account_ids,
+        )
+        read_source = _repurpose_reader(
+            actor, source_type, url=url, text=text, post_id=post_id, media_asset_id=media_asset_id
+        )
+        job = repurpose_services.create_job(
+            actor.workspace, actor.user, read_source=read_source, requests=requests, origin=origin
+        )
+    except PlanLimitError as exc:
+        raise OpError(402, str(exc)) from exc
+    except AIError as exc:
+        # 429 is the API's own quota envelope; a busy provider is "unavailable".
+        raise OpError(503 if exc.status_code == 429 else exc.status_code, exc.message) from exc
+    except sources.TranscriptNeededError as exc:
+        raise OpError(422, f"transcript_needed: {exc}") from exc
+    except ValueError as exc:
+        raise OpError(422, str(exc)) from exc
+    return _repurpose_job_response(job)
+
+
+def _repurpose_reader(actor: Actor, source_type, *, url, text, post_id, media_asset_id):
+    from apps.repurpose import sources
+
+    if source_type == "url":
+        return lambda: sources.from_url(url or "")
+    if source_type == "text":
+        return lambda: sources.from_text(text or "")
+    if source_type == "video":
+        accounts = [
+            a for a in SocialAccount.objects.for_workspace(actor.workspace_id) if a.id in actor.allowed_account_ids
+        ]
+        return lambda: sources.from_video(url or "", transcript=text or "", accounts=accounts)
+    if source_type == "post":
+        post = visible_posts_qs(actor.api_key).filter(id=post_id).first() if post_id else None
+        if post is None:
+            raise OpError(404, "Post not found")
+        return lambda: sources.from_post(post)
+    if source_type == "pdf":
+        asset = MediaAsset.objects.filter(
+            id=media_asset_id, workspace_id=actor.workspace_id, media_type=MediaAsset.MediaType.DOCUMENT
+        ).first()
+        if asset is None or not asset.file:
+            raise OpError(404, "PDF not found in the media library")
+
+        def read():
+            with asset.file.open("rb") as handle:
+                return sources.from_pdf(handle, asset.filename)
+
+        return read
+    raise OpError(422, "Unknown source_type")
+
+
+def get_repurpose_job(actor: Actor, job_id: uuid.UUID) -> RepurposeJobResponse:
+    return _repurpose_job_response(_get_repurpose_job(actor, job_id))
+
+
+def cancel_repurpose_job(actor: Actor, job_id: uuid.UUID) -> RepurposeJobResponse:
+    """Stop a queued job at once, or a running one before its next AI request."""
+    from apps.repurpose import services as repurpose_services
+
+    job = _get_repurpose_job(actor, job_id)
+    try:
+        repurpose_services.cancel_job(job)
+    except repurpose_services.JobStateError as exc:
+        raise OpError(409, str(exc)) from exc
+    return _repurpose_job_response(_get_repurpose_job(actor, job_id))
+
+
+def accept_repurpose_outputs(actor: Actor, job_id: uuid.UUID, *, output_ids: list[uuid.UUID]) -> RepurposeJobResponse:
+    """Turn chosen outputs into draft posts (and ideas / hashtag sets). Never schedules or publishes."""
+    from apps.repurpose import services as repurpose_services
+
+    job = _get_repurpose_job(actor, job_id)
+    try:
+        repurpose_services.accept_outputs(job, output_ids, actor.user)
+    except repurpose_services.JobStateError as exc:
+        raise OpError(409, str(exc)) from exc
+    except ValueError as exc:
+        raise OpError(422, str(exc)) from exc
+    return _repurpose_job_response(_get_repurpose_job(actor, job_id))

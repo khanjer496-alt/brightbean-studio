@@ -2175,3 +2175,74 @@ class BioStatsResponse(Schema):
     clicks: int
     series: list[BioDayStats]
     links: list[BioLinkStats]
+
+
+# ---------------------------------------------------------------------------
+# Repurposing: one source into several outputs
+# ---------------------------------------------------------------------------
+
+RepurposeKind = Literal["thread", "post", "carousel", "standalone", "video_script", "newsletter", "hashtags"]
+
+
+class RepurposeOutputRequest(Schema):
+    kind: RepurposeKind = Field(..., description="What to write. ``thread`` only for accounts that take threads.")
+    social_account_ids: list[uuid.UUID] = Field(
+        default_factory=list,
+        max_length=25,
+        description="Accounts it is written for (required for thread, post, carousel and standalone).",
+    )
+    count: int | None = Field(None, ge=1, le=10, description="Slides for ``carousel`` or posts for ``standalone``.")
+
+
+class CreateRepurposeJobRequest(Schema):
+    source_type: Literal["url", "text", "post", "video", "pdf"] = Field(
+        ..., description="``pdf`` reads a PDF from the media library (``media_asset_id``)."
+    )
+    url: str | None = Field(None, max_length=2000, description="Page link for ``url``, video link for ``video``.")
+    text: str | None = Field(
+        None, max_length=60_000, description="Text for ``text``; the transcript for ``video`` when not on your channel."
+    )
+    post_id: uuid.UUID | None = Field(None, description="A published post, for ``post``.")
+    media_asset_id: uuid.UUID | None = Field(None, description="A PDF in the media library, for ``pdf``.")
+    outputs: list[RepurposeOutputRequest] = Field(..., min_length=1, max_length=12)
+
+
+class RepurposeOutputResponse(Schema):
+    id: uuid.UUID
+    kind: str
+    status: str = Field(..., description="``generated`` (to review), ``accepted`` or ``discarded``.")
+    social_account_id: uuid.UUID | None
+    title: str
+    text: str
+    parts: list[str] = Field(..., description="Later thread parts, carousel slide texts, script beats or hashtags.")
+    warnings: list[str]
+    char_count: int = Field(..., description="Length as the target network counts it.")
+    char_limit: int | None
+    post_id: uuid.UUID | None = Field(None, description="The draft made when accepted.")
+    idea_id: uuid.UUID | None = None
+    document_media_asset_id: uuid.UUID | None = Field(None, description="A carousel's PDF in the media library.")
+
+
+class RepurposeJobResponse(Schema):
+    id: uuid.UUID
+    status: str = Field(..., description="``queued``, ``running``, ``succeeded``, ``failed`` or ``cancelled``.")
+    source_type: str
+    source_url: str
+    source_label: str
+    error: str
+    model: str
+    ai_requests_reserved: int
+    ai_requests_made: int
+    input_tokens: int
+    output_tokens: int
+    created_at: dt.datetime
+    finished_at: dt.datetime | None
+    outputs: list[RepurposeOutputResponse]
+
+    @field_serializer("created_at", "finished_at")
+    def _serialize_dt(self, value: dt.datetime | None) -> str | None:
+        return _serialize_utc_z(value)
+
+
+class AcceptRepurposeOutputsRequest(Schema):
+    output_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=100)

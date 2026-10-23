@@ -39,6 +39,7 @@ from apps.api.routers.members import router as members_router
 from apps.api.routers.posts import router as posts_router
 from apps.api.routers.queues import router as queues_router
 from apps.api.routers.reports import router as reports_router
+from apps.api.routers.repurpose import router as repurpose_router
 from apps.api.routers.signatures import router as signatures_router
 from apps.api.routers.slots import router as slots_router
 from apps.api.routers.tags import router as tags_router
@@ -167,6 +168,7 @@ api.add_router("/reports", reports_router)
 api.add_router("/bio", bio_router)
 api.add_router("/inbox", inbox_router)
 api.add_router("/ai", ai_router)
+api.add_router("/repurpose", repurpose_router)
 api.add_router("/webhooks", webhooks_router)
 api.add_router("/hashtag-sets", hashtag_sets_router)
 api.add_router("/signatures", signatures_router)
