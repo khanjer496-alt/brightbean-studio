@@ -1,3 +1,16 @@
+{
+    servers {
+        # Peers whose X-Forwarded-For Caddy keeps and appends to, instead of
+        # replacing it with their own address. Behind Cloudflare, set
+        # CADDY_TRUSTED_PROXIES to Cloudflare's published ranges
+        # (https://www.cloudflare.com/ips/) so the visitor's address survives
+        # to the app, which trusts the same ranges in BB_TRUSTED_PROXIES and
+        # reads the header from the right. Without it every visitor shares
+        # one login rate limit.
+        trusted_proxies static {$CADDY_TRUSTED_PROXIES:private_ranges}
+    }
+}
+
 {$APP_DOMAIN:localhost} {
     # Uploaded media (STORAGE_BACKEND=local) lives on the media_data volume,
     # which docker-compose.prod.yml mounts read-only here. Serving it from
