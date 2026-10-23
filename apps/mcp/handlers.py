@@ -20,7 +20,6 @@ from typing import Any
 from uuid import UUID
 
 from django.conf import settings
-from django.db.models import Exists, OuterRef
 from ninja.errors import HttpError
 
 from apps.analytics.api_builders import (
@@ -29,6 +28,7 @@ from apps.analytics.api_builders import (
     build_workspace_overview,
     connected_accounts,
 )
+from apps.api import ops
 from apps.api.limits import check_platform_quota
 from apps.api.pagination import decode_offset_cursor, encode_offset_cursor
 from apps.api.schemas import (
@@ -74,6 +74,80 @@ def _wrap_text(payload: Any) -> dict:
         "content": [{"type": "text", "text": json.dumps(payload, default=str)}],
         "isError": False,
     }
+
+
+# Optional argument of the create-like tools; see ``_idempotent``.
+IDEMPOTENCY_KEY_INPUT_PROPERTY = {
+    "idempotency_key": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 128,
+        "description": (
+            "Optional. Reuse the same value when retrying this call after a timeout: the first result is "
+            "returned again instead of creating a duplicate (kept 24 h; API-key connections only)."
+        ),
+    }
+}
+
+
+def _idempotent(name: str, handler):
+    """Wrap a create-like tool handler so a retried ``idempotency_key`` replays the first result.
+
+    The MCP twin of REST's ``Idempotency-Key`` header, stored in the same
+    ``IdempotencyRecord`` table under the calling key with a ``tools/call``
+    fingerprint, so a key reused with different arguments is refused. The
+    work and the stored result commit together; a refusal releases the claim.
+    OAuth callers have no ``ApiKey`` row to key the record on, so for them the
+    argument is accepted and ignored.
+    """
+    from django.db import transaction
+
+    from apps.api.middleware import (
+        claim_idempotency_slot,
+        finalize_idempotent_response,
+        fingerprint_request,
+        release_idempotent_claim,
+    )
+
+    def wrapped(args: dict, context: dict[str, Any]) -> dict:
+        key = args.get("idempotency_key")
+        args = {k: v for k, v in args.items() if k != "idempotency_key"}
+        api_key = context["api_key"]
+        if not key or getattr(api_key, "is_oauth", False):
+            return handler(args, context)
+        try:
+            disposition, _status, replay = claim_idempotency_slot(
+                api_key=api_key, idempotency_key=key, fingerprint=fingerprint_request("MCP", name, args)
+            )
+        except ValueError as exc:
+            raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
+        if disposition == "replay":
+            return replay
+        if disposition == "in_flight":
+            raise JsonRpcError(INVALID_PARAMS, "A call with this idempotency_key is still in flight; retry shortly.")
+        try:
+            with transaction.atomic():
+                result = handler(args, context)
+                finalize_idempotent_response(api_key=api_key, idempotency_key=key, status_code=200, body=result)
+        except Exception:
+            release_idempotent_claim(api_key=api_key, idempotency_key=key)
+            raise
+        return result
+
+    return wrapped
+
+
+def _run_op(op, context: dict[str, Any], *args: Any, **kwargs: Any):
+    """Run a shared ``apps.api.ops`` operation as the calling actor, mapping a refusal onto a JSON-RPC error.
+
+    Returns the operation's response schema dumped to JSON-safe primitives, so
+    the result is byte-identical to the REST body.
+    """
+    try:
+        result = op(ops.Actor.from_context(context), *args, **kwargs)
+    except ops.OpError as exc:
+        raise JsonRpcError(INVALID_PARAMS, exc.message) from exc
+    return result.model_dump(mode="json")
 
 
 def _require_perm(context: dict[str, Any], permission_key: str) -> None:
@@ -157,28 +231,8 @@ def _serialize_post(post: Post, context: dict[str, Any]) -> dict:
 
 
 def _visible_posts_qs(api_key):
-    """Posts this API key may see, as a queryset.
-
-    Same rule as REST's ``_get_workspace_post``: in the key's workspace,
-    with at least one platform target, and *every* target allowlisted — so a
-    partial-scope key never learns about siblings. Expressed in SQL (rather
-    than filtering child rows in Python) so callers can order, filter and
-    paginate on it without scanning rows they may not see.
-    """
-    allowed = [sa.id for sa in api_key.social_accounts.all()]
-    # A key can end up with an empty allowlist at runtime (its last account was
-    # disconnected/deleted). Short-circuit rather than leaning on Django folding
-    # ``__in=[]`` inside an ``exclude`` into a no-op: fail closed explicitly.
-    if not allowed:
-        return Post.objects.none()
-    children = PlatformPost.objects.filter(post_id=OuterRef("pk"))
-    return (
-        Post.objects.filter(workspace_id=api_key.workspace_id)
-        .filter(Exists(children))
-        .exclude(Exists(children.exclude(social_account_id__in=allowed)))
-        # Serialized into every post response (PostResponse.recurrence).
-        .select_related("recurrence_rule")
-    )
+    """Posts this API key may see (see ``apps.api.ops.visible_posts_qs``)."""
+    return ops.visible_posts_qs(api_key)
 
 
 def _get_post_for_key(api_key, post_id_str: str) -> Post:
@@ -315,6 +369,39 @@ register_tool(
 # ---------------------------------------------------------------------------
 
 
+_TAXONOMY_INPUT_PROPERTIES = {
+    "tags": {
+        "type": "array",
+        "items": {"type": "string", "maxLength": 100},
+        "maxItems": 25,
+        "description": "Tag names for the post (new names are added to the workspace's tags; see list_tags).",
+    },
+    "category_id": {
+        "type": "string",
+        "format": "uuid",
+        "description": "Content category for the post (see list_categories).",
+    },
+}
+
+
+def _post_taxonomy(args: dict, context: dict[str, Any]) -> tuple[list[str] | None, UUID | None]:
+    """The validated ``tags`` / ``category_id`` arguments, checked before anything is written."""
+    tags = args.get("tags")
+    category_id = _parse_uuid(args["category_id"], "category_id") if args.get("category_id") else None
+    try:
+        ops.validate_post_taxonomy(ops.Actor.from_context(context), tags=tags, category_id=category_id)
+    except ops.OpError as exc:
+        raise JsonRpcError(INVALID_PARAMS, exc.message) from exc
+    return tags, category_id
+
+
+def _apply_post_taxonomy(post: Post, tags: list[str] | None, category_id: UUID | None, context: dict[str, Any]) -> None:
+    try:
+        ops.apply_post_taxonomy(ops.Actor.from_context(context), post, tags=tags, category_id=category_id)
+    except ops.OpError as exc:
+        raise JsonRpcError(INVALID_PARAMS, exc.message) from exc
+
+
 def _create_draft(args: dict, context: dict[str, Any]) -> dict:
     _require_perm(context, "create_posts")
     api_key = context["api_key"]
@@ -324,6 +411,7 @@ def _create_draft(args: dict, context: dict[str, Any]) -> dict:
         raise JsonRpcError(INVALID_PARAMS, "caption is required")
     sa = _resolve_allowed_account(api_key, args["social_account_id"])
     parts = _parse_parts(args)
+    tags, category_id = _post_taxonomy(args, context)
     proposed_publish_at = None
     if args.get("proposed_publish_at") is not None:
         proposed_publish_at = _parse_iso_datetime(args["proposed_publish_at"], "proposed_publish_at")
@@ -344,6 +432,7 @@ def _create_draft(args: dict, context: dict[str, Any]) -> dict:
         )
     except ValueError as exc:
         raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
+    _apply_post_taxonomy(post, tags, category_id, context)
     return _wrap_text(_serialize_post(post, context))
 
 
@@ -392,11 +481,13 @@ register_tool(
                 },
                 "parts": _PARTS_INPUT_SCHEMA,
                 "post_settings": _POST_SETTINGS_INPUT_SCHEMA,
+                **_TAXONOMY_INPUT_PROPERTIES,
+                **IDEMPOTENCY_KEY_INPUT_PROPERTY,
             },
             "required": ["social_account_id", "caption"],
             "additionalProperties": False,
         },
-        handler=_create_draft,
+        handler=_idempotent("create_draft", _create_draft),
     )
 )
 
@@ -482,6 +573,7 @@ def _schedule_post(args: dict, context: dict[str, Any]) -> dict:
     sa = _resolve_allowed_account(api_key, args["social_account_id"])
     repeat = _parse_recurrence(args, workspace=api_key.workspace, scheduled_at=scheduled_at)
     parts = _parse_parts(args)
+    tags, category_id = _post_taxonomy(args, context)
     # Platform quota is shared with REST; ``check_platform_quota``
     # raises ``HttpError(429,...)`` which we re-shape into a JSON-RPC
     # error so MCP clients see structured feedback rather than HTTP.
@@ -510,6 +602,7 @@ def _schedule_post(args: dict, context: dict[str, Any]) -> dict:
                 parts=parts,
                 post_settings=args.get("post_settings"),
             )
+            _apply_post_taxonomy(post, tags, category_id, context)
             if repeat is not None:
                 save_recurrence(post, **repeat.rule_fields())
     except ValueError as exc:
@@ -554,11 +647,13 @@ register_tool(
                 "recurrence": _RECURRENCE_INPUT_SCHEMA,
                 "parts": _PARTS_INPUT_SCHEMA,
                 "post_settings": _POST_SETTINGS_INPUT_SCHEMA,
+                **_TAXONOMY_INPUT_PROPERTIES,
+                **IDEMPOTENCY_KEY_INPUT_PROPERTY,
             },
             "required": ["social_account_id", "caption", "scheduled_at"],
             "additionalProperties": False,
         },
-        handler=_schedule_post,
+        handler=_idempotent("schedule_post", _schedule_post),
     )
 )
 
@@ -616,61 +711,38 @@ _MCP_POST_LIMIT_MAX = 100
 
 
 def _list_posts(args: dict, context: dict[str, Any]) -> dict:
-    api_key = context["api_key"]
-
-    status = args.get("status")
-    if status is not None and status not in PlatformPost.Status.values:
-        raise JsonRpcError(INVALID_PARAMS, f"status must be one of {', '.join(PlatformPost.Status.values)}")
-
-    # ``or`` would swallow an explicit 0 as "unset" and hand back the default.
     raw_limit = args.get("limit")
-    try:
-        limit = _MCP_POST_LIMIT_DEFAULT if raw_limit is None else int(raw_limit)
-    except (TypeError, ValueError) as exc:
-        raise JsonRpcError(INVALID_PARAMS, f"limit must be an integer between 1 and {_MCP_POST_LIMIT_MAX}") from exc
-    if limit < 1 or limit > _MCP_POST_LIMIT_MAX:
-        raise JsonRpcError(INVALID_PARAMS, f"limit must be between 1 and {_MCP_POST_LIMIT_MAX}")
-
-    try:
-        offset = decode_offset_cursor(args.get("cursor"))
-    except ValueError as exc:
-        raise JsonRpcError(INVALID_PARAMS, "cursor is not a valid pagination cursor") from exc
-
-    # The allowlist lives in the queryset (see ``_visible_posts_qs``), so paging
-    # is over posts this key can actually see — no scan cap, nothing silently
-    # dropped. ``id`` tiebreaks ``-created_at`` to keep offsets stable.
-    qs = _visible_posts_qs(api_key).prefetch_related(
-        "platform_posts__social_account",
-        "platform_posts__part_states__part",
-        "thread_parts__media_attachments",
+    result = _run_op(
+        ops.list_posts,
+        context,
+        status=args.get("status"),
+        social_account_id=_parse_uuid(args["social_account_id"], "social_account_id")
+        if args.get("social_account_id")
+        else None,
+        date_from=_parse_iso_datetime(args["date_from"], "date_from") if args.get("date_from") else None,
+        date_to=_parse_iso_datetime(args["date_to"], "date_to") if args.get("date_to") else None,
+        tag=args.get("tag"),
+        search=args.get("search"),
+        # ``or`` would swallow an explicit 0 as "unset" and hand back the default.
+        limit=_MCP_POST_LIMIT_DEFAULT if raw_limit is None else raw_limit,
+        cursor=args.get("cursor"),
     )
-    if status:
-        qs = qs.filter(Exists(PlatformPost.objects.filter(post_id=OuterRef("pk"), status=status)))
-    qs = qs.order_by("-created_at", "id")
-
-    # limit + 1 probes for a next page without a second COUNT query.
-    rows = list(qs[offset : offset + limit + 1])
-    has_more = len(rows) > limit
-    rows = rows[:limit]
-    return _wrap_text(
-        {
-            "posts": [_serialize_post(post, context) for post in rows],
-            "limit": limit,
-            "next_cursor": encode_offset_cursor(offset + limit) if has_more else None,
-        }
-    )
+    return _wrap_text(result)
 
 
 register_tool(
     Tool(
         name="list_posts",
         description=(
-            "List posts in this API key's workspace, newest first (by creation time). Fills the gap "
+            "List and search posts in this API key's workspace, newest first (by creation time). Fills the gap "
             "left by get_post (which needs an id you may not have yet). Each item has the same shape "
-            "as get_post (aggregate status + per-platform child state). Only posts whose every "
-            "platform target is in the key's allowlist are returned. Optional `status` filter and "
-            "`limit` (default 50, max 100). When more posts remain, `next_cursor` is non-null — pass "
-            "it back as `cursor` for the next page; a null `next_cursor` means you have them all."
+            "as get_post (aggregate status + per-platform child state, tags, category). Only posts whose every "
+            "platform target is in the key's allowlist are returned. Filters, all optional and combinable: "
+            "`status` (a post matches if any target has it), `social_account_id` (must be in the allowlist; "
+            "holds on the same target as status), `date_from`/`date_to` (ISO 8601; a post's date is when it "
+            "goes out, or when it was created while it has no schedule), `tag` (exact tag name) and `search` "
+            "(matches caption or title). `limit` defaults to 50, max 100. When more posts remain, `next_cursor` "
+            "is non-null — pass it back as `cursor` for the next page; a null `next_cursor` means you have them all."
         ),
         input_schema={
             "type": "object",
@@ -680,6 +752,11 @@ register_tool(
                     "enum": list(PlatformPost.Status.values),
                     "description": "Optional per-platform status; a post matches if any target has it.",
                 },
+                "social_account_id": {"type": "string", "format": "uuid"},
+                "date_from": {"type": "string", "description": "ISO 8601 lower bound (UTC if no offset)."},
+                "date_to": {"type": "string", "description": "ISO 8601 upper bound (UTC if no offset)."},
+                "tag": {"type": "string"},
+                "search": {"type": "string", "description": "Matches the caption or title."},
                 "limit": {
                     "type": "integer",
                     "minimum": 1,

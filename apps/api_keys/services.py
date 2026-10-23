@@ -351,9 +351,14 @@ def verify_token(raw: str) -> ApiKey | None:
     cache_key = _active_cache_key(parsed.lookup_prefix)
     api_key = cache.get(cache_key)
     if api_key is None:
+        # ``workspace`` is deliberately not joined into the cached row: its
+        # settings (timezone, approval mode, brand voice…) change in the web
+        # app without touching the key, and a pickled copy would serve them
+        # stale for up to ``REVOCATION_CACHE_TTL``. Left lazy, every request
+        # reads it fresh (each cache hit unpickles a copy without it).
         try:
             api_key = (
-                ApiKey.objects.select_related("workspace", "issued_by")
+                ApiKey.objects.select_related("issued_by")
                 .prefetch_related("social_accounts")
                 .get(lookup_prefix=parsed.lookup_prefix)
             )
