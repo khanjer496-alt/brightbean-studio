@@ -852,6 +852,7 @@ The MCP server lives at `POST {APP_URL}/api/v1/mcp` and speaks JSON-RPC 2.0 over
 | `upload_media` | Upload a small base64-encoded file (≤ 1 MB raw). For larger files, use REST `POST /media`. | `upload_media` |
 | `get_account_analytics` | Channel analytics over a rolling 7–90 day window | `view_analytics` |
 | `get_post_analytics` | Per-platform metrics for a single post (safe for polling drafts) | `view_analytics` |
+| `get_workspace_analytics` | Workspace-wide totals, per-network and per-account breakdown, daily series and top posts for a date range (`GET /api/v1/analytics/overview`) | `view_analytics` |
 | `list_inbox_messages` | List inbox items (comments, mentions, DMs, reviews) with their reply threads | `use_inbox` |
 | `get_inbox_message` | Retrieve one inbox message and its reply thread | `use_inbox` |
 | `create_reply_draft` | Draft a reply to an inbox message (saved, not sent) | `use_inbox` |
