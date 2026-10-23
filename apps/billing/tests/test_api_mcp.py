@@ -91,6 +91,8 @@ def _mcp(client, method, params=None):
 
 
 @pytest.mark.django_db
+# An agent the workspace trusts to publish on its own; these test what stops it anyway.
+@pytest.mark.usefixtures("autonomous_agents")
 class TestRestApi:
     def test_api_works_on_every_plan_and_during_the_trial(self, billing, organization, api_client):
         assert api_client.get("/api/v1/me/").status_code == 200  # trialing
@@ -145,6 +147,8 @@ class TestRestApi:
 
 
 @pytest.mark.django_db
+# An agent the workspace trusts to publish on its own; these test what stops it anyway.
+@pytest.mark.usefixtures("autonomous_agents")
 class TestMcp:
     def test_mcp_works_on_free(self, billing, organization, api_client):
         expire_trial(organization)
