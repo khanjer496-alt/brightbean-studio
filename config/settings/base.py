@@ -663,6 +663,13 @@ PLATFORM_CREDENTIALS_FROM_ENV = {
     "telegram": {
         "bot_token": env("PLATFORM_TELEGRAM_BOT_TOKEN", default=""),
     },
+    # Discord - the OAuth2 app installs the bot into a server; the bot token
+    # posts to the channels the user picks.
+    "discord": {
+        "client_id": env("PLATFORM_DISCORD_CLIENT_ID", default=""),
+        "client_secret": env("PLATFORM_DISCORD_CLIENT_SECRET", default=""),
+        "bot_token": env("PLATFORM_DISCORD_BOT_TOKEN", default=""),
+    },
 }
 
 # Publishing engine

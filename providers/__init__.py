@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from .bluesky import BlueskyProvider
 from .devto import DevtoProvider
+from .discord import DiscordProvider
 from .facebook import FacebookProvider
 from .google_business import GoogleBusinessProvider
 from .instagram import InstagramProvider
@@ -44,6 +45,7 @@ PROVIDER_REGISTRY: dict[str, type[SocialProvider]] = {
     "mastodon": MastodonProvider,
     "devto": DevtoProvider,
     "telegram": TelegramProvider,
+    "discord": DiscordProvider,
 }
 
 # Characters a platform escapes in the caption it publishes. Each one costs two

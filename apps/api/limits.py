@@ -77,6 +77,8 @@ PLATFORM_DAILY_POST_LIMIT: dict[str, int] = {
     # A bot may send ~20 messages a minute to one group; the cap is about volume
     # a channel's subscribers will tolerate rather than the platform's limit.
     "telegram": 200,
+    # Messages to a community channel; Discord's own limits are per route.
+    "discord": 200,
 }
 
 _DEFAULT_FALLBACK = 50

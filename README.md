@@ -80,6 +80,7 @@ A free hosted version is available at [brightbean.xyz/studio](https://brightbean
 | <img src="https://cdn.simpleicons.org/mastodon" width="16" height="16"> Mastodon | ✓ | ✓ | — | — |
 | <img src="https://cdn.simpleicons.org/devdotto/000000" width="16" height="16"> DEV.to | ✓ | — | — | — |
 | <img src="https://cdn.simpleicons.org/telegram" width="16" height="16"> Telegram | ✓ | — | — | — |
+| <img src="https://cdn.simpleicons.org/discord" width="16" height="16"> Discord | ✓ | — | — | — |
 
 ---
 
@@ -752,6 +753,17 @@ One platform bot posts to every connected channel or group; users never see the 
 To connect a chat, a user adds the bot to their channel or group as an **administrator** (for a channel, with **Post Messages** on), then enters `@channelname` (or the numeric id of a private chat) in Brightbean Studio. Connecting checks that the bot can really post there.
 
 Posts go out as HTML-formatted text (4096 characters), photos and videos (caption up to 1024 characters; a longer text follows as a separate message) and albums of up to 10. Thread parts and first comments are sent as replies.
+
+### Discord
+
+One Discord application with a bot posts to every connected server.
+
+1. Create an application at the [Discord Developer Portal](https://discord.com/developers/applications)
+2. Under **OAuth2**, copy the **Client ID** and **Client Secret**, and add the redirect `https://<your-domain>/social-accounts/callback/discord/`
+3. Under **Bot**, create the bot and copy its **Token**
+4. Set `PLATFORM_DISCORD_CLIENT_ID`, `PLATFORM_DISCORD_CLIENT_SECRET` and `PLATFORM_DISCORD_BOT_TOKEN`
+
+Users click **Connect**, choose a server and approve the bot (View Channel, Send Messages, Attach Files, Embed Links, Read Message History), then tick the text channels to connect. Each channel is one account. Messages are Markdown (2000 characters) with up to 10 attachments; thread parts and first comments are sent as replies. `@everyone` and `@here` are never pinged.
 
 ## Inbox: Backfill Historical Messages
 

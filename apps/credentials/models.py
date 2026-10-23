@@ -24,6 +24,7 @@ REQUIRED_CREDENTIAL_KEYS = {
     "linkedin_personal": (("client_id",), ("client_secret",)),
     "linkedin_company": (("client_id",), ("client_secret",)),
     "telegram": (("bot_token",),),
+    "discord": (("client_id",), ("client_secret",), ("bot_token",)),
 }
 
 
@@ -56,6 +57,7 @@ class PlatformCredential(models.Model):
         MASTODON = "mastodon", "Mastodon"
         DEVTO = "devto", "DEV.to"
         TELEGRAM = "telegram", "Telegram"
+        DISCORD = "discord", "Discord"
 
     class TestResult(models.TextChoices):
         SUCCESS = "success", "Success"

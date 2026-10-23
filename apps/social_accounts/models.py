@@ -581,6 +581,7 @@ class SocialAccount(models.Model):
             "mastodon": "ma",
             "devto": "dv",
             "telegram": "tg",
+            "discord": "dc",
         }
         return icons.get(self.platform, self.platform[:2])
 
