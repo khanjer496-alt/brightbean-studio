@@ -867,7 +867,7 @@ class RecurringPostPublishabilityTests(TestCase):
         )
 
         with patch("apps.calendar.tasks.timezone.now", return_value=datetime(2026, 3, 1, 12, 0, tzinfo=utc)):
-            self.assertGreater(generate_recurring_posts(), 0)
+            generate_recurring_posts()
         return PlatformPost.objects.filter(post__workspace=ws).exclude(post=source)
 
     def test_a_clone_with_no_video_is_left_as_a_draft_at_its_date(self):
@@ -889,17 +889,18 @@ class RecurringPostPublishabilityTests(TestCase):
 
         self.assertEqual(set(clones.values_list("status", flat=True)), {"scheduled"})
 
-    def test_a_source_row_pulled_back_from_publishing_clones_as_drafts(self):
+    def test_a_source_row_pulled_back_from_publishing_makes_no_copies(self):
         """A hold, an unschedule or a rejection must not be outrun by its own
-        recurrences publishing on their dates."""
+        recurrences publishing on their dates. The series waits instead: draft
+        copies would hold their dates, so a series approved or rescheduled
+        later could never fill them with publishable copies."""
         for status in ("on_hold", "draft", "rejected", "pending_review"):
             with self.subTest(status=status):
                 PlatformPost.objects.all().delete()
                 Post.objects.all().delete()
                 clones = self._generate(with_video=True, source_status=status)
 
-                self.assertTrue(clones.exists())
-                self.assertEqual(set(clones.values_list("status", flat=True)), {"draft"})
+                self.assertFalse(clones.exists())
 
 
 class PublishTabTimezoneTests(TestCase):
