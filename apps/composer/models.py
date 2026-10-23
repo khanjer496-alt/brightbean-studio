@@ -655,6 +655,12 @@ class PlatformPost(models.Model):
     def can_transition_to(self, new_status):
         """Check if a status transition is valid."""
         allowed = self.VALID_TRANSITIONS.get(self.status, set())
+        if new_status in ("scheduled", "publishing"):
+            from apps.onboarding.sample import is_sample_workspace
+
+            # Sample drafts in the example workspace are never published.
+            if is_sample_workspace(self.post.workspace_id):
+                return False
         return new_status in allowed
 
     def transition_to(self, new_status):

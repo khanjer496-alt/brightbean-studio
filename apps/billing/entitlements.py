@@ -125,13 +125,14 @@ def month_bounds(when: dt.datetime | None = None) -> tuple[dt.datetime, dt.datet
 def channel_count(org) -> int:
     from apps.social_accounts.models import SocialAccount
 
-    return SocialAccount.objects.filter(workspace__organization=org).count()
+    # The example workspace's placeholder channel is not the customer's.
+    return SocialAccount.objects.filter(workspace__organization=org, workspace__sample_marker__isnull=True).count()
 
 
 def workspace_count(org) -> int:
     from apps.workspaces.models import Workspace
 
-    return Workspace.objects.filter(organization=org, is_archived=False).count()
+    return Workspace.objects.filter(organization=org, is_archived=False, sample_marker__isnull=True).count()
 
 
 def scheduled_post_count(org, when: dt.datetime | None = None) -> int:

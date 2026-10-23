@@ -246,6 +246,11 @@ class SocialProvider(ABC):
     # link (``apps.onboarding``), whose page only runs the plain OAuth flow.
     supports_connection_link: ClassVar[bool] = True
 
+    # True for a network a brand-new user can connect with nothing but their own
+    # login (no platform app to set up). The welcome flow highlights these when
+    # no network that needs an app is configured.
+    works_without_platform_app: ClassVar[bool] = False
+
     # True when disconnecting calls ``revoke_token`` against a revocation
     # endpoint that ends only this account's grant. Left False wherever one
     # grant is shared by several accounts (every Slack channel of a workspace).

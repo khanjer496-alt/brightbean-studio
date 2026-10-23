@@ -88,6 +88,14 @@ def _get_configured_platforms(org_id):
     return configured
 
 
+def _after_connect_redirect(request, workspace_id):
+    """Where to go once a connect flow ends: back into the welcome flow, else the calendar."""
+    from apps.onboarding.flow import resume_url_after_connect
+
+    resume_url = resume_url_after_connect(request.user, workspace_id)
+    return redirect(resume_url) if resume_url else redirect("calendar:calendar", workspace_id=workspace_id)
+
+
 def _connect_url_name(platform):
     """The named connect form a provider uses instead of the OAuth redirect, or ""."""
     from providers import PROVIDER_REGISTRY
@@ -530,7 +538,7 @@ def oauth_callback(request, platform):
             "Failed to connect account. Please try again.",
         )
 
-    return redirect("calendar:calendar", workspace_id=workspace_id)
+    return _after_connect_redirect(request, workspace_id)
 
 
 # ------------------------------------------------------------------
@@ -635,7 +643,7 @@ def select_account(request):
         names = ", ".join(connected)
         messages.success(request, f"Connected: {names}")
 
-    return redirect("calendar:calendar", workspace_id=workspace_id)
+    return _after_connect_redirect(request, workspace_id)
 
 
 # ------------------------------------------------------------------
@@ -698,7 +706,7 @@ def connect_bluesky(request, workspace_id):
             {"workspace_id": workspace_id},
         )
 
-    return redirect("calendar:calendar", workspace_id=workspace_id)
+    return _after_connect_redirect(request, workspace_id)
 
 
 # ------------------------------------------------------------------
@@ -746,7 +754,7 @@ def connect_devto(request, workspace_id):
         messages.error(request, "Failed to connect DEV.to account. Check your API key.")
         return render(request, "social_accounts/devto_connect.html", {"workspace_id": workspace_id})
 
-    return redirect("calendar:calendar", workspace_id=workspace_id)
+    return _after_connect_redirect(request, workspace_id)
 
 
 # ------------------------------------------------------------------
@@ -853,7 +861,7 @@ def connect_telegram(request, workspace_id):
     codes = dict(request.session.get(TELEGRAM_CODE_SESSION_KEY) or {})
     codes.pop(str(workspace_id), None)
     request.session[TELEGRAM_CODE_SESSION_KEY] = codes
-    return redirect("calendar:calendar", workspace_id=workspace_id)
+    return _after_connect_redirect(request, workspace_id)
 
 
 # ------------------------------------------------------------------
@@ -1319,6 +1327,11 @@ def _create_or_update_account(
     meta_user_id="",
 ):
     """Create or update a SocialAccount from OAuth results."""
+    from apps.onboarding.sample import SAMPLE_CONNECT_REFUSAL, is_sample_workspace
+
+    # The example workspace is for looking around: real channels go in a real workspace.
+    if is_sample_workspace(workspace_id):
+        raise PermissionDenied(SAMPLE_CONNECT_REFUSAL)
     token_expires_at = None
     if expires_in:
         token_expires_at = timezone.now() + timedelta(seconds=expires_in)

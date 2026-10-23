@@ -47,6 +47,35 @@ def provision_organization_and_workspace(user):
     user.save(update_fields=["last_workspace_id"])
 
 
+def _start_welcome_flow(user):
+    """Begin the first-run welcome flow for a user who owns their own new workspace.
+
+    Only the organization provisioned for this signup qualifies: one the user
+    owns with nobody else in it. Someone who joined a team (even as a
+    workspace owner there) never gets the new-owner flow.
+    """
+    from apps.members.models import OrgMembership, WorkspaceMembership
+    from apps.onboarding.flow import start_flow
+
+    org_membership = OrgMembership.objects.filter(user=user, org_role=OrgMembership.OrgRole.OWNER).first()
+    if (
+        org_membership is None
+        or OrgMembership.objects.filter(organization_id=org_membership.organization_id).count() != 1
+    ):
+        return
+    owned = (
+        WorkspaceMembership.objects.filter(
+            user=user,
+            workspace_role=WorkspaceMembership.WorkspaceRole.OWNER,
+            workspace__organization_id=org_membership.organization_id,
+        )
+        .select_related("workspace")
+        .order_by("added_at")
+    )
+    for membership in owned[:1]:
+        start_flow(user, membership.workspace)
+
+
 def _set_org_timezone_from_browser(request, user):
     """Update the user's organization timezone from the browser_timezone cookie."""
     from urllib.parse import unquote
@@ -129,6 +158,7 @@ def create_organization_on_signup(sender, request, user, **kwargs):
     # No invite or invite failed - ensure default provisioning happened.
     # post_save already handled this, so this is a no-op (idempotent guard).
     provision_organization_and_workspace(user)
+    _start_welcome_flow(user)
 
     # Try to set the organization timezone from the browser cookie set during signup.
     _set_org_timezone_from_browser(request, user)

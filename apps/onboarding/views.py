@@ -15,7 +15,7 @@ from django.contrib.auth.decorators import login_required
 from django.core import signing
 from django.core.cache import cache
 from django.core.mail import EmailMultiAlternatives
-from django.http import HttpResponse
+from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse
@@ -42,6 +42,7 @@ from apps.social_accounts.views import (
     resolve_page_account_token,
 )
 
+from .checklist import confirm_item
 from .models import ConnectionLink, ConnectionLinkUsage, OnboardingChecklist
 
 logger = logging.getLogger(__name__)
@@ -49,6 +50,9 @@ logger = logging.getLogger(__name__)
 CONNECTION_LINK_OAUTH_SESSION_KEY = "connection_link_oauth"
 OAUTH_STATE_MAX_AGE = 600  # 10 minutes
 MAX_OAUTH_INITIATIONS_PER_HOUR = 20
+
+# Checklist items a person can confirm by hand, and where to send them after.
+CONFIRMABLE_ITEMS = {"posting_times": "calendar:posting_slots"}
 
 
 # ------------------------------------------------------------------
@@ -213,10 +217,7 @@ def send_link_email(request, workspace_id, link_id):
 @require_GET
 def checklist_partial(request, workspace_id):
     """Return the checklist partial for htmx polling."""
-    from apps.onboarding.context_processors import onboarding_checklist
-
-    ctx = onboarding_checklist(request)
-    return render(request, "onboarding/partials/_checklist.html", ctx)
+    return render(request, "onboarding/partials/_checklist.html")
 
 
 @login_required
@@ -236,6 +237,17 @@ def dismiss_checklist(request, workspace_id):
         return HttpResponse(status=200)
 
     return redirect("calendar:calendar", workspace_id=workspace_id)
+
+
+@login_required
+@require_POST
+def confirm_checklist_item(request, workspace_id, key):
+    """Mark a checklist item the user confirmed by hand (no data records it)."""
+    destination = CONFIRMABLE_ITEMS.get(key)
+    if destination is None:
+        raise Http404
+    confirm_item(request.user, request.workspace, key)
+    return redirect(destination, workspace_id=workspace_id)
 
 
 # ------------------------------------------------------------------

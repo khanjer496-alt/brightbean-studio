@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% load static %}
+{% comment %}
+Shell for the welcome flow: a focused page with no sidebar, a progress list,
+and a way out on every step. Steps fill {% block step %} and may override
+{% block focus_target %} (the element that receives focus on load).
+{% endcomment %}
+{% block title %}Welcome to {{ brand_short_name }}{% endblock %}
+
+{% block focus_content %}
+<a href="#welcome-main" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-surface-0 focus:px-4 focus:py-2 focus:text-ink">Skip to content</a>
+<div class="min-h-screen bg-[var(--surface-page)] px-4 pb-16 pt-6 sm:pt-10">
+    <div class="mx-auto w-full max-w-2xl">
+        <header class="mb-8 flex items-center justify-between gap-4">
+            <span class="flex items-center gap-2.5 text-sm font-semibold text-ink">
+                <img src="{% static brand_logo_static %}" alt="" width="28" height="28">
+                {{ brand_short_name }}
+            </span>
+            {% block header_action %}
+            <form method="post" action="{{ skip_url }}">
+                {% csrf_token %}
+                <button type="submit" class="min-h-11 cursor-pointer rounded-full px-4 text-sm font-medium text-ink-2 hover:bg-surface-2 hover:text-ink focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">Skip for now</button>
+            </form>
+            {% endblock %}
+        </header>
+
+        {% block progress %}
+        <nav aria-label="Setup progress" class="mb-8">
+            <p class="mb-3 text-xs font-semibold uppercase tracking-wide text-ink-3">Step {{ step_number }} of {{ step_count }}</p>
+            <ol class="grid grid-cols-3 gap-2">
+                {% for item in steps %}
+                <li class="flex flex-col gap-2" {% if item.current %}aria-current="step"{% endif %}>
+                    <span class="h-1 rounded-full {% if item.done or item.current %}bg-accent{% else %}bg-surface-3{% endif %}"></span>
+                    <span class="text-xs {% if item.current %}font-semibold text-ink{% else %}text-ink-3{% endif %}">{{ item.label }}{% if item.done %}<span class="sr-only"> (done)</span>{% endif %}</span>
+                </li>
+                {% endfor %}
+            </ol>
+        </nav>
+        {% endblock %}
+
+        <section id="welcome-main" aria-labelledby="welcome-heading" class="rounded-2xl border border-line bg-surface-0 p-5 sm:p-8">
+            {% block step %}{% endblock %}
+        </section>
+    </div>
+</div>
+{% endblock %}

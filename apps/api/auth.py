@@ -266,8 +266,10 @@ def _resolve_active_membership(user: Any):
     """
     from apps.members.models import WorkspaceMembership
 
+    # The example workspace (apps.onboarding.sample) is only for looking around
+    # in the app, so an agent never lands in it even while the user browses it.
     base = WorkspaceMembership.objects.select_related("workspace", "custom_role").filter(
-        user=user, workspace__is_archived=False
+        user=user, workspace__is_archived=False, workspace__sample_marker__isnull=True
     )
     if getattr(user, "last_workspace_id", None):
         current = base.filter(workspace_id=user.last_workspace_id).first()

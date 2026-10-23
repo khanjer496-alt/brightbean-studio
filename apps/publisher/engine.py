@@ -517,6 +517,8 @@ class PublishEngine:
             # parks the whole post out of the publish path even if a sibling
             # platform is already scheduled.
             .exclude(post__platform_posts__status=PlatformPost.Status.ON_HOLD)
+            # The example workspace holds sample drafts that must never go out.
+            .exclude(post__workspace__sample_marker__isnull=False)
             .select_related("post__workspace", "social_account")
             .order_by("effective_at")[: _max_concurrent_publishes()]
         )

@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load tz %}
+{% load tz onboarding_tags %}
 
 {% block title %}Evergreen - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
 
@@ -83,10 +83,14 @@
             </li>
             {% endfor %}
         </ul>
-        {% else %}
+        {% elif selected_category or selected_account or selected_status != "all" %}
         <div class="text-center py-16 px-6 bg-white border border-stone-200 rounded-xl">
-            <p class="text-sm font-medium text-stone-600 mb-1">Nothing here yet</p>
-            <p class="text-xs text-stone-400 max-w-sm mx-auto">Open a published post in the Sent tab and choose Add to evergreen to start recycling it.</p>
+            <p class="text-sm font-medium text-stone-600 mb-1">Nothing matches these filters</p>
+            <a href="{% url 'calendar:evergreen_list' workspace_id=workspace.id %}" class="text-xs font-medium text-accent hover:underline">Clear filters</a>
+        </div>
+        {% else %}
+        <div class="bg-white border border-stone-200 rounded-xl">
+            {% empty_state "evergreen" workspace show_action=can_edit %}
         </div>
         {% endif %}
     </div>

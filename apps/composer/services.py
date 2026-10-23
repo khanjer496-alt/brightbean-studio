@@ -146,6 +146,11 @@ def create_post(
         )
     if status == "scheduled" and scheduled_at is None:
         raise ValueError("status='scheduled' requires scheduled_at.")
+    if status == "scheduled":
+        from apps.onboarding.sample import SAMPLE_REFUSAL, is_sample_workspace
+
+        if is_sample_workspace(workspace.id):
+            raise ValueError(SAMPLE_REFUSAL)
     if social_account.workspace_id != workspace.id:
         raise ValueError(f"SocialAccount {social_account.id} is not in workspace {workspace.id}.")
 
