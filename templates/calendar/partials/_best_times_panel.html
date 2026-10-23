@@ -34,12 +34,12 @@ Refreshes itself when the account's slots change.
 
     <div id="suggest-slots-{{ account.id }}" class="mb-3" aria-live="polite"></div>
 
-    <div class="overflow-x-auto" role="region" aria-label="Best times heatmap for {{ account.account_name|default:account.account_handle }}" tabindex="0">
-        <table class="border-separate border-spacing-px min-w-[34rem] w-full text-[10px] text-stone-500">
+    <div class="relative overflow-x-auto" role="region" aria-label="Best times heatmap for {{ account.account_name|default:account.account_handle }}" tabindex="0">
+        <table class="table-fixed border-separate border-spacing-px min-w-[34rem] w-full text-[10px] text-stone-500">
             <caption class="sr-only">Posting score by weekday and hour, {{ best.basis_label }}. Higher scores are better times to post.</caption>
             <thead>
                 <tr>
-                    <th scope="col" class="w-9"><span class="sr-only">Day</span></th>
+                    <th scope="col" class="w-9 sticky left-0 z-10 bg-surface-1"><span class="sr-only">Day</span></th>
                     {% for h in hours %}
                     <th scope="col" class="font-normal text-center">{% if h.show %}{{ h.label }}{% else %}<span class="sr-only">{{ h.label }}</span>{% endif %}</th>
                     {% endfor %}
@@ -48,7 +48,7 @@ Refreshes itself when the account's slots change.
             <tbody>
                 {% for row in rows %}
                 <tr>
-                    <th scope="row" class="text-left font-medium pr-1">{{ row.name|slice:":3" }}</th>
+                    <th scope="row" class="sticky left-0 z-10 bg-surface-1 text-left font-medium pr-1">{{ row.name|slice:":3" }}</th>
                     {% for cell in row.cells %}
                     <td class="h-5 rounded-sm text-center p-0 {% if cell.level == 1 %}bg-heat-1{% elif cell.level == 2 %}bg-heat-2{% elif cell.level == 3 %}bg-heat-3{% elif cell.level == 4 %}bg-heat-4{% else %}bg-surface-2{% endif %} {% if cell.low_confidence %}heat-low{% endif %} {% if cell.suggested %}outline outline-2 outline-ink{% endif %} {% if cell.level %}cursor-pointer focus:outline focus:outline-2 focus:outline-accent{% endif %}"
                         data-tip="{{ cell.tip }}"

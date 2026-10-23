@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load tz %}
 
 {% block title %}Evergreen - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
 
@@ -60,7 +61,7 @@
                         <p class="mt-2 text-xs text-stone-500">
                             Every {{ item.interval_days }} day{{ item.interval_days|pluralize }} at most ·
                             {{ item.repeat_count }}{% if item.max_repeats %} of {{ item.max_repeats }}{% endif %} repeat{{ item.repeat_count|pluralize }} ·
-                            {% if item.last_posted_at %}last {{ item.last_posted_at|date:"M j, Y" }}{% else %}never posted{% endif %}
+                            {% if item.last_posted_at %}last {{ item.last_posted_at|timezone:workspace.effective_timezone|date:"M j, Y" }}{% else %}never posted{% endif %}
                         </p>
                         {% if item.last_skip_reason %}<p class="mt-1 text-xs text-amber-700">Skipped last time: {{ item.last_skip_reason }}</p>{% endif %}
                     </div>
