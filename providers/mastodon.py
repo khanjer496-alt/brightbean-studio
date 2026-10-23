@@ -23,6 +23,7 @@ from .types import (
     InboxMessage,
     MediaRules,
     MediaType,
+    MentionSuggestion,
     OAuthTokens,
     PostMetrics,
     PostType,
@@ -115,6 +116,8 @@ class MastodonProvider(SocialProvider):
     media_rules = MASTODON_MEDIA_RULES
     # Each part is a status replying to the one before it (``in_reply_to_id``).
     thread = ThreadCapability(mode=ThreadMode.REPLY_CHAIN, max_parts=25, media_per_part=True)
+
+    mention_lookup = True
 
     writing_style = (
         "Genuine and community-minded, no marketing speak. Hashtags in CamelCase for discoverability and accessibility."
@@ -298,6 +301,32 @@ class MastodonProvider(SocialProvider):
             follower_count=data.get("followers_count", 0),
             extra={"username": data.get("username")},
         )
+
+    # ------------------------------------------------------------------
+    # Mentions
+    # ------------------------------------------------------------------
+
+    def search_mentions(self, access_token: str, query: str, limit: int = 8) -> list[MentionSuggestion]:
+        """Suggest accounts for an @mention from the instance's account search.
+
+        ``acct`` is bare for a local account and ``user@instance`` for a remote
+        one, which is exactly how a mention is written.
+        """
+        resp = self._request(
+            "GET",
+            f"{self.instance_url}/api/v1/accounts/search",
+            params={"q": query, "limit": limit, "resolve": "false"},
+            access_token=access_token,
+        )
+        return [
+            MentionSuggestion(
+                handle=account["acct"],
+                name=account.get("display_name") or "",
+                avatar_url=account.get("avatar") or "",
+            )
+            for account in resp.json()
+            if account.get("acct")
+        ]
 
     # ------------------------------------------------------------------
     # Publishing
