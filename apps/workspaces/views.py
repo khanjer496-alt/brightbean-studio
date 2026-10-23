@@ -228,3 +228,71 @@ def approvals_settings(request, workspace_id):
             "approval_modes": Workspace.ApprovalWorkflowMode,
         },
     )
+
+
+# Bounds on the brand voice, which is sent with every AI prompt from this
+# workspace — long enough for a real style guide, short enough to keep each
+# request cheap.
+BRAND_VOICE_FIELD_MAX = 1000
+BRAND_VOICE_EXAMPLE_MAX = 2000
+BRAND_VOICE_MAX_EXAMPLES = 3
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def brand_voice_settings(request, workspace_id):
+    try:
+        workspace = Workspace.objects.get(id=workspace_id)
+    except Workspace.DoesNotExist:
+        raise Http404 from None
+
+    membership = WorkspaceMembership.objects.filter(user=request.user, workspace=workspace).first()
+    if not membership:
+        raise Http404
+
+    is_owner_or_manager = membership.workspace_role in (
+        WorkspaceMembership.WorkspaceRole.OWNER,
+        WorkspaceMembership.WorkspaceRole.MANAGER,
+    )
+
+    if request.method == "POST":
+        if not is_owner_or_manager:
+            raise Http404
+
+        fields = {
+            "brand_voice_tone": request.POST.get("brand_voice_tone", "").strip(),
+            "brand_voice_words_to_use": request.POST.get("brand_voice_words_to_use", "").strip(),
+            "brand_voice_words_to_avoid": request.POST.get("brand_voice_words_to_avoid", "").strip(),
+        }
+        examples = [e.strip() for e in request.POST.getlist("brand_voice_examples") if e.strip()]
+        if any(len(value) > BRAND_VOICE_FIELD_MAX for value in fields.values()):
+            messages.error(request, f"Keep each brand voice field under {BRAND_VOICE_FIELD_MAX:,} characters.")
+            return redirect("workspaces:brand_voice_settings", workspace_id=workspace.id)
+        if len(examples) > BRAND_VOICE_MAX_EXAMPLES or any(len(e) > BRAND_VOICE_EXAMPLE_MAX for e in examples):
+            messages.error(
+                request,
+                f"Add up to {BRAND_VOICE_MAX_EXAMPLES} example posts of at most {BRAND_VOICE_EXAMPLE_MAX:,} characters each.",
+            )
+            return redirect("workspaces:brand_voice_settings", workspace_id=workspace.id)
+
+        for name, value in fields.items():
+            setattr(workspace, name, value)
+        workspace.brand_voice_examples = examples
+        workspace.save(update_fields=[*fields, "brand_voice_examples", "updated_at"])
+        messages.success(request, "Brand voice updated.")
+        return redirect("workspaces:brand_voice_settings", workspace_id=workspace.id)
+
+    examples = list(workspace.brand_voice_examples or [])
+    return render(
+        request,
+        "workspaces/brand_voice_settings.html",
+        {
+            "workspace": workspace,
+            "settings_active": "brand_voice",
+            "is_owner_or_manager": is_owner_or_manager,
+            # Always render three example boxes, filled in order.
+            "example_slots": (examples + [""] * BRAND_VOICE_MAX_EXAMPLES)[:BRAND_VOICE_MAX_EXAMPLES],
+            "field_max": BRAND_VOICE_FIELD_MAX,
+            "example_max": BRAND_VOICE_EXAMPLE_MAX,
+        },
+    )
