@@ -21,13 +21,15 @@ from providers.exceptions import ProviderError, QuotaExceededError, TokenExpired
 from providers.google_errors import google_error_reasons
 
 from .models import InboxMessage, InboxSLAConfig
-from .sentiment import analyze_sentiment
+from .sentiment import analyze_sentiment, sentiment_for_rating
 
 logger = logging.getLogger(__name__)
 
 # On an account's first-ever sync we may pull a historical backlog; notifications
 # are suppressed for it, EXCEPT messages newer than this window — so a long-quiet
 # account's genuinely-new first message still alerts instead of being swallowed.
+# Reviews rated this or lower raise the low-rating alert.
+LOW_RATING_MAX = 2
 INBOX_BACKLOG_NOTIFY_WINDOW = timedelta(hours=1)
 _YOUTUBE_INBOX_REFRESH_WINDOW = timedelta(minutes=10)
 
@@ -516,6 +518,7 @@ class InboxSyncEngine:
             "sender_avatar_url": msg.extra.get("sender_avatar_url", ""),
             "body": msg.text,
             "message_type": msg.message_type,
+            "rating": msg.extra.get("rating"),
             "received_at": msg.timestamp,
             "extra": msg.extra,
         }
@@ -539,6 +542,16 @@ class InboxSyncEngine:
         )
         if not created:
             defaults["extra"] = {**(obj.extra or {}), **defaults["extra"]}
+            if msg.message_type == InboxMessage.MessageType.REVIEW:
+                if "review_reply" not in msg.extra:
+                    # The reply was removed on the platform; the merge must not resurrect it.
+                    defaults["extra"].pop("review_reply", None)
+                else:
+                    first = ((obj.extra or {}).get("review_reply") or {}).get("first_replied_at") or (
+                        (obj.extra or {}).get("review_reply") or {}
+                    ).get("update_time")
+                    if first:
+                        defaults["extra"]["review_reply"] = {**msg.extra["review_reply"], "first_replied_at": first}
             if (obj.extra or {}).get("is_deleted"):
                 defaults["body"] = ""
                 defaults["extra"].update(is_deleted=True, attachments=[])
@@ -546,7 +559,8 @@ class InboxSyncEngine:
                 setattr(obj, key, value)
             obj.save(update_fields=list(defaults))
         if created:
-            obj.sentiment = analyze_sentiment(obj.body)
+            # A star rating says more about how a customer feels than the words do.
+            obj.sentiment = sentiment_for_rating(obj.rating) if obj.rating else analyze_sentiment(obj.body)
             obj.save(update_fields=["sentiment"])
             if notify:
                 self._notify_new_message(obj)
@@ -554,6 +568,10 @@ class InboxSyncEngine:
     def _notify_new_message(self, message):
         """Send notification for a new inbox message."""
         webhook_events.inbox_message_received(message)
+        is_review = message.message_type == InboxMessage.MessageType.REVIEW
+        if is_review:
+            webhook_events.review_received(message)
+        low_rating = is_review and bool(message.rating) and message.rating <= LOW_RATING_MAX
         if message.assigned_to:
             users = [message.assigned_to]
         else:
@@ -564,6 +582,16 @@ class InboxSyncEngine:
             users = [m.user for m in memberships]
 
         for user in users:
+            if low_rating:
+                # Its own event type, so people can mail themselves just the bad ones.
+                notify(
+                    user=user,
+                    event_type=EventType.NEW_LOW_RATING_REVIEW,
+                    title=f"New {message.rating}-star review from {message.sender_name}",
+                    body=message.body[:200],
+                    data={"message_id": str(message.id), "workspace_id": str(message.workspace_id)},
+                )
+                continue
             notify(
                 user=user,
                 event_type=EventType.NEW_INBOX_MESSAGE,

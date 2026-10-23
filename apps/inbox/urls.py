@@ -15,6 +15,7 @@ urlpatterns = [
     path("<uuid:message_id>/", views.message_detail, name="message_detail"),
     # Reply to message
     path("<uuid:message_id>/reply/", views.send_reply, name="send_reply"),
+    path("<uuid:message_id>/review-reply/delete/", views.delete_review_reply, name="delete_review_reply"),
     # Draft replies
     path("<uuid:message_id>/reply/draft/", views.save_reply_draft, name="save_reply_draft"),
     path("replies/<uuid:reply_id>/send/", views.send_reply_draft, name="send_reply_draft"),

@@ -156,10 +156,70 @@ def _normalise_page_values(workspace, data: dict) -> dict:
     return values
 
 
+# ---------------------------------------------------------------------------
+# Brand kit defaults: a page with no avatar or accent of its own uses the kit's
+# ---------------------------------------------------------------------------
+
+# Logo slots to try, best first, for a page on a light or a dark theme.
+_LOGO_ORDER = {
+    "light": ("mark", "on_light", "primary"),
+    "dark": ("on_dark", "mark", "primary"),
+}
+
+
+def is_dark_theme(theme: str) -> bool:
+    return theme == BioPage.Theme.MIDNIGHT
+
+
+def _brand_kit(page: BioPage):
+    from apps.workspaces import brand_kit
+
+    return brand_kit.resolve(page.workspace)
+
+
+def effective_avatar(page: BioPage, kit=None) -> MediaAsset | None:
+    """The page's own avatar, else the brand kit logo that suits the page's theme."""
+    if page.avatar_id:
+        return page.avatar
+    kit = kit or _brand_kit(page)
+    return kit.logo(*_LOGO_ORDER["dark" if is_dark_theme(page.theme) else "light"])
+
+
+def effective_accent(page: BioPage, kit=None) -> str:
+    """The page's own accent colour, else the brand kit's first colour, else "" (the theme's own)."""
+    if page.accent_color:
+        return page.accent_color
+    kit = kit or _brand_kit(page)
+    return kit.primary_color
+
+
+def default_theme(workspace) -> str:
+    """A new page starts dark when the brand only has a logo made for dark backgrounds."""
+    from apps.workspaces import brand_kit
+
+    kit = brand_kit.resolve(workspace)
+    if kit.logo("on_dark") and not kit.logo("on_light", "mark", "primary"):
+        return BioPage.Theme.MIDNIGHT
+    return BioPage.Theme.CLEAN
+
+
+def invalidate_workspaces(workspace_ids) -> None:
+    """Drop the cached public pages of these workspaces (their brand kit changed)."""
+    pages = BioPage.objects.filter(workspace_id__in=list(workspace_ids)).values_list("slug", "custom_domain")
+    slugs, domains = [], []
+    for slug, domain in pages:
+        slugs.append(slug)
+        domains.append(domain)
+    if slugs:
+        invalidate(*slugs, domains=domains)
+
+
 def create_page(workspace, *, user=None, **data) -> BioPage:
     check_can_add_bio_page(workspace.organization)
     values = _normalise_page_values(workspace, data)
     values.setdefault("title", "")
+    if not values.get("theme"):
+        values["theme"] = default_theme(workspace)
     page = BioPage(workspace=workspace, **values)
     _clean(page)
     page.save()

@@ -1,0 +1,11 @@
+{% extends "layouts/settings.html" %}
+{% block title %}Brand kit - Settings - {{ brand_short_name }}{% endblock %}
+{% block content %}
+<div class="max-w-2xl">
+    <h2 class="text-xl font-semibold mb-2 text-[var(--text-primary)]">Brand kit</h2>
+    <p class="text-sm mb-8 text-[var(--text-secondary)]">
+        The default brand for every workspace in {{ organization.name }}. A workspace's own brand kit overrides these field by field.
+    </p>
+    {% include "brand_kit/_sections.html" %}
+</div>
+{% endblock %}

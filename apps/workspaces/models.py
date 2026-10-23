@@ -43,6 +43,10 @@ class Workspace(models.Model):
     # Up to three example posts, as a list of strings.
     brand_voice_examples = models.JSONField(default=list, blank=True)
 
+    # What a reply to a customer review may and may not promise (refunds,
+    # liability, who to contact). Sent with every AI-drafted review reply.
+    review_reply_policy = models.TextField(blank=True, default="")
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -57,3 +61,64 @@ class Workspace(models.Model):
     @property
     def effective_timezone(self):
         return self.timezone or self.organization.default_timezone
+
+
+class BrandKit(models.Model):
+    """A brand's logos, colours, fonts, copy and rules, for a workspace or (as the fallback) its organization.
+
+    Exactly one of ``workspace`` and ``organization`` is set. Every field is
+    optional; ``apps.workspaces.brand_kit.resolve`` fills what a workspace's kit
+    leaves blank from the organization's. Brand voice stays on ``Workspace``
+    (``brand_voice_*``) and is presented with the kit rather than copied here.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workspace = models.OneToOneField(
+        Workspace, on_delete=models.CASCADE, null=True, blank=True, related_name="brand_kit"
+    )
+    organization = models.OneToOneField(
+        "organizations.Organization", on_delete=models.CASCADE, null=True, blank=True, related_name="brand_kit"
+    )
+
+    # Logos come from the media library; deleting the asset just empties the slot.
+    logo_primary = models.ForeignKey(
+        "media_library.MediaAsset", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    logo_mark = models.ForeignKey(
+        "media_library.MediaAsset", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    logo_on_light = models.ForeignKey(
+        "media_library.MediaAsset", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    logo_on_dark = models.ForeignKey(
+        "media_library.MediaAsset", on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+
+    # [{"name": "Sunrise", "hex": "#f97316"}, ...]; the first swatch is the primary colour.
+    colors = models.JSONField(default=list, blank=True)
+    # [{"name": "Inter", "role": "heading"|"body"|"other", "asset_id": "<MediaAsset id>" or ""}, ...]
+    fonts = models.JSONField(default=list, blank=True)
+    tagline = models.CharField(max_length=150, blank=True, default="")
+    default_hashtags = models.JSONField(default=list, blank=True)
+    # [{"name": "Medical", "text": "Not medical advice."}, ...]; offered in the composer.
+    disclaimers = models.JSONField(default=list, blank=True)
+    dos = models.TextField(blank=True, default="")
+    donts = models.TextField(blank=True, default="")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "workspaces_brand_kit"
+        constraints = [
+            models.CheckConstraint(
+                condition=(
+                    models.Q(workspace__isnull=False, organization__isnull=True)
+                    | models.Q(workspace__isnull=True, organization__isnull=False)
+                ),
+                name="brand_kit_workspace_xor_organization",
+            )
+        ]
+
+    def __str__(self):
+        return f"Brand kit of {self.workspace or self.organization}"

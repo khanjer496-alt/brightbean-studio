@@ -1134,6 +1134,8 @@ class InboxMessageResponse(Schema):
     sender_name: str
     sender_handle: str = ""
     body: str
+    rating: int | None = Field(None, description="Star rating 1-5 of a review; null for other message types.")
+    review_reply: str | None = Field(None, description="The public reply already on a review, if any.")
     related_post_id: uuid.UUID | None = None
     received_at: dt.datetime
     created_at: dt.datetime
@@ -1169,6 +1171,8 @@ class InboxMessageResponse(Schema):
             sender_name=message.sender_name,
             sender_handle=message.sender_handle or "",
             body=message.body or "",
+            rating=message.rating,
+            review_reply=message.review_reply.get("comment") or None,
             related_post_id=message.related_post_id,
             received_at=message.received_at,
             created_at=message.created_at,
@@ -2011,6 +2015,39 @@ class UpdateBrandVoiceRequest(Schema):
     words_to_use: str | None = Field(None, max_length=1000)
     words_to_avoid: str | None = Field(None, max_length=1000)
     examples: list[str] | None = Field(None, max_length=3, description="Up to three posts of at most 2,000 characters.")
+
+
+class BrandKitResponse(Schema):
+    """The workspace's effective brand kit: its own values, with blanks filled from the organization's."""
+
+    logos: dict[str, str | None] = Field(
+        default_factory=dict,
+        description="Media library asset ids by slot: primary, mark, on_light, on_dark (null when unset).",
+    )
+    colors: list[dict[str, str]] = Field(
+        default_factory=list, description="Named swatches `{name, hex}`; the first is primary."
+    )
+    fonts: list[dict[str, str]] = Field(
+        default_factory=list, description="`{name, role, asset_id}`; role is heading, body or other."
+    )
+    tagline: str = ""
+    default_hashtags: list[str] = Field(default_factory=list)
+    disclaimers: list[dict[str, str]] = Field(default_factory=list, description="Boilerplate `{name, text}`.")
+    dos: str = ""
+    donts: str = ""
+
+
+class UpdateBrandKitRequest(Schema):
+    logos: dict[str, str | None] | None = Field(
+        None, description="Slots to change (primary, mark, on_light, on_dark) -> media asset id, or null to clear."
+    )
+    colors: list[dict[str, str]] | None = Field(None, max_length=12, description="Replaces the swatches.")
+    fonts: list[dict[str, str]] | None = Field(None, max_length=6, description="Replaces the fonts.")
+    tagline: str | None = Field(None, max_length=150)
+    default_hashtags: list[str] | None = Field(None, max_length=30)
+    disclaimers: list[dict[str, str]] | None = Field(None, max_length=10)
+    dos: str | None = Field(None, max_length=1000)
+    donts: str | None = Field(None, max_length=1000)
 
 
 class UsageMeterResponse(Schema):

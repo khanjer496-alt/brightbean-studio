@@ -1,0 +1,5 @@
+{# A star rating as text a screen reader can say: rating is 1-5. #}
+<span class="badge-pill badge-type whitespace-nowrap" title="{{ rating }} out of 5 stars">
+    <span aria-hidden="true">{% for i in "12345" %}{% if forloop.counter <= rating %}★{% else %}☆{% endif %}{% endfor %}</span>
+    <span class="sr-only">{{ rating }} out of 5 stars</span>
+</span>

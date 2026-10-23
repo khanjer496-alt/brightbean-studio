@@ -40,6 +40,7 @@ from .models import (
     InboxSLAConfig,
     InternalNote,
     SavedReply,
+    rating_band,
 )
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,7 @@ logger = logging.getLogger(__name__)
 def _detail_context(workspace, message, *, actor=None):
     """Build the full context needed for the message detail panel."""
     sla_config = InboxSLAConfig.objects.filter(workspace=workspace, is_active=True).first()
-    saved_replies = SavedReply.objects.for_workspace(workspace.id)
+    saved_replies = _saved_replies_for(workspace, message)
     team_members = WorkspaceMembership.objects.filter(
         workspace=workspace,
     ).select_related("user")
@@ -80,6 +81,16 @@ def _detail_context(workspace, message, *, actor=None):
         "saved_reply_options": _saved_reply_options(saved_replies, message),
         "ai_enabled": ai_available(workspace.organization),
     }
+
+
+def _saved_replies_for(workspace, message):
+    """The saved replies that fit ``message``: for a review its star band's and the unbanded ones, else only unbanded."""
+    band = rating_band(message.rating) if message.message_type == InboxMessage.MessageType.REVIEW else ""
+    replies = SavedReply.objects.for_workspace(workspace.id)
+    if band:
+        # The band's own replies come first.
+        return sorted(replies.filter(rating_band__in=[band, ""]), key=lambda sr: sr.rating_band != band)
+    return list(replies.filter(rating_band=""))
 
 
 def _saved_reply_options(saved_replies, message):
@@ -275,6 +286,27 @@ def send_reply(request, workspace_id, message_id):
 
     context = {"reply": reply, "workspace": workspace, "message": message}
     return render(request, "inbox/partials/_reply_item.html", context)
+
+
+@login_required
+@require_permission("reply_from_inbox")
+@require_POST
+def delete_review_reply(request, workspace_id, message_id):
+    """Take the public reply off a review, on the platform and here."""
+    workspace = _get_workspace(request, workspace_id)
+    message = get_object_or_404(
+        InboxMessage.objects.select_related("social_account"), id=message_id, workspace=workspace
+    )
+    try:
+        inbox_services.delete_review_reply(message)
+    except ValueError as exc:
+        return HttpResponse(str(exc), status=409)
+    except Exception as exc:
+        logger.warning("Review reply delete failed: message_id=%s error_type=%s", message.id, type(exc).__name__)
+        return HttpResponse(inbox_services.reply_failure_reason(exc), status=502)
+    return render(
+        request, "inbox/partials/_message_panel.html", _detail_context(workspace, message, actor=request.user)
+    )
 
 
 @login_required
@@ -566,6 +598,11 @@ def ai_draft_reply(request, ctx, message_id):
     sent_replies = message.replies.filter(status=InboxReply.Status.SENT).select_related("author")
     for reply in sent_replies:
         thread.append(("brand", reply.author.display_name if reply.author else "Team", reply.body))
+    if message.message_type == InboxMessage.MessageType.REVIEW:
+        text = ai_services.draft_review_reply(
+            ctx, message.body, rating=message.rating, reviewer=message.sender_name, account=message.social_account
+        )
+        return render(request, "inbox/partials/_ai_draft_result.html", {"text": text})
     text = ai_services.draft_reply(
         ctx, message.body, sender=message.sender_name, thread=thread, account=message.social_account
     )

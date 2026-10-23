@@ -138,6 +138,24 @@ def inbox_message_received(message) -> None:
 
 
 @_never_raises
+def review_received(message) -> None:
+    """Emit ``review.received`` for a review that is new to the inbox."""
+    services.emit(
+        EventType.REVIEW_RECEIVED,
+        message.workspace,
+        {
+            "message_id": str(message.id),
+            "social_account": _account_data(message.social_account),
+            "rating": message.rating,
+            "reviewer_name": message.sender_name,
+            "body": message.body,
+            "has_reply": bool(message.review_reply),
+            "received_at": _iso(message.received_at),
+        },
+    )
+
+
+@_never_raises
 def account_disconnected(account, reason: str = "", *, removed: bool = False) -> None:
     """Emit ``account.disconnected``: the account lost its connection, or a member removed it.
 
