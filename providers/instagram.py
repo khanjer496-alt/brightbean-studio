@@ -120,11 +120,13 @@ INSTAGRAM_MEDIA_RULES = {
         max_image_bytes=8 * 1024 * 1024,
         advisory=frozenset({"media_types"}),
     ),
-    # Up to 10 images or videos. Instagram crops every slide to the first
-    # one's shape, so a slide outside the feed range is a warning, not a refusal.
+    # Up to 20 images or videos (raised from 10; checked against the ig-user
+    # media reference above, 2026-10). Instagram crops every slide to the
+    # first one's shape, so a slide outside the feed range is a warning, not a
+    # refusal.
     PostType.CAROUSEL: MediaRules(
         source=_INSTAGRAM_DOCS,
-        max_items=10,
+        max_items=20,
         media_types=frozenset({"image", "video"}),
         min_aspect_ratio=4 / 5,
         max_aspect_ratio=1.91,
@@ -387,7 +389,7 @@ class InstagramProvider(SocialProvider):
 
         ig_user_id = content.extra.get("ig_user_id") or self._get_ig_user_id(access_token)
 
-        # A carousel needs 2-10 children; with a single item Meta rejects the
+        # A carousel needs 2-20 children; with a single item Meta rejects the
         # parent container, so publish it as an ordinary single post instead.
         if content.post_type == PostType.CAROUSEL and len(content.media_urls) > 1:
             return self._publish_carousel(access_token, ig_user_id, content)

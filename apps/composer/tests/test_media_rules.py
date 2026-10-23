@@ -91,10 +91,10 @@ class InstagramRulesTest(TestCase):
     def test_feed_image_size(self):
         self.assertIn("up to 8.0\xa0MB", _errors("instagram", [_asset(width=1080, height=1080, size=9 * MB)])[0])
 
-    def test_carousel_takes_ten_items(self):
-        self.assertEqual(_errors("instagram", [_asset()] * 10), [])
-        (error,) = _errors("instagram", [_asset()] * 11)
-        self.assertIn("at most 10 items in a carousel", error)
+    def test_carousel_takes_twenty_items(self):
+        self.assertEqual(_errors("instagram", [_asset()] * 20), [])
+        (error,) = _errors("instagram", [_asset()] * 21)
+        self.assertIn("at most 20 items in a carousel", error)
 
     def test_carousel_shape_only_warns(self):
         assets = [_asset(), _asset(width=1080, height=1920)]
@@ -429,3 +429,52 @@ class CropPresetTest(_WorkspaceMixin, ComposerTestCase):
         for label in ("'1:1'", "'4:5'", "'9:16'", "'16:9'", "'2:3'"):
             self.assertIn(label, html)
         self.assertIn("setAspectRatio", html)
+
+
+class PublishTimeEnforcementTest(_WorkspaceMixin, TestCase):
+    """The publisher re-checks blocking media rules before it uploads anything."""
+
+    def setUp(self):
+        from apps.organizations.models import Organization
+        from apps.workspaces.models import Workspace
+
+        self.org = Organization.objects.create(name="Publish Rules Org")
+        self.workspace = Workspace.objects.create(organization=self.org, name="Publish Rules WS")
+        self.instagram = self._account("instagram")
+
+    def _publishing_row(self, asset):
+        post = Post.objects.create(workspace=self.workspace, caption="x", scheduled_at=timezone.now())
+        PostMedia.objects.create(post=post, media_asset=asset, position=0)
+        # Written straight to the table: the media broke the rule after it was
+        # scheduled, or the row reached the publisher some other way.
+        return PlatformPost.objects.create(
+            post=post, social_account=self.instagram, status=PlatformPost.Status.PUBLISHING
+        )
+
+    def test_a_blocking_rule_fails_the_row_with_the_composer_message(self):
+        from unittest.mock import patch
+
+        from apps.publisher.engine import PublishEngine
+
+        pp = self._publishing_row(self._saved_asset(width=1080, height=1920))
+        with patch.object(PublishEngine, "_dispatch_to_provider") as dispatch:
+            result = PublishEngine()._publish_platform_post(pp)
+
+        self.assertFalse(result["success"])
+        dispatch.assert_not_called()
+        pp.refresh_from_db()
+        self.assertEqual(pp.status, PlatformPost.Status.FAILED)
+        self.assertIn("between 4:5 and 1.91:1", pp.publish_error)
+
+    def test_a_warning_still_publishes(self):
+        from unittest.mock import patch
+
+        from apps.publisher.engine import PublishEngine
+
+        pp = self._publishing_row(self._saved_asset("video", width=1920, height=1080, duration=30))
+        success = {"success": True, "platform_post_id": "remote-1", "status_code": 200, "response": {}}
+        with patch.object(PublishEngine, "_dispatch_to_provider", return_value=success) as dispatch:
+            result = PublishEngine()._publish_platform_post(pp)
+
+        self.assertTrue(result["success"])
+        dispatch.assert_called_once()
