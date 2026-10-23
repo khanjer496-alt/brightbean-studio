@@ -842,7 +842,9 @@ Authorization: Bearer bb_studio_...
 
 Also send a `User-Agent` header naming your client (e.g. `User-Agent: my-agent/1.0`). Cloudflare's Browser Integrity Check, which is on by default and fronts the hosted `studio.brightbean.xyz`, rejects Python's standard-library default (`Python-urllib/3.x`) with `403` and a plain-text `error code: 1010` body before the request reaches Studio. Any value of your own gets through; `requests`, `httpx`, curl, and Node clients already send one that does.
 
-Permission keys: `create_posts`, `publish_directly`, `upload_media`, `view_analytics`, `use_inbox`, `reply_from_inbox`. Each endpoint requires the relevant permission; missing permissions return `403`.
+Permission keys: `create_posts`, `edit_others_posts`, `approve_posts`, `publish_directly`, `manage_social_accounts`, `manage_workspace_settings`, `upload_media`, `view_analytics`, `use_inbox`, `reply_from_inbox`. A key's scope is that permission set plus its account allowlist (there are no separate read/write flags): each endpoint requires the relevant permission and missing permissions return `403`; everything tied to a social account (posts, queues, posting slots, templates' target accounts) is filtered to the allowlist, and a write naming an account outside it is refused. Ids from another workspace or outside the allowlist answer `404`.
+
+The full capability matrix of the web app against REST and MCP is in [docs/agents/capabilities.md](docs/agents/capabilities.md).
 
 ### Rate Limits
 
@@ -865,8 +867,11 @@ Don't poll faster than the data changes. Studio syncs the inbox every 5 minutes 
 | `GET` | `/me` | Inspect caller scope and workspace permissions | — |
 | `GET` | `/accounts` | List connected social accounts | — |
 | `POST` | `/posts` | Create a draft or scheduled post | `create_posts` (+ `publish_directly` to schedule) |
+| `GET` | `/posts` | List posts (filter by `status`, `social_account_id`, `date_from`/`date_to`, `tag`, `search`; cursor pagination) | — |
 | `GET` | `/posts/{post_id}` | Read a single post | — |
-| `PATCH` | `/posts/{post_id}` | Update draft fields | `create_posts` |
+| `PATCH` | `/posts/{post_id}` | Update draft fields (incl. `tags`, `category_id`) | `create_posts` |
+| `DELETE` | `/posts/{post_id}` | Delete a draft/approved/scheduled post (published or publishing: `409`) | `create_posts` (+ `edit_others_posts` for others' posts) |
+| `POST` | `/posts/{post_id}/duplicate` | Copy a post into a new draft | `create_posts` |
 | `POST` | `/posts/{post_id}/schedule` | Schedule a draft | `create_posts` + `publish_directly` |
 | `POST` | `/posts/{post_id}/cancel` | Revert a scheduled post to draft | `create_posts` |
 | `GET` | `/analytics/accounts/{account_id}` | Channel analytics summary (7/30/90-day window) | `view_analytics` |
@@ -880,7 +885,27 @@ Don't poll faster than the data changes. Studio syncs the inbox every 5 minutes 
 | `PATCH` | `/inbox/replies/{reply_id}` | Edit a draft reply | `use_inbox` |
 | `POST` | `/inbox/replies/{reply_id}/send` | Deliver a draft reply to the platform | `reply_from_inbox` |
 | `DELETE` | `/inbox/replies/{reply_id}` | Discard a draft reply | `use_inbox` |
+| `GET` | `/approvals` | List posts in the approval workflow (default: waiting on a reviewer or the client) | `approve_posts` or `create_posts` |
+| `POST` | `/approvals/{post_id}/approve` | Approve a post | `approve_posts` |
+| `POST` | `/approvals/{post_id}/request-changes` | Send back for changes (`comment` required) | `approve_posts` |
+| `POST` | `/approvals/{post_id}/reject` | Reject (`comment` required) | `approve_posts` |
+| `GET` / `POST` | `/approvals/{post_id}/comments` | List / add comments (clients only see and write `external`) | `create_posts` or `approve_posts` |
+| `GET` | `/queues`, `/queues/{queue_id}` | List queues (next free slot, entry count) / read one with its entries | — |
+| `POST` | `/queues/{queue_id}/entries` | Schedule a post into the next free slot (`priority` for the earliest) | `create_posts` + `publish_directly` |
+| `DELETE` | `/queues/{queue_id}/entries/{entry_id}` | Take a post out of a queue (back to draft) | `create_posts` |
+| `GET` | `/slots`, `/slots/next-free` | List posting slots / find an account's next free slots | — |
+| `POST` / `PATCH` / `DELETE` | `/slots`, `/slots/{slot_id}` | Create, update (time, active) or delete a posting slot | `manage_social_accounts` |
+| `GET` / `POST` / `PATCH` / `DELETE` | `/ideas`, `/ideas/{idea_id}`, `/idea-groups` | Ideas kanban: ideas (move with `group_id`/`position`) and columns | `create_posts` |
+| `GET` / `POST` / `PATCH` / `DELETE` | `/templates`, `/templates/{template_id}` | Reusable post templates (target accounts limited to the allowlist) | reads open; writes `create_posts` |
+| `GET` / `POST` / `PATCH` / `DELETE` | `/tags`, `/tags/{tag_id}` | Tags; rename/delete also update posts and ideas | reads open; writes `create_posts` |
+| `GET` / `POST` / `PATCH` / `DELETE` | `/categories`, `/categories/{category_id}` | Content categories | reads open; writes `create_posts` |
+| `GET` / `POST` / `DELETE` | `/events`, `/events/{event_id}` | Custom calendar events (`date_from`/`date_to` filter) | reads open; writes `create_posts` |
+| `GET` / `PATCH` | `/brand-voice` | Read / update the brand voice the AI assistant writes in | read: `create_posts` or `manage_workspace_settings`; update: `manage_workspace_settings` |
+| `GET` | `/usage` | Plan, limits and current usage (read-only) | — |
+| `GET` | `/hashtag-sets`, `/signatures` | Saved hashtag groups and shared sign-offs | — |
 | `POST` | `/mcp` | JSON-RPC 2.0 endpoint for MCP clients | — |
+
+List endpoints take `limit` (default 50, max 100) and an opaque `cursor`; a non-null `next_cursor` means more remain. Failures use the same `{"error", "detail"}` envelope, count against the same rate limits and are written to the same audit log as the rest of the API.
 
 Post creation, media uploads, and inbox reply creation accept `idempotency_key` (or `Idempotency-Key` header) for safe retries.
 
@@ -897,7 +922,9 @@ The MCP server lives at `POST {APP_URL}/api/v1/mcp` and speaks JSON-RPC 2.0 over
 | `schedule_post` | Create and schedule a post in one step | `create_posts` + `publish_directly` |
 | `schedule_draft` | Schedule an existing draft | `create_posts` + `publish_directly` |
 | `get_post` | Retrieve a post with aggregate status and per-platform state | — |
-| `list_posts` | List posts newest-first, with optional status filter and cursor pagination | — |
+| `list_posts` | List and search posts newest-first (`status`, `social_account_id`, `date_from`/`date_to`, `tag`, `search`) with cursor pagination | — |
+| `delete_post` | Delete a draft/approved/scheduled post (published or publishing posts are refused) | `create_posts` |
+| `duplicate_post` | Copy a post into a new draft | `create_posts` |
 | `cancel_post` | Revert a scheduled post back to draft | `create_posts` |
 | `search_media` | Find media assets by query, type, tags, or folder | — |
 | `get_media` | Retrieve a single media asset by ID | — |
@@ -911,6 +938,29 @@ The MCP server lives at `POST {APP_URL}/api/v1/mcp` and speaks JSON-RPC 2.0 over
 | `update_reply_draft` | Replace the body of a draft (or failed) reply | `use_inbox` |
 | `discard_reply_draft` | Delete a draft (or failed) reply | `use_inbox` |
 | `send_reply` | Deliver a reply (`reply_id`, or `message_id` + `body` to draft-and-send) | `reply_from_inbox` |
+
+Tools added to close the coverage gaps (each is the twin of a REST route above and runs the same operation as the same actor):
+
+| Tool | Purpose | Permission |
+|---|---|---|
+| `list_approvals` | Posts waiting on a reviewer or the client (or any approval status) | `approve_posts` or `create_posts` |
+| `approve_post` / `request_post_changes` / `reject_post` | Decide a post under review (comment required to request changes or reject) | `approve_posts` |
+| `list_post_comments` / `add_post_comment` | Read and write comment threads (clients see only `external`) | `create_posts` or `approve_posts` |
+| `list_queues` / `get_queue` | Publishing queues with next free slot and entries | — |
+| `add_post_to_queue` / `remove_from_queue` | Schedule a post into the next free slot / take it out | `create_posts` + `publish_directly` / `create_posts` |
+| `list_posting_slots` / `find_next_free_slot` | Weekly posting slots / the account's next open times | — |
+| `create_posting_slot` / `update_posting_slot` / `delete_posting_slot` | Manage an account's posting slots | `manage_social_accounts` |
+| `list_ideas` / `get_idea` / `create_idea` / `update_idea` / `delete_idea` | Ideas kanban board | `create_posts` |
+| `list_idea_groups` / `create_idea_group` / `delete_idea_group` | Kanban columns | `create_posts` |
+| `list_templates` / `get_template` / `create_template` / `update_template` / `delete_template` | Post templates | reads open; writes `create_posts` |
+| `list_tags` / `create_tag` / `rename_tag` / `delete_tag` | Tags | reads open; writes `create_posts` |
+| `list_categories` / `create_category` / `update_category` / `delete_category` | Content categories | reads open; writes `create_posts` |
+| `list_calendar_events` / `create_calendar_event` / `delete_calendar_event` | Custom calendar events | reads open; writes `create_posts` |
+| `get_brand_voice` / `update_brand_voice` | The AI assistant's brand voice | read: `create_posts` or `manage_workspace_settings`; update: `manage_workspace_settings` |
+| `get_usage` | Plan, limits and usage | — |
+| `list_hashtag_sets` / `list_signatures` | Saved hashtag groups and shared sign-offs | — |
+
+`create_draft` and `schedule_post` also accept `tags` and `category_id`.
 
 ### Connecting an MCP client
 
