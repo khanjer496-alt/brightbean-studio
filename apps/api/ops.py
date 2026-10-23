@@ -31,6 +31,10 @@ from ninja.errors import HttpError
 from apps.api.limits import check_platform_quota
 from apps.api.pagination import decode_offset_cursor, encode_offset_cursor
 from apps.api.schemas import (
+    AddEvergreenRequest,
+    ApplyBestTimesResponse,
+    BestTimeResponse,
+    BestTimesResponse,
     BrandVoiceResponse,
     CalendarEventResponse,
     CalendarEventsListResponse,
@@ -39,6 +43,10 @@ from apps.api.schemas import (
     CommentResponse,
     CommentsListResponse,
     DeletedResponse,
+    EvergreenDetailResponse,
+    EvergreenItemResponse,
+    EvergreenListResponse,
+    EvergreenRepeatResponse,
     HashtagSetsListResponse,
     HashtagSetSummary,
     IdeaGroupResponse,
@@ -70,8 +78,9 @@ from apps.api.schemas import (
 from apps.approvals import comments as comment_service
 from apps.approvals import services as approval_services
 from apps.approvals.models import PostComment
+from apps.calendar import evergreen as evergreen_service
 from apps.calendar import services as calendar_services
-from apps.calendar.models import CustomCalendarEvent, PostingSlot, Queue
+from apps.calendar.models import CustomCalendarEvent, EvergreenItem, PostingSlot, Queue
 from apps.common.validators import MAX_TAG_LENGTH, MAX_TAGS, is_valid_hex_color
 from apps.composer import services as composer_services
 from apps.composer.models import (
@@ -1548,3 +1557,240 @@ def get_usage(actor: Actor) -> UsageResponse:
             for row in usage_summary(org)
         ],
     )
+
+
+# ---------------------------------------------------------------------------
+# Best time to post
+# ---------------------------------------------------------------------------
+
+_DAY_NAMES = [label for _, label in PostingSlot.DayOfWeek.choices]
+
+
+def _best_time_row(slot) -> BestTimeResponse:
+    return BestTimeResponse(
+        day_of_week=slot.weekday,
+        day_name=_DAY_NAMES[slot.weekday],
+        time=slot.time_label,
+        score=slot.score,
+        posts=slot.posts,
+    )
+
+
+def get_best_times(actor: Actor, social_account_id: uuid.UUID, count: int = 5) -> BestTimesResponse:
+    """When the account's posts do best: its top times and the weekday x hour grid behind them."""
+    if count < 1 or count > calendar_services.SUGGESTED_SLOTS_MAX:
+        raise OpError(422, f"count must be between 1 and {calendar_services.SUGGESTED_SLOTS_MAX}")
+    account = _require_account(actor, social_account_id)
+    best, suggestions = calendar_services.suggest_slots(account, count)
+    return BestTimesResponse(
+        social_account_id=account.id,
+        timezone=best.timezone,
+        basis=best.basis,
+        basis_label=best.basis_label,
+        sample_size=best.sample_size,
+        computed_at=best.computed_at,
+        suggestions=[_best_time_row(s) for s in suggestions],
+        grid=[[round(best.scores[d * 24 + h]) for h in range(24)] for d in range(7)],
+    )
+
+
+def apply_best_times(
+    actor: Actor, *, social_account_id: uuid.UUID, count: int = 5, mode: str = "replace", preview: bool = False
+) -> ApplyBestTimesResponse:
+    """Make the account's top times its posting slots (``replace`` or ``add``); ``preview`` writes nothing."""
+    actor.require("manage_social_accounts")
+    if mode not in calendar_services.SLOT_MODES:
+        raise OpError(422, f"mode must be one of {', '.join(calendar_services.SLOT_MODES)}")
+    if count < 1 or count > calendar_services.SUGGESTED_SLOTS_MAX:
+        raise OpError(422, f"count must be between 1 and {calendar_services.SUGGESTED_SLOTS_MAX}")
+    account = _require_account(actor, social_account_id)
+    best, suggestions = calendar_services.suggest_slots(account, count)
+    if not suggestions:
+        raise OpError(409, "There are no suggested times for this account yet.")
+    to_add, to_remove, _kept = calendar_services.plan_slot_changes(account, suggestions, mode)
+    if not preview:
+        calendar_services.apply_suggested_slots(account, suggestions, mode)
+    slots = PostingSlot.objects.filter(social_account=account).order_by("day_of_week", "time")
+    return ApplyBestTimesResponse(
+        social_account_id=account.id,
+        mode=mode,
+        applied=not preview,
+        basis_label=best.basis_label,
+        add=[f"{_DAY_NAMES[day][:3]} {at:%H:%M}" for day, at in to_add],
+        remove=[f"{_DAY_NAMES[slot.day_of_week][:3]} {slot.time:%H:%M}" for slot in to_remove],
+        slots=[_slot_response(slot) for slot in slots],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Evergreen recycling
+# ---------------------------------------------------------------------------
+
+
+def _visible_evergreen(actor: Actor) -> QuerySet[EvergreenItem]:
+    return EvergreenItem.objects.filter(
+        workspace_id=actor.workspace_id, social_account_id__in=actor.allowed_account_ids
+    ).select_related("category")
+
+
+def _get_evergreen(actor: Actor, item_id: uuid.UUID) -> EvergreenItem:
+    try:
+        return _visible_evergreen(actor).get(id=item_id)
+    except EvergreenItem.DoesNotExist as exc:
+        raise OpError(404, "Evergreen item not found") from exc
+
+
+def _evergreen_category(actor: Actor, category_id: uuid.UUID | None, category_name: str | None):
+    if category_name and category_name.strip():
+        try:
+            return evergreen_service.get_or_create_category(actor.workspace, category_name)
+        except evergreen_service.EvergreenError as exc:
+            raise OpError(422, str(exc)) from exc
+    return _resolve_category(actor, category_id)
+
+
+def _check_pre_approval(actor: Actor, pre_approved: bool | None) -> None:
+    if pre_approved:
+        actor.require("approve_posts")
+
+
+def _evergreen_detail(item: EvergreenItem) -> EvergreenDetailResponse:
+    repeats = list(item.repeats.select_related("platform_post", "item__social_account")[:100])
+    performance = evergreen_service.repeat_performance(repeats)
+    rows = []
+    for repeat in repeats:
+        stats = performance.get(repeat.id) or {}
+        rows.append(
+            EvergreenRepeatResponse(
+                id=repeat.id,
+                post_id=repeat.post_id,
+                scheduled_for=repeat.scheduled_for,
+                outcome=repeat.outcome,
+                wording=repeat.wording,
+                status=repeat.platform_post.status if repeat.platform_post else None,
+                engagements=stats.get("engagements"),
+                reach=stats.get("reach"),
+                engagement_rate=stats.get("rate"),
+            )
+        )
+    return EvergreenDetailResponse(**EvergreenItemResponse.from_item(item).model_dump(), repeats=rows)
+
+
+def list_evergreen(
+    actor: Actor,
+    *,
+    social_account_id: uuid.UUID | None = None,
+    category_id: uuid.UUID | None = None,
+    paused: bool | None = None,
+    limit: int = LIMIT_DEFAULT,
+    cursor: str | None = None,
+) -> EvergreenListResponse:
+    actor.require("create_posts")
+    qs = _visible_evergreen(actor)
+    if social_account_id is not None:
+        _require_account(actor, social_account_id)
+        qs = qs.filter(social_account_id=social_account_id)
+    if category_id is not None:
+        qs = qs.filter(category_id=category_id)
+    if paused is not None:
+        qs = qs.filter(is_paused=paused)
+    rows, next_cursor = _paginate(
+        qs.order_by("category__name", "last_posted_at", "created_at", "id"), limit=limit, cursor=cursor
+    )
+    return EvergreenListResponse(
+        items=[EvergreenItemResponse.from_item(i) for i in rows], limit=limit, next_cursor=next_cursor
+    )
+
+
+def get_evergreen(actor: Actor, item_id: uuid.UUID) -> EvergreenDetailResponse:
+    actor.require("create_posts")
+    return _evergreen_detail(_get_evergreen(actor, item_id))
+
+
+def add_evergreen(actor: Actor, payload: AddEvergreenRequest) -> EvergreenListResponse:
+    """Add a published post (one item per channel), a template or an idea to the evergreen library."""
+    actor.require("create_posts")
+    _check_pre_approval(actor, payload.pre_approved)
+    sources = [s for s in (payload.post_id, payload.template_id, payload.idea_id) if s is not None]
+    if len(sources) != 1:
+        raise OpError(422, "Give exactly one of post_id, template_id or idea_id.")
+    category = _evergreen_category(actor, payload.category_id, payload.category_name)
+    rules = {
+        "interval_days": payload.interval_days,
+        "max_repeats": payload.max_repeats,
+        "vary_with_ai": payload.vary_with_ai,
+        "pre_approved": payload.pre_approved,
+    }
+    user = actor.user
+    items: list[EvergreenItem] = []
+    try:
+        with transaction.atomic():
+            if payload.post_id is not None:
+                post = _get_visible_post(actor, payload.post_id)
+                targets = [
+                    pp
+                    for pp in post.platform_posts.select_related("social_account", "post")
+                    if pp.status == PlatformPost.Status.PUBLISHED
+                    and pp.social_account_id in actor.allowed_account_ids
+                    and (payload.social_account_id is None or pp.social_account_id == payload.social_account_id)
+                ]
+                if not targets:
+                    raise OpError(422, "The post has no published channel to recycle (check social_account_id).")
+                for pp in targets:
+                    items.append(evergreen_service.add_from_platform_post(pp, user=user, category=category, **rules))
+            else:
+                if payload.social_account_id is None:
+                    raise OpError(422, "social_account_id is required for a template or an idea.")
+                account = _require_account(actor, payload.social_account_id)
+                if payload.template_id is not None:
+                    template = _get_template(actor, payload.template_id)
+                    items.append(
+                        evergreen_service.add_from_template(template, account, user=user, category=category, **rules)
+                    )
+                else:
+                    idea = _get_idea(actor, payload.idea_id)
+                    items.append(evergreen_service.add_from_idea(idea, account, user=user, category=category, **rules))
+    except evergreen_service.EvergreenError as exc:
+        raise OpError(409 if "already" in str(exc) else 422, str(exc)) from exc
+    return EvergreenListResponse(
+        items=[EvergreenItemResponse.from_item(i) for i in items], limit=len(items), next_cursor=None
+    )
+
+
+def update_evergreen(actor: Actor, item_id: uuid.UUID, changes: dict[str, Any]) -> EvergreenItemResponse:
+    """Change an item: pause or resume it, its category, interval, repeat limit, wording or pre-approval."""
+    actor.require("create_posts")
+    item = _get_evergreen(actor, item_id)
+    _check_pre_approval(actor, changes.get("pre_approved"))
+    fields = ["updated_at"]
+    if "interval_days" in changes or "max_repeats" in changes or changes.get("clear_max_repeats"):
+        max_repeats = None if changes.get("clear_max_repeats") else changes.get("max_repeats", item.max_repeats)
+        try:
+            item.interval_days, item.max_repeats = evergreen_service.clean_rules(
+                changes.get("interval_days", item.interval_days), max_repeats
+            )
+        except evergreen_service.EvergreenError as exc:
+            raise OpError(422, str(exc)) from exc
+        fields += ["interval_days", "max_repeats"]
+    if changes.get("category_id") is not None or changes.get("category_name"):
+        item.category = _evergreen_category(actor, changes.get("category_id"), changes.get("category_name"))
+        fields.append("category")
+    if changes.get("vary_with_ai") is not None:
+        item.vary_with_ai = changes["vary_with_ai"]
+        fields.append("vary_with_ai")
+    if changes.get("pre_approved") is not None and changes["pre_approved"] != item.pre_approved:
+        item.pre_approved = changes["pre_approved"]
+        item.pre_approved_by = actor.user if item.pre_approved else None
+        fields += ["pre_approved", "pre_approved_by"]
+    if changes.get("is_paused") is not None:
+        item.is_paused = changes["is_paused"]
+        fields.append("is_paused")
+    item.save(update_fields=fields)
+    return EvergreenItemResponse.from_item(item)
+
+
+def remove_evergreen(actor: Actor, item_id: uuid.UUID) -> DeletedResponse:
+    """Take an item out of the library. Posts already made from it stay."""
+    actor.require("create_posts")
+    _get_evergreen(actor, item_id).delete()
+    return DeletedResponse(id=item_id)

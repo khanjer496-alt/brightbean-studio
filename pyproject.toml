@@ -36,6 +36,8 @@ ignore = [
 "apps/api/routers/slots.py" = ["B008"]
 "apps/api/routers/templates.py" = ["B008"]
 "apps/api/routers/tags.py" = ["B008"]
+"apps/api/routers/best_times.py" = ["B008"]
+"apps/api/routers/evergreen.py" = ["B008"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["apps", "config"]
