@@ -113,6 +113,8 @@ class MastodonProvider(SocialProvider):
     - ``client_secret``– obtained from app registration
     """
 
+    works_without_platform_app = True
+
     media_rules = MASTODON_MEDIA_RULES
     # Each part is a status replying to the one before it (``in_reply_to_id``).
     thread = ThreadCapability(mode=ThreadMode.REPLY_CHAIN, max_parts=25, media_per_part=True)

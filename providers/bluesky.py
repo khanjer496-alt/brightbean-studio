@@ -78,6 +78,8 @@ class BlueskyProvider(SocialProvider):
     - ``pds_url`` – PDS base URL (defaults to ``https://bsky.social``)
     """
 
+    works_without_platform_app = True
+
     media_rules = BLUESKY_MEDIA_RULES
     # Each part is a post whose ``reply`` points at the thread root and its parent.
     thread = ThreadCapability(mode=ThreadMode.REPLY_CHAIN, max_parts=25, media_per_part=True)

@@ -1,6 +1,13 @@
 from django.contrib import admin
 
-from .models import ConnectionLink, ConnectionLinkUsage, OnboardingChecklist
+from .models import (
+    ConnectionLink,
+    ConnectionLinkUsage,
+    DismissedHint,
+    OnboardingChecklist,
+    OnboardingFlow,
+    SampleWorkspace,
+)
 
 
 @admin.register(ConnectionLink)
@@ -22,3 +29,22 @@ class OnboardingChecklistAdmin(admin.ModelAdmin):
     list_display = ("user", "workspace", "is_dismissed", "dismissed_at")
     list_filter = ("is_dismissed",)
     readonly_fields = ("id",)
+
+
+@admin.register(OnboardingFlow)
+class OnboardingFlowAdmin(admin.ModelAdmin):
+    list_display = ("user", "workspace", "account_kind", "step", "status", "updated_at")
+    list_filter = ("status", "account_kind")
+    readonly_fields = ("id", "created_at", "updated_at")
+
+
+@admin.register(DismissedHint)
+class DismissedHintAdmin(admin.ModelAdmin):
+    list_display = ("user", "key", "dismissed_at")
+    readonly_fields = ("id", "dismissed_at")
+
+
+@admin.register(SampleWorkspace)
+class SampleWorkspaceAdmin(admin.ModelAdmin):
+    list_display = ("workspace", "created_by", "created_at")
+    readonly_fields = ("created_at",)
