@@ -49,6 +49,17 @@ SERVE_MEDIA = True
 CUSTOM_SIGNUP_URL = ""
 SIGNUP_MODE = "open"
 
+# The suites that predate the autonomy dial drive agents that publish and reply on
+# their own, with no undo window. Pin the levels they were written for; the autonomy
+# tests set the conservative production defaults explicitly (see apps/autonomy/tests).
+AUTONOMY_DEFAULT_LEVELS = {
+    "draft_level": "full_auto",
+    "publish_level": "full_auto",
+    "reply_level": "full_auto",
+    "recycle_level": "per_item",
+}
+AUTONOMY_DEFAULT_UNDO_MINUTES = 0
+
 # Pinned so a developer's real key in .env can't switch the AI assistant on
 # for the whole suite (or let a test reach the provider). Tests that want it
 # use the `settings` fixture and mock the provider client.

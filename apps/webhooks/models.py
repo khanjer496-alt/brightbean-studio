@@ -25,6 +25,9 @@ class EventType(models.TextChoices):
     COMMENT_CREATED = "comment.created", "Approval comment created"
     INBOX_MESSAGE_RECEIVED = "inbox.message.received", "Inbox message received"
     ACCOUNT_DISCONNECTED = "account.disconnected", "Social account disconnected"
+    AGENT_ACTION_EXECUTED = "agent.action.executed", "Agent action executed"
+    AGENT_ACTION_HELD = "agent.action.held", "Agent action held for review"
+    AGENT_ACTION_BLOCKED = "agent.action.blocked", "Agent action blocked"
     WEBHOOK_TEST = "webhook.test", "Test ping"
 
 

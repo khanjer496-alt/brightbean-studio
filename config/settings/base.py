@@ -119,6 +119,7 @@ LOCAL_APPS = [
     "apps.billing",
     "apps.ai_writer",
     "apps.webhooks",
+    "apps.autonomy",
     "apps.legal",
     "theme",
 ]
@@ -915,3 +916,17 @@ if INTELLIGENCE_ENABLED:
 # many days after it was issued; the emailed link is issued when the report is
 # sent, so recipients get the full window.
 REPORT_LINK_MAX_AGE_DAYS = env.int("REPORT_LINK_MAX_AGE_DAYS", default=30)
+
+
+# Autonomy dial (apps.autonomy): the levels a workspace gets until someone sets them.
+# Conservative on purpose: agents may write drafts, a person approves everything
+# that goes out, and evergreen items keep their own approval setting. Tests that
+# exercise other behaviour pin more permissive levels in config/settings/test.py.
+AUTONOMY_DEFAULT_LEVELS = {
+    "draft_level": "draft_only",
+    "publish_level": "draft_only",
+    "reply_level": "draft_only",
+    "recycle_level": "per_item",
+}
+# How long an autonomous publish or reply waits where a person can undo it.
+AUTONOMY_DEFAULT_UNDO_MINUTES = 5
