@@ -54,6 +54,7 @@ class Entitlements:
     max_channels: int | None
     max_workspaces: int | None
     max_scheduled_posts_per_month: int | None
+    max_api_calls_per_day: int | None
     features: frozenset[str]
     unlimited: bool = False
 
@@ -66,6 +67,7 @@ UNLIMITED = Entitlements(
     max_channels=None,
     max_workspaces=None,
     max_scheduled_posts_per_month=None,
+    max_api_calls_per_day=None,
     features=frozenset(),
     unlimited=True,
 )
@@ -99,6 +101,7 @@ def get_entitlements(org) -> Entitlements:
         max_channels=plan.max_channels,
         max_workspaces=plan.max_workspaces,
         max_scheduled_posts_per_month=plan.max_scheduled_posts_per_month,
+        max_api_calls_per_day=plan.max_api_calls_per_day,
         features=frozenset(str(f) for f in plan.features),
     )
 
@@ -141,6 +144,13 @@ def scheduled_post_count(org, when: dt.datetime | None = None) -> int:
     ).count()
 
 
+def api_call_count(org, when: dt.datetime | None = None) -> int:
+    """Agent API and MCP calls the organization made in ``when``'s UTC day."""
+    from apps.api.usage import org_usage_in_day
+
+    return org_usage_in_day(org.pk, when or timezone.now())
+
+
 def usage_summary(org) -> list[dict]:
     """Usage against each limit, for the Plan & billing page."""
     ent = get_entitlements(org)
@@ -154,10 +164,12 @@ def usage_summary(org) -> list[dict]:
             ent.max_scheduled_posts_per_month,
             "Move posts to next month or back to drafts",
         ),
+        # Resets every UTC day, so there is never anything to remove.
+        ("api_calls", "API & MCP calls today", api_call_count(org), ent.max_api_calls_per_day, ""),
     ]
     summary = []
     for key, label, used, limit, remedy in rows:
-        over_by = max(used - limit, 0) if limit is not None else 0
+        over_by = max(used - limit, 0) if limit is not None and remedy else 0
         summary.append(
             {
                 "key": key,

@@ -37,8 +37,6 @@ from ninja.security import HttpBearer
 from apps.api.limits import is_failed_auth_ip_blocked, record_failed_auth
 from apps.api_keys.models import ApiKey
 from apps.api_keys.services import touch_last_used, verify_token
-from apps.billing.entitlements import billing_enabled, require_feature
-from apps.billing.plans import Feature
 
 LOG = logging.getLogger(__name__)
 
@@ -177,20 +175,7 @@ class ApiKeyAuth(HttpBearer):
         # synchronous and easy to reason about.
         touch_last_used(api_key, ip=_client_ip(request))
 
-        _require_api_in_plan(api_key.workspace)
         return api_key
-
-
-def _require_api_in_plan(workspace: Any) -> None:
-    """Refuse a valid credential whose organization's plan has no API access.
-
-    Raises ``PlanLimitError``, which the API turns into a 402 with the upgrade
-    message — after authentication, so the caller learns why rather than
-    seeing the same 401 as a bad key. Checked here, once, so every REST route
-    and the MCP endpoint are covered.
-    """
-    if billing_enabled():
-        require_feature(workspace.organization, Feature.API)
 
 
 def _client_ip(request: HttpRequest) -> str | None:
@@ -380,5 +365,4 @@ class McpAuth(ApiKeyAuth):
         # Lets audit logging / author attribution treat the OAuth user as the
         # actor, exactly as the key path treats ``api_key.issued_by``.
         request.user = actor.issued_by  # type: ignore[assignment]
-        _require_api_in_plan(actor.workspace)
         return actor

@@ -53,7 +53,9 @@ api = NinjaAPI(
         "with a 1000/min aggregate cap per workspace. Each key may also make "
         "at most 1,000 calls per UTC hour and 20,000 per UTC day, REST and "
         "MCP together (`tier` `per_key_hourly` / `per_key_daily`; "
-        "`retry_after` is the time until that window resets). Limits are "
+        "`retry_after` is the time until that window resets). On the hosted "
+        "service each organization's plan also sets a daily call allowance "
+        "across all its keys (`tier` `plan_daily`, with an `upgrade_url`). Limits are "
         "enforced as HTTP 429 with a JSON body that includes `tier`, `limit`, "
         "`remaining`, `retry_after`, and a `Retry-After` header. "
         "Headers `X-RateLimit-Limit` and `X-RateLimit-Remaining` are "
@@ -173,8 +175,8 @@ def _not_found_handler(request: HttpRequest, exc: Http404) -> HttpResponse:
 
 
 # Plan limits (apps.billing) → 402 Payment Required with the upgrade message,
-# whether raised by the plan's API-access check in auth or by a limit hit
-# while creating or scheduling a post.
+# raised by a limit hit while creating or scheduling a post. (The plan's daily
+# API call cap is a 429 like the other usage caps; see apps.api.limits.)
 from apps.billing.entitlements import PlanLimitError  # noqa: E402
 
 

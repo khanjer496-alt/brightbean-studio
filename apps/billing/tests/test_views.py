@@ -282,17 +282,14 @@ class TestUiEnforcement:
         workspace.refresh_from_db()
         assert workspace.approval_workflow_mode == "none"
 
-    def test_issuing_api_keys_needs_agency(self, billing, owner_client, organization, workspace):
-        set_plan(organization, "team")
+    def test_api_keys_can_be_issued_on_free(self, billing, owner_client, organization, workspace):
+        expire_trial(organization)
         account = make_channels(workspace, 1)[0]
-        response = owner_client.post(
+        owner_client.post(
             reverse("api_keys:issue"),
             {"name": "agent", "workspace_id": str(workspace.id), "social_account_ids": [str(account.id)]},
-            HTTP_REFERER="http://testserver" + reverse("api_keys:list"),
         )
-        assert response["Location"] == "http://testserver" + reverse("api_keys:list")
-        assert "API & MCP access isn't included" in " ".join(_messages(response))
-        assert not ApiKey.objects.exists()
+        assert ApiKey.objects.filter(workspace=workspace).exists()
 
     def test_intelligence_billing_is_hidden(self, billing, organization, rf):
         from apps.intelligence.context_processors import intelligence_flag

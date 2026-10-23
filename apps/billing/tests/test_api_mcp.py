@@ -11,11 +11,12 @@ from django.test import Client
 from django.utils import timezone
 
 from apps.api_keys import services as key_services
+from apps.api_keys.models import ApiKeyUsageHourly
 from apps.billing.models import Subscription
 from apps.billing.plans import PLANS
 from apps.members.models import PERMISSION_KEYS
 
-from .support import make_channels, set_plan
+from .support import expire_trial, make_channels, set_plan
 
 
 class _SecureClient(Client):
@@ -55,6 +56,20 @@ def one_post_agency(monkeypatch, organization):
     set_plan(organization, "agency")
 
 
+def _use_api_calls(workspace, count):
+    """Record ``count`` calls made today by another caller in the organization."""
+    now = timezone.now()
+    ApiKeyUsageHourly.objects.create(
+        actor="key:00000000-0000-0000-0000-000000000000",
+        hour_start=now.replace(minute=0, second=0, microsecond=0),
+        action="other",
+        status_code=200,
+        count=count,
+        last_seen_at=now,
+        workspace=workspace,
+    )
+
+
 def _create(client, account, action="schedule"):
     return client.post(
         "/api/v1/posts/",
@@ -77,27 +92,33 @@ def _mcp(client, method, params=None):
 
 @pytest.mark.django_db
 class TestRestApi:
-    def test_api_access_needs_agency(self, billing, organization, api_client):
-        set_plan(organization, "team")
-        response = api_client.get("/api/v1/me/")
-        assert response.status_code == 402
-        body = response.json()
-        assert body["error"] == "plan_limit_reached"
-        assert body["code"] == "feature_not_in_plan"
-        assert "Upgrade to Agency" in body["detail"]
-        assert body["upgrade_url"] == "https://studio.example.com/organizations/billing/"
-
-        set_plan(organization, "agency")
+    def test_api_works_on_every_plan_and_during_the_trial(self, billing, organization, api_client):
+        assert api_client.get("/api/v1/me/").status_code == 200  # trialing
+        for plan in ("free", "creator", "team", "agency"):
+            set_plan(organization, plan)
+            assert api_client.get("/api/v1/me/").status_code == 200, plan
+        expire_trial(organization)
         assert api_client.get("/api/v1/me/").status_code == 200
 
-    def test_lapsed_agency_loses_api_access(self, billing, organization, api_client):
-        set_plan(
-            organization,
-            "agency",
-            status=Subscription.Status.PAST_DUE,
-            grace_until=timezone.now() - timedelta(hours=1),
-        )
-        assert api_client.get("/api/v1/me/").status_code == 402
+    def test_daily_call_allowance_is_a_429_for_the_whole_organization(
+        self, billing, organization, workspace, api_client
+    ):
+        expire_trial(organization)
+        _use_api_calls(workspace, 99)
+        assert api_client.get("/api/v1/me/").status_code == 200  # the 100th call
+        response = api_client.get("/api/v1/me/")
+        assert response.status_code == 429
+        body = response.json()
+        assert (body["tier"], body["limit"], body["remaining"]) == ("plan_daily", 100, 0)
+        assert body["upgrade_url"] == "https://studio.example.com/organizations/billing/"
+        assert 0 < int(response["Retry-After"]) <= 86400
+
+        set_plan(organization, "creator")
+        assert api_client.get("/api/v1/me/").status_code == 200
+
+    def test_no_daily_allowance_when_billing_disabled(self, workspace, api_client):
+        _use_api_calls(workspace, 5000)
+        assert api_client.get("/api/v1/me/").status_code == 200
 
     def test_post_limit_is_a_402(self, billing, one_post_agency, api_client, account):
         assert _create(api_client, account).status_code == 201
@@ -125,11 +146,16 @@ class TestRestApi:
 
 @pytest.mark.django_db
 class TestMcp:
-    def test_mcp_needs_agency(self, billing, organization, api_client):
-        set_plan(organization, "creator")
+    def test_mcp_works_on_free(self, billing, organization, api_client):
+        expire_trial(organization)
+        assert _mcp(api_client, "ping").json()["result"] == {}
+
+    def test_mcp_shares_the_daily_call_allowance(self, billing, organization, workspace, api_client):
+        expire_trial(organization)
+        _use_api_calls(workspace, 100)
         response = _mcp(api_client, "ping")
-        assert response.status_code == 402
-        assert "API & MCP access" in response.json()["detail"]
+        assert response.status_code == 429
+        assert response.json()["tier"] == "plan_daily"
 
     def test_post_limit_is_a_readable_tool_error(self, billing, one_post_agency, api_client, account):
         args = {

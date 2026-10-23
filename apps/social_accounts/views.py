@@ -20,7 +20,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 from django_ratelimit.decorators import ratelimit
 
-from apps.billing.entitlements import PlanLimitError, check_can_add_channel
+from apps.billing.entitlements import PlanLimitError, billing_enabled, check_can_add_channel
 from apps.common.validators import is_safe_url as _is_safe_url
 from apps.credentials.models import PlatformCredential, derive_is_configured
 from apps.members.decorators import require_permission
@@ -1062,9 +1062,12 @@ def _create_or_update_account(
         }
 
     # Reconnecting an account it already has never counts against the plan.
-    if not SocialAccount.objects.filter(
-        workspace_id=workspace_id, platform=platform, account_platform_id=profile.platform_id
-    ).exists():
+    if (
+        billing_enabled()
+        and not SocialAccount.objects.filter(
+            workspace_id=workspace_id, platform=platform, account_platform_id=profile.platform_id
+        ).exists()
+    ):
         from apps.workspaces.models import Workspace
 
         check_can_add_channel(Workspace.objects.select_related("organization").get(pk=workspace_id).organization)

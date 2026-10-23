@@ -41,8 +41,10 @@ class TestPlans:
         assert (team.max_channels, team.max_workspaces) == (25, 5)
         assert (agency.max_channels, agency.max_workspaces) == (100, None)
         assert team.features == {Feature.APPROVALS, Feature.INBOX, Feature.ANALYTICS}
-        assert {Feature.CLIENT_PORTAL, Feature.BRANDED_REPORTS, Feature.API} <= agency.features
+        assert {Feature.CLIENT_PORTAL, Feature.BRANDED_REPORTS} <= agency.features
         assert not free.features and not creator.features
+        # Agent access is on every plan; only the daily volume differs.
+        assert [p.max_api_calls_per_day for p in (free, creator, team, agency)] == [100, 1_000, 10_000, 100_000]
 
     def test_no_plan_limits_seats(self):
         for plan in PLANS.values():
@@ -58,7 +60,7 @@ class TestPlans:
 class TestBillingDisabled:
     def test_everything_unlimited_and_no_rows_written(self, organization, workspace):
         ent = entitlements.get_entitlements(organization)
-        assert ent.unlimited and ent.has(Feature.API)
+        assert ent.unlimited and ent.has(Feature.ANALYTICS) and ent.max_api_calls_per_day is None
         make_channels(workspace, 5)
         entitlements.check_can_add_channel(organization)
         entitlements.check_can_add_workspace(organization)
@@ -135,7 +137,7 @@ class TestLimits:
             entitlements.require_feature(organization, Feature.INBOX)
         assert exc.value.feature == "inbox"
         with pytest.raises(PlanLimitError, match="Upgrade to Agency"):
-            entitlements.require_feature(organization, Feature.API)
+            entitlements.require_feature(organization, Feature.CLIENT_PORTAL)
 
     def test_usage_summary_flags_overage(self, billing, organization, workspace):
         expire_trial(organization)
@@ -143,6 +145,7 @@ class TestLimits:
         rows = {row["key"]: row for row in entitlements.usage_summary(organization)}
         assert rows["channels"]["used"] == 4 and rows["channels"]["over_by"] == 1
         assert rows["workspaces"]["at_limit"] and not rows["workspaces"]["over_by"]
+        assert (rows["api_calls"]["used"], rows["api_calls"]["limit"], rows["api_calls"]["over_by"]) == (0, 100, 0)
         assert rows["posts"]["limit"] == 30
 
 

@@ -37,6 +37,9 @@ def _limit_lines(plan) -> list[str]:
         "Unlimited scheduled posts"
         if plan.max_scheduled_posts_per_month is None
         else f"{plan.max_scheduled_posts_per_month} scheduled posts / month",
+        "Unlimited API & MCP calls"
+        if plan.max_api_calls_per_day is None
+        else f"{plan.max_api_calls_per_day:,} API & MCP calls / day",
         "Unlimited team members",
     ]
 

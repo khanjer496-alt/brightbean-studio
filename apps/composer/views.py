@@ -24,7 +24,12 @@ from django.utils.html import strip_tags
 from django.utils.text import get_text_list
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.billing.entitlements import COUNTED_POST_STATUSES, PlanLimitError, check_can_schedule_posts
+from apps.billing.entitlements import (
+    COUNTED_POST_STATUSES,
+    PlanLimitError,
+    billing_enabled,
+    check_can_schedule_posts,
+)
 from apps.common.validators import (
     is_safe_url,
     parse_and_truncate_tag_string,
@@ -457,7 +462,7 @@ def _scheduled_post_allowance_error(request, post, workspace, action, form):
     it was. Children already scheduled don't count twice; a queued post is
     counted against this month, where the soonest slot almost always falls.
     """
-    if action not in _SCHEDULING_ACTIONS:
+    if action not in _SCHEDULING_ACTIONS or not billing_enabled():
         return None
     selected = set(_parse_selected_account_ids(request.POST.get("selected_accounts", "")))
     if post.pk:

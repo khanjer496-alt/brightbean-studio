@@ -29,7 +29,6 @@ class Feature(StrEnum):
     ANALYTICS = "analytics"  # channel and post analytics
     CLIENT_PORTAL = "client_portal"  # inviting clients to review posts
     BRANDED_REPORTS = "branded_reports"  # reserved: no reports surface exists yet
-    API = "api"  # Agent API keys, REST API and the MCP endpoint
 
 
 FEATURE_LABELS = {
@@ -38,7 +37,6 @@ FEATURE_LABELS = {
     Feature.ANALYTICS: "Analytics",
     Feature.CLIENT_PORTAL: "Client portal",
     Feature.BRANDED_REPORTS: "Branded reports",
-    Feature.API: "API & MCP access",
 }
 
 
@@ -60,6 +58,9 @@ class Plan:
     max_channels: int | None
     max_workspaces: int | None
     max_scheduled_posts_per_month: int | None
+    # Agent API and MCP calls per UTC day, counted across the organization.
+    # Agent access is on every plan; plans differ only in how much of it.
+    max_api_calls_per_day: int | None
     features: frozenset[Feature] = field(default_factory=frozenset)
 
     @property
@@ -92,6 +93,7 @@ PLANS: dict[str, Plan] = {
         max_channels=3,
         max_workspaces=1,
         max_scheduled_posts_per_month=30,
+        max_api_calls_per_day=100,
     ),
     CREATOR: Plan(
         slug=CREATOR,
@@ -101,6 +103,7 @@ PLANS: dict[str, Plan] = {
         max_channels=10,
         max_workspaces=2,
         max_scheduled_posts_per_month=None,
+        max_api_calls_per_day=1_000,
     ),
     TEAM: Plan(
         slug=TEAM,
@@ -110,6 +113,7 @@ PLANS: dict[str, Plan] = {
         max_channels=25,
         max_workspaces=5,
         max_scheduled_posts_per_month=None,
+        max_api_calls_per_day=10_000,
         features=frozenset({Feature.APPROVALS, Feature.INBOX, Feature.ANALYTICS}),
     ),
     AGENCY: Plan(
@@ -120,6 +124,7 @@ PLANS: dict[str, Plan] = {
         max_channels=100,
         max_workspaces=None,
         max_scheduled_posts_per_month=None,
+        max_api_calls_per_day=100_000,
         features=frozenset(
             {
                 Feature.APPROVALS,
@@ -127,7 +132,6 @@ PLANS: dict[str, Plan] = {
                 Feature.ANALYTICS,
                 Feature.CLIENT_PORTAL,
                 Feature.BRANDED_REPORTS,
-                Feature.API,
             }
         ),
     ),

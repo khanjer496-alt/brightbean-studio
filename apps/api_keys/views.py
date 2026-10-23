@@ -35,8 +35,6 @@ from django.views.decorators.http import require_http_methods
 
 from apps.api_keys import services
 from apps.api_keys.models import ApiKey
-from apps.billing.entitlements import require_feature
-from apps.billing.plans import Feature
 from apps.members.models import (
     PERMISSION_KEYS,
     WorkspaceMembership,
@@ -375,10 +373,6 @@ def issue_key(request):
     we never store it. Subsequent requests can see the key in the list,
     but never see the token.
     """
-    # Raises PlanLimitError, which BillingMiddleware turns into the upgrade
-    # message. Revoking and editing existing keys stay available on any plan.
-    require_feature(request.org, Feature.API)
-
     name = (request.POST.get("name") or "").strip()
     workspace_id = request.POST.get("workspace_id") or ""
     account_ids = request.POST.getlist("social_account_ids")
