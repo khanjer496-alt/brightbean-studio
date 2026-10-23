@@ -420,7 +420,7 @@
                         </p>
                         {% if can_publish %}
                         {# Not a <form>: the banner sits inside #composer-form. #}
-                        <div class="flex flex-wrap items-center gap-2 flex-shrink-0"
+                        <div class="flex flex-wrap items-center gap-2 max-w-full"
                              x-data="{ checked: {% if pp.thread_stopped_unconfirmed %}false{% else %}true{% endif %} }">
                             {% if pp.thread_stopped_unconfirmed %}
                             {# The stopped part may already be live and Resume re-sends it, so the author confirms they checked. #}
@@ -1270,6 +1270,7 @@
                     <textarea name="first_comment"
                               class="comment-editor"
                               placeholder="First comment posted after the main post…"
+                              @input="debouncedPreviewUpdate()"
                               rows="1">{{ form.first_comment.value|default:"" }}</textarea>
                 </div>
                 <!-- Hidden first_comment field for form submission when section is hidden -->
@@ -2383,10 +2384,14 @@ function composerApp() {
             if (!this.canMoveThreadPart(index, step)) return;
             const part = this.threadParts[index];
             this._reorderThread(index, index + step);
-            // Keep focus on the moved part's button so repeated presses keep moving it.
+            // Keep focus on the moved part's button so repeated presses keep
+            // moving it; at either end that button is disabled, so the other
+            // one takes focus rather than dropping it to the page.
             this.$nextTick(() => {
                 const li = document.getElementById('thread-part-' + part.key)?.closest('li');
-                li?.querySelectorAll('button')[step < 0 ? 0 : 1]?.focus();
+                const [up, down] = li ? li.querySelectorAll('button') : [];
+                const same = step < 0 ? up : down;
+                (same && !same.disabled ? same : step < 0 ? down : up)?.focus();
             });
         },
         threadDragStart(index, event) {
