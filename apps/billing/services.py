@@ -214,6 +214,18 @@ def sync_subscription(obj: dict, event_created: dt.datetime | None = None) -> Su
         return sub
 
     status = _STRIPE_STATUS.get(obj.get("status", ""), Subscription.Status.CANCELED)
+    # The end of a subscription that is no longer this organization's current
+    # one — e.g. the extra one from a second Checkout tab, cancelled from the
+    # portal — must not downgrade the subscription it is still paying for.
+    if (
+        status == Subscription.Status.CANCELED
+        and sub.stripe_subscription_id
+        and obj.get("id")
+        and obj["id"] != sub.stripe_subscription_id
+    ):
+        logger.info("Ignoring end of superseded Stripe subscription %s", obj.get("id"))
+        return sub
+
     items = (obj.get("items") or {}).get("data") or []
     price_id = (items[0].get("price") or {}).get("id", "") if items else ""
     mapped = plan_for_price_id(price_id)
@@ -277,6 +289,19 @@ def _on_payment_failed(invoice: dict, event_created) -> None:
     )
     sub = _find_subscription(subscription_id=subscription_id or "", customer_id=invoice.get("customer", ""))
     if sub is None or not sub.stripe_subscription_id:
+        return
+    if subscription_id and subscription_id != sub.stripe_subscription_id:
+        return
+    # A subscription whose first payment never went through has nothing to
+    # keep: a grace period would hand out the paid plan without a payment.
+    if sub.status in (Subscription.Status.INCOMPLETE, Subscription.Status.CANCELED):
+        return
+    # A failure delivered after a newer snapshot that has moved on (the retry
+    # that then succeeded, or the cancellation) must not put the row back into
+    # a grace period. A newer past_due snapshot still gets the notification.
+    stale = event_created and sub.stripe_synced_at and event_created < sub.stripe_synced_at
+    if stale and sub.status != Subscription.Status.PAST_DUE:
+        logger.info("Ignoring stale payment failure for %s", sub.stripe_subscription_id)
         return
     sub.status = Subscription.Status.PAST_DUE
     sub.start_grace_period()

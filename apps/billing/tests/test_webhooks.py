@@ -209,3 +209,29 @@ class TestLifecycle:
     def test_unhandled_event_is_acknowledged(self, stripe_sub):
         assert post_event(Client(), _event("charge.refunded", {"id": "ch_1"})).status_code == 200
         assert ProcessedStripeEvent.objects.filter(event_type="charge.refunded").exists()
+
+    def test_end_of_a_superseded_subscription_keeps_the_current_one(self, stripe_sub):
+        # A second subscription (say, from another Checkout tab) is cancelled.
+        post_event(
+            Client(), _event("customer.subscription.deleted", _subscription(status="canceled", sub_id="sub_extra"))
+        )
+        stripe_sub.refresh_from_db()
+        assert stripe_sub.status == Subscription.Status.ACTIVE
+        assert (stripe_sub.plan, stripe_sub.stripe_subscription_id) == ("team", "sub_1")
+
+    def test_late_payment_failure_after_recovery_is_ignored(self, stripe_sub):
+        client = Client()
+        post_event(client, _event("customer.subscription.updated", _subscription(status="active"), "evt_recovered"))
+        failed = {"id": "in_1", "customer": "cus_1", "subscription": "sub_1"}
+        post_event(client, _event("invoice.payment_failed", failed, "evt_failed", NOW - 60))
+        stripe_sub.refresh_from_db()
+        assert stripe_sub.status == Subscription.Status.ACTIVE and stripe_sub.grace_until is None
+
+    def test_payment_failure_on_an_incomplete_subscription_grants_no_grace(self, stripe_sub):
+        stripe_sub.status = Subscription.Status.INCOMPLETE
+        stripe_sub.save()
+        failed = {"id": "in_1", "customer": "cus_1", "subscription": "sub_1"}
+        post_event(Client(), _event("invoice.payment_failed", failed))
+        stripe_sub.refresh_from_db()
+        assert stripe_sub.status == Subscription.Status.INCOMPLETE
+        assert stripe_sub.effective_plan().slug == "free"
