@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views, views_best_times
+from . import views, views_best_times, views_evergreen
 
 app_name = "calendar"
 
@@ -23,6 +23,14 @@ urlpatterns = [
     path("posting-slots/suggest/", views_best_times.suggest_slots_preview, name="suggest_slots_preview"),
     path("posting-slots/suggest/apply/", views_best_times.suggest_slots_apply, name="suggest_slots_apply"),
     path("best-times/chips/", views_best_times.best_time_chips, name="best_time_chips"),
+    # Evergreen library
+    path("evergreen/", views_evergreen.evergreen_list, name="evergreen_list"),
+    path("evergreen/add-form/", views_evergreen.evergreen_add_form, name="evergreen_add_form"),
+    path("evergreen/add/", views_evergreen.evergreen_add, name="evergreen_add"),
+    path("evergreen/<uuid:item_id>/", views_evergreen.evergreen_detail, name="evergreen_detail"),
+    path("evergreen/<uuid:item_id>/update/", views_evergreen.evergreen_update, name="evergreen_update"),
+    path("evergreen/<uuid:item_id>/pause/", views_evergreen.evergreen_pause, name="evergreen_pause"),
+    path("evergreen/<uuid:item_id>/remove/", views_evergreen.evergreen_remove, name="evergreen_remove"),
     # Queues
     path("queues/", views.queue_list, name="queue_list"),
     path("queues/create/", views.queue_create, name="queue_create"),

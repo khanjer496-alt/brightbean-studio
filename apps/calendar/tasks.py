@@ -39,6 +39,11 @@ _RECURRING_COMMITTED_STATUSES = frozenset(
 # once, so this only has to keep the lookahead window topped up.
 RECURRENCE_GENERATION_INTERVAL_SECONDS = 3600  # hourly
 
+# How often evergreen items are checked against open queue slots. Hourly is
+# plenty: only slots in the next few days are filled, and each fill is
+# idempotent (a filled slot is no longer open).
+EVERGREEN_FILL_INTERVAL_SECONDS = 3600
+
 # Safety bound on the dates one rule may produce in a single pass. A daily
 # series is walked from its first post, so a few years of it stay well inside.
 _MAX_SERIES_DATES = 10_000
@@ -48,6 +53,20 @@ _MAX_SERIES_DATES = 10_000
 def run_recurring_post_generation():
     """Background entry point for :func:`generate_recurring_posts`."""
     generate_recurring_posts()
+
+
+@background(schedule=0)
+def run_evergreen_fill():
+    """Background entry point for :func:`apps.calendar.evergreen.fill_queues`."""
+    from .evergreen import fill_queues
+
+    result = fill_queues()
+    logger.info(
+        "Evergreen: %d scheduled, %d sent for approval, %d skipped.",
+        result.scheduled,
+        result.awaiting_approval,
+        result.skipped,
+    )
 
 
 def generate_recurring_posts():
