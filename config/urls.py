@@ -28,6 +28,9 @@ urlpatterns = [
     # /organizations/api-keys/ so the page sits alongside General,
     # Workspaces, Team Members in the settings sidebar.
     path("organizations/api-keys/", include("apps.api_keys.urls")),
+    # Plan & billing. Always routed so reverse() works on every deployment;
+    # the views 404 unless settings.BILLING_ENABLED.
+    path("organizations/billing/", include("apps.billing.urls")),
     path("workspaces/", include("apps.workspaces.urls")),
     path("members/", include("apps.members.urls")),
     path("settings/", include("apps.settings_manager.urls")),
@@ -39,6 +42,7 @@ urlpatterns = [
     path("workspace/<uuid:workspace_id>/analytics/", include("apps.analytics.urls")),
     path("webhooks/", include("apps.inbox.webhook_urls")),
     path("webhooks/", include("apps.common.webhook_urls")),
+    path("webhooks/", include("apps.billing.webhook_urls")),
     # Agent API (Phase 2) — programmatic access for external AI agents.
     # Authenticated via scoped bearer tokens issued from the Organization
     # → API Keys page. OpenAPI docs at /api/v1/docs. ``agent_api.urls``

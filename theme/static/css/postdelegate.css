@@ -64,3 +64,31 @@ html[data-theme="postdelegate"] :where(.bg-green-50,.bg-green-100):not([data-pla
 html[data-theme="postdelegate"] :where(.text-green-600,.text-green-700,.text-green-800):not([data-platform-preview], [data-platform-preview] *) { color: var(--success-700); }
 html[data-theme="postdelegate"] :where(.bg-blue-50,.bg-blue-100):not([data-platform-preview], [data-platform-preview] *) { background-color: var(--info-50); }
 html[data-theme="postdelegate"] :where(.text-blue-600,.text-blue-700,.text-blue-800):not([data-platform-preview], [data-platform-preview] *) { color: var(--info-700); }
+/* Plan & billing (apps/billing). */
+.pd-billing-heading { color: var(--text-primary); }
+.pd-billing-muted { color: var(--text-secondary); }
+.pd-billing-faint { color: var(--text-tertiary); }
+.pd-billing-card { background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-xl); }
+.pd-billing-card--current { border-color: var(--primary); box-shadow: 0 0 0 1px var(--primary); }
+.pd-billing-badge { display: inline-flex; align-items: center; padding: 2px 10px; border-radius: var(--radius-full); font-size: 12px; font-weight: 600; background: var(--primary-muted); color: var(--brand-700); }
+.pd-billing-badge--warning { background: var(--warning-50); color: var(--warning-700); }
+.pd-billing-badge--error { background: var(--error-50); color: var(--error-700); }
+.pd-billing-notice { border-radius: var(--radius-lg); padding: 12px 16px; border: 1px solid var(--info-500); background: var(--info-50); color: var(--text-primary); }
+.pd-billing-notice--warning { border-color: var(--warning-500); background: var(--warning-50); }
+.pd-billing-notice--error { border-color: var(--error-500); background: var(--error-50); }
+.pd-billing-over { color: var(--error-700); }
+.pd-billing-action { width: auto; }
+.pd-billing-check { color: var(--brand-green-500); flex-shrink: 0; }
+.pd-billing-price { color: var(--text-primary); font-size: 30px; font-weight: 800; letter-spacing: -.8px; line-height: 1; }
+.pd-billing-toggle { display: inline-flex; padding: 3px; gap: 2px; border-radius: var(--radius-full); background: var(--surface-2); border: 1px solid var(--border); }
+.pd-billing-toggle label { cursor: pointer; padding: 6px 14px; border-radius: var(--radius-full); font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+.pd-billing-toggle label:has(input:checked) { background: var(--surface-0); color: var(--text-primary); box-shadow: var(--shadow-xs); }
+.pd-billing-toggle label:has(input:focus-visible) { outline: 2px solid #c8ff4d; outline-offset: 2px; }
+.pd-meter { display: block; width: 100%; height: 8px; border: 0; border-radius: var(--radius-full); background: var(--surface-3); appearance: none; -webkit-appearance: none; }
+.pd-meter::-webkit-meter-bar { background: var(--surface-3); border: 0; border-radius: var(--radius-full); height: 8px; }
+.pd-meter::-webkit-meter-optimum-value { background: var(--primary); border-radius: var(--radius-full); }
+.pd-meter::-webkit-meter-suboptimum-value { background: var(--warning-500); border-radius: var(--radius-full); }
+.pd-meter::-webkit-meter-even-less-good-value { background: var(--error-500); border-radius: var(--radius-full); }
+.pd-meter:-moz-meter-optimum::-moz-meter-bar { background: var(--primary); }
+.pd-meter:-moz-meter-sub-optimum::-moz-meter-bar { background: var(--warning-500); }
+.pd-meter:-moz-meter-sub-sub-optimum::-moz-meter-bar { background: var(--error-500); }
