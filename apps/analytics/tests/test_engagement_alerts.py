@@ -124,6 +124,7 @@ def test_alert_is_sent_once_to_members_who_may_view_analytics(workspace, account
     assert [n.user_id for n in notes] == [owner.id]
     assert notes[0].data["platform_post_id"] == str(post.id)
     assert "4.5x" in notes[0].title
+    assert "\u201cstar\u201d on ig got 45 engagements" in notes[0].body
     alert = EngagementAlert.objects.get(platform_post=post)
     assert (alert.engagement, alert.baseline) == (45.0, 10.0)
 

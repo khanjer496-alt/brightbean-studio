@@ -23,7 +23,9 @@ from datetime import datetime, timedelta
 from statistics import median
 
 from django.conf import settings
+from django.db.models import F
 from django.utils import timezone
+from django.utils.text import Truncator
 
 from apps.billing.entitlements import get_entitlements
 from apps.billing.plans import Feature
@@ -100,8 +102,12 @@ def find_outperformers(now: datetime | None = None) -> list[tuple[PlatformPost, 
 
     snapshots: dict[object, list] = defaultdict(list)
     ids = [p.id for posts in history.values() for p in posts]
+    # Only first-day rows: a post's later history (up to 90 days of daily rows
+    # per metric) can't change its score, so the database drops it.
     for post_id, metric, day, value, captured_at in PostInsightsSnapshot.objects.filter(
-        platform_post_id__in=ids, metric_key__in=ENGAGEMENT_PARTS
+        platform_post_id__in=ids,
+        metric_key__in=ENGAGEMENT_PARTS,
+        captured_at__lte=F("platform_post__published_at") + FIRST_WINDOW,
     ).values_list("platform_post_id", "metric_key", "date", "value", "captured_at"):
         snapshots[post_id].append((metric, day, value, captured_at))
 
@@ -154,10 +160,14 @@ def send_engagement_alerts(now: datetime | None = None) -> int:
             continue
         alerted += 1
         account = post.social_account
-        title = f"{account.account_name} has a post doing {engagement / baseline:.1f}x better than usual"
+        network = services.platform_name(account)
+        caption = (post.platform_specific_caption or post.post.caption or "").strip()
+        quoted = f"“{Truncator(caption).chars(60)}”" if caption else "A post"
+        title = f"A {network} post is getting {engagement / baseline:.1f}x the usual engagement"
         body = (
-            f"{engagement:,.0f} engagements in its first 24 hours, against a typical {baseline:,.0f} for "
-            f"{account.account_name}. {settings.BRAND_NAME} calculates this from the engagement the platform reports."
+            f"{quoted} on {account.account_name} got {engagement:,.0f} engagements in its first 24 hours; "
+            f"posts there typically get {baseline:,.0f}. {settings.BRAND_NAME} compares this with the median "
+            f"of the account's last {BASELINE_DAYS} days of posts, using the engagement {network} reports."
         )
         for user in _recipients(workspace):
             try:
