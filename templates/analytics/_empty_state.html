@@ -1,24 +1,22 @@
 {% load analytics_extras %}
-<div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px;">
-    <div style="text-align: center; max-width: 420px;">
-        {% if active_account.platform != "youtube" %}<div style="position: relative; width: 72px; height: 72px; margin: 0 auto 20px;">
-            <div style="width: 72px; height: 72px; border-radius: var(--radius-2xl); background: var(--primary-soft); display: flex; align-items: center; justify-content: center;">
+<div class="flex flex-1 items-center justify-center p-10">
+    <div class="max-w-[420px] text-center">
+        {% if active_account.platform != "youtube" %}<div class="relative mx-auto mb-5 h-[72px] w-[72px]">
+            <div class="flex h-[72px] w-[72px] items-center justify-center rounded-2xl bg-accent-soft">
                 {% include "partials/_platform_icon.html" with platform=active_account.platform size="lg" %}
             </div>
-            <span style="position: absolute; right: -4px; bottom: -4px; width: 28px; height: 28px; border-radius: 50%; background: var(--success-500); border: 3px solid #fff; display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700;">✓</span>
+            <span class="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border-[3px] border-surface-0 bg-good font-bold text-surface-0" aria-hidden="true">✓</span>
         </div>{% endif %}
-        <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; letter-spacing: -0.01em;">
-            {{ active_account.account_name }} is connected
-        </h2>
-        <p style="font-size: 0.9375rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 8px;">
+        <h2 class="mb-2 text-2xl font-bold tracking-tight text-ink">{{ active_account.account_name }} is connected</h2>
+        <p class="mb-2 text-[15px] leading-relaxed text-ink-2">
             {% if active_account.platform == "youtube" %}YouTube has not returned analytics for this reporting period. Reports refresh daily and may arrive after a delay.{% else %}We started collecting analytics when you connected this account. Metrics for this account usually appear within <strong>24–48 hours</strong> of your first published post.{% endif %}
         </p>
-        <div style="display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-full); margin-top: 12px;">
-            <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--warning-500);"></span>
-            <span style="font-size: 0.8125rem; color: var(--text-secondary); font-weight: 500;">{% if active_account.platform == "youtube" %}Awaiting YouTube report{% else %}Awaiting first full sync{% endif %}</span>
+        <div class="mt-3 inline-flex items-center gap-2 rounded-full border border-line bg-surface-1 px-3.5 py-2">
+            <span class="h-2 w-2 rounded-full bg-warn" aria-hidden="true"></span>
+            <span class="text-[13px] font-medium text-ink-2">{% if active_account.platform == "youtube" %}Awaiting YouTube report{% else %}Awaiting first full sync{% endif %}</span>
         </div>
-        <div style="margin-top: 28px; display: flex; gap: 10px; justify-content: center;">
-            <a href="{% url 'composer:create_landing' workspace_id=workspace.id %}" class="btn-brand" style="width: auto; padding: 9px 20px;">Create a post</a>
+        <div class="mt-7 flex justify-center gap-2.5">
+            <a href="{% url 'composer:create_landing' workspace_id=workspace.id %}" class="btn-brand w-auto px-5 py-2.5">Create a post</a>
         </div>
     </div>
 </div>

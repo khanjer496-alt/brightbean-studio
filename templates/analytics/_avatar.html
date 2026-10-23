@@ -1,0 +1,11 @@
+{# Account avatar with its platform badge. Needs account and size (sm|md). #}
+<div class="relative shrink-0">
+    {% if account.avatar_url %}
+        <img src="{{ account.avatar_url }}" alt="" class="rounded-full object-cover {% if size == 'md' %}h-8 w-8{% else %}h-[30px] w-[30px]{% endif %}">
+    {% else %}
+        <div class="flex items-center justify-center rounded-full bg-surface-3 font-bold text-ink-2 {% if size == 'md' %}h-8 w-8{% else %}h-[30px] w-[30px]{% endif %}">{{ account.account_name|make_list|first|upper }}</div>
+    {% endif %}
+    {% if account.platform != "youtube" %}<div class="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-surface-0">
+        {% include "partials/_platform_icon.html" with platform=account.platform size="sm" %}
+    </div>{% endif %}
+</div>

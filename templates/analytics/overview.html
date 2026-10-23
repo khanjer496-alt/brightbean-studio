@@ -1,0 +1,146 @@
+{% extends "base.html" %}
+{% load analytics_extras %}
+
+{% block title %}Analytics — {{ workspace.name }} — {{ brand_short_name }}{% endblock %}
+
+{% block content %}
+<div class="analytics-shell flex flex-1 flex-col" x-data="{ drawerOpen: false, drawerContent: '' }">
+    {% include "analytics/_nav.html" %}
+    <div class="mb-5 border-b border-line pb-4">{% include "analytics/_range_controls.html" %}</div>
+
+    <div class="flex flex-col gap-5">
+        <section aria-label="Totals across accounts" class="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
+            {% for kpi in kpis %}{% include "analytics/_kpi_card.html" %}{% endfor %}
+        </section>
+        {% if excluded %}
+        <p class="m-0 text-xs text-ink-3">
+            No analytics for {% for row in excluded %}{{ row.account.account_name }} ({{ row.unavailable }}){% if not forloop.last %}; {% endif %}{% endfor %}. Their posts are still counted under Posts published.
+        </p>
+        {% endif %}
+
+        <section class="rounded-xl border border-line bg-surface-1 p-5" aria-labelledby="trend-heading">
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <h2 id="trend-heading" class="m-0 text-[15px] font-semibold text-ink">{{ trend.label }} per day</h2>
+                <div class="inline-flex items-center gap-0.5 rounded-full border border-line bg-surface-2 p-[3px]">
+                    {% for option in series_options %}
+                        {% include "analytics/_pill.html" with url=option.url label=option.label active=option.active %}
+                    {% endfor %}
+                </div>
+            </div>
+            {% include "analytics/_chart.html" with chart_id="overview-trend" chart=trend summary=trend_summary %}
+        </section>
+
+        <section class="rounded-xl border border-line bg-surface-1" aria-labelledby="networks-heading">
+            <h2 id="networks-heading" class="m-0 border-b border-line px-5 py-4 text-[15px] font-semibold text-ink">By network</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse text-[13px]">
+                    <thead>
+                        <tr class="text-[11px] uppercase tracking-wider text-ink-3">
+                            <th scope="col" class="px-4 py-2.5 text-left font-semibold">Network</th>
+                            <th scope="col" class="px-4 py-2.5 text-right font-semibold">Followers</th>
+                            <th scope="col" class="px-4 py-2.5 text-left font-semibold">Views &amp; impressions</th>
+                            <th scope="col" class="px-4 py-2.5 text-right font-semibold">Engagements</th>
+                            <th scope="col" class="px-4 py-2.5 text-right font-semibold">Rate</th>
+                            <th scope="col" class="px-4 py-2.5 text-right font-semibold">New followers</th>
+                            <th scope="col" class="px-4 py-2.5 text-right font-semibold">Posts</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for n in networks %}
+                        <tr class="border-t border-line">
+                            <th scope="row" class="whitespace-nowrap px-4 py-2.5 text-left font-medium text-ink">
+                                <span class="inline-flex items-center gap-2">{% include "partials/_platform_icon.html" with platform=n.platform size="sm" %}{{ n.name }}<span class="text-xs font-normal text-ink-3">{{ n.accounts }} account{{ n.accounts|pluralize }}</span></span>
+                            </th>
+                            <td class="px-4 py-2.5 text-right font-mono text-ink-2">{% include "analytics/_figure.html" with value=n.followers kind="count" %}</td>
+                            <td class="min-w-40 px-4 py-2.5">
+                                {% if n.exposure is None %}<span class="text-ink-3">{% if n.unavailable %}No analytics{% else %}Not available{% endif %}</span>
+                                {% else %}<div class="flex items-center gap-2"><meter class="pd-meter min-w-20 flex-1" min="0" max="100" value="{{ n.share }}" aria-label="Share of the largest network">{{ n.share }}%</meter><span class="w-12 text-right font-mono text-ink-2">{{ n.exposure|fmt_metric:"count" }}</span></div>{% endif %}
+                            </td>
+                            <td class="px-4 py-2.5 text-right font-mono text-ink-2">{% include "analytics/_figure.html" with value=n.engagements kind="count" %}</td>
+                            <td class="px-4 py-2.5 text-right font-mono text-ink-2">{% include "analytics/_figure.html" with value=n.engagement_rate kind="percent" %}</td>
+                            <td class="px-4 py-2.5 text-right font-mono text-ink-2">{% include "analytics/_figure.html" with value=n.new_followers kind="count" %}</td>
+                            <td class="px-4 py-2.5 text-right font-mono text-ink-2">{{ n.posts }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="rounded-xl border border-line bg-surface-1" aria-labelledby="top-heading">
+            <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4">
+                <h2 id="top-heading" class="m-0 text-[15px] font-semibold text-ink">Top posts</h2>
+                <div class="inline-flex items-center gap-0.5 rounded-full border border-line bg-surface-2 p-[3px]">
+                    {% for option in top_options %}{% include "analytics/_pill.html" with url=option.url label=option.label active=option.active %}{% endfor %}
+                </div>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse text-[13px]">
+                    <thead>
+                        <tr class="text-[11px] uppercase tracking-wider text-ink-3">
+                            <th scope="col" class="px-4 py-2.5 text-left font-semibold">Post</th>
+                            <th scope="col" class="px-4 py-2.5 text-left font-semibold">Account</th>
+                            <th scope="col" class="px-4 py-2.5 text-right font-semibold">Views &amp; impressions</th>
+                            <th scope="col" class="px-4 py-2.5 text-right font-semibold">Engagements</th>
+                            <th scope="col" class="px-4 py-2.5 text-right font-semibold">Rate</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for r in top_posts %}
+                        <tr data-post-url="{% url 'analytics:post_detail' workspace_id=workspace.id post_id=r.post.id %}" class="cursor-pointer border-t border-line hover:bg-surface-2">
+                            <td class="max-w-72 px-4 py-2.5 text-ink">
+                                <a href="{% url 'analytics:post_detail' workspace_id=workspace.id post_id=r.post.id %}" class="line-clamp-1 text-ink no-underline">{{ r.caption|default:"(no caption)" }}</a>
+                                <span class="text-xs text-ink-3">{{ r.published_at|date:"M j, Y" }} · {{ r.format }}</span>
+                            </td>
+                            <td class="whitespace-nowrap px-4 py-2.5 text-ink-2">{{ r.account.account_name }}</td>
+                            <td class="px-4 py-2.5 text-right font-mono text-ink-2">{% include "analytics/_figure.html" with value=r.exposure kind="count" %}</td>
+                            <td class="px-4 py-2.5 text-right font-mono text-ink-2">{% include "analytics/_figure.html" with value=r.engagements kind="count" %}</td>
+                            <td class="px-4 py-2.5 text-right font-mono text-ink-2">{% include "analytics/_figure.html" with value=r.rate kind="percent" %}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="5" class="px-4 py-8 text-center text-ink-3">No published posts with {% if top_sort == "engagements" %}engagement{% else %}view{% endif %} data in this range.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="rounded-xl border border-line bg-surface-1" aria-labelledby="formats-heading">
+            <h2 id="formats-heading" class="m-0 border-b border-line px-5 py-4 text-[15px] font-semibold text-ink">Best performing post types</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse text-[13px]">
+                    <thead>
+                        <tr class="text-[11px] uppercase tracking-wider text-ink-3">
+                            <th scope="col" class="px-4 py-2.5 text-left font-semibold">Type</th>
+                            <th scope="col" class="px-4 py-2.5 text-right font-semibold">Posts</th>
+                            <th scope="col" class="px-4 py-2.5 text-right font-semibold">Avg engagements</th>
+                            <th scope="col" class="px-4 py-2.5 text-right font-semibold">Avg views &amp; impressions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for f in formats %}
+                        <tr class="border-t border-line">
+                            <th scope="row" class="px-4 py-2.5 text-left font-medium text-ink">{{ f.format }}</th>
+                            <td class="px-4 py-2.5 text-right font-mono text-ink-2">{{ f.posts }}</td>
+                            <td class="px-4 py-2.5 text-right font-mono text-ink-2">{% include "analytics/_figure.html" with value=f.avg_engagements kind="count" %}</td>
+                            <td class="px-4 py-2.5 text-right font-mono text-ink-2">{% include "analytics/_figure.html" with value=f.avg_exposure kind="count" %}</td>
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="4" class="px-4 py-8 text-center text-ink-3">No posts were published in this range.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p class="m-0 border-t border-line px-5 py-3 text-xs text-ink-3">Averages mix networks, so read them as a guide. A post type only averages the posts that report the figure.</p>
+        </section>
+    </div>
+    {% include "analytics/_drawer.html" %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% load static %}
+<script src="{% static 'js/vendor/chart.umd.min.js' %}"></script>
+<script src="{% static 'js/analytics-charts.js' %}"></script>
+<script src="{% static 'js/analytics-range.js' %}"></script>
+{% endblock %}

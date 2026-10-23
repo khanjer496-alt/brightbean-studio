@@ -1,100 +1,77 @@
 {% load analytics_extras %}
+{# Table links keep the page range (range_qs) and add the table's own filters. #}
 <div id="analytics-post-table">
     {# Toolbar #}
-    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 16px; border-bottom: 1px solid var(--neutral-100);">
-        <span style="font-size: 0.8125rem; color: var(--text-secondary);">
-            <strong class="a-mono" style="color: var(--text-primary);">{{ table.total }}</strong> post{{ table.total|pluralize }} ·
-            {% if table.days_filter %}last {{ table.days_filter }} days{% else %}all time{% endif %}
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-4 py-3">
+        <span class="text-[13px] text-ink-2">
+            <strong class="font-mono text-ink">{{ table.total }}</strong> post{{ table.total|pluralize }} ·
+            {% if table_scope == "all" %}all time{% elif table_scope == "range" %}{{ range.label|lower }}{% else %}last {{ table_scope }} days{% endif %}
         </span>
-        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+        <div class="flex flex-wrap items-center gap-2">
             {% if table.media_kinds|length > 1 %}
-            <div class="a-pill-group">
-                <a href="?range={{ days }}&type=all&table_range={{ table.days_filter|default_if_none:'all' }}"
-                   hx-get="?range={{ days }}&type=all&table_range={{ table.days_filter|default_if_none:'all' }}&partial=table"
-                   hx-target="#analytics-post-table"
-                   hx-swap="outerHTML"
-                   class="{% if table.type_filter == 'all' %}active{% endif %}">All</a>
+            <div class="inline-flex items-center gap-0.5 rounded-full border border-line bg-surface-2 p-[3px]">
+                {% table_url range_qs type="all" table_range=table_scope as url %}{% table_url range_qs True type="all" table_range=table_scope as hx_url %}
+                {% include "analytics/_pill.html" with url=url hx_url=hx_url hx_target="#analytics-post-table" label="All" current=table.type_filter value="all" %}
                 {% for k in table.media_kinds %}
-                <a href="?range={{ days }}&type={{ k }}&table_range={{ table.days_filter|default_if_none:'all' }}"
-                   hx-get="?range={{ days }}&type={{ k }}&table_range={{ table.days_filter|default_if_none:'all' }}&partial=table"
-                   hx-target="#analytics-post-table"
-                   hx-swap="outerHTML"
-                   class="{% if table.type_filter == k %}active{% endif %}">{{ k }}s</a>
+                {% table_url range_qs type=k table_range=table_scope as url %}{% table_url range_qs True type=k table_range=table_scope as hx_url %}
+                {% include "analytics/_pill.html" with url=url hx_url=hx_url hx_target="#analytics-post-table" label=k current=table.type_filter value=k %}
                 {% endfor %}
             </div>
             {% endif %}
-            <div class="a-pill-group">
-                {% for r in range_choices %}
-                <a href="?range={{ days }}&table_range={{ r }}&type={{ table.type_filter }}"
-                   hx-get="?range={{ days }}&table_range={{ r }}&type={{ table.type_filter }}&partial=table"
-                   hx-target="#analytics-post-table"
-                   hx-swap="outerHTML"
-                   class="{% if table.days_filter == r %}active{% endif %}">{{ r }}D</a>
-                {% endfor %}
-                <a href="?range={{ days }}&table_range=all&type={{ table.type_filter }}"
-                   hx-get="?range={{ days }}&table_range=all&type={{ table.type_filter }}&partial=table"
-                   hx-target="#analytics-post-table"
-                   hx-swap="outerHTML"
-                   class="{% if table.days_filter is None %}active{% endif %}">All time</a>
+            <div class="inline-flex items-center gap-0.5 rounded-full border border-line bg-surface-2 p-[3px]">
+                {% table_url range_qs type=table.type_filter table_range="range" as url %}{% table_url range_qs True type=table.type_filter table_range="range" as hx_url %}
+                {% include "analytics/_pill.html" with url=url hx_url=hx_url hx_target="#analytics-post-table" label="This range" current=table_scope value="range" %}
+                {% table_url range_qs type=table.type_filter table_range="all" as url %}{% table_url range_qs True type=table.type_filter table_range="all" as hx_url %}
+                {% include "analytics/_pill.html" with url=url hx_url=hx_url hx_target="#analytics-post-table" label="All time" current=table_scope value="all" %}
             </div>
         </div>
     </div>
 
     {# Table #}
-    <div style="overflow-x: auto;">
-        <table class="a-table">
+    <div class="overflow-x-auto">
+        <table class="w-full border-collapse text-[13px]">
             <thead>
-                <tr style="border-bottom: 1px solid var(--border);">
-                    <th class="first">Post</th>
-                    {% with toggled_dir=table.toggled_dir %}
-                    <th>
-                        <a href="?range={{ days }}&sort=date&dir={% if table.sort_key == 'date' %}{{ toggled_dir }}{% else %}desc{% endif %}&type={{ table.type_filter }}&table_range={{ table.days_filter|default_if_none:'all' }}"
-                           hx-get="?range={{ days }}&sort=date&dir={% if table.sort_key == 'date' %}{{ toggled_dir }}{% else %}desc{% endif %}&type={{ table.type_filter }}&table_range={{ table.days_filter|default_if_none:'all' }}&partial=table"
-                           hx-target="#analytics-post-table"
-                           hx-swap="outerHTML"
-                           style="text-decoration: none; color: inherit;">
-                            Date {% if table.sort_key == 'date' %}<span>{% if table.sort_dir == 'asc' %}↑{% else %}↓{% endif %}</span>{% endif %}
+                <tr class="border-b border-line text-[11px] uppercase tracking-wider text-ink-3">
+                    <th scope="col" class="px-3 py-2.5 text-left font-semibold">Post</th>
+                                        <th scope="col" class="whitespace-nowrap px-3 py-2.5 text-right font-semibold" {% if table.sort_key == "date" %}aria-sort="{% if table.sort_dir == 'asc' %}ascending{% else %}descending{% endif %}"{% endif %}>
+                        {% sort_url range_qs table "date" table_scope as url %}{% sort_url range_qs table "date" table_scope True as hx_url %}
+                        <a href="{{ url }}" hx-get="{{ hx_url }}" hx-target="#analytics-post-table" hx-swap="outerHTML" class="text-inherit no-underline">
+                            Date {% if table.sort_key == 'date' %}<span aria-hidden="true">{% if table.sort_dir == 'asc' %}↑{% else %}↓{% endif %}</span>{% endif %}
                         </a>
                     </th>
                     {% for ml in table.metric_labels %}
-                    <th>
-                        <a href="?range={{ days }}&sort={{ ml.key }}&dir={% if table.sort_key == ml.key %}{{ toggled_dir }}{% else %}desc{% endif %}&type={{ table.type_filter }}&table_range={{ table.days_filter|default_if_none:'all' }}"
-                           hx-get="?range={{ days }}&sort={{ ml.key }}&dir={% if table.sort_key == ml.key %}{{ toggled_dir }}{% else %}desc{% endif %}&type={{ table.type_filter }}&table_range={{ table.days_filter|default_if_none:'all' }}&partial=table"
-                           hx-target="#analytics-post-table"
-                           hx-swap="outerHTML"
-                           style="text-decoration: none; color: inherit;">
-                            {{ ml.label }} {% if table.sort_key == ml.key %}<span>{% if table.sort_dir == 'asc' %}↑{% else %}↓{% endif %}</span>{% endif %}
+                    <th scope="col" class="whitespace-nowrap px-3 py-2.5 text-right font-semibold" {% if table.sort_key == ml.key %}aria-sort="{% if table.sort_dir == 'asc' %}ascending{% else %}descending{% endif %}"{% endif %}>
+                        {% sort_url range_qs table ml.key table_scope as url %}{% sort_url range_qs table ml.key table_scope True as hx_url %}
+                        <a href="{{ url }}" hx-get="{{ hx_url }}" hx-target="#analytics-post-table" hx-swap="outerHTML" class="text-inherit no-underline">
+                            {{ ml.label }} {% if table.sort_key == ml.key %}<span aria-hidden="true">{% if table.sort_dir == 'asc' %}↑{% else %}↓{% endif %}</span>{% endif %}
                         </a>
                     </th>
                     {% endfor %}
-                    {% endwith %}
                 </tr>
             </thead>
             <tbody>
                 {% for r in table.rows %}
-                <tr data-post-url="{% url 'analytics:post_detail' workspace_id=workspace.id post_id=r.post.id %}" style="cursor: pointer;">
-                    <td class="first">
-                        <div style="display: flex; align-items: center; gap: 10px;">
+                <tr data-post-url="{% url 'analytics:post_detail' workspace_id=workspace.id post_id=r.post.id %}" class="cursor-pointer border-b border-line hover:bg-surface-2">
+                    <td class="max-w-72 px-3 py-2.5 text-ink">
+                        <div class="flex items-center gap-2.5">
                             {% if r.media_preview.kind == 'video' %}
-                            <video src="{{ r.media_preview.url }}#t=0.5" muted preload="metadata"
-                                   style="width: 36px; height: 36px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: var(--surface-2);"></video>
+                            <video src="{{ r.media_preview.url }}#t=0.5" muted preload="metadata" class="h-9 w-9 shrink-0 rounded-md bg-surface-2 object-cover"></video>
                             {% elif r.media_preview %}
-                            <img src="{{ r.media_preview.url }}" alt=""
-                                 style="width: 36px; height: 36px; border-radius: 6px; object-fit: cover; flex-shrink: 0; background: var(--surface-2);">
+                            <img src="{{ r.media_preview.url }}" alt="" class="h-9 w-9 shrink-0 rounded-md bg-surface-2 object-cover">
                             {% else %}
-                            <div style="width: 36px; height: 36px; border-radius: 6px; background: var(--surface-2); flex-shrink: 0;"></div>
+                            <div class="h-9 w-9 shrink-0 rounded-md bg-surface-2"></div>
                             {% endif %}
-                            <span style="overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;">{{ r.caption|default:"(no caption)" }}</span>
+                            <a href="{% url 'analytics:post_detail' workspace_id=workspace.id post_id=r.post.id %}" class="line-clamp-1 text-ink no-underline">{{ r.caption|default:"(no caption)" }}</a>
                         </div>
                     </td>
-                    <td style="font-size: 0.75rem; color: var(--text-tertiary);">{{ r.date }}</td>
+                    <td class="whitespace-nowrap px-3 py-2.5 text-right font-mono text-xs text-ink-3">{{ r.date }}</td>
                     {% for ml in table.metric_labels %}
-                    <td class="{% if ml.key == table.sort_key %}sort-col{% endif %}">{% if active_account.platform == "youtube" %}{{ r.stats|get_item:ml.key|fmt_metric:ml.kind }}{% else %}{{ r.stats|get_stat:ml.key|fmt_metric:ml.kind }}{% endif %}</td>
+                    <td class="whitespace-nowrap px-3 py-2.5 text-right font-mono {% if ml.key == table.sort_key %}font-bold text-ink{% else %}text-ink-2{% endif %}">{% if active_account.platform == "youtube" %}{{ r.stats|get_item:ml.key|fmt_metric:ml.kind }}{% else %}{{ r.stats|get_stat:ml.key|fmt_metric:ml.kind }}{% endif %}</td>
                     {% endfor %}
                 </tr>
                 {% empty %}
                 <tr>
-                    <td colspan="{{ table.metric_labels|length|add:2 }}" style="padding: 28px; text-align: center; color: var(--text-tertiary); font-family: inherit;">No posts match these filters.</td>
+                    <td colspan="{{ table.metric_labels|length|add:2 }}" class="px-7 py-7 text-center text-ink-3">No posts match these filters.</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -102,29 +79,21 @@
     </div>
 
     {# Pagination #}
-    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px 16px; border-top: 1px solid var(--neutral-100);">
-        <span class="a-mono" style="font-size: 0.75rem; color: var(--text-tertiary);">
-            {{ table.page_from }}–{{ table.page_to }} of {{ table.total }}
-        </span>
-        <div style="display: flex; align-items: center; gap: 8px;">
+    <div class="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3">
+        <span class="font-mono text-xs text-ink-3">{{ table.page_from }}–{{ table.page_to }} of {{ table.total }}</span>
+        <div class="flex items-center gap-2">
             {% if table.page > 1 %}
-            <a href="?range={{ days }}&sort={{ table.sort_key }}&dir={{ table.sort_dir }}&type={{ table.type_filter }}&table_range={{ table.days_filter|default_if_none:'all' }}&page={{ table.page|add:-1 }}"
-               hx-get="?range={{ days }}&sort={{ table.sort_key }}&dir={{ table.sort_dir }}&type={{ table.type_filter }}&table_range={{ table.days_filter|default_if_none:'all' }}&page={{ table.page|add:-1 }}&partial=table"
-               hx-target="#analytics-post-table"
-               hx-swap="outerHTML"
-               style="width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-md); border: 1px solid var(--border); background: #fff; color: var(--text-secondary); text-decoration: none;">‹</a>
+            {% table_url range_qs sort=table.sort_key dir=table.sort_dir type=table.type_filter table_range=table_scope page=table.page|add:-1 as url %}{% table_url range_qs True sort=table.sort_key dir=table.sort_dir type=table.type_filter table_range=table_scope page=table.page|add:-1 as hx_url %}
+            <a href="{{ url }}" hx-get="{{ hx_url }}" hx-target="#analytics-post-table" hx-swap="outerHTML" aria-label="Previous page" class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-line bg-surface-1 text-ink-2 no-underline">‹</a>
             {% else %}
-            <span style="width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-md); border: 1px solid var(--border); background: #fff; opacity: 0.4; color: var(--text-secondary);">‹</span>
+            <span aria-hidden="true" class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-line bg-surface-1 text-ink-2 opacity-40">‹</span>
             {% endif %}
-            <span class="a-mono" style="font-size: 0.75rem; color: var(--text-secondary); min-width: 84px; text-align: center;">Page {{ table.page }} of {{ table.total_pages }}</span>
+            <span class="min-w-[84px] text-center font-mono text-xs text-ink-2">Page {{ table.page }} of {{ table.total_pages }}</span>
             {% if table.page < table.total_pages %}
-            <a href="?range={{ days }}&sort={{ table.sort_key }}&dir={{ table.sort_dir }}&type={{ table.type_filter }}&table_range={{ table.days_filter|default_if_none:'all' }}&page={{ table.page|add:1 }}"
-               hx-get="?range={{ days }}&sort={{ table.sort_key }}&dir={{ table.sort_dir }}&type={{ table.type_filter }}&table_range={{ table.days_filter|default_if_none:'all' }}&page={{ table.page|add:1 }}&partial=table"
-               hx-target="#analytics-post-table"
-               hx-swap="outerHTML"
-               style="width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-md); border: 1px solid var(--border); background: #fff; color: var(--text-secondary); text-decoration: none;">›</a>
+            {% table_url range_qs sort=table.sort_key dir=table.sort_dir type=table.type_filter table_range=table_scope page=table.page|add:1 as url %}{% table_url range_qs True sort=table.sort_key dir=table.sort_dir type=table.type_filter table_range=table_scope page=table.page|add:1 as hx_url %}
+            <a href="{{ url }}" hx-get="{{ hx_url }}" hx-target="#analytics-post-table" hx-swap="outerHTML" aria-label="Next page" class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-line bg-surface-1 text-ink-2 no-underline">›</a>
             {% else %}
-            <span style="width: 30px; height: 30px; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-md); border: 1px solid var(--border); background: #fff; opacity: 0.4; color: var(--text-secondary);">›</span>
+            <span aria-hidden="true" class="inline-flex h-9 w-9 items-center justify-center rounded-md border border-line bg-surface-1 text-ink-2 opacity-40">›</span>
             {% endif %}
         </div>
     </div>

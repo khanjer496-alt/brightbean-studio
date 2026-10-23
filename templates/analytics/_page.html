@@ -6,14 +6,14 @@
 {% if active_account.platform == "instagram" and not analytics_unavailable %}
     {% include "analytics/_instagram_status.html" with account=active_account workspace_id=workspace.id %}
 {% elif analytics_needs_reconnect %}
-<div class="a-card" style="padding: 18px 22px; margin-bottom: 16px; background: var(--warning-50); border-color: var(--warning-500); display: flex; align-items: center; justify-content: space-between; gap: 16px;">
+<div class="mb-4 flex items-center justify-between gap-4 rounded-xl border border-warn bg-warn-soft px-5 py-4">
     <div>
-        <div style="font-weight: 700; color: var(--warning-700);">Reconnect for analytics</div>
-        <div style="font-size: 0.8125rem; color: var(--text-secondary); margin-top: 2px;">The platform rejected our analytics call as insufficient-scope. Reconnect to grant the new permissions.</div>
+        <div class="font-bold text-warn">Reconnect for analytics</div>
+        <div class="mt-0.5 text-[13px] text-ink-2">The platform rejected our analytics call as insufficient-scope. Reconnect to grant the new permissions.</div>
     </div>
     <form method="post" action="{% url 'social_accounts:reconnect' workspace_id=workspace.id account_id=active_account.id %}">
         {% csrf_token %}
-        <button type="submit" class="btn-brand" style="width: auto; padding: 8px 18px;">Reconnect</button>
+        <button type="submit" class="btn-brand w-auto px-5 py-2">Reconnect</button>
     </form>
 </div>
 {% endif %}
@@ -21,9 +21,9 @@
 {% if analytics_unavailable %}
     {% include "analytics/_no_analytics_state.html" %}
     {% if table.total %}
-        <div class="a-card" style="margin-top: 20px;">
-            <div style="padding: 16px 20px; border-bottom: 1px solid var(--neutral-100);">
-                <h3 style="font-size: 0.9375rem; font-weight: 600; color: var(--text-primary);">All posts</h3>
+        <div class="mt-5 rounded-xl border border-line bg-surface-1">
+            <div class="border-b border-line px-5 py-4">
+                <h3 class="m-0 text-[15px] font-semibold text-ink">All posts</h3>
             </div>
             {% include "analytics/_post_table.html" %}
         </div>
@@ -31,32 +31,32 @@
 {% elif is_fresh %}
     {% include "analytics/_empty_state.html" %}
 {% else %}
-    <div style="display: flex; flex-direction: column; gap: 20px;">
+    <div class="flex flex-col gap-5">
         {# Hero row: KPI cards + engagement card #}
-        <div class="a-hero-row">
+        <div class="flex flex-wrap items-stretch gap-4">
             {% for c in hero_cards %}
-                <div class="a-kpi">{% include "analytics/_stat_card.html" with metric_key=c.metric label=c.label derived=c.derived %}</div>
+                <div class="min-w-[165px] flex-[1_1_175px]">{% include "analytics/_stat_card.html" with metric_key=c.metric label=c.label derived=c.derived %}</div>
             {% endfor %}
             {% if engagement %}
-                <div class="a-eng-card">{% include "analytics/_engagement_card.html" with engagement=engagement %}</div>
+                <div class="min-w-[300px] flex-[4_1_460px]">{% include "analytics/_engagement_card.html" with engagement=engagement %}</div>
             {% endif %}
         </div>
         {% if calculated_note %}
-            <p class="a-calc-note" style="display: flex; align-items: flex-start; gap: 6px; margin-top: -8px;">
-                <svg width="13" height="13" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" style="flex-shrink: 0; margin-top: 1px;" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <p class="-mt-2 flex items-start gap-1.5 text-[11px] leading-snug text-ink-3">
+                <svg class="mt-px h-3.5 w-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                 <span>{{ calculated_note }}</span>
             </p>
         {% endif %}
 
         {# Hero trend chart #}
-        <div class="a-card" style="padding: 20px;">
+        <div class="rounded-xl border border-line bg-surface-1 p-5">
             {% include "analytics/_hero_chart.html" %}
         </div>
 
         {# All posts table #}
-        <div class="a-card">
-            <div style="padding: 16px 20px; border-bottom: 1px solid var(--neutral-100);">
-                <h3 style="font-size: 0.9375rem; font-weight: 600; color: var(--text-primary);">All posts</h3>
+        <div class="rounded-xl border border-line bg-surface-1">
+            <div class="border-b border-line px-5 py-4">
+                <h3 class="m-0 text-[15px] font-semibold text-ink">All posts</h3>
             </div>
             {% include "analytics/_post_table.html" %}
         </div>

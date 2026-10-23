@@ -990,86 +990,8 @@
     </script>
     <script src="{% static 'js/alpine.min.js' %}" defer></script>
     <script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.6/Sortable.min.js"></script>
     <script nonce="{{ request.csp_nonce }}">
-        /* Analytics hero chart: read data attrs off the canvas, (re)create Chart.js.
-           Lives in base.html so its CSP nonce matches the parent page — the chart
-           partial re-renders on HTMX swaps via the htmx:afterSwap hook below. */
-        function bbInitHeroChart(retries) {
-            if (typeof Chart === 'undefined') {
-                /* Chart.js is loaded synchronously above this script, so the
-                   poll should never fire in practice. Cap retries anyway —
-                   if the CDN ever fails (adblock, offline), recursing every
-                   30ms forever burns CPU on every page load. */
-                if ((retries || 0) > 30) return;
-                setTimeout(function () { bbInitHeroChart((retries || 0) + 1); }, 30);
-                return;
-            }
-            var canvas = document.getElementById('analytics-area-chart');
-            if (!canvas) return;
-            var data, labels;
-            try {
-                data = JSON.parse(canvas.dataset.series || '[]');
-                labels = JSON.parse(canvas.dataset.labels || '[]');
-            } catch (e) { return; }
-            var color = '#a58aff';
-            if (window._bbHeroChart) { window._bbHeroChart.destroy(); }
-            var ctx = canvas.getContext('2d');
-            var gradient = ctx.createLinearGradient(0, 0, 0, 260);
-            function hexToRgba(c, a) {
-                var v = c.replace('#', '');
-                var r = parseInt(v.slice(0, 2), 16), g = parseInt(v.slice(2, 4), 16), b = parseInt(v.slice(4, 6), 16);
-                return 'rgba(' + r + ',' + g + ',' + b + ',' + a + ')';
-            }
-            gradient.addColorStop(0, hexToRgba(color, 0.28));
-            gradient.addColorStop(1, hexToRgba(color, 0.0));
-            window._bbHeroChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        data: data,
-                        borderColor: color,
-                        backgroundColor: gradient,
-                        fill: true,
-                        tension: 0.32,
-                        pointRadius: canvas.dataset.platform === 'youtube' ? data.map(function(value, index) {
-                            // A reported day surrounded by gaps still needs a visible dot.
-                            return value !== null && (index === 0 || data[index - 1] === null)
-                                && (index === data.length - 1 || data[index + 1] === null) ? 3 : 0;
-                        }) : 0,
-                        pointHoverRadius: 4,
-                        pointHoverBackgroundColor: color,
-                        borderWidth: 2,
-                    }],
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: { mode: 'index', intersect: false },
-                    },
-                    scales: {
-                        x: { grid: { display: false }, ticks: { maxTicksLimit: 6, color: '#929bad' } },
-                        y: { beginAtZero: true, grid: { color: '#2a2e3c' }, ticks: { color: '#929bad' } },
-                    },
-                },
-            });
-        }
-        // Wrap in a no-arg callback so the DOMContentLoaded event object
-        // doesn't get passed as ``retries`` — that would make
-        // ``(retries || 0) + 1`` string-concatenate the event each tick and
-        // the ``> 30`` cap below would never trip when Chart.js is offline.
-        document.addEventListener('DOMContentLoaded', function () { bbInitHeroChart(); });
-        document.body.addEventListener('htmx:afterSwap', function(evt) {
-            var target = evt.detail && evt.detail.target;
-            if (target && target.id === 'analytics-hero-chart') {
-                bbInitHeroChart();
-            }
-        });
-
         document.addEventListener('DOMContentLoaded', function() {
             document.querySelectorAll('.form-datetime[type="date"]').forEach(function(el) {
                 var fp = flatpickr(el, {
