@@ -212,6 +212,10 @@ class SocialProvider(ABC):
     # user pick which become accounts, like Facebook Pages.
     has_destination_picker: ClassVar[bool] = False
 
+    # True when disconnect should hand ``revoke_token`` the refresh token rather
+    # than the access token: it outlives the access token and ends the grant.
+    revocation_uses_refresh_token: ClassVar[bool] = False
+
     # Shown when the destination picker finds nothing to offer, and what to do about it.
     no_destinations_hint: ClassVar[str] = ""
 

@@ -82,6 +82,7 @@ A free hosted version is available at [brightbean.xyz/studio](https://brightbean
 | <img src="https://cdn.simpleicons.org/telegram" width="16" height="16"> Telegram | ✓ | — | — | — |
 | <img src="https://cdn.simpleicons.org/discord" width="16" height="16"> Discord | ✓ | — | — | — |
 | <img src="https://cdn.simpleicons.org/slack" width="16" height="16"> Slack | ✓ | — | — | — |
+| <img src="https://cdn.simpleicons.org/reddit" width="16" height="16"> Reddit | ✓ | — | — | — |
 
 ---
 
@@ -775,6 +776,15 @@ Users click **Connect**, choose a server and approve the bot (View Channel, Send
 5. Under **Manage Distribution**, activate public distribution if workspaces other than your own will install it
 
 Users click **Connect**, approve the app for their workspace and tick the channels to connect. Slack only lists channels the app has been added to, so a channel needs `/invite @app` first. Messages use Slack mrkdwn; files are uploaded into the message's thread; thread parts and first comments are replies in that thread.
+
+### Reddit
+
+1. Open [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps) and create an app of type **web app**
+2. Set the redirect URI to `https://<your-domain>/social-accounts/callback/reddit/`
+3. Copy the app id (under the app name) into `PLATFORM_REDDIT_CLIENT_ID` and the secret into `PLATFORM_REDDIT_CLIENT_SECRET`
+4. Set `PLATFORM_REDDIT_USER_AGENT` to `web:<app id>:<version> (by /u/<your Reddit username>)`, the form Reddit's [API rules](https://github.com/reddit-archive/reddit/wiki/API) require
+
+An account is a Reddit user. Each post sets its own subreddit (and optionally a flair, loaded from the subreddit), whether it is a text or link post, and NSFW/spoiler marks; the post title is required. Reddit's image and video upload is not supported, so posts are text or links, and extra thread parts are comments on the post.
 
 ## Inbox: Backfill Historical Messages
 

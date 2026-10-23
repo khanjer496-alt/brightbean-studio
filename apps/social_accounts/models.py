@@ -461,6 +461,13 @@ class SocialAccount(models.Model):
         "google_business": {
             "supports_first_comment": False,
         },
+        "reddit": {
+            "needs_title": True,
+            "title_max_length": 300,
+            "title_label": "Post Title",
+            "caption_label": "Text (Markdown)",
+            "supports_first_comment": True,
+        },
         "devto": {
             "needs_title": True,
             "title_max_length": 128,
@@ -534,14 +541,14 @@ class SocialAccount(models.Model):
         grant would survive. The refresh token revokes the same grant and
         outlives it.
         """
-        if (
-            self.platform
-            in {
-                PlatformCredential.Platform.YOUTUBE,
-                PlatformCredential.Platform.GOOGLE_BUSINESS,
-            }
-            and self.oauth_refresh_token
-        ):
+        from providers import PROVIDER_REGISTRY
+
+        provider_cls = PROVIDER_REGISTRY.get(self.platform)
+        prefers_refresh_token = self.platform in {
+            PlatformCredential.Platform.YOUTUBE,
+            PlatformCredential.Platform.GOOGLE_BUSINESS,
+        } or bool(provider_cls and provider_cls.revocation_uses_refresh_token)
+        if prefers_refresh_token and self.oauth_refresh_token:
             return self.oauth_refresh_token
         return self.oauth_access_token
 
@@ -583,6 +590,7 @@ class SocialAccount(models.Model):
             "telegram": "tg",
             "discord": "dc",
             "slack": "sl",
+            "reddit": "rd",
         }
         return icons.get(self.platform, self.platform[:2])
 

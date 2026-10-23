@@ -24,4 +24,5 @@ NO_ANALYTICS_PLATFORMS: dict[str, str] = {
     "telegram": ("The Telegram Bot API doesn't expose post analytics."),
     "discord": ("Discord doesn't expose post analytics for channel messages."),
     "slack": ("Slack doesn't expose post analytics for channel messages."),
+    "reddit": ("Reddit analytics aren't wired up yet; publishing is supported."),
 }

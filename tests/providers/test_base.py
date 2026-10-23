@@ -32,6 +32,7 @@ class TestProviderRegistry:
             "telegram",
             "discord",
             "slack",
+            "reddit",
         }
         assert set(PROVIDER_REGISTRY.keys()) == expected
 

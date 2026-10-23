@@ -676,6 +676,13 @@ PLATFORM_CREDENTIALS_FROM_ENV = {
         "client_id": env("PLATFORM_SLACK_CLIENT_ID", default=""),
         "client_secret": env("PLATFORM_SLACK_CLIENT_SECRET", default=""),
     },
+    # Reddit - OAuth2 web app. The User-Agent is optional; Reddit's rules want
+    # "<platform>:<app id>:<version> (by /u/<your username>)".
+    "reddit": {
+        "client_id": env("PLATFORM_REDDIT_CLIENT_ID", default=""),
+        "client_secret": env("PLATFORM_REDDIT_CLIENT_SECRET", default=""),
+        "user_agent": env("PLATFORM_REDDIT_USER_AGENT", default=""),
+    },
 }
 
 # Publishing engine

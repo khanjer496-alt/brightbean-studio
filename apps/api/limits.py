@@ -81,6 +81,8 @@ PLATFORM_DAILY_POST_LIMIT: dict[str, int] = {
     "discord": 200,
     # Roughly one message a second per channel is Slack's own ceiling.
     "slack": 200,
+    # Reddit throttles new accounts and each subreddit hard; keep well under it.
+    "reddit": 25,
 }
 
 _DEFAULT_FALLBACK = 50

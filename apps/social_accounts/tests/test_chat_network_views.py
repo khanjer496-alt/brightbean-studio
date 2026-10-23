@@ -41,6 +41,7 @@ class TestConnectPageVisibility:
             ("telegram", {"bot_token": "123:ABC"}),
             ("discord", {"client_id": "app", "client_secret": "shh", "bot_token": "bot"}),
             ("slack", {"client_id": "app", "client_secret": "shh"}),
+            ("reddit", {"client_id": "app", "client_secret": "shh"}),
         ],
     )
     def test_offered_when_configured_and_hidden_when_not(
@@ -287,3 +288,85 @@ class TestSlackConnect:
                 reverse("social_accounts:disconnect", kwargs={"workspace_id": workspace.id, "account_id": account.id})
             )
         assert not SocialAccount.objects.filter(pk=account.pk).exists()
+
+
+@pytest.mark.django_db
+class TestRedditConnect:
+    @pytest.fixture(autouse=True)
+    def configured(self, settings):
+        settings.PLATFORM_CREDENTIALS_FROM_ENV = {
+            **settings.PLATFORM_CREDENTIALS_FROM_ENV,
+            "reddit": {"client_id": "app", "client_secret": "shh"},
+        }
+
+    def test_connect_redirects_to_reddit_asking_for_a_permanent_grant(self, authenticated_client, workspace):
+        response = authenticated_client.post(connect_url(workspace), {"platform": "reddit"})
+        assert response.url.startswith("https://www.reddit.com/api/v1/authorize?")
+        assert "duration=permanent" in response.url
+
+    def test_callback_connects_the_user_with_a_refreshable_token(self, authenticated_client, workspace, user):
+        from providers.types import OAuthTokens
+
+        url, state = start_oauth(authenticated_client, workspace, user, "reddit")
+        tokens = OAuthTokens(access_token="at", refresh_token="rt", expires_in=3600)
+        profile = AccountProfile(platform_id="u1", name="u/alice", handle="alice", follower_count=7)
+        with (
+            patch("providers.reddit.RedditProvider.exchange_code", return_value=tokens),
+            patch("providers.reddit.RedditProvider.get_profile", return_value=profile),
+        ):
+            response = authenticated_client.get(url, {"code": "abc", "state": state})
+        assert response.status_code == 302
+        account = SocialAccount.objects.get(workspace=workspace, platform="reddit")
+        assert account.account_name == "u/alice"
+        assert account.account_handle == "alice"
+        assert account.oauth_access_token == "at"
+        assert account.oauth_refresh_token == "rt"
+        assert account.token_expires_at is not None
+
+    def test_the_account_refreshes_through_the_provider(self, workspace):
+        from providers.reddit import RedditProvider
+        from providers.types import OAuthTokens
+
+        account = SocialAccount.objects.create(
+            workspace=workspace,
+            platform="reddit",
+            account_platform_id="u1",
+            account_name="u/alice",
+            oauth_access_token="old",
+            oauth_refresh_token="rt",
+        )
+        provider = RedditProvider({"client_id": "app", "client_secret": "shh"})
+        with patch.object(
+            RedditProvider,
+            "refresh_token",
+            return_value=OAuthTokens(access_token="new", refresh_token="rt", expires_in=3600),
+        ) as refresh:
+            assert account.refresh_oauth_token(provider) == "new"
+        refresh.assert_called_once_with("rt")
+        account.refresh_from_db()
+        assert account.oauth_access_token == "new"
+        assert account.oauth_refresh_token == "rt"
+        assert account.token_expires_at is not None
+
+    def test_disconnect_revokes_the_refresh_token_and_says_so(self, authenticated_client, workspace):
+        account = SocialAccount.objects.create(
+            workspace=workspace,
+            platform="reddit",
+            account_platform_id="u1",
+            account_name="u/alice",
+            oauth_access_token="at",
+            oauth_refresh_token="rt",
+        )
+        assert account.revokes_platform_grant_on_disconnect is True
+        assert account.revocation_token == "rt"
+        with patch("providers.reddit.RedditProvider.revoke_token", return_value=True) as revoke:
+            authenticated_client.post(
+                reverse("social_accounts:disconnect", kwargs={"workspace_id": workspace.id, "account_id": account.id})
+            )
+        revoke.assert_called_once_with("rt")
+        assert not SocialAccount.objects.filter(pk=account.pk).exists()
+
+    def test_reddit_works_on_a_client_connection_link(self):
+        from apps.onboarding.views import _supports_connection_link
+
+        assert _supports_connection_link("reddit") is True
