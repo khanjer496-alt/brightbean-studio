@@ -730,7 +730,7 @@ class TestPatchScheduledAtRequiresPublishDirectly:
         # Admin pre-schedules a post (bypassing HTTP perm checks so we
         # can isolate the PATCH route's gate).
         original_when = timezone.now() + timedelta(days=7)
-        post = Post.objects.create(workspace=workspace, caption="admin scheduled")
+        post = Post.objects.create(workspace=workspace, author=write_only_membership.user, caption="admin scheduled")
         pp = PlatformPost.objects.create(
             post=post,
             social_account=social_account,
@@ -760,7 +760,7 @@ class TestPatchScheduledAtRequiresPublishDirectly:
         scheduled post (the legitimate "fix a typo before it publishes"
         flow). Only `scheduled_at` mutations need the elevated permission.
         """
-        post = Post.objects.create(workspace=workspace, caption="original")
+        post = Post.objects.create(workspace=workspace, author=write_only_membership.user, caption="original")
         PlatformPost.objects.create(
             post=post,
             social_account=social_account,
@@ -786,7 +786,7 @@ class TestPatchScheduledAtRequiresPublishDirectly:
         on Post.scheduled_at until the draft is later promoted via a
         path that DOES require publish_directly).
         """
-        post = Post.objects.create(workspace=workspace, caption="just a draft")
+        post = Post.objects.create(workspace=workspace, author=write_only_membership.user, caption="just a draft")
         PlatformPost.objects.create(post=post, social_account=social_account, status="draft")
 
         future = (timezone.now() + timedelta(days=1)).isoformat()
@@ -796,3 +796,25 @@ class TestPatchScheduledAtRequiresPublishDirectly:
             content_type="application/json",
         )
         assert r.status_code == 200
+
+
+@pytest.mark.django_db
+class TestPatchSomeoneElsesPostNeedsEditOthersPosts:
+    """PATCH follows the same rule as DELETE: another author's post takes edit_others_posts."""
+
+    def test_editor_cannot_edit_a_teammates_post(
+        self, write_only_client, write_only_membership, workspace, social_account
+    ):
+        post = Post.objects.create(workspace=workspace, caption="teammate's draft")
+        PlatformPost.objects.create(post=post, social_account=social_account, status="draft")
+
+        r = write_only_client.patch(
+            f"/api/v1/posts/{post.id}",
+            data=json.dumps({"caption": "rewritten"}),
+            content_type="application/json",
+        )
+
+        assert r.status_code == 403
+        assert "edit_others_posts" in r.json()["detail"]
+        post.refresh_from_db()
+        assert post.caption == "teammate's draft"

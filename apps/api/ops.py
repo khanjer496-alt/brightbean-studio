@@ -425,6 +425,9 @@ def update_post(actor: Actor, post_id: uuid.UUID, payload: UpdatePostRequest) ->
     """
     actor.require("create_posts")  # the composer's create-or-edit permission
     post = _get_visible_post(actor, post_id)
+    # Same rule as delete: someone else's post takes edit_others_posts.
+    if post.author_id != getattr(actor.user, "id", None) and not actor.has("edit_others_posts"):
+        raise OpError(403, "Permission denied: edit_others_posts")
     validate_post_taxonomy(actor, tags=payload.tags, category_id=payload.category_id)
     if not post.is_editable:
         raise OpError(409, f"Post is not editable in status {post.status}.")
@@ -1521,8 +1524,17 @@ def update_brand_voice(
 def get_usage(actor: Actor) -> UsageResponse:
     """The organization's plan, its limits and current usage (read-only)."""
     from apps.billing.entitlements import billing_enabled, get_entitlements, usage_summary
+    from apps.members.models import OrgMembership
 
     org = actor.workspace.organization
+    # The web billing page is for org admins and owners; the API matches it.
+    is_admin = OrgMembership.objects.filter(
+        organization=org,
+        user_id=getattr(actor.user, "id", None),
+        org_role__in=(OrgMembership.OrgRole.OWNER, OrgMembership.OrgRole.ADMIN),
+    ).exists()
+    if not is_admin:
+        raise OpError(403, "Permission denied: plan usage is visible to organization owners and admins.")
     ent = get_entitlements(org)
     return UsageResponse(
         billing_enabled=billing_enabled(),

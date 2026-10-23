@@ -452,6 +452,11 @@ class TestUsage:
         channels = next(m for m in body["usage"] if m["key"] == "channels")
         assert channels["used"] == 2 and channels["limit"] is not None
 
+    def test_hidden_from_people_who_are_not_org_admins(self, world):
+        # Matches the web billing page: plan usage is for org owners and admins.
+        r = world.client_role.get(self.URL)
+        assert r.status_code == 403
+
     def test_is_read_only(self, world):
         assert send(world.full, "post", self.URL, {}).status_code == 405
         assert send(world.full, "patch", self.URL, {}).status_code == 405
