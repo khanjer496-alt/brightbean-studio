@@ -25,7 +25,7 @@ from apps.common.validators import is_safe_url as _is_safe_url
 from apps.credentials.models import PlatformCredential, derive_is_configured
 from apps.members.decorators import require_permission
 from apps.webhooks import events as webhook_events
-from providers.exceptions import QuotaExceededError
+from providers.exceptions import APIError, PublishError, QuotaExceededError
 
 from .error_messages import quota_connect_error
 from .models import MastodonAppRegistration, PlatformVisibility, SocialAccount
@@ -713,6 +713,69 @@ def connect_devto(request, workspace_id):
         logger.exception("DEV.to connection failed")
         messages.error(request, "Failed to connect DEV.to account. Check your API key.")
         return render(request, "social_accounts/devto_connect.html", {"workspace_id": workspace_id})
+
+    return redirect("calendar:calendar", workspace_id=workspace_id)
+
+
+# ------------------------------------------------------------------
+# Telegram Connect (platform bot added to a channel or group, no OAuth)
+# ------------------------------------------------------------------
+
+
+@login_required
+@require_permission("manage_social_accounts")
+def connect_telegram(request, workspace_id):
+    """Connect a Telegram channel or group the platform bot administers."""
+    platform = PlatformCredential.Platform.TELEGRAM
+    provider = _get_provider_for_platform(platform, request.org.id)
+
+    def render_form():
+        try:
+            bot_username = provider.get_bot_username()
+        except Exception:
+            logger.warning("Could not read the Telegram bot's username", exc_info=True)
+            bot_username = ""
+        return render(
+            request,
+            "social_accounts/telegram_connect.html",
+            {"workspace_id": workspace_id, "bot_username": bot_username},
+        )
+
+    if request.method == "GET":
+        return render_form()
+
+    chat = provider.normalize_chat_reference(request.POST.get("chat", ""))
+    if not chat:
+        messages.error(request, "Enter the channel as @username, a t.me link, or its numeric chat id.")
+        return render_form()
+
+    try:
+        profile = provider.get_profile(chat)
+        # The chat id is the account's stored credential; the bot token stays in the environment.
+        _create_or_update_account(
+            workspace_id=workspace_id,
+            platform=platform,
+            profile=profile,
+            access_token=profile.platform_id,
+        )
+        messages.success(request, f"Connected {profile.name} on Telegram.")
+    except PlanLimitError as exc:
+        messages.error(request, exc.message)
+        return redirect("social_accounts:list", workspace_id=workspace_id)
+    except PublishError as exc:
+        messages.error(request, str(exc))
+        return render_form()
+    except APIError as exc:
+        logger.warning("Telegram connection failed: %s", exc)
+        messages.error(
+            request,
+            "Telegram couldn't find that chat. Check the name, and make sure the bot was added to it as an administrator.",
+        )
+        return render_form()
+    except Exception:
+        logger.exception("Telegram connection failed")
+        messages.error(request, "Failed to connect Telegram. Please try again.")
+        return render_form()
 
     return redirect("calendar:calendar", workspace_id=workspace_id)
 

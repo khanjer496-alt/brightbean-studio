@@ -39,6 +39,7 @@
                     {% elif value == 'google_business' %}bg-blue-50 text-blue-500
                     {% elif value == 'mastodon' %}bg-indigo-50 text-indigo-600
                     {% elif value == 'devto' %}bg-stone-100 text-stone-900
+                    {% elif value == 'telegram' %}bg-sky-50 text-sky-500
                     {% endif %}">
                     {% include "social_accounts/partials/_platform_icon.html" with platform=value size="5" %}
                 </div>
@@ -60,6 +61,7 @@
                         {% elif value == 'google_business' %}Local posts
                         {% elif value == 'mastodon' %}Federated social
                         {% elif value == 'devto' %}Articles &amp; posts
+                        {% elif value == 'telegram' %}Channels &amp; groups
                         {% endif %}
                     </p>
                 </div>

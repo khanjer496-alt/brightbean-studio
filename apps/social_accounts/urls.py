@@ -31,6 +31,11 @@ urlpatterns = [
         views.connect_devto,
         name="connect_devto",
     ),
+    path(
+        "<uuid:workspace_id>/connect/telegram/",
+        views.connect_telegram,
+        name="connect_telegram",
+    ),
     # OAuth callback (not workspace-scoped - platform redirects here)
     path(
         "callback/<str:platform>/",

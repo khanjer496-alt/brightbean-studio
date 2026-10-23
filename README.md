@@ -79,6 +79,7 @@ A free hosted version is available at [brightbean.xyz/studio](https://brightbean
 | <img src="https://api.iconify.design/logos/google-icon.svg" width="16" height="16"> Google Business Profile | ✓ | — | — | ✓ |
 | <img src="https://cdn.simpleicons.org/mastodon" width="16" height="16"> Mastodon | ✓ | ✓ | — | — |
 | <img src="https://cdn.simpleicons.org/devdotto/000000" width="16" height="16"> DEV.to | ✓ | — | — | — |
+| <img src="https://cdn.simpleicons.org/telegram" width="16" height="16"> Telegram | ✓ | — | — | — |
 
 ---
 
@@ -740,6 +741,17 @@ No developer app registration needed. Users connect by entering a personal **API
 3. Copy the generated key and paste it when connecting your account in Brightbean Studio
 
 Posts publish as DEV.to articles (title + Markdown body). The key can be revoked at any time from the same settings page.
+
+### Telegram
+
+One platform bot posts to every connected channel or group; users never see the bot token.
+
+1. Message [@BotFather](https://t.me/BotFather), send `/newbot` and follow the prompts
+2. Copy the bot token into `PLATFORM_TELEGRAM_BOT_TOKEN`
+
+To connect a chat, a user adds the bot to their channel or group as an **administrator** (for a channel, with **Post Messages** on), then enters `@channelname` (or the numeric id of a private chat) in Brightbean Studio. Connecting checks that the bot can really post there.
+
+Posts go out as HTML-formatted text (4096 characters), photos and videos (caption up to 1024 characters; a longer text follows as a separate message) and albums of up to 10. Thread parts and first comments are sent as replies.
 
 ## Inbox: Backfill Historical Messages
 

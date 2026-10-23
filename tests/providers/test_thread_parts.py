@@ -37,6 +37,7 @@ class TestDeclarations:
             ("pinterest", ThreadMode.NONE),
             ("google_business", ThreadMode.NONE),
             ("devto", ThreadMode.NONE),
+            ("telegram", ThreadMode.REPLY_CHAIN),
         ],
     )
     def test_every_platform_declares_its_mode(self, platform, mode):

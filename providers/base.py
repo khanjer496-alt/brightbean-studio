@@ -321,6 +321,10 @@ class SocialProvider(ABC):
     def publish_post(self, access_token: str, content: PublishContent) -> PublishResult:
         """Publish content to the platform."""
 
+    def delete_post(self, access_token: str, post_id: str) -> bool:
+        """Delete a post this account published. Returns True when the platform removed it."""
+        raise NotImplementedError(f"{self.platform_name} does not support deleting posts")
+
     def check_publish_status(self, access_token: str, handle: str) -> PublishStatus:
         """Ask the platform what became of an asynchronous publish.
 

@@ -658,6 +658,11 @@ PLATFORM_CREDENTIALS_FROM_ENV = {
     # DEV.to - per-account API key (no OAuth). The key is supplied by the user
     # at connect time, so no app-level credentials apply (same as Bluesky).
     "devto": {},
+    # Telegram - one platform-wide bot posts to every connected chat. The user
+    # adds the bot to their channel or group as an administrator.
+    "telegram": {
+        "bot_token": env("PLATFORM_TELEGRAM_BOT_TOKEN", default=""),
+    },
 }
 
 # Publishing engine

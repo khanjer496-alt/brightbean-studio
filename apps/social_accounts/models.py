@@ -580,6 +580,7 @@ class SocialAccount(models.Model):
             "google_business": "gb",
             "mastodon": "ma",
             "devto": "dv",
+            "telegram": "tg",
         }
         return icons.get(self.platform, self.platform[:2])
 
