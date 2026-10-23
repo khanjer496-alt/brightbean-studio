@@ -657,7 +657,9 @@ def connect_bluesky(request, workspace_id):
         )
 
     try:
-        provider = _get_provider_for_platform(PlatformCredential.Platform.BLUESKY, request.org.id)
+        provider = _get_provider_for_platform(
+            PlatformCredential.Platform.BLUESKY, request.workspace.organization_id, workspace_id=workspace_id
+        )
         tokens = provider.create_session(handle, app_password)
         profile = provider.get_profile(tokens.access_token)
 
@@ -716,7 +718,9 @@ def connect_devto(request, workspace_id):
         )
 
     try:
-        provider = _get_provider_for_platform(PlatformCredential.Platform.DEVTO, request.org.id)
+        provider = _get_provider_for_platform(
+            PlatformCredential.Platform.DEVTO, request.workspace.organization_id, workspace_id=workspace_id
+        )
         profile = provider.get_profile(api_key)
         _create_or_update_account(
             workspace_id=workspace_id,
@@ -766,7 +770,7 @@ def _telegram_verification_code(request, workspace_id, *, issue=True):
 def connect_telegram(request, workspace_id):
     """Connect a Telegram channel or group the platform bot administers and the user controls."""
     platform = PlatformCredential.Platform.TELEGRAM
-    provider = _get_provider_for_platform(platform, request.org.id)
+    provider = _get_provider_for_platform(platform, request.workspace.organization_id, workspace_id=workspace_id)
 
     def render_form(chat=""):
         try:
@@ -967,7 +971,8 @@ def connect_mastodon(request, workspace_id):
         try:
             provider = _get_provider_for_platform(
                 PlatformCredential.Platform.MASTODON,
-                request.org.id,
+                request.workspace.organization_id,
+                workspace_id=workspace_id,
                 instance_url=instance_url,
             )
             redirect_uri = _build_redirect_uri(request, PlatformCredential.Platform.MASTODON)
@@ -994,7 +999,8 @@ def connect_mastodon(request, workspace_id):
     # Initiate OAuth
     provider = _get_provider_for_platform(
         PlatformCredential.Platform.MASTODON,
-        request.org.id,
+        request.workspace.organization_id,
+        workspace_id=workspace_id,
         instance_url=instance_url,
         client_id=client_id,
         client_secret=client_secret,
