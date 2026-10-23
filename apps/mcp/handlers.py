@@ -26,7 +26,7 @@ from ninja.errors import HttpError
 from apps.analytics.api_builders import build_account_analytics, build_post_analytics
 from apps.api.limits import check_platform_quota
 from apps.api.pagination import decode_offset_cursor, encode_offset_cursor
-from apps.api.schemas import PostResponse, RecurrenceSpec
+from apps.api.schemas import PostResponse, RecurrenceSpec, ThreadPart
 from apps.calendar.services import clean_recurrence, save_recurrence
 from apps.composer.models import PlatformPost, Post
 from apps.composer.services import create_post, transition_platform_post
@@ -173,7 +173,15 @@ def _get_post_for_key(api_key, post_id_str: str) -> Post:
     """
     post_id = _parse_uuid(post_id_str, "post_id")
     try:
-        return _visible_posts_qs(api_key).prefetch_related("platform_posts__social_account").get(id=post_id)
+        return (
+            _visible_posts_qs(api_key)
+            .prefetch_related(
+                "platform_posts__social_account",
+                "platform_posts__part_states__part",
+                "thread_parts__media_attachments",
+            )
+            .get(id=post_id)
+        )
     except Post.DoesNotExist as exc:
         raise JsonRpcError(INVALID_PARAMS, "Post not found") from exc
 
@@ -199,6 +207,55 @@ def _parse_iso_datetime(value: Any, field_name: str) -> datetime:
 # ---------------------------------------------------------------------------
 
 
+# The ``parts`` argument of the post-creating tools — ThreadPart's fields.
+_PARTS_INPUT_SCHEMA = {
+    "type": "array",
+    "description": (
+        "Optional later parts of a thread, in order; caption and media_asset_ids above are its first part. "
+        "Published per the account's thread_mode (see list_accounts): reply_chain, comments, or none. "
+        "Scheduling is refused when the account can't publish the thread."
+    ),
+    "items": {
+        "type": "object",
+        "properties": {
+            "caption": {"type": "string", "default": "", "maxLength": 10000},
+            "media_asset_ids": {
+                "type": "array",
+                "items": {"type": "string", "format": "uuid"},
+                "default": [],
+                "description": "Only on accounts with thread_media_per_part.",
+            },
+            "delay_seconds": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 86400,
+                "default": 0,
+                "description": "Seconds to wait after the previous part is live.",
+            },
+            "is_finisher": {
+                "type": "boolean",
+                "default": False,
+                "description": "A closing part, always published last. At most one.",
+            },
+        },
+        "additionalProperties": False,
+    },
+}
+
+
+def _parse_parts(args: dict) -> list:
+    """The validated ``parts`` argument as composer ``ThreadPartSpec``s."""
+    from pydantic import ValidationError
+
+    raw = args.get("parts") or []
+    if not isinstance(raw, list):
+        raise JsonRpcError(INVALID_PARAMS, "parts must be an array")
+    try:
+        return [ThreadPart.model_validate(item).to_spec() for item in raw]
+    except ValidationError as exc:
+        raise JsonRpcError(INVALID_PARAMS, f"parts is invalid: {exc.errors()[0]['msg']}") from exc
+
+
 def _list_accounts(args: dict, context: dict[str, Any]) -> dict:
     api_key = context["api_key"]
     # Reuse the REST schema so MCP and REST stay byte-identical (Gap 4 + 5).
@@ -214,7 +271,8 @@ register_tool(
         description=(
             "List the social media accounts this API key is allowed to act on. "
             "Returns id, platform, account_name, account_handle, connection_status, char_limit, "
-            "escaped_chars, needs_title, supports_first_comment, requires_video, and requires_media. "
+            "escaped_chars, needs_title, supports_first_comment, requires_video, requires_media, and the "
+            "thread capability (thread_mode, thread_max_parts, thread_part_max_length, thread_media_per_part). "
             "Call this first to discover which "
             "social_account_id values are valid and what each platform requires."
         ),
@@ -238,6 +296,7 @@ def _create_draft(args: dict, context: dict[str, Any]) -> dict:
     if "caption" not in args:
         raise JsonRpcError(INVALID_PARAMS, "caption is required")
     sa = _resolve_allowed_account(api_key, args["social_account_id"])
+    parts = _parse_parts(args)
     proposed_publish_at = None
     if args.get("proposed_publish_at") is not None:
         proposed_publish_at = _parse_iso_datetime(args["proposed_publish_at"], "proposed_publish_at")
@@ -253,6 +312,7 @@ def _create_draft(args: dict, context: dict[str, Any]) -> dict:
             proposed_publish_at=proposed_publish_at,
             author=api_key.issued_by if api_key.issued_by_id else None,
             status="draft",
+            parts=parts,
         )
     except ValueError as exc:
         raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
@@ -302,6 +362,7 @@ register_tool(
                         "not validated against the future, and never queued for publishing."
                     ),
                 },
+                "parts": _PARTS_INPUT_SCHEMA,
             },
             "required": ["social_account_id", "caption"],
             "additionalProperties": False,
@@ -391,6 +452,7 @@ def _schedule_post(args: dict, context: dict[str, Any]) -> dict:
     scheduled_at = _parse_iso_datetime(args["scheduled_at"], "scheduled_at")
     sa = _resolve_allowed_account(api_key, args["social_account_id"])
     repeat = _parse_recurrence(args, workspace=api_key.workspace, scheduled_at=scheduled_at)
+    parts = _parse_parts(args)
     # Platform quota is shared with REST; ``check_platform_quota``
     # raises ``HttpError(429,...)`` which we re-shape into a JSON-RPC
     # error so MCP clients see structured feedback rather than HTTP.
@@ -416,6 +478,7 @@ def _schedule_post(args: dict, context: dict[str, Any]) -> dict:
                 scheduled_at=scheduled_at,
                 author=api_key.issued_by if api_key.issued_by_id else None,
                 status="scheduled",
+                parts=parts,
             )
             if repeat is not None:
                 save_recurrence(post, **repeat.rule_fields())
@@ -459,6 +522,7 @@ register_tool(
                     "default": [],
                 },
                 "recurrence": _RECURRENCE_INPUT_SCHEMA,
+                "parts": _PARTS_INPUT_SCHEMA,
             },
             "required": ["social_account_id", "caption", "scheduled_at"],
             "additionalProperties": False,
@@ -534,7 +598,11 @@ def _list_posts(args: dict, context: dict[str, Any]) -> dict:
     # The allowlist lives in the queryset (see ``_visible_posts_qs``), so paging
     # is over posts this key can actually see — no scan cap, nothing silently
     # dropped. ``id`` tiebreaks ``-created_at`` to keep offsets stable.
-    qs = _visible_posts_qs(api_key).prefetch_related("platform_posts__social_account")
+    qs = _visible_posts_qs(api_key).prefetch_related(
+        "platform_posts__social_account",
+        "platform_posts__part_states__part",
+        "thread_parts__media_attachments",
+    )
     if status:
         qs = qs.filter(Exists(PlatformPost.objects.filter(post_id=OuterRef("pk"), status=status)))
     qs = qs.order_by("-created_at", "id")
@@ -737,6 +805,52 @@ register_tool(
             "additionalProperties": False,
         },
         handler=_schedule_draft,
+    )
+)
+
+
+# ---------------------------------------------------------------------------
+# Tool: resume_thread — REST parity with POST /posts/{id}/resume-thread
+# ---------------------------------------------------------------------------
+
+
+def _resume_thread(args: dict, context: dict[str, Any]) -> dict:
+    """Pick a partially published thread back up from the part where it stopped."""
+    from apps.publisher.engine import resume_thread
+
+    _require_perm(context, "create_posts")
+    _require_perm(context, "publish_directly")
+    if "post_id" not in args:
+        raise JsonRpcError(INVALID_PARAMS, "post_id is required")
+    api_key = context["api_key"]
+    post = _get_post_for_key(api_key, args["post_id"])
+    stopped = [pp for pp in post.platform_posts.all() if pp.is_thread_partial]
+    if not stopped:
+        raise JsonRpcError(INVALID_PARAMS, "No thread on this post is stopped part-way")
+    for pp in stopped:
+        try:
+            resume_thread(pp)
+        except ValueError as exc:
+            raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
+    return _wrap_text(_serialize_post(_get_post_for_key(api_key, args["post_id"]), context))
+
+
+register_tool(
+    Tool(
+        name="resume_thread",
+        description=(
+            "Resume a thread that stopped part-way (a platform post whose thread_status is 'partial'). "
+            "Parts already published are left alone; publishing restarts at the part that failed. "
+            "If that part's status is 'unconfirmed', check the platform first: resuming sends it again. "
+            "Requires both create_posts and publish_directly."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {"post_id": {"type": "string", "format": "uuid"}},
+            "required": ["post_id"],
+            "additionalProperties": False,
+        },
+        handler=_resume_thread,
     )
 )
 

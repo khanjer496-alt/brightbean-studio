@@ -19,7 +19,7 @@ from django.conf import settings
 from ninja import Field, Schema
 from pydantic import field_serializer
 
-from providers import is_video_only, requires_media
+from providers import is_video_only, requires_media, thread_capability_for
 
 if TYPE_CHECKING:
     from apps.analytics.derive import DerivedMetric
@@ -92,9 +92,26 @@ class AccountSummary(Schema):
             "rejected with 422."
         ),
     )
+    thread_mode: Literal["reply_chain", "comments", "none"] = Field(
+        "none",
+        description=(
+            "How the platform publishes a post's ``parts``: ``reply_chain`` replies each part to the one "
+            "before it (Bluesky, Threads, Mastodon); ``comments`` posts later parts as comments on the "
+            "first post (Facebook, Instagram, LinkedIn, YouTube); ``none`` can't take a thread, and a "
+            "post with ``parts`` is rejected with 422 when scheduled."
+        ),
+    )
+    thread_max_parts: int = Field(1, description="Most parts one thread may have, the first post included.")
+    thread_part_max_length: int = Field(
+        2200, description="Characters each later part may carry, counted like ``char_limit``."
+    )
+    thread_media_per_part: bool = Field(
+        False, description="True when a later part can carry its own ``media_asset_ids``. Comments are text only."
+    )
 
     @classmethod
     def from_social_account(cls, sa) -> AccountSummary:
+        thread = thread_capability_for(sa.platform)
         return cls(
             id=sa.id,
             platform=sa.platform,
@@ -107,6 +124,10 @@ class AccountSummary(Schema):
             supports_first_comment=sa.supports_first_comment(),
             requires_video=is_video_only(sa.platform),
             requires_media=requires_media(sa.platform),
+            thread_mode=thread.mode.value,
+            thread_max_parts=thread.max_parts,
+            thread_part_max_length=thread.part_max_length or sa.char_limit,
+            thread_media_per_part=thread.media_per_part,
         )
 
 
@@ -166,6 +187,50 @@ class PlatformOverride(Schema):
     title: str | None = Field(None, max_length=255)
     caption: str | None = Field(None, max_length=10_000)
     first_comment: str | None = Field(None, max_length=10_000)
+
+
+class ThreadPartOverride(Schema):
+    """Per-account caption for one thread part — the part-level ``PlatformOverride.caption``."""
+
+    social_account_id: uuid.UUID = Field(..., description="Must reference an account that is a child of this post.")
+    caption: str | None = Field(None, max_length=10_000, description="``null`` keeps the part's own caption.")
+
+
+class ThreadPart(Schema):
+    """One later part of a thread. The post's ``caption`` and ``media_asset_ids`` are its first part."""
+
+    caption: str = Field("", max_length=10_000)
+    media_asset_ids: list[uuid.UUID] = Field(
+        default_factory=list,
+        description="Media for this part. Only on accounts with ``thread_media_per_part=true``.",
+    )
+    delay_seconds: int = Field(
+        0, ge=0, le=86_400, description="Seconds to wait after the previous part is live before publishing this one."
+    )
+    is_finisher: bool = Field(
+        False, description="A closing part (e.g. 'Follow for more'), always published last. At most one."
+    )
+    platform_overrides: list[ThreadPartOverride] = Field(default_factory=list)
+
+    def to_spec(self):
+        """The composer service's ``ThreadPartSpec`` for this part."""
+        from apps.composer.services import ThreadPartSpec
+
+        return ThreadPartSpec(
+            caption=self.caption,
+            media_asset_ids=list(self.media_asset_ids),
+            delay_seconds=self.delay_seconds,
+            is_finisher=self.is_finisher,
+            caption_overrides={str(ov.social_account_id): ov.caption for ov in self.platform_overrides},
+        )
+
+
+_PARTS_DESCRIPTION = (
+    "Optional later parts of a thread, in order; the post itself is the first part. Each account publishes "
+    "them according to its ``thread_mode`` (see /accounts). Scheduling is rejected with 422 when an account "
+    "can't publish the thread: ``thread_mode='none'``, more than ``thread_max_parts``, a part over "
+    "``thread_part_max_length``, or media on a part where ``thread_media_per_part`` is false."
+)
 
 
 RecurrenceFrequency = Literal["never", "daily", "weekly", "monthly"]
@@ -269,6 +334,7 @@ class CreatePostRequest(Schema):
             "omitting it) leaves the post's default in place for that platform."
         ),
     )
+    parts: list[ThreadPart] = Field(default_factory=list, description=_PARTS_DESCRIPTION)
     action: PostAction = Field(
         "draft",
         description=(
@@ -309,6 +375,11 @@ class UpdatePostRequest(Schema):
         description="Private team-only note. Omit (or send null) to leave it unchanged.",
     )
     media_asset_ids: list[uuid.UUID] | None = None
+    parts: list[ThreadPart] | None = Field(
+        None,
+        description="Replace the thread's later parts (``[]`` makes it a single post). Omit to leave them unchanged. "
+        + _PARTS_DESCRIPTION,
+    )
     scheduled_at: dt.datetime | None = Field(
         None,
         description="If the post is currently scheduled, this re-times it. Ignored for drafts.",
@@ -336,6 +407,16 @@ class ScheduleRequest(Schema):
 # ---------------------------------------------------------------------------
 
 
+class PlatformPostPartSummary(Schema):
+    """One thread part's outcome on one account."""
+
+    part_id: uuid.UUID
+    status: str = Field(..., description="pending, posting, published, failed, or unconfirmed.")
+    platform_part_id: str = ""
+    url: str = ""
+    publish_error: str = ""
+
+
 class PlatformPostSummary(Schema):
     id: uuid.UUID
     social_account_id: uuid.UUID
@@ -345,6 +426,15 @@ class PlatformPostSummary(Schema):
     published_at: dt.datetime | None
     platform_post_id: str = ""
     publish_error: str = ""
+    thread_status: str = Field(
+        "none",
+        description=(
+            "none, pending, complete, or partial. ``partial`` means the first post and some parts are live "
+            "and the thread stopped; POST /posts/{id}/resume-thread picks it up from the stopped part."
+        ),
+    )
+    thread_error: str = ""
+    thread_parts: list[PlatformPostPartSummary] = Field(default_factory=list)
 
     @field_serializer("scheduled_at", "published_at")
     def _serialize_dt(self, value: dt.datetime | None) -> str | None:
@@ -352,6 +442,12 @@ class PlatformPostSummary(Schema):
 
     @classmethod
     def from_platform_post(cls, pp: PlatformPost) -> PlatformPostSummary:
+        # Reuse a prefetch when the caller made one, as ``PostResponse.from_post``
+        # does for ``platform_posts``; otherwise join the part in one query.
+        if "part_states" in getattr(pp, "_prefetched_objects_cache", {}):
+            part_states = list(pp.part_states.all())
+        else:
+            part_states = list(pp.part_states.select_related("part"))
         return cls(
             id=pp.id,
             social_account_id=pp.social_account_id,
@@ -361,7 +457,28 @@ class PlatformPostSummary(Schema):
             published_at=pp.published_at,
             platform_post_id=pp.platform_post_id or "",
             publish_error=pp.publish_error or "",
+            thread_status=pp.thread_status,
+            thread_error=pp.thread_error or "",
+            thread_parts=[
+                PlatformPostPartSummary(
+                    part_id=state.part_id,
+                    status=state.status,
+                    platform_part_id=state.platform_part_id,
+                    url=state.url,
+                    publish_error=state.publish_error,
+                )
+                for state in sorted(part_states, key=lambda state: state.part.position)
+            ],
         )
+
+
+class ThreadPartResponse(Schema):
+    id: uuid.UUID
+    position: int = Field(..., description="2 for the part right after the post, and so on.")
+    caption: str
+    media_asset_ids: list[uuid.UUID]
+    delay_seconds: int
+    is_finisher: bool
 
 
 class PostResponse(Schema):
@@ -376,6 +493,9 @@ class PostResponse(Schema):
     proposed_publish_at: dt.datetime | None
     status: str  # derived aggregate
     platform_posts: list[PlatformPostSummary]
+    parts: list[ThreadPartResponse] = Field(
+        default_factory=list, description="The thread's later parts, in order. Empty for a single post."
+    )
     recurrence: RecurrenceResponse | None = Field(
         None, description="The repeat this post starts, if it is the first post of an active series."
     )
@@ -439,6 +559,17 @@ class PostResponse(Schema):
             proposed_publish_at=post.proposed_publish_at,
             status=post.status,
             platform_posts=platform_posts,
+            parts=[
+                ThreadPartResponse(
+                    id=part.id,
+                    position=part.position + 1,
+                    caption=part.caption,
+                    media_asset_ids=[pm.media_asset_id for pm in part.media_attachments.all()],
+                    delay_seconds=part.delay_seconds,
+                    is_finisher=part.is_finisher,
+                )
+                for part in post.thread_parts.all()
+            ],
             recurrence=recurrence,
             recurrence_source_id=post.recurrence_source_id,
             created_at=post.created_at,

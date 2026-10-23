@@ -33,6 +33,12 @@ Retry a timed-out REST create request with the same idempotency key and identica
 
 An uncertain social-platform publication is distinct from a retriable API call: the external post may already exist. Reconcile it before any new publishing attempt.
 
+## Threads
+
+`create_draft`, `schedule_post`, and REST `POST`/`PATCH /posts` accept an optional `parts` list: the later parts of a thread, in order (the caption is part 1). Each part takes `caption`, `media_asset_ids`, `delay_seconds` (wait after the previous part, up to 24 hours), and `is_finisher` (a closing part, always last). Check each account's `thread_mode` in `list_accounts` first: `reply_chain` publishes each part as a reply to the one before, `comments` publishes later parts as comments on the first post (text only), and `none` cannot take a thread, so scheduling one there is refused. `thread_max_parts` and `thread_part_max_length` are enforced when scheduling.
+
+If a thread stops part-way, `get_post` shows the platform post's `thread_status` as `partial` and each part's status. The parts already live are never re-sent. `resume_thread` restarts at the stopped part. If that part is `unconfirmed`, check the platform first, because resuming sends it again.
+
 ## Current limits
 
 Provider approval and live publishing verification are still launch requirements. AI text/image/video generation is not bundled or enabled merely by connecting MCP; an external agent may create content using its own tools. The app currently supports REST/MCP; no dedicated PostDelegate CLI is shipped.
