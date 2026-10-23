@@ -6,6 +6,9 @@ Models:
     Post - The base content entity, scoped to a workspace.
     PlatformPost - Per-platform variant of a post (caption/media overrides).
     PostMedia - Media attachments with ordering and alt text.
+    PostPart - A later part of a thread (the post itself is the first part).
+    PostPartMedia - Media attachments on a thread part.
+    PlatformPostPart - Per-account override and publish outcome of one thread part.
     PostVersion - Immutable snapshots for version history.
     PostTemplate - Reusable post templates.
     CSVImportJob - Tracks bulk CSV import jobs.
@@ -354,6 +357,19 @@ class Post(models.Model):
         return None
 
     @property
+    def thread_part_count(self):
+        """How many parts this post publishes as: 1, plus one per ``PostPart``.
+
+        Iterates ``thread_parts.all()`` so a list that prefetched
+        ``thread_parts`` pays no query per row for its thread badge.
+        """
+        return 1 + len(self.thread_parts.all())
+
+    @property
+    def is_thread(self):
+        return self.thread_part_count > 1
+
+    @property
     def platform_posts_summary(self):
         """Summary of target platforms."""
         return list(self.platform_posts.values_list("social_account__platform", flat=True))
@@ -446,6 +462,15 @@ class PlatformPost(models.Model):
         POSTED = "posted", "Posted"
         FAILED = "failed", "Failed"
 
+    class ThreadStatus(models.TextChoices):
+        NONE = "none", "No thread"
+        PENDING = "pending", "Posting thread"
+        COMPLETE = "complete", "Thread complete"
+        # The first post and some parts are live and the rest are not. The row
+        # stays ``published`` — the first post is history — and this is what
+        # says the thread behind it is unfinished and can be resumed.
+        PARTIAL = "partial", "Partially published"
+
     STATUS_COLORS = {
         "draft": "gray",
         "pending_review": "orange",
@@ -525,6 +550,19 @@ class PlatformPost(models.Model):
     first_comment_error = models.TextField(blank=True, default="")
     first_comment_retry_count = models.PositiveIntegerField(default=0)
     first_comment_posted_at = models.DateTimeField(blank=True, null=True)
+    # Thread outcome, kept apart from ``status`` for the same reason the first
+    # comment is: the first post is live and must read ``published``, while
+    # the parts behind it are still posting, finished, or stuck part-way.
+    # ``db_default`` so a worker still on the previous release can keep
+    # inserting rows while this column is rolled out.
+    thread_status = models.CharField(
+        max_length=10,
+        choices=ThreadStatus.choices,
+        default=ThreadStatus.NONE,
+        db_default=ThreadStatus.NONE,
+        db_index=True,
+    )
+    thread_error = models.TextField(blank=True, default="", db_default="")
     scheduled_at = models.DateTimeField(
         blank=True,
         null=True,
@@ -660,6 +698,11 @@ class PlatformPost(models.Model):
         return self.post.first_comment
 
     @property
+    def is_thread_partial(self):
+        """The first post is live but the thread behind it stopped part-way."""
+        return self.thread_status == self.ThreadStatus.PARTIAL
+
+    @property
     def platform(self):
         return self.social_account.platform
 
@@ -713,6 +756,133 @@ class PostMedia(models.Model):
 
     def __str__(self):
         return f"PostMedia(pos={self.position}): {self.media_asset.filename}"
+
+
+class PostPart(models.Model):
+    """A later part of a thread.
+
+    The post's own caption and media are the thread's first part, so a post
+    with no ``PostPart`` rows is a single post exactly as before. Each part is
+    published after the one before it — as a reply or a comment, whichever the
+    platform's ``ThreadCapability`` says — optionally after a delay.
+    """
+
+    # A delay longer than a day is a second post, not a thread; it belongs on
+    # the calendar where it can be seen and moved.
+    MAX_DELAY_SECONDS = 24 * 60 * 60
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    post = models.ForeignKey(
+        Post,
+        on_delete=models.CASCADE,
+        related_name="thread_parts",
+    )
+    position = models.PositiveIntegerField(default=0, help_text="Order in the thread; the post itself comes first.")
+    caption = models.TextField(blank=True, default="")
+    delay_seconds = models.PositiveIntegerField(
+        default=0,
+        help_text="Seconds to wait after the previous part is live before publishing this one.",
+    )
+    # A closing part ("Follow for more") kept last whatever order the other
+    # parts are put in.
+    is_finisher = models.BooleanField(default=False)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "composer_post_part"
+        ordering = ["position", "created_at"]
+
+    def __str__(self):
+        return f"PostPart(pos={self.position}) for {self.post_id}"
+
+
+class PostPartMedia(models.Model):
+    """Media attachment on a thread part, with ordering and alt text."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    part = models.ForeignKey(
+        PostPart,
+        on_delete=models.CASCADE,
+        related_name="media_attachments",
+    )
+    media_asset = models.ForeignKey(
+        "media_library.MediaAsset",
+        on_delete=models.CASCADE,
+        related_name="post_part_usages",
+    )
+    position = models.PositiveIntegerField(default=0)
+    alt_text = models.TextField(blank=True, default="")
+
+    class Meta:
+        db_table = "composer_post_part_media"
+        ordering = ["position"]
+        unique_together = [("part", "media_asset")]
+
+    def __str__(self):
+        return f"PostPartMedia(pos={self.position}): {self.media_asset.filename}"
+
+
+class PlatformPostPart(models.Model):
+    """One thread part as it goes to one account.
+
+    Holds the per-account caption override — the part-level counterpart of
+    ``PlatformPost.platform_specific_caption`` — and the part's publish
+    outcome on that account, so a thread that stops at part 3 knows exactly
+    which parts are live and resumes from the first one that isn't.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        # Claimed by a worker that is calling the platform right now.
+        POSTING = "posting", "Posting"
+        PUBLISHED = "published", "Published"
+        FAILED = "failed", "Failed"
+        # The platform may have published it before the response was lost. It
+        # is never re-sent on its own; resuming past it is the user's call.
+        UNCONFIRMED = "unconfirmed", "Unconfirmed"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    platform_post = models.ForeignKey(
+        PlatformPost,
+        on_delete=models.CASCADE,
+        related_name="part_states",
+    )
+    part = models.ForeignKey(
+        PostPart,
+        on_delete=models.CASCADE,
+        related_name="platform_states",
+    )
+    # Null = use the part's caption, exactly as ``platform_specific_caption``.
+    platform_specific_caption = models.TextField(blank=True, null=True)
+
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING, db_index=True)
+    platform_part_id = models.CharField(max_length=255, blank=True, default="")
+    url = models.CharField(max_length=500, blank=True, default="")
+    # What the platform returned for the part. A reply chain needs some of it
+    # to reply to this part in turn (Bluesky's cid).
+    response = models.JSONField(default=dict, blank=True)
+    publish_error = models.TextField(blank=True, default="")
+    retry_count = models.PositiveIntegerField(default=0)
+    published_at = models.DateTimeField(blank=True, null=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "composer_platform_post_part"
+        unique_together = [("platform_post", "part")]
+
+    def __str__(self):
+        return f"PlatformPostPart({self.status}) for {self.platform_post_id}"
+
+    @property
+    def effective_caption(self):
+        """Return the account's caption override or fall back to the part's caption."""
+        if self.platform_specific_caption is not None:
+            return self.platform_specific_caption
+        return self.part.caption
 
 
 class PostVersion(models.Model):
