@@ -43,6 +43,8 @@ class DevtoProvider(SocialProvider):
     # can skip downloading the asset to local disk entirely.
     needs_local_media = False
 
+    writing_style = "A developer audience: clear, practical and specific, with a short hook. Tags rather than hashtags, no emoji clutter."
+
     # ------------------------------------------------------------------
     # Metadata
     # ------------------------------------------------------------------

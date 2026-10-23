@@ -104,6 +104,7 @@ LOCAL_APPS = [
     "apps.oauth_server",
     "apps.analytics",
     "apps.billing",
+    "apps.ai_writer",
     "theme",
 ]
 
@@ -783,6 +784,24 @@ BILLING_TRIAL_DAYS = env.int("BILLING_TRIAL_DAYS", default=14)
 # How long a subscription whose renewal failed keeps its paid plan while Stripe
 # retries the card, before the organization falls back to Free.
 BILLING_GRACE_PERIOD_DAYS = env.int("BILLING_GRACE_PERIOD_DAYS", default=7)
+
+# ---------------------------------------------------------------------------
+# AI writing assistant (apps.ai_writer)
+# ---------------------------------------------------------------------------
+# Off unless a provider key is configured: with ANTHROPIC_API_KEY empty the
+# composer shows no AI actions, except to an organization that has saved its
+# own key under Organization → AI assistant. Independent of the hosted
+# Intelligence integration below, which stays optional and off.
+AI_PROVIDER = env("AI_PROVIDER", default="anthropic")
+AI_MODEL = env("AI_MODEL", default="claude-opus-5-5")
+ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+# Seconds per provider call. The composer waits on it, so keep it short; the
+# SDK retries once on a timeout or 5xx before the user sees an error.
+AI_REQUEST_TIMEOUT = env.int("AI_REQUEST_TIMEOUT", default=45)
+# Requests on an organization's own key don't count against the plan's daily
+# allowance, but this many a UTC day (answered or not) is a hard safety stop
+# for a runaway script or loop.
+AI_ORGANIZATION_KEY_DAILY_CAP = env.int("AI_ORGANIZATION_KEY_DAILY_CAP", default=10_000)
 
 # ---------------------------------------------------------------------------
 # Intelligence integration (optional hosted SaaS)

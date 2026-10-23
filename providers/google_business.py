@@ -61,6 +61,10 @@ class GoogleBusinessProvider(SocialProvider):
     # can skip downloading the asset to local disk entirely.
     needs_local_media = False
 
+    writing_style = (
+        "A local-business update: friendly, direct and useful, ending with a clear call to action. No hashtags."
+    )
+
     # ------------------------------------------------------------------
     # Metadata
     # ------------------------------------------------------------------

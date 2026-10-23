@@ -40,6 +40,9 @@ def _limit_lines(plan) -> list[str]:
         "Unlimited API & MCP calls"
         if plan.max_api_calls_per_day is None
         else f"{plan.max_api_calls_per_day:,} API & MCP calls / day",
+        "Unlimited AI requests"
+        if plan.max_ai_requests_per_day is None
+        else f"{plan.max_ai_requests_per_day:,} AI requests / day",
         "Unlimited team members",
     ]
 

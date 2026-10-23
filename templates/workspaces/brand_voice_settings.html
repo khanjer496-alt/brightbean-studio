@@ -1,0 +1,67 @@
+{% extends "layouts/workspace_settings.html" %}
+{% block title %}Brand Voice - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
+{% block content %}
+<div class="max-w-2xl">
+    <h2 class="text-xl font-semibold mb-2 text-[var(--text-primary)]">Brand Voice</h2>
+    <p class="text-sm mb-8 text-[var(--text-secondary)]">
+        Describe how this workspace sounds. The AI assistant follows it every time it writes, rewrites or adapts a post here.
+    </p>
+
+    <form method="POST" class="flex flex-col gap-6">
+        {% csrf_token %}
+
+        <div>
+            <label for="brand_voice_tone" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Tone</label>
+            <p id="brand_voice_tone_help" class="text-xs mb-2 text-[var(--text-tertiary)]">A sentence or two, e.g. “Warm and witty, never salesy. We talk like a friend who knows coffee.”</p>
+            <textarea id="brand_voice_tone" name="brand_voice_tone" rows="3" maxlength="{{ field_max }}"
+                      aria-describedby="brand_voice_tone_help"
+                      class="form-input-styled text-sm resize-y"
+                      {% if not is_owner_or_manager %}disabled{% endif %}>{{ workspace.brand_voice_tone }}</textarea>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+                <label for="brand_voice_words_to_use" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Words to use</label>
+                <p id="brand_voice_use_help" class="text-xs mb-2 text-[var(--text-tertiary)]">Phrases, product names, sign-offs.</p>
+                <textarea id="brand_voice_words_to_use" name="brand_voice_words_to_use" rows="3" maxlength="{{ field_max }}"
+                          aria-describedby="brand_voice_use_help"
+                          class="form-input-styled text-sm resize-y"
+                          {% if not is_owner_or_manager %}disabled{% endif %}>{{ workspace.brand_voice_words_to_use }}</textarea>
+            </div>
+            <div>
+                <label for="brand_voice_words_to_avoid" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Words to avoid</label>
+                <p id="brand_voice_avoid_help" class="text-xs mb-2 text-[var(--text-tertiary)]">Jargon, competitor names, overused words.</p>
+                <textarea id="brand_voice_words_to_avoid" name="brand_voice_words_to_avoid" rows="3" maxlength="{{ field_max }}"
+                          aria-describedby="brand_voice_avoid_help"
+                          class="form-input-styled text-sm resize-y"
+                          {% if not is_owner_or_manager %}disabled{% endif %}>{{ workspace.brand_voice_words_to_avoid }}</textarea>
+            </div>
+        </div>
+
+        <fieldset>
+            <legend class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Example posts</legend>
+            <p class="text-xs mb-2 text-[var(--text-tertiary)]">Up to three posts that sound like you. The assistant matches their style without copying them.</p>
+            <div class="flex flex-col gap-3">
+                {% for example in example_slots %}
+                <label for="brand_voice_example_{{ forloop.counter }}" class="sr-only">Example post {{ forloop.counter }}</label>
+                <textarea id="brand_voice_example_{{ forloop.counter }}" name="brand_voice_examples" rows="3" maxlength="{{ example_max }}"
+                          placeholder="Example post {{ forloop.counter }}"
+                          class="form-input-styled text-sm resize-y"
+                          {% if not is_owner_or_manager %}disabled{% endif %}>{{ example }}</textarea>
+                {% endfor %}
+            </div>
+        </fieldset>
+
+        {% if is_owner_or_manager %}
+        <div>
+            <button type="submit"
+                    class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer whitespace-nowrap bg-[var(--neutral-100)] text-[var(--text-primary)]">
+                Save Changes
+            </button>
+        </div>
+        {% else %}
+        <p class="text-xs text-[var(--text-tertiary)]">Only workspace owners and managers can change the brand voice.</p>
+        {% endif %}
+    </form>
+</div>
+{% endblock %}

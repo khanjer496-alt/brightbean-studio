@@ -5,6 +5,7 @@ import contextlib
 import json
 import logging
 import re
+import time
 import uuid
 from datetime import UTC, datetime
 from urllib.parse import urljoin
@@ -24,6 +25,7 @@ from django.utils.html import strip_tags
 from django.utils.text import get_text_list
 from django.views.decorators.http import require_GET, require_POST
 
+from apps.ai_writer.views import composer_context as ai_composer_context
 from apps.billing.entitlements import (
     COUNTED_POST_STATUSES,
     PlanLimitError,
@@ -1107,6 +1109,8 @@ def compose(request, workspace_id, post_id=None):
         "failed_platform_posts": failed_platform_posts,
         "failed_first_comments": failed_first_comments,
         "unsplash_enabled": bool(settings.UNSPLASH_ACCESS_KEY),
+        # AI writing assistant panel; hidden unless a provider key is set.
+        **ai_composer_context(workspace.organization),
     }
     return render(request, "composer/compose.html", context)
 
@@ -4350,31 +4354,72 @@ def _build_event_from_entry(feed, parsed_feed, entry):
     }
 
 
-def _safe_fetch_feed(url, headers, *, timeout=8.0, max_redirects=5):
+# Response-body caps for the SSRF-safe fetch below. Feeds can legitimately be
+# a few megabytes; a page read for the AI assistant never needs more than a
+# couple (``apps.ai_writer.services.fetch_link`` passes its own cap).
+FEED_MAX_BYTES = 10 * 1024 * 1024
+_REDIRECT_STATUSES = (301, 302, 303, 307, 308)
+# Body headers that no longer describe the bytes once they've been read and
+# decoded, so they're dropped from the response handed back to the caller.
+_DECODED_BODY_HEADERS = {"content-encoding", "content-length", "transfer-encoding"}
+
+
+def _fetch_hop(url, headers, *, timeout, max_bytes, content_types):
+    """One GET, streamed and capped. Returns an ``httpx.Response`` or None.
+
+    None when the declared or actual body exceeds ``max_bytes`` (counted after
+    decompression, so a gzip bomb is cut off too), when the final response's
+    Content-Type isn't one of ``content_types``, or when reading the body takes
+    longer than twice ``timeout`` (``timeout`` alone is per socket operation,
+    so a slow drip could otherwise hold the request open indefinitely).
+    Redirects come back without their body for the caller to follow.
+    """
+    with httpx.stream("GET", url, headers=headers, timeout=timeout, follow_redirects=False) as response:
+        kept_headers = {k: v for k, v in response.headers.items() if k.lower() not in _DECODED_BODY_HEADERS}
+        if response.status_code in _REDIRECT_STATUSES:
+            return httpx.Response(response.status_code, headers=kept_headers)
+        if content_types is not None and response.status_code < 400:
+            content_type = (response.headers.get("content-type") or "").split(";")[0].strip().lower()
+            if content_type not in content_types:
+                return None
+        declared = response.headers.get("content-length") or ""
+        if declared.isdigit() and int(declared) > max_bytes:
+            return None
+        deadline = time.monotonic() + 2 * timeout
+        buf = bytearray()
+        for chunk in response.iter_bytes():
+            buf += chunk
+            if len(buf) > max_bytes or time.monotonic() > deadline:
+                return None
+    return httpx.Response(response.status_code, headers=kept_headers, content=bytes(buf))
+
+
+def _safe_fetch_feed(url, headers, *, timeout=8.0, max_redirects=5, max_bytes=FEED_MAX_BYTES, content_types=None):
     """Fetch *url* with manual redirect handling, re-validating each hop with
     is_safe_url. Returns (response, final_url) on success or (None, None) on
     any reject path (initial-URL failed SSRF check, intermediate hop failed
-    SSRF check, broken redirect, transport error).
+    SSRF check, broken redirect, transport error, body over ``max_bytes``,
+    or — when ``content_types`` is given — a Content-Type outside it).
     """
     if not is_safe_url(url):
         return None, None
     current_url = url
-    try:
-        response = httpx.get(current_url, headers=headers, timeout=timeout, follow_redirects=False)
-    except httpx.RequestError:
-        return None, None
-    for _ in range(max_redirects):
-        if response.status_code not in (301, 302, 303, 307, 308):
+    for _ in range(max_redirects + 1):
+        try:
+            response = _fetch_hop(
+                current_url, headers, timeout=timeout, max_bytes=max_bytes, content_types=content_types
+            )
+        except httpx.HTTPError:
+            return None, None
+        if response is None:
+            return None, None
+        if response.status_code not in _REDIRECT_STATUSES:
             return response, current_url
         location = response.headers.get("Location")
         if not location:
             return None, None
         next_url = urljoin(current_url, location)
         if not is_safe_url(next_url):
-            return None, None
-        try:
-            response = httpx.get(next_url, headers=headers, timeout=timeout, follow_redirects=False)
-        except httpx.RequestError:
             return None, None
         current_url = next_url
     # Too many redirects.

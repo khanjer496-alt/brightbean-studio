@@ -121,6 +121,8 @@ class LinkedInProvider(SocialProvider):
 
     media_rules = LINKEDIN_MEDIA_RULES
 
+    writing_style = "Professional and insightful: a hook line, short paragraphs with line breaks, a takeaway or question at the end, and three to five hashtags."
+
     # ------------------------------------------------------------------
     # Metadata
     # ------------------------------------------------------------------

@@ -49,6 +49,13 @@ SERVE_MEDIA = True
 CUSTOM_SIGNUP_URL = ""
 SIGNUP_MODE = "open"
 
+# Pinned so a developer's real key in .env can't switch the AI assistant on
+# for the whole suite (or let a test reach the provider). Tests that want it
+# use the `settings` fixture and mock the provider client.
+ANTHROPIC_API_KEY = ""
+AI_PROVIDER = "anthropic"
+AI_MODEL = "claude-opus-5-5"
+
 # Use simple static files storage in tests (no manifest/collectstatic needed)
 STORAGES["staticfiles"] = {  # noqa: F405
     "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage",

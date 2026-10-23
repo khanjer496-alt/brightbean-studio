@@ -34,6 +34,15 @@ class Workspace(models.Model):
     )
     is_archived = models.BooleanField(default=False)
 
+    # Brand voice for the AI writing assistant (apps.ai_writer): every prompt
+    # made from this workspace carries it. All optional — blank means no voice
+    # is set and the assistant writes in a neutral, friendly register.
+    brand_voice_tone = models.TextField(blank=True, default="")
+    brand_voice_words_to_use = models.TextField(blank=True, default="")
+    brand_voice_words_to_avoid = models.TextField(blank=True, default="")
+    # Up to three example posts, as a list of strings.
+    brand_voice_examples = models.JSONField(default=list, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

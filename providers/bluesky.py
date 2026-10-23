@@ -77,6 +77,10 @@ class BlueskyProvider(SocialProvider):
 
     media_rules = BLUESKY_MEDIA_RULES
 
+    writing_style = (
+        "Conversational and concise, like a thought shared with peers. One or two hashtags at most, few emojis."
+    )
+
     def __init__(self, credentials: dict | None = None):
         super().__init__(credentials)
         self.pds_url: str = self.credentials.get("pds_url", DEFAULT_PDS_URL).rstrip("/")

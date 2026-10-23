@@ -56,6 +56,10 @@ django-oauth-toolkit>=3.0,<4.0
 # Only called when BILLING_ENABLED is on.
 stripe>=16.0,<17.0
 
+# AI writing assistant (apps/ai_writer) — the official Anthropic SDK. Only
+# called when ANTHROPIC_API_KEY or an organization's own key is set.
+anthropic>=2.1,<3.0
+
 
 # Dev/Test
 ruff>=0.6,<1.0

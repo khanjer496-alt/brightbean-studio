@@ -40,6 +40,8 @@ urlpatterns = [
     path("workspace/<uuid:workspace_id>/calendar/", include("apps.calendar.urls")),
     path("workspace/<uuid:workspace_id>/inbox/", include("apps.inbox.urls")),
     path("workspace/<uuid:workspace_id>/analytics/", include("apps.analytics.urls")),
+    # AI writing assistant: composer actions, and the org's own provider key.
+    path("workspace/<uuid:workspace_id>/ai/", include("apps.ai_writer.urls")),
     path("webhooks/", include("apps.inbox.webhook_urls")),
     path("webhooks/", include("apps.common.webhook_urls")),
     path("webhooks/", include("apps.billing.webhook_urls")),
@@ -83,6 +85,7 @@ urlpatterns = [
     path("notifications/", include("apps.notifications.urls")),
     path("onboarding/", include("apps.onboarding.urls")),
     path("organizations/media/", include("apps.media_library.urls_org")),
+    path("organizations/ai/", include("apps.ai_writer.urls_org")),
     path("", include("apps.accounts.urls_root")),
 ]
 

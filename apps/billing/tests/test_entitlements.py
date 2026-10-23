@@ -45,6 +45,7 @@ class TestPlans:
         assert not free.features and not creator.features
         # Agent access is on every plan; only the daily volume differs.
         assert [p.max_api_calls_per_day for p in (free, creator, team, agency)] == [100, 1_000, 10_000, 100_000]
+        assert [p.max_ai_requests_per_day for p in (free, creator, team, agency)] == [20, 200, 1_000, 5_000]
 
     def test_no_plan_limits_seats(self):
         for plan in PLANS.values():
@@ -61,6 +62,8 @@ class TestBillingDisabled:
     def test_everything_unlimited_and_no_rows_written(self, organization, workspace):
         ent = entitlements.get_entitlements(organization)
         assert ent.unlimited and ent.has(Feature.ANALYTICS) and ent.max_api_calls_per_day is None
+        assert ent.max_ai_requests_per_day is None
+        entitlements.check_can_use_ai(organization)
         make_channels(workspace, 5)
         entitlements.check_can_add_channel(organization)
         entitlements.check_can_add_workspace(organization)

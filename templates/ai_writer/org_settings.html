@@ -1,0 +1,68 @@
+{% extends "layouts/settings.html" %}
+{% block title %}AI Assistant - {{ organization.name }} - {{ brand_short_name }}{% endblock %}
+{% block content %}
+<div class="max-w-2xl">
+    <h2 class="text-xl font-semibold mb-2 text-[var(--text-primary)]">AI Assistant</h2>
+    <p class="text-sm mb-8 text-[var(--text-secondary)]">
+        The AI assistant in the composer writes captions, rewrites them, adapts them for each network, suggests hashtags and turns links into posts.
+        Each workspace's tone is set under its Brand Voice settings.
+    </p>
+
+    <div class="rounded-lg border border-[var(--border)] bg-[var(--surface-0)] p-4 mb-8">
+        <p class="text-sm font-semibold text-[var(--text-primary)]">
+            {% if ai_enabled %}The AI assistant is on for this organization.{% else %}The AI assistant is off for this organization.{% endif %}
+        </p>
+        <p class="text-xs mt-1 text-[var(--text-secondary)]">
+            {% if org_key %}
+                Requests use your organization's own key (ending …{{ org_key.key_hint }}), billed by your provider, and don't count against your plan.
+            {% elif platform_key_configured %}
+                Requests use {{ brand_short_name }}'s AI service{% if daily_limit is not None %}, up to {{ daily_limit }} a day on your plan{% endif %}. Add your own key below to use your provider account instead.
+            {% else %}
+                Add your organization's API key below to turn it on.
+            {% endif %}
+        </p>
+    </div>
+
+    <h3 class="text-base font-semibold mb-1 text-[var(--text-primary)]">Your own API key</h3>
+    <p class="text-xs mb-4 text-[var(--text-tertiary)]">
+        Stored encrypted and never shown again. Used instead of {{ brand_short_name }}'s key for every workspace in this organization.
+    </p>
+    <form method="POST" class="flex flex-col gap-4 mb-8">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="save_key">
+        <div>
+            <label for="provider" class="block text-sm font-semibold mb-2 text-[var(--text-primary)]">Provider</label>
+            <select id="provider" name="provider" class="form-input-styled text-sm">
+                {% for value, label in provider_choices %}
+                <option value="{{ value }}" {% if org_key and org_key.provider == value %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="api_key" class="block text-sm font-semibold mb-2 text-[var(--text-primary)]">API key</label>
+            <input type="password" id="api_key" name="api_key" required autocomplete="off" spellcheck="false"
+                   placeholder="{% if org_key %}Replace the key ending …{{ org_key.key_hint }}{% else %}sk-ant-…{% endif %}"
+                   class="form-input-styled text-sm">
+        </div>
+        <div>
+            <button type="submit"
+                    class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer whitespace-nowrap bg-[var(--neutral-100)] text-[var(--text-primary)]">
+                {% if org_key %}Replace Key{% else %}Save Key{% endif %}
+            </button>
+        </div>
+    </form>
+
+    {% if org_key %}
+    <form method="POST">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="remove_key">
+        <button type="submit" class="btn-danger-soft px-5 py-2 text-sm font-medium rounded-full cursor-pointer whitespace-nowrap bg-[var(--error-50)] text-[var(--error-700)]">
+            Remove Key
+        </button>
+        <p class="text-xs mt-2 text-[var(--text-tertiary)]">
+            {% if platform_key_configured %}The assistant goes back to {{ brand_short_name }}'s AI service.{% else %}The assistant turns off until a key is added again.{% endif %}
+        </p>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}

@@ -116,6 +116,19 @@ def media_rules_for(platform: str, post_type: PostType) -> MediaRules | None:
     return provider_cls.media_rules.get(post_type)
 
 
+def writing_style_for(platform: str) -> str:
+    """How a post reads on ``platform``, or "" when it declares no style.
+
+    Read off the provider class (``SocialProvider.writing_style``) like
+    ``media_rules_for``, so the AI writing assistant can adapt a caption per
+    network without building a provider or touching credentials.
+    """
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    if provider_cls is None:
+        return ""
+    return provider_cls.writing_style
+
+
 def get_provider(platform: str, credentials: dict | None = None) -> SocialProvider:
     """Instantiate and return a provider for the given platform.
 

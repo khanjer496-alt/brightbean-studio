@@ -1,0 +1,131 @@
+{% comment %}
+  AI writing assistant panel, in the composer's caption toolbar. Rendered only
+  when ai_enabled (a platform key or the organization's own key is set).
+
+  Every action is an hx-post from inside #composer-form, so htmx sends the
+  form along: the caption, selected_accounts and the CSRF token arrive without
+  an hx-include. Results swap into #ai-result and are applied client-side by
+  composerApp (applyAICaption / applyAIOverrides / addHashtag) — nothing is
+  saved until the post is. Failures come back as plain text, which base.html's
+  htmx:responseError handler writes into #ai-error via data-inline-error.
+{% endcomment %}
+<div x-data="{ aiOpen: false, aiTab: 'write', aiBusy: false, aiMode: 'shorter' }"
+     @keydown.escape="aiOpen = false">
+    <button type="button"
+            @click="aiOpen = !aiOpen; if (aiOpen) $nextTick(() => $refs.aiPrompt.focus())"
+            :aria-expanded="aiOpen.toString()"
+            aria-controls="ai-panel"
+            class="text-xs font-semibold py-1.5 px-3 rounded-full border border-stone-200 text-stone-500 hover:border-stone-300 hover:text-stone-700 transition-colors flex items-center gap-1">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"/></svg>
+        AI Assist
+    </button>
+
+    <div id="ai-panel"
+         x-show="aiOpen" x-cloak x-transition
+         @click.outside="aiOpen = false"
+         @htmx:before-request="aiBusy = true; $refs.aiError.textContent = ''"
+         @htmx:after-request="aiBusy = false"
+         data-inline-error="#ai-error"
+         role="dialog" aria-label="AI writing assistant"
+         class="absolute z-50 top-full mt-1 right-0 bg-white rounded-xl shadow-lg ring-1 ring-stone-200 w-96 max-w-[calc(100vw-2rem)] max-h-[75vh] overflow-y-auto p-3">
+
+        <div class="flex flex-wrap gap-1 mb-3" role="tablist" aria-label="AI actions">
+            {% for key, label in ai_tabs %}
+            <button type="button" role="tab" id="ai-tab-{{ key }}" aria-controls="ai-tabpanel-{{ key }}"
+                    :aria-selected="(aiTab === '{{ key }}').toString()"
+                    @click="aiTab = '{{ key }}'"
+                    class="text-xs font-semibold py-1 px-2.5 rounded-full border transition-colors cursor-pointer"
+                    :class="aiTab === '{{ key }}' ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-stone-200 text-stone-500 hover:text-stone-700 hover:border-stone-300'">
+                {{ label }}
+            </button>
+            {% endfor %}
+        </div>
+
+        <!-- Write with AI -->
+        <div x-show="aiTab === 'write'" role="tabpanel" id="ai-tabpanel-write" aria-labelledby="ai-tab-write">
+            <label for="ai-prompt" class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1">What should the post say?</label>
+            <textarea id="ai-prompt" name="ai_prompt" x-ref="aiPrompt" rows="3" maxlength="2000"
+                      class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all resize-none"
+                      placeholder="e.g. Announce our spring sale: 20% off everything this weekend"></textarea>
+            <button type="button" class="btn-brand text-xs py-1.5 px-3 mt-2"
+                    :disabled="aiBusy"
+                    hx-post="{% url 'ai_writer:write' workspace_id=workspace.id %}"
+                    hx-target="#ai-result" hx-swap="innerHTML">
+                Write with AI
+            </button>
+        </div>
+
+        <!-- Improve -->
+        <div x-show="aiTab === 'improve'" x-cloak role="tabpanel" id="ai-tabpanel-improve" aria-labelledby="ai-tab-improve">
+            <label for="ai-mode" class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1">Rewrite the caption</label>
+            <select id="ai-mode" name="ai_mode" x-model="aiMode"
+                    class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white text-stone-700 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all">
+                {% for key, label in ai_improve_modes %}
+                <option value="{{ key }}">{{ label }}</option>
+                {% endfor %}
+            </select>
+            <div x-show="aiMode === 'translate'" x-cloak class="mt-2">
+                <label for="ai-language" class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1">Language</label>
+                <input id="ai-language" type="text" name="ai_language" maxlength="40" placeholder="e.g. Spanish"
+                       class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all">
+            </div>
+            <button type="button" class="btn-brand text-xs py-1.5 px-3 mt-2"
+                    :disabled="aiBusy || !caption.trim()"
+                    hx-post="{% url 'ai_writer:improve' workspace_id=workspace.id %}"
+                    hx-target="#ai-result" hx-swap="innerHTML">
+                Improve caption
+            </button>
+        </div>
+
+        <!-- Adapt for each network -->
+        <div x-show="aiTab === 'adapt'" x-cloak role="tabpanel" id="ai-tabpanel-adapt" aria-labelledby="ai-tab-adapt">
+            <p class="text-xs text-stone-500 mb-2">Write a version of the caption for each selected account, in that network's style and within its character limit. You can review each one before it fills the account's custom caption.</p>
+            <button type="button" class="btn-brand text-xs py-1.5 px-3"
+                    :disabled="aiBusy || !caption.trim() || selectedAccounts.length === 0"
+                    hx-post="{% url 'ai_writer:adapt' workspace_id=workspace.id %}"
+                    hx-target="#ai-result" hx-swap="innerHTML">
+                Adapt for each network
+            </button>
+            <p x-show="selectedAccounts.length === 0" class="text-[11px] text-stone-400 mt-1">Select at least one account first.</p>
+        </div>
+
+        <!-- Hashtags -->
+        <div x-show="aiTab === 'hashtags'" x-cloak role="tabpanel" id="ai-tabpanel-hashtags" aria-labelledby="ai-tab-hashtags">
+            <p class="text-xs text-stone-500 mb-2">Suggest hashtags that fit the caption. Pick the ones you want.</p>
+            <button type="button" class="btn-brand text-xs py-1.5 px-3"
+                    :disabled="aiBusy || !caption.trim()"
+                    hx-post="{% url 'ai_writer:hashtags' workspace_id=workspace.id %}"
+                    hx-target="#ai-result" hx-swap="innerHTML">
+                Suggest hashtags
+            </button>
+        </div>
+
+        <!-- Link to posts -->
+        <div x-show="aiTab === 'link'" x-cloak role="tabpanel" id="ai-tabpanel-link" aria-labelledby="ai-tab-link">
+            <label for="ai-url" class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1">Link to an article or page</label>
+            <input id="ai-url" type="url" name="ai_url" inputmode="url" placeholder="https://"
+                   class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all">
+            <label for="ai-count" class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mt-2 mb-1">Number of posts</label>
+            <select id="ai-count" name="ai_count"
+                    class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white text-stone-700 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all">
+                {% for n in "12345" %}
+                <option value="{{ n }}" {% if n == "3" %}selected{% endif %}>{{ n }}</option>
+                {% endfor %}
+            </select>
+            <button type="button" class="btn-brand text-xs py-1.5 px-3 mt-2"
+                    :disabled="aiBusy"
+                    hx-post="{% url 'ai_writer:link' workspace_id=workspace.id %}"
+                    hx-target="#ai-result" hx-swap="innerHTML">
+                Turn into posts
+            </button>
+        </div>
+
+        <p x-show="aiBusy" x-cloak role="status" class="flex items-center gap-2 text-xs text-stone-500 mt-3">
+            <svg class="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"/></svg>
+            Writing…
+        </p>
+        <p id="ai-error" x-ref="aiError" role="alert" class="text-xs text-red-500 mt-2 empty:hidden"></p>
+        <div id="ai-result" aria-live="polite"></div>
+        <p class="text-[11px] text-stone-400 mt-3">AI can make mistakes. Check every post before it goes out.</p>
+    </div>
+</div>
