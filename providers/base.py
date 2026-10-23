@@ -24,6 +24,7 @@ from .types import (
     MentionSuggestion,
     OAuthTokens,
     PostMetrics,
+    PostSetting,
     PostType,
     PublishContent,
     PublishResult,
@@ -177,6 +178,11 @@ class SocialProvider(ABC):
     # fitted to the limit.
     writing_style: ClassVar[str] = ""
 
+    # False when the platform publishes no media at all (Reddit here): a post
+    # carrying any is refused before scheduling, with a sentence naming the
+    # platform, instead of publishing without it.
+    accepts_media: ClassVar[bool] = True
+
     # How this platform carries the later parts of a thread (see
     # ``ThreadCapability``). The default takes no thread, so a provider has to
     # opt in — and a post with parts is refused for it before scheduling
@@ -190,6 +196,38 @@ class SocialProvider(ABC):
     # as plain text.
     mention_lookup: ClassVar[bool] = False
 
+    # Per-post settings the platform needs beyond the caption (a subreddit, a
+    # flair, a channel). The composer renders them, ``validate_post_settings``
+    # gates scheduling, and the API/MCP list them on the account. Empty for
+    # platforms that need nothing more.
+    post_settings: ClassVar[tuple[PostSetting, ...]] = ()
+
+    # Named URL (in ``social_accounts``) of a connect form that replaces the
+    # OAuth redirect: set by platforms whose connection is not an authorization
+    # code flow (Telegram asks for the channel). Empty means standard OAuth.
+    connect_url_name: ClassVar[str] = ""
+
+    # True when one OAuth grant can serve several destinations (Discord and
+    # Slack channels). The callback then asks ``list_destinations`` and lets the
+    # user pick which become accounts, like Facebook Pages.
+    has_destination_picker: ClassVar[bool] = False
+
+    # True when disconnect should hand ``revoke_token`` the refresh token rather
+    # than the access token: it outlives the access token and ends the grant.
+    revocation_uses_refresh_token: ClassVar[bool] = False
+
+    # Shown when the destination picker finds nothing to offer, and what to do about it.
+    no_destinations_hint: ClassVar[str] = ""
+
+    # False when the platform can't be connected through a client connection
+    # link (``apps.onboarding``), whose page only runs the plain OAuth flow.
+    supports_connection_link: ClassVar[bool] = True
+
+    # True when disconnecting calls ``revoke_token`` against a revocation
+    # endpoint that ends only this account's grant. Left False wherever one
+    # grant is shared by several accounts (every Slack channel of a workspace).
+    revokes_grant_on_disconnect: ClassVar[bool] = False
+
     # How many post ids a single ``get_post_metrics_batch`` call may carry. 1 —
     # the default — means the platform has no batch endpoint, so the analytics
     # sync keeps its one-call-per-post loop and one bad id can't abort the rest
@@ -202,6 +240,53 @@ class SocialProvider(ABC):
     def rate_limits(self) -> RateLimitConfig:
         """Platform rate limit configuration."""
         return RateLimitConfig()
+
+    @classmethod
+    def credentials_for_account(cls, account) -> dict:
+        """Per-account values the provider needs next to the app credentials.
+
+        ``account`` is the ``SocialAccount``. Destination platforms (a Discord
+        channel, a Telegram chat) keep their target in the account row, and this
+        is how it reaches the provider without the publisher knowing the
+        platform. The default adds nothing.
+        """
+        return {}
+
+    @classmethod
+    def validate_post_settings(cls, settings: dict) -> str:
+        """Why ``settings`` can't publish, as a sentence for the user, or "".
+
+        Checked wherever a post is scheduled and again at publish time. The
+        default enforces ``post_settings``: a required field must be filled and
+        a field must fit its ``max_length`` and static ``choices``. Platforms
+        with rules across fields (a link post needs a URL) extend it.
+        """
+        settings = settings or {}
+        for field in cls.post_settings:
+            value = settings.get(field.key)
+            blank = value is None or value == ""
+            if field.required and blank:
+                return f"{field.label} is required."
+            if blank:
+                continue
+            if field.max_length and isinstance(value, str) and len(value) > field.max_length:
+                return f"{field.label} can be at most {field.max_length} characters."
+            if field.choices and value not in {choice for choice, _label in field.choices}:
+                return f"{field.label} has an unsupported value."
+        return ""
+
+    def get_setting_options(self, access_token: str, key: str, depends_value: str = "") -> list[dict]:
+        """Live ``{"id", "name"}`` options for the ``post_settings`` field ``key``."""
+        raise NotImplementedError(f"{self.platform_name} has no live options for {key}")
+
+    def list_destinations(self, tokens: OAuthTokens) -> list[dict]:
+        """Destinations one grant can post to, for ``has_destination_picker``.
+
+        Each dict is a picker row: ``id``, ``name``, optional ``handle``,
+        ``picture`` and ``access_token`` (the token that account posts with,
+        defaulting to the grant's own).
+        """
+        raise NotImplementedError(f"{self.platform_name} has no destination picker")
 
     # ------------------------------------------------------------------
     # OAuth methods (override for OAuth providers)
@@ -242,6 +327,10 @@ class SocialProvider(ABC):
     @abstractmethod
     def publish_post(self, access_token: str, content: PublishContent) -> PublishResult:
         """Publish content to the platform."""
+
+    def delete_post(self, access_token: str, post_id: str) -> bool:
+        """Delete a post this account published. Returns True when the platform removed it."""
+        raise NotImplementedError(f"{self.platform_name} does not support deleting posts")
 
     def check_publish_status(self, access_token: str, handle: str) -> PublishStatus:
         """Ask the platform what became of an asynchronous publish.

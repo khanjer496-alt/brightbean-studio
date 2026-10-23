@@ -79,6 +79,10 @@ A free hosted version is available at [brightbean.xyz/studio](https://brightbean
 | <img src="https://api.iconify.design/logos/google-icon.svg" width="16" height="16"> Google Business Profile | ✓ | — | — | ✓ |
 | <img src="https://cdn.simpleicons.org/mastodon" width="16" height="16"> Mastodon | ✓ | ✓ | — | — |
 | <img src="https://cdn.simpleicons.org/devdotto/000000" width="16" height="16"> DEV.to | ✓ | — | — | — |
+| <img src="https://cdn.simpleicons.org/telegram" width="16" height="16"> Telegram | ✓ | — | — | — |
+| <img src="https://cdn.simpleicons.org/discord" width="16" height="16"> Discord | ✓ | — | — | — |
+| <img src="https://cdn.simpleicons.org/slack" width="16" height="16"> Slack | ✓ | — | — | — |
+| <img src="https://cdn.simpleicons.org/reddit" width="16" height="16"> Reddit | ✓ | — | — | — |
 
 ---
 
@@ -740,6 +744,47 @@ No developer app registration needed. Users connect by entering a personal **API
 3. Copy the generated key and paste it when connecting your account in Brightbean Studio
 
 Posts publish as DEV.to articles (title + Markdown body). The key can be revoked at any time from the same settings page.
+
+### Telegram
+
+One platform bot posts to every connected channel or group; users never see the bot token.
+
+1. Message [@BotFather](https://t.me/BotFather), send `/newbot` and follow the prompts
+2. Copy the bot token into `PLATFORM_TELEGRAM_BOT_TOKEN`
+
+To connect a chat, a user adds the bot to their channel or group as an **administrator** (for a channel, with **Post Messages** on), then enters `@channelname` (or the numeric id of a private chat) in Brightbean Studio. Because the bot is shared, the user also proves they run the chat by adding a one-time code shown on the connect page to the chat's description (removable afterwards); connecting checks that code and that the bot can really post there.
+
+Posts go out as HTML-formatted text (4096 characters), photos and videos (caption up to 1024 characters; a longer text follows as a separate message) and albums of up to 10. Thread parts and first comments are sent as replies.
+
+### Discord
+
+One Discord application with a bot posts to every connected server.
+
+1. Create an application at the [Discord Developer Portal](https://discord.com/developers/applications)
+2. Under **OAuth2**, copy the **Client ID** and **Client Secret**, and add the redirect `https://<your-domain>/social-accounts/callback/discord/`
+3. Under **Bot**, create the bot and copy its **Token**
+4. Set `PLATFORM_DISCORD_CLIENT_ID`, `PLATFORM_DISCORD_CLIENT_SECRET` and `PLATFORM_DISCORD_BOT_TOKEN`
+
+Users click **Connect**, choose a server and approve the bot (View Channel, Send Messages, Attach Files, Embed Links, Read Message History), then tick the text channels to connect. Each channel is one account. Messages are Markdown (2000 characters) with up to 10 attachments; thread parts and first comments are sent as replies. `@everyone` and `@here` are never pinged.
+
+### Slack
+
+1. Create an app at [api.slack.com/apps](https://api.slack.com/apps) (from scratch)
+2. Under **OAuth & Permissions**, add the redirect `https://<your-domain>/social-accounts/callback/slack/` and the bot scopes `chat:write`, `files:write`, `channels:read` and `groups:read`
+3. Leave **Token Rotation** off: every channel of a workspace shares one bot token
+4. Copy the **Client ID** and **Client Secret** into `PLATFORM_SLACK_CLIENT_ID` and `PLATFORM_SLACK_CLIENT_SECRET`
+5. Under **Manage Distribution**, activate public distribution if workspaces other than your own will install it
+
+Users click **Connect**, approve the app for their workspace and tick the channels to connect. Slack only lists channels the app has been added to, so a channel needs `/invite @app` first. Messages use Slack mrkdwn; files are uploaded into the message's thread; thread parts and first comments are replies in that thread.
+
+### Reddit
+
+1. Open [reddit.com/prefs/apps](https://www.reddit.com/prefs/apps) and create an app of type **web app**
+2. Set the redirect URI to `https://<your-domain>/social-accounts/callback/reddit/`
+3. Copy the app id (under the app name) into `PLATFORM_REDDIT_CLIENT_ID` and the secret into `PLATFORM_REDDIT_CLIENT_SECRET`
+4. Set `PLATFORM_REDDIT_USER_AGENT` to `web:<app id>:<version> (by /u/<your Reddit username>)`, the form Reddit's [API rules](https://github.com/reddit-archive/reddit/wiki/API) require
+
+An account is a Reddit user. Each post sets its own subreddit (and optionally a flair, loaded from the subreddit), whether it is a text or link post, and NSFW/spoiler marks; the post title is required. Reddit's image and video upload is not supported, so posts are text or links, and extra thread parts are comments on the post.
 
 ## Inbox: Backfill Historical Messages
 

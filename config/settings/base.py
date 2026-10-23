@@ -658,6 +658,31 @@ PLATFORM_CREDENTIALS_FROM_ENV = {
     # DEV.to - per-account API key (no OAuth). The key is supplied by the user
     # at connect time, so no app-level credentials apply (same as Bluesky).
     "devto": {},
+    # Telegram - one platform-wide bot posts to every connected chat. The user
+    # adds the bot to their channel or group as an administrator.
+    "telegram": {
+        "bot_token": env("PLATFORM_TELEGRAM_BOT_TOKEN", default=""),
+    },
+    # Discord - the OAuth2 app installs the bot into a server; the bot token
+    # posts to the channels the user picks.
+    "discord": {
+        "client_id": env("PLATFORM_DISCORD_CLIENT_ID", default=""),
+        "client_secret": env("PLATFORM_DISCORD_CLIENT_SECRET", default=""),
+        "bot_token": env("PLATFORM_DISCORD_BOT_TOKEN", default=""),
+    },
+    # Slack - OAuth v2 install of the app; each workspace's bot token posts to
+    # the channels the user picks.
+    "slack": {
+        "client_id": env("PLATFORM_SLACK_CLIENT_ID", default=""),
+        "client_secret": env("PLATFORM_SLACK_CLIENT_SECRET", default=""),
+    },
+    # Reddit - OAuth2 web app. The User-Agent is optional; Reddit's rules want
+    # "<platform>:<app id>:<version> (by /u/<your username>)".
+    "reddit": {
+        "client_id": env("PLATFORM_REDDIT_CLIENT_ID", default=""),
+        "client_secret": env("PLATFORM_REDDIT_CLIENT_SECRET", default=""),
+        "user_agent": env("PLATFORM_REDDIT_USER_AGENT", default=""),
+    },
 }
 
 # Publishing engine

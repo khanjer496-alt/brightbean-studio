@@ -25,7 +25,7 @@ from apps.common.validators import is_safe_url as _is_safe_url
 from apps.credentials.models import PlatformCredential, derive_is_configured
 from apps.members.decorators import require_permission
 from apps.webhooks import events as webhook_events
-from providers.exceptions import QuotaExceededError
+from providers.exceptions import APIError, PublishError, QuotaExceededError
 
 from .error_messages import quota_connect_error
 from .models import MastodonAppRegistration, PlatformVisibility, SocialAccount
@@ -80,6 +80,22 @@ def _get_configured_platforms(org_id):
             configured.add(platform)
 
     return configured
+
+
+def _connect_url_name(platform):
+    """The named connect form a provider uses instead of the OAuth redirect, or ""."""
+    from providers import PROVIDER_REGISTRY
+
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    return f"social_accounts:{provider_cls.connect_url_name}" if provider_cls and provider_cls.connect_url_name else ""
+
+
+def _has_destination_picker(platform):
+    """Whether one grant on ``platform`` serves several destinations the user picks from."""
+    from providers import PROVIDER_REGISTRY
+
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    return bool(provider_cls and provider_cls.has_destination_picker)
 
 
 def _build_redirect_uri(request, platform):
@@ -251,6 +267,9 @@ def connect_platform(request, workspace_id):
         return redirect("social_accounts:connect_mastodon", workspace_id=workspace_id)
     if platform == PlatformCredential.Platform.DEVTO:
         return redirect("social_accounts:connect_devto", workspace_id=workspace_id)
+    connect_url_name = _connect_url_name(platform)
+    if connect_url_name:
+        return redirect(connect_url_name, workspace_id=workspace_id)
 
     # Standard OAuth flow
     provider = _get_provider_for_platform(platform, request.org.id)
@@ -422,6 +441,34 @@ def oauth_callback(request, platform):
                         )
                 messages.warning(request, warning)
                 return redirect("social_accounts:list", workspace_id=workspace_id)
+
+        # One grant, several destinations (Discord and Slack channels): let the
+        # user pick, through the same picker the Page flows use.
+        if _has_destination_picker(platform):
+            destinations = provider.list_destinations(tokens)
+            if not destinations:
+                messages.warning(
+                    request,
+                    f"No {provider.platform_name} channels were found that {settings.BRAND_NAME} can post to. "
+                    + (provider.no_destinations_hint or "Check the app has access to a channel, then reconnect."),
+                )
+                return redirect("social_accounts:list", workspace_id=workspace_id)
+            existing_ids = set(
+                SocialAccount.objects.filter(workspace_id=workspace_id, platform=platform).values_list(
+                    "account_platform_id", flat=True
+                )
+            )
+            for destination in destinations:
+                destination["already_connected"] = destination["id"] in existing_ids
+            request.session["oauth_page_select"] = {
+                "workspace_id": workspace_id,
+                "platform": platform,
+                # The grant is only the means of listing the destinations; each
+                # account carries the token it posts with (``access_token``).
+                "user_tokens": {"access_token": "", "refresh_token": None, "expires_in": None},
+                "pages": destinations,
+            }
+            return redirect("social_accounts:select_account")
 
         # Standard single-account flow (non-Facebook/Instagram platforms)
         profile = provider.get_profile(tokens.access_token)
@@ -671,6 +718,113 @@ def connect_devto(request, workspace_id):
 
 
 # ------------------------------------------------------------------
+# Telegram Connect (platform bot added to a channel or group, no OAuth)
+# ------------------------------------------------------------------
+
+
+TELEGRAM_CODE_SESSION_KEY = "telegram_connect_codes"
+
+
+def _telegram_verification_code(request, workspace_id, *, issue=True):
+    """The one-time code this user must put in the chat's description to prove they run it.
+
+    The bot is shared by every customer, so the bot being an administrator of a
+    chat proves nothing about who is connecting it: anyone could name a channel
+    another customer added the bot to. Editing the chat's description takes an
+    administrator of that chat, and ``getChat`` reads it back without needing
+    the bot's update stream (which a webhook or another poller may own).
+    """
+    codes = request.session.get(TELEGRAM_CODE_SESSION_KEY) or {}
+    code = codes.get(str(workspace_id), "")
+    if not code and issue:
+        code = f"verify-{secrets.token_hex(5)}"
+        request.session[TELEGRAM_CODE_SESSION_KEY] = {**codes, str(workspace_id): code}
+    return code
+
+
+@login_required
+@require_permission("manage_social_accounts")
+def connect_telegram(request, workspace_id):
+    """Connect a Telegram channel or group the platform bot administers and the user controls."""
+    platform = PlatformCredential.Platform.TELEGRAM
+    provider = _get_provider_for_platform(platform, request.org.id)
+
+    def render_form(chat=""):
+        try:
+            bot_username = provider.get_bot_username()
+        except Exception:
+            logger.warning("Could not read the Telegram bot's username", exc_info=True)
+            bot_username = ""
+        return render(
+            request,
+            "social_accounts/telegram_connect.html",
+            {
+                "workspace_id": workspace_id,
+                "bot_username": bot_username,
+                "verification_code": _telegram_verification_code(request, workspace_id),
+                "chat": chat,
+            },
+        )
+
+    if request.method == "GET":
+        return render_form()
+
+    raw_chat = request.POST.get("chat", "")
+    chat = provider.normalize_chat_reference(raw_chat)
+    if not chat:
+        messages.error(request, "Enter the channel as @username, a t.me link, or its numeric chat id.")
+        return render_form(raw_chat)
+
+    # Read from the session, never the form: the code is what the user was shown.
+    code = _telegram_verification_code(request, workspace_id, issue=False)
+    if not code:
+        messages.error(request, "Your verification code expired. Add the new code below to the chat, then connect.")
+        return render_form(raw_chat)
+
+    try:
+        profile = provider.get_profile(chat)
+        if code not in (profile.extra or {}).get("description", ""):
+            messages.error(
+                request,
+                f"The code {code} isn't in {profile.name}'s description yet. Add it, save, then connect again.",
+            )
+            return render_form(raw_chat)
+        # The chat id is the account's stored credential; the bot token stays in the environment.
+        _create_or_update_account(
+            workspace_id=workspace_id,
+            platform=platform,
+            profile=profile,
+            access_token=profile.platform_id,
+        )
+        messages.success(
+            request, f"Connected {profile.name} on Telegram. You can remove the code from its description."
+        )
+    except PlanLimitError as exc:
+        messages.error(request, exc.message)
+        return redirect("social_accounts:list", workspace_id=workspace_id)
+    except PublishError as exc:
+        messages.error(request, str(exc))
+        return render_form(raw_chat)
+    except APIError as exc:
+        logger.warning("Telegram connection failed: %s", exc)
+        messages.error(
+            request,
+            "Telegram couldn't find that chat. Check the name, and make sure the bot was added to it as an administrator.",
+        )
+        return render_form(raw_chat)
+    except Exception:
+        logger.exception("Telegram connection failed")
+        messages.error(request, "Failed to connect Telegram. Please try again.")
+        return render_form(raw_chat)
+
+    # One use: the next connection proves control with a fresh code.
+    codes = dict(request.session.get(TELEGRAM_CODE_SESSION_KEY) or {})
+    codes.pop(str(workspace_id), None)
+    request.session[TELEGRAM_CODE_SESSION_KEY] = codes
+    return redirect("calendar:calendar", workspace_id=workspace_id)
+
+
+# ------------------------------------------------------------------
 # Mastodon Connect (instance-based OAuth)
 # ------------------------------------------------------------------
 
@@ -787,6 +941,9 @@ def reconnect(request, workspace_id, account_id):
         return redirect("social_accounts:connect_mastodon", workspace_id=workspace_id)
     if platform == PlatformCredential.Platform.DEVTO:
         return redirect("social_accounts:connect_devto", workspace_id=workspace_id)
+    connect_url_name = _connect_url_name(platform)
+    if connect_url_name:
+        return redirect(connect_url_name, workspace_id=workspace_id)
 
     # Standard OAuth reconnect
     provider = _get_provider_for_platform(platform, request.org.id)

@@ -53,6 +53,11 @@ urlpatterns = [
     path("compose/unsplash-import/", views.unsplash_import, name="unsplash_import"),
     path("compose/<uuid:post_id>/unsplash-import/", views.unsplash_import, name="unsplash_import_post"),
     path("compose/pinterest-boards/<uuid:account_id>/", views.pinterest_boards, name="pinterest_boards"),
+    path(
+        "compose/post-setting-options/<uuid:account_id>/<str:key>/",
+        views.post_setting_options,
+        name="post_setting_options",
+    ),
     path("compose/tiktok-creator-info/<uuid:account_id>/", views.tiktok_creator_info, name="tiktok_creator_info"),
     path("compose/<uuid:post_id>/media-picker/", views.media_picker, name="media_picker_post"),
     path("compose/<uuid:post_id>/attach-media/", views.attach_media, name="attach_media"),

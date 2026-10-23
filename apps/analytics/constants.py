@@ -21,4 +21,8 @@ NO_ANALYTICS_PLATFORMS: dict[str, str] = {
     # AnalyticsPlatformConfig: a missing config row now reads as *enabled*, and
     # this is a capability gap, not an admin decision.
     "devto": ("Publishing to DEV.to is supported, but its analytics aren't wired up yet."),
+    "telegram": ("The Telegram Bot API doesn't expose post analytics."),
+    "discord": ("Discord doesn't expose post analytics for channel messages."),
+    "slack": ("Slack doesn't expose post analytics for channel messages."),
+    "reddit": ("Reddit analytics aren't wired up yet; publishing is supported."),
 }

@@ -54,6 +54,9 @@ class AuthType(enum.Enum):
     OAUTH2 = "oauth2"
     SESSION = "session"
     INSTANCE_OAUTH = "instance_oauth"
+    # An app-level bot token from the environment posts on the account's behalf;
+    # the user only names the destination (Telegram). There is no per-user grant.
+    BOT_TOKEN = "bot_token"
 
 
 @dataclass(frozen=True)
@@ -267,6 +270,50 @@ class MentionSuggestion:
     handle: str
     name: str = ""
     avatar_url: str = ""
+
+
+@dataclass(frozen=True)
+class PostSetting:
+    """One per-post setting a platform needs beyond the caption (``SocialProvider.post_settings``).
+
+    Declared on the provider class so the composer renders the field, the
+    publisher validates it and the API/MCP describe it without any of them
+    knowing the platform. Values live in ``PlatformPost.platform_extra`` under
+    ``key`` and reach the provider as ``PublishContent.extra[key]``.
+
+    ``kind`` is ``text``, ``select`` or ``checkbox``. A ``select`` takes either
+    static ``choices`` or, with ``options_from_provider``, options fetched live
+    through ``SocialProvider.get_setting_options`` (optionally scoped by another
+    setting named in ``depends_on``, like a flair that belongs to a subreddit).
+    """
+
+    key: str
+    label: str
+    kind: str = "text"
+    required: bool = False
+    max_length: int | None = None
+    help: str = ""
+    placeholder: str = ""
+    choices: tuple[tuple[str, str], ...] = ()
+    options_from_provider: bool = False
+    depends_on: str = ""
+    # For a checkbox, the value used when the setting was never saved.
+    default: bool = False
+
+    def as_dict(self) -> dict:
+        return {
+            "key": self.key,
+            "label": self.label,
+            "kind": self.kind,
+            "required": self.required,
+            "max_length": self.max_length,
+            "help": self.help,
+            "placeholder": self.placeholder,
+            "choices": [{"value": value, "label": label} for value, label in self.choices],
+            "options_from_provider": self.options_from_provider,
+            "depends_on": self.depends_on,
+            "default": self.default,
+        }
 
 
 class UploadCache(Protocol):

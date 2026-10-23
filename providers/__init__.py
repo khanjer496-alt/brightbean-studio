@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from .bluesky import BlueskyProvider
 from .devto import DevtoProvider
+from .discord import DiscordProvider
 from .facebook import FacebookProvider
 from .google_business import GoogleBusinessProvider
 from .instagram import InstagramProvider
@@ -20,9 +21,12 @@ from .linkedin_company import LinkedInCompanyProvider
 from .linkedin_personal import LinkedInPersonalProvider
 from .mastodon import MastodonProvider
 from .pinterest import PinterestProvider
+from .reddit import RedditProvider
+from .slack import SlackProvider
+from .telegram import TelegramProvider
 from .threads import ThreadsProvider
 from .tiktok import TikTokProvider
-from .types import MediaRules, PostType, ThreadCapability
+from .types import MediaRules, PostSetting, PostType, ThreadCapability
 from .youtube import YouTubeProvider
 
 if TYPE_CHECKING:
@@ -42,6 +46,10 @@ PROVIDER_REGISTRY: dict[str, type[SocialProvider]] = {
     "google_business": GoogleBusinessProvider,
     "mastodon": MastodonProvider,
     "devto": DevtoProvider,
+    "telegram": TelegramProvider,
+    "discord": DiscordProvider,
+    "slack": SlackProvider,
+    "reddit": RedditProvider,
 }
 
 # Characters a platform escapes in the caption it publishes. Each one costs two
@@ -153,6 +161,40 @@ def mention_lookup_for(platform: str) -> bool:
     if provider_cls is None:
         return False
     return provider_cls.mention_lookup
+
+
+def accepts_media_for(platform: str) -> bool:
+    """Whether ``platform`` publishes media at all (``SocialProvider.accepts_media``).
+
+    Read off the provider class like ``requires_media``; an unknown platform
+    is left to say no for itself.
+    """
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    return provider_cls is None or provider_cls.accepts_media
+
+
+def post_settings_for(platform: str) -> tuple[PostSetting, ...]:
+    """The per-post settings ``platform`` declares (``SocialProvider.post_settings``).
+
+    Read off the provider class like ``media_rules_for``, so the composer and
+    the API can describe and check them without building a provider.
+    """
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    if provider_cls is None:
+        return ()
+    return provider_cls.post_settings
+
+
+def post_settings_error_for(platform: str, settings: dict | None) -> str:
+    """Why ``settings`` can't publish to ``platform`` (a sentence), or "".
+
+    ``SocialProvider.validate_post_settings`` for platforms that declare
+    ``post_settings``; platforms that declare none have nothing to refuse.
+    """
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    if provider_cls is None or not provider_cls.post_settings:
+        return ""
+    return provider_cls.validate_post_settings(settings or {})
 
 
 def get_provider(platform: str, credentials: dict | None = None) -> SocialProvider:

@@ -243,6 +243,18 @@ def dismiss_checklist(request, workspace_id):
 # ------------------------------------------------------------------
 
 
+def _supports_connection_link(platform):
+    """Whether a client connection link can connect ``platform``.
+
+    The link page only runs the plain OAuth flow, so a platform that connects
+    through its own form or a destination picker declares it can't.
+    """
+    from providers import PROVIDER_REGISTRY
+
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    return provider_cls is None or provider_cls.supports_connection_link
+
+
 @require_GET
 def connection_page(request, token):
     """Render the public connection link page."""
@@ -285,7 +297,11 @@ def connection_page(request, token):
             "workspace": workspace,
             "error": session_error,
             "org": org,
-            "platform_choices": PlatformCredential.Platform.choices,
+            "platform_choices": [
+                (value, label)
+                for value, label in PlatformCredential.Platform.choices
+                if _supports_connection_link(value)
+            ],
             "configured_platforms": configured_platforms,
             "connected_accounts": connected_accounts,
         },
@@ -314,6 +330,9 @@ def connection_oauth_start(request, token):
     org = link.workspace.organization
     configured_platforms = _get_configured_platforms(org.id)
     if platform not in configured_platforms:
+        return redirect("onboarding:connection_page", token=token)
+
+    if not _supports_connection_link(platform):
         return redirect("onboarding:connection_page", token=token)
 
     # Bluesky and Mastodon use their own forms on the connection page

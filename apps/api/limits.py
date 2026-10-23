@@ -74,6 +74,15 @@ PLATFORM_DAILY_POST_LIMIT: dict[str, int] = {
     "mastodon": 200,
     "bluesky": 200,
     "google_business": 50,
+    # A bot may send ~20 messages a minute to one group; the cap is about volume
+    # a channel's subscribers will tolerate rather than the platform's limit.
+    "telegram": 200,
+    # Messages to a community channel; Discord's own limits are per route.
+    "discord": 200,
+    # Roughly one message a second per channel is Slack's own ceiling.
+    "slack": 200,
+    # Reddit throttles new accounts and each subreddit hard; keep well under it.
+    "reddit": 25,
 }
 
 _DEFAULT_FALLBACK = 50
