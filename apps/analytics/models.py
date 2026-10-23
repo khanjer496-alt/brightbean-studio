@@ -130,3 +130,33 @@ class ProviderQuotaBlock(models.Model):
     def __str__(self) -> str:
         scope = f"/{self.quota_scope}" if self.quota_scope else ""
         return f"{self.platform}{scope} blocked until {self.blocked_until:%Y-%m-%d %H:%M}"
+
+
+class EngagementAlert(models.Model):
+    """The record that a post's first-day engagement was already flagged.
+
+    One row per post (the unique key), written in the same step that decides to
+    notify, so the hourly check can run as often as it likes and a post still
+    alerts at most once, however many workers race on it.
+    """
+
+    platform_post = models.OneToOneField(
+        "composer.PlatformPost",
+        on_delete=models.CASCADE,
+        related_name="engagement_alert",
+    )
+    social_account = models.ForeignKey(
+        "social_accounts.SocialAccount",
+        on_delete=models.CASCADE,
+        related_name="engagement_alerts",
+    )
+    engagement = models.FloatField(help_text="Engagements in the post's first 24 hours.")
+    baseline = models.FloatField(help_text="Median first-24h engagements of the account's earlier posts.")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "analytics_engagement_alert"
+        indexes = [models.Index(fields=["social_account", "-created_at"])]
+
+    def __str__(self) -> str:
+        return f"{self.platform_post_id}: {self.engagement:g} vs typical {self.baseline:g}"
