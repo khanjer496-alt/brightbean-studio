@@ -214,3 +214,34 @@ def test_example_sidebar_offers_no_reconnect_or_connect(owner_client, example):
 def test_no_hint_callout_inside_the_example(owner_client, example):
     html = owner_client.get(reverse("calendar:calendar", kwargs={"workspace_id": example.id})).content.decode()
     assert 'data-hint="calendar"' not in html
+
+
+def test_remove_deletes_uploaded_files(owner, workspace, example, django_capture_on_commit_callbacks):
+    from django.core.files.base import ContentFile
+
+    from apps.media_library.models import MediaAsset
+
+    asset = MediaAsset(organization=workspace.organization, workspace=example, media_type="image", filename="a.png")
+    asset.file.save("sample-upload.png", ContentFile(b"png"), save=False)
+    asset.save()
+    storage, name = asset.file.storage, asset.file.name
+    assert storage.exists(name)
+    with django_capture_on_commit_callbacks(execute=True):
+        sample.remove_sample_workspace(user=owner, organization_id=workspace.organization_id)
+    assert not storage.exists(name)
+    assert not MediaAsset.objects.filter(pk=asset.pk).exists()
+
+
+def test_oauth_agents_never_act_in_the_example(owner, workspace, example):
+    from apps.api.auth import _resolve_active_membership
+
+    owner.last_workspace_id = example.id
+    owner.save(update_fields=["last_workspace_id"])
+    assert _resolve_active_membership(owner).workspace_id == workspace.id
+
+
+def test_api_keys_cannot_be_issued_for_the_example(workspace, example):
+    from apps.api_keys.views import _initial_issuance_context
+
+    workspaces = list(_initial_issuance_context(workspace.organization, None)["workspaces"])
+    assert workspace in workspaces and example not in workspaces

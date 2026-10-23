@@ -1,6 +1,7 @@
 {% comment %}
 The "Get started" widget, fixed to the bottom-right corner for workspace owners.
-On phones it starts as a small pill so it never covers the page, sits below the
+It starts as a small pill so it never covers the page (the open/closed choice
+is remembered per browser), sits below the
 composer's bottom sheets (z-30 against their z-60), and is hidden entirely
 inside the composer. Expects the `onboarding` context from
 apps.onboarding.context_processors.
@@ -8,8 +9,8 @@ apps.onboarding.context_processors.
 {% if onboarding and not onboarding.checklist_dismissed and onboarding.checklist_items %}
 {% with items=onboarding.checklist_items done=onboarding.checklist_completed_count total=onboarding.checklist_total_count flow=onboarding.checklist_flow %}
 <aside id="onboarding-checklist" aria-label="Getting started checklist"
-       x-data="{ open: window.matchMedia('(min-width: 640px)').matches }"
-       @keydown.escape="if (open) { open = false; $nextTick(() => $refs.pill && $refs.pill.focus()) }"
+       x-data="{ open: false, init() { try { this.open = localStorage.getItem('checklistOpen') === '1' } catch (e) {} }, toggle(value) { this.open = value; try { localStorage.setItem('checklistOpen', value ? '1' : '0') } catch (e) {} } }"
+       @keydown.escape="if (open) { toggle(false); $nextTick(() => $refs.pill && $refs.pill.focus()) }"
        {% if request.workspace %}
        hx-get="{% url 'onboarding:checklist_partial' workspace_id=request.workspace.id %}"
        hx-trigger="ideaChanged from:body"
@@ -18,7 +19,7 @@ apps.onboarding.context_processors.
        class="fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] right-3 z-30 sm:bottom-4 sm:right-4 {% if onboarding.checklist_hidden_on_phone %}max-sm:hidden{% endif %}">
 
     <button type="button" x-ref="pill" x-show="!open" x-cloak
-            @click="open = true; $nextTick(() => $refs.panel.focus())"
+            @click="toggle(true); $nextTick(() => $refs.panel.focus())"
             aria-expanded="false" aria-controls="onboarding-checklist-panel"
             class="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-full border border-line bg-surface-1 py-1.5 pl-3 pr-4 text-left shadow-lg hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-safe:transition-colors">
         <svg class="h-8 w-8 shrink-0 -rotate-90" viewBox="0 0 32 32" aria-hidden="true">
@@ -38,7 +39,7 @@ apps.onboarding.context_processors.
             </div>
             <div class="flex items-center gap-1">
                 <progress class="mr-1 h-1 w-14 overflow-hidden rounded-full [&::-moz-progress-bar]:bg-accent [&::-webkit-progress-bar]:bg-surface-3 [&::-webkit-progress-value]:bg-accent" max="{{ total }}" value="{{ done }}" aria-label="Checklist progress"></progress>
-                <button type="button" @click="open = false; $nextTick(() => $refs.pill.focus())" aria-label="Minimize checklist"
+                <button type="button" @click="toggle(false); $nextTick(() => $refs.pill.focus())" aria-label="Minimize checklist"
                         class="flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-ink-3 hover:bg-surface-2 hover:text-ink sm:h-8 sm:w-8">
                     <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
                 </button>

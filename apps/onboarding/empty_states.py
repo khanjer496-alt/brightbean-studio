@@ -61,9 +61,9 @@ _STATES = {
     "evergreen": (
         "evergreen",
         "No evergreen posts yet",
-        "Mark a post as evergreen and it is shared again on a schedule.",
-        "Create a post",
-        "composer:compose",
+        "Add a post that did well and it fills empty queue slots again later.",
+        "Pick from sent posts",
+        "calendar:calendar",
         "",
     ),
     "reports": (
@@ -76,7 +76,10 @@ _STATES = {
     ),
 }
 
-_NEEDS_CHANNEL = {"calendar", "inbox", "analytics"}
+_NEEDS_CHANNEL = {"calendar", "inbox", "analytics", "evergreen"}
+
+# Query strings for actions that open a page on a specific tab.
+_ACTION_QUERIES = {"evergreen": "?mode=list&tab=sent"}
 
 _CONNECT = (
     "connect",
@@ -110,6 +113,10 @@ def empty_state(key, workspace, *, has_channels=None, offer_sample=False):
         if not has_channels:
             state = _CONNECT
     icon, title, body, label, url_name, click = state
+    action_url = ""
+    if url_name:
+        query = "" if state is _CONNECT else _ACTION_QUERIES.get(key, "")
+        action_url = reverse(url_name, kwargs={"workspace_id": workspace.id}) + query
     sample_url = ""
     if offer_sample and key == "calendar" and state is _CONNECT:
         sample_url = reverse("onboarding:sample_create", kwargs={"workspace_id": workspace.id})
@@ -120,6 +127,6 @@ def empty_state(key, workspace, *, has_channels=None, offer_sample=False):
         "title": title,
         "body": body,
         "action_label": label,
-        "action_url": reverse(url_name, kwargs={"workspace_id": workspace.id}) if url_name else "",
+        "action_url": action_url,
         "action_click": click,
     }

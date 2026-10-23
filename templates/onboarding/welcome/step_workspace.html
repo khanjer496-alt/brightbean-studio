@@ -1,7 +1,7 @@
 {% extends "onboarding/welcome/base.html" %}
 
 {% block step %}
-{% include "onboarding/welcome/_heading.html" with title="Welcome. Let's set up your workspace." lead="Two quick answers and you can start planning. You can change any of this later in settings." error_focus=errors %}
+{% include "onboarding/welcome/_heading.html" with title="Welcome. Let's set up your workspace." lead="A name and a timezone, and you can start planning. You can change both later in settings." error_focus=errors %}
 
 {% if trial %}
 <p class="mb-6 rounded-xl border border-line bg-surface-1 px-4 py-3 text-sm text-ink-2">
@@ -45,7 +45,7 @@
     </div>
 
     <fieldset {% if errors.account_kind %}aria-describedby="welcome-kind-error"{% endif %}>
-        <legend class="mb-2 text-sm font-semibold text-ink">What best describes you?</legend>
+        <legend class="mb-2 text-sm font-semibold text-ink">What best describes you? <span class="font-normal text-ink-3">(optional)</span></legend>
         <div class="grid gap-3 sm:grid-cols-3">
             {% for option in kinds %}
             <label class="flex min-h-11 cursor-pointer flex-col gap-1 rounded-xl border border-line bg-surface-1 p-4 hover:border-line-strong has-[:checked]:border-accent has-[:checked]:bg-accent-soft has-[:checked]:ring-1 has-[:checked]:ring-accent has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-offset-2 has-[:focus-visible]:outline-accent">

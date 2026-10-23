@@ -1,4 +1,5 @@
 {% extends "onboarding/welcome/base.html" %}
+{% load tz %}
 
 {% block header_action %}{% endblock %}
 {% block progress %}{% endblock %}
@@ -16,7 +17,7 @@
 <blockquote class="mb-6 rounded-xl border border-line bg-surface-1 p-4 text-sm leading-relaxed text-ink-2">
     <p class="line-clamp-3">{{ first_post.post.caption }}</p>
     <footer class="mt-2 text-xs text-ink-3">
-        {{ first_post.social_account.account_name }}{% if first_post.status == 'scheduled' %} &middot; scheduled for {{ first_post.scheduled_at|default:first_post.post.scheduled_at|date:"D M j, g:i A" }}{% endif %}
+        {{ first_post.social_account.account_name }}{% if first_post.status == 'scheduled' %} &middot; scheduled for {% timezone workspace.effective_timezone|default:"UTC" %}{{ first_post.scheduled_at|default:first_post.post.scheduled_at|date:"D M j, g:i A" }}{% endtimezone %}{% endif %}
     </footer>
 </blockquote>
 {% endif %}

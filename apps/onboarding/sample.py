@@ -9,9 +9,11 @@ Nothing in it can reach a network:
 * every post is a draft, and scheduling or publishing one is refused
   (``is_sample_workspace`` is checked wherever a post becomes schedulable);
 * the publisher leaves these workspaces alone;
-* billing does not count the workspace or its channel.
+* billing does not count the workspace or its channel;
+* API keys cannot be issued for it, and an OAuth (MCP) client never acts in it.
 
-Removing the example deletes the workspace and everything in it.
+Removing the example deletes the workspace and everything in it, uploaded
+files included.
 """
 
 from __future__ import annotations
@@ -138,13 +140,19 @@ def remove_sample_workspace(*, user, organization_id):
     Returns the workspace the user should land on, or ``None`` when there was
     no example to remove.
     """
+    from apps.accounts.models import User
+    from apps.organizations.models import _delete_stored_files
     from apps.workspaces.models import Workspace
 
     workspace = sample_workspace_for(organization_id)
     if workspace is None:
         return None
     workspace_id = workspace.id
+    stored_files = _stored_files(workspace)
+    User.objects.filter(last_workspace_id=workspace_id).exclude(pk=user.pk).update(last_workspace_id=None)
     workspace.delete()
+    # Rows are gone with the workspace; their uploads go once that is committed.
+    transaction.on_commit(lambda: _delete_stored_files(stored_files))
 
     target = (
         Workspace.objects.filter(
@@ -159,3 +167,27 @@ def remove_sample_workspace(*, user, organization_id):
         user.last_workspace_id = target.id if target else None
         user.save(update_fields=["last_workspace_id"])
     return target
+
+
+def _stored_files(workspace):
+    """(storage, name) of every upload the example workspace's rows point at."""
+    from apps.approvals.models import PostComment
+    from apps.composer.models import CSVImportJob
+    from apps.media_library.models import MediaAsset, MediaAssetVersion
+    from apps.reports.models import ReportRun
+    from apps.workspaces.models import Workspace
+
+    sources = [
+        (MediaAsset.objects.filter(workspace=workspace), ("file", "thumbnail")),
+        (MediaAssetVersion.objects.filter(media_asset__workspace=workspace), ("file", "thumbnail")),
+        (Workspace.objects.filter(pk=workspace.pk), ("icon",)),
+        (CSVImportJob.objects.filter(workspace=workspace), ("file",)),
+        (PostComment.objects.filter(post__workspace=workspace), ("attachment",)),
+        (ReportRun.objects.filter(definition__workspace=workspace), ("pdf_file",)),
+    ]
+    files = []
+    for queryset, fields in sources:
+        storages = [queryset.model._meta.get_field(field).storage for field in fields]
+        for names in queryset.values_list(*fields).iterator():
+            files += [(storage, name) for storage, name in zip(storages, names, strict=True) if name]
+    return files

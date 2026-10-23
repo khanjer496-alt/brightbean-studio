@@ -89,7 +89,7 @@ def test_workspace_step_saves_and_advances(owner_client, flow, workspace):
     [
         ({"name": "", "timezone": "UTC", "account_kind": "creator"}, "Give your workspace a name"),
         ({"name": "X", "timezone": "Mars/Base", "account_kind": "creator"}, "Choose a timezone"),
-        ({"name": "X", "timezone": "UTC", "account_kind": "wizard"}, "Tell us which one fits"),
+        ({"name": "X", "timezone": "UTC", "account_kind": "wizard"}, "Choose one of the options"),
     ],
 )
 def test_workspace_step_validates_and_moves_focus_to_the_errors(owner_client, flow, workspace, data, field):
@@ -182,7 +182,7 @@ def test_bluesky_and_mastodon_are_highlighted_when_nothing_else_is_configured(
     settings.PLATFORM_CREDENTIALS_FROM_ENV = {}
     html = owner_client.get(url("welcome_channel", workspace)).content.decode()
     assert html.count(">Works right away</span>") == 2
-    assert "No platform apps are set up" in html
+    assert "only need your own login" in html
 
 
 def test_no_highlight_once_a_platform_app_is_configured(owner_client, at_channel_step, workspace, settings):
@@ -364,3 +364,72 @@ def test_flow_pages_use_the_focused_layout_without_inline_styles(owner_client, f
     assert "style=" not in main
     assert "sidebar" not in main
     assert 'aria-current="step"' in html and 'id="welcome-heading"' in html
+
+
+# --- review fixes ---------------------------------------------------------------------
+
+
+def test_connecting_from_the_post_step_returns_to_it(owner, at_post_step, workspace, account):
+    # Skipped the channel step, then used "Connect a channel" on the post step.
+    assert resume_url_after_connect(owner, workspace.id) == url("welcome_post", workspace)
+    at_post_step.refresh_from_db()
+    assert at_post_step.step == OnboardingFlow.Step.POST
+
+
+def test_account_kind_is_optional(owner_client, flow, workspace):
+    response = owner_client.post(url("welcome_workspace", workspace), {"name": "Solo", "timezone": "UTC"})
+    assert response.url == url("welcome_channel", workspace)
+    flow.refresh_from_db()
+    assert flow.account_kind == ""
+
+
+def test_caption_over_the_channel_limit_is_refused(owner_client, at_post_step, workspace, account):
+    date, time = future()
+    data = {"account": str(account.id), "caption": "x" * 301, "schedule_date": date, "schedule_time": time}
+    response = owner_client.post(url("welcome_post", workspace), data)
+    assert "allows 300 characters" in response.content.decode()
+    assert not PlatformPost.objects.exists()
+
+
+def test_schedule_is_the_default_submit_button(owner_client, at_post_step, workspace, account):
+    html = owner_client.get(url("welcome_post", workspace)).content.decode()
+    # Enter in a field submits with the first submit button in the form.
+    assert html.index('value="schedule"') < html.index('value="draft"')
+
+
+def test_done_screen_shows_the_time_in_the_workspace_timezone(owner_client, at_post_step, workspace, account):
+    workspace.timezone = "Asia/Dubai"
+    workspace.save(update_fields=["timezone"])
+    date, _time = future()
+    owner_client.post(
+        url("welcome_post", workspace),
+        {"account": str(account.id), "caption": "Hi", "schedule_date": date, "schedule_time": "09:00"},
+    )
+    assert "9:00 AM" in owner_client.get(url("welcome_done", workspace)).content.decode()
+
+
+def test_dashboard_completes_the_flow_when_a_post_was_scheduled_elsewhere(
+    owner_client, at_post_step, workspace, account
+):
+    from apps.composer.services import create_post
+
+    create_post(
+        workspace=workspace,
+        social_account=account,
+        caption="From the composer",
+        scheduled_at=timezone.now() + dt.timedelta(days=1),
+        status="scheduled",
+    )
+    assert owner_client.get(reverse("dashboard")).url == reverse(
+        "calendar:calendar", kwargs={"workspace_id": workspace.id}
+    )
+    at_post_step.refresh_from_db()
+    assert at_post_step.status == OnboardingFlow.Status.COMPLETED
+
+
+def test_invited_workspace_owner_never_gets_the_new_owner_flow(rf, workspace, make_member):
+    invited = make_member("co-owner@example.com", Role.OWNER)
+    request = rf.get("/")
+    request.session = {}
+    user_signed_up.send(sender=User, request=request, user=invited)
+    assert not OnboardingFlow.objects.filter(user=invited).exists()

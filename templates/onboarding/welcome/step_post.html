@@ -14,7 +14,12 @@
     <a href="{% url 'onboarding:welcome_channel' workspace_id=workspace.id %}" class="btn-brand mt-4 min-h-11 w-auto px-6">Connect a channel</a>
 </div>
 {% else %}
-<form method="post" novalidate class="space-y-6">
+{{ char_limits|json_script:"welcome-char-limits" }}
+<form method="post" novalidate class="space-y-6"
+      x-data="{ limits: {}, account: '{{ chosen_account.id }}', count: 0, sync() { const box = document.getElementById('welcome-caption'); this.count = box ? box.value.length : 0 } }"
+      x-init="limits = JSON.parse(document.getElementById('welcome-char-limits').textContent); sync()"
+      @input="sync()" @htmx:after-settle="sync()"
+      @change="if ($event.target.name === 'account') account = $event.target.value">
     {% csrf_token %}
     {% if accounts|length > 1 %}
     <fieldset>
@@ -37,8 +42,9 @@
     <div>
         <label for="welcome-prompt" class="mb-1.5 block text-sm font-semibold text-ink">Write with AI</label>
         <div class="flex flex-col gap-2 sm:flex-row">
-            <input id="welcome-prompt" type="text" name="prompt" maxlength="500" placeholder="What is the post about?" class="form-input-styled w-full">
-            <button type="button" class="btn-outline min-h-11 shrink-0 sm:w-auto"
+            <input id="welcome-prompt" type="text" name="prompt" maxlength="500" placeholder="What is the post about?" class="form-input-styled w-full"
+                   @keydown.enter.prevent="$refs.aiButton.click()">
+            <button type="button" x-ref="aiButton" class="btn-outline min-h-11 shrink-0 sm:w-auto"
                     hx-post="{% url 'onboarding:welcome_ai_write' workspace_id=workspace.id %}"
                     hx-include="#welcome-prompt, #welcome-caption, [name=account]"
                     hx-target="#welcome-caption-field" hx-swap="outerHTML"
@@ -67,12 +73,13 @@
         </p>
     </div>
 
-    <div class="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:items-center sm:justify-between">
-        <div class="flex flex-col gap-1 sm:flex-row sm:gap-2">
-            <button type="submit" name="action" value="draft" class="min-h-11 w-full cursor-pointer rounded-full px-4 text-sm font-medium text-ink-2 hover:bg-surface-2 hover:text-ink sm:w-auto">Save as draft</button>
-            <a href="{{ compose_url }}" class="inline-flex min-h-11 w-full items-center justify-center rounded-full px-4 text-sm font-medium text-ink-2 hover:bg-surface-2 hover:text-ink sm:w-auto">Open the full composer</a>
-        </div>
+    {% comment %}Schedule comes first in the markup so pressing Enter in a field schedules rather than saving a draft.{% endcomment %}
+    <div class="flex flex-col gap-3 pt-2 sm:flex-row-reverse sm:items-center sm:justify-between">
         <button type="submit" name="action" value="schedule" class="btn-brand min-h-11 w-full sm:w-auto sm:px-8">Schedule post</button>
+        <div class="flex flex-col gap-1 sm:flex-row sm:gap-2">
+            <button type="submit" name="action" value="draft" class="min-h-11 w-full cursor-pointer whitespace-nowrap rounded-full px-4 text-sm font-medium text-ink-2 hover:bg-surface-2 hover:text-ink sm:w-auto">Save as draft</button>
+            <a href="{{ compose_url }}" class="inline-flex min-h-11 w-full items-center justify-center whitespace-nowrap rounded-full px-4 text-sm font-medium text-ink-2 hover:bg-surface-2 hover:text-ink sm:w-auto">Open the full composer</a>
+        </div>
     </div>
 </form>
 {% endif %}

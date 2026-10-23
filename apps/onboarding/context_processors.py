@@ -1,5 +1,6 @@
 """Context processor for the onboarding checklist widget and the sample banner."""
 
+from django.utils import timezone
 from django.utils.functional import SimpleLazyObject
 
 from apps.onboarding.models import OnboardingChecklist
@@ -32,8 +33,11 @@ def _build(request):
 
     items = get_checklist_items(workspace, request.user)
     completed = sum(1 for item in items if item["completed"])
-    # Nothing left to do: stop showing it.
+    # Nothing left to do: put it away for good, so later pages skip the work.
     if completed == len(items):
+        OnboardingChecklist.objects.update_or_create(
+            user=request.user, workspace=workspace, defaults={"is_dismissed": True, "dismissed_at": timezone.now()}
+        )
         return context
 
     match = getattr(request, "resolver_match", None)

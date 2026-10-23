@@ -48,13 +48,30 @@ def provision_organization_and_workspace(user):
 
 
 def _start_welcome_flow(user):
-    """Begin the first-run welcome flow for a user who owns their own new workspace."""
-    from apps.members.models import WorkspaceMembership
+    """Begin the first-run welcome flow for a user who owns their own new workspace.
+
+    Only the organization provisioned for this signup qualifies: one the user
+    owns with nobody else in it. Someone who joined a team (even as a
+    workspace owner there) never gets the new-owner flow.
+    """
+    from apps.members.models import OrgMembership, WorkspaceMembership
     from apps.onboarding.flow import start_flow
 
-    owned = WorkspaceMembership.objects.filter(
-        user=user, workspace_role=WorkspaceMembership.WorkspaceRole.OWNER
-    ).select_related("workspace")
+    org_membership = OrgMembership.objects.filter(user=user, org_role=OrgMembership.OrgRole.OWNER).first()
+    if (
+        org_membership is None
+        or OrgMembership.objects.filter(organization_id=org_membership.organization_id).count() != 1
+    ):
+        return
+    owned = (
+        WorkspaceMembership.objects.filter(
+            user=user,
+            workspace_role=WorkspaceMembership.WorkspaceRole.OWNER,
+            workspace__organization_id=org_membership.organization_id,
+        )
+        .select_related("workspace")
+        .order_by("added_at")
+    )
     for membership in owned[:1]:
         start_flow(user, membership.workspace)
 

@@ -116,16 +116,19 @@ def resume_url_after_connect(user, workspace_id):
     """
     from apps.social_accounts.models import SocialAccount
 
+    # The post step counts too: "Connect a channel" there leads back to the
+    # channel step after the user skipped it, and should return to the post.
     flow = OnboardingFlow.objects.filter(
         user=user,
         workspace_id=workspace_id,
         status=OnboardingFlow.Status.ACTIVE,
-        step=OnboardingFlow.Step.CHANNEL,
+        step__in=[OnboardingFlow.Step.CHANNEL, OnboardingFlow.Step.POST],
     ).first()
     # A failed attempt ends in the same redirect; only a real connection moves on.
     if flow is None or not SocialAccount.objects.for_workspace(workspace_id).exists():
         return None
-    advance(flow, OnboardingFlow.Step.POST)
+    if flow.step == OnboardingFlow.Step.CHANNEL:
+        advance(flow, OnboardingFlow.Step.POST)
     return step_url(flow)
 
 
@@ -137,7 +140,26 @@ def redirect_url_for_dashboard(request):
     if flow is None:
         return None
     request.session[SESSION_KEY] = True
+    if has_scheduled_post(flow.workspace_id):
+        # They scheduled from the composer instead: the guide's job is done.
+        complete(flow)
+        return None
     return step_url(flow)
+
+
+def has_scheduled_post(workspace_id):
+    """Whether the workspace has a post that was scheduled (or went out) already."""
+    from apps.composer.models import PlatformPost
+
+    return PlatformPost.objects.filter(
+        post__workspace_id=workspace_id,
+        status__in=[
+            PlatformPost.Status.SCHEDULED,
+            PlatformPost.Status.PUBLISHING,
+            PlatformPost.Status.PUBLISHED,
+            PlatformPost.Status.FAILED,
+        ],
+    ).exists()
 
 
 # ---------------------------------------------------------------------------

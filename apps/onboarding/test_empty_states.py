@@ -30,7 +30,7 @@ def test_every_empty_state_renders_title_explanation_and_one_action(workspace, a
     assert "style=" not in html
 
 
-@pytest.mark.parametrize("key", ["calendar", "inbox", "analytics"])
+@pytest.mark.parametrize("key", ["calendar", "inbox", "analytics", "evergreen"])
 def test_channel_pages_ask_to_connect_when_nothing_is_connected(workspace, key):
     html = render_tag(workspace, key)
     assert "Connect a channel" in html
@@ -95,3 +95,16 @@ def test_media_library_search_miss_keeps_its_own_message(owner_client, workspace
 def test_reports_empty_state(owner_client, workspace):
     html = get(owner_client, "reports:list", workspace).content.decode()
     assert 'data-empty-state="reports"' in html
+
+
+def test_evergreen_empty_state_points_at_sent_posts(owner_client, workspace, account):
+    html = get(owner_client, "calendar:evergreen_list", workspace).content.decode()
+    assert 'data-empty-state="evergreen"' in html
+    calendar = reverse("calendar:calendar", kwargs={"workspace_id": workspace.id})
+    assert f'href="{calendar}?mode=list&amp;tab=sent"' in html
+
+
+def test_evergreen_filter_miss_keeps_its_own_message(owner_client, workspace, account):
+    html = get(owner_client, "calendar:evergreen_list", workspace, status="paused").content.decode()
+    assert "Nothing matches these filters" in html
+    assert 'data-empty-state="evergreen"' not in html

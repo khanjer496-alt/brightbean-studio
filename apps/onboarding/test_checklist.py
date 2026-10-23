@@ -153,7 +153,8 @@ def test_widget_is_a_pill_below_the_composer_sheets(owner_client, workspace):
     html = _calendar(owner_client, workspace).content.decode()
     widget = html[html.index('id="onboarding-checklist"') :][:900]
     assert "z-30" in widget  # composer bottom sheets are z-60
-    assert "matchMedia('(min-width: 640px)')" in widget  # collapsed on phones
+    assert "open: false" in widget  # starts as the pill on every screen
+    assert "localStorage.getItem('checklistOpen')" in widget  # remembers the user's choice
 
 
 def test_widget_hidden_on_phones_inside_the_composer(owner_client, workspace):

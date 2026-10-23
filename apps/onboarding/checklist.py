@@ -8,6 +8,7 @@ Used by the checklist widget that ``base.html`` renders for workspace owners.
 
 from django.urls import reverse
 
+from apps.onboarding.flow import has_scheduled_post
 from apps.onboarding.models import OnboardingChecklist, OnboardingFlow
 
 # Seconds a slot may differ between its creation and last update before it
@@ -75,7 +76,6 @@ def get_checklist_items(workspace, user=None):
     """
     from apps.ai_writer.client import ai_available
     from apps.ai_writer.models import AIRequestLog
-    from apps.composer.models import PlatformPost
     from apps.members.models import Invitation, WorkspaceMembership
     from apps.social_accounts.models import SocialAccount
 
@@ -112,15 +112,7 @@ def get_checklist_items(workspace, user=None):
             "key": "schedule_post",
             "title": "Schedule a post",
             "description": "Write something and pick when it goes out",
-            "completed": PlatformPost.objects.filter(
-                post__workspace_id=workspace_id,
-                status__in=[
-                    PlatformPost.Status.SCHEDULED,
-                    PlatformPost.Status.PUBLISHING,
-                    PlatformPost.Status.PUBLISHED,
-                    PlatformPost.Status.FAILED,
-                ],
-            ).exists(),
+            "completed": has_scheduled_post(workspace_id),
             "url": reverse("composer:compose", kwargs={"workspace_id": workspace_id}),
         },
         {

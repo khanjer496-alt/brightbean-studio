@@ -157,8 +157,9 @@ def welcome_workspace(request, workspace_id):
         errors["name"] = f"Keep the name under {MAX_WORKSPACE_NAME} characters."
     if tz_name not in available_timezones():
         errors["timezone"] = "Choose a timezone from the list."
-    if kind not in OnboardingFlow.AccountKind.values:
-        errors["account_kind"] = "Tell us which one fits best."
+    # Optional: it only tailors the example post and the agency extras.
+    if kind and kind not in OnboardingFlow.AccountKind.values:
+        errors["account_kind"] = "Choose one of the options, or leave it empty."
     if errors:
         context = _timezone_context(tz_name if tz_name in available_timezones() else workspace.effective_timezone)
         context.update({"name": name, "kind": kind, "errors": errors})
@@ -236,6 +237,7 @@ def _first_post_context(request, flow, accounts, *, caption=None, account=None, 
         "ai_enabled": ai_available(workspace.organization),
         "error": error,
         "max_caption": MAX_CAPTION,
+        "char_limits": {str(a.id): min(MAX_CAPTION, a.char_limit or MAX_CAPTION) for a in accounts},
         "compose_url": reverse("composer:compose", kwargs={"workspace_id": workspace.id}),
         "connect_url": reverse("social_accounts:connect", kwargs={"workspace_id": workspace.id}),
     }
@@ -269,8 +271,12 @@ def welcome_post(request, workspace_id):
         return fail("Choose a channel to post to.")
     if not caption:
         return fail("Write a caption first, or use the example.")
-    if len(caption) > MAX_CAPTION:
-        return fail(f"Keep the caption under {MAX_CAPTION} characters.")
+    limit = min(MAX_CAPTION, account.char_limit or MAX_CAPTION)
+    if len(caption) > limit:
+        return fail(
+            f"{account.get_platform_display()} allows {limit} characters; this caption has {len(caption)}. "
+            "Shorten it a little."
+        )
 
     scheduled_at = None
     if not save_as_draft:
@@ -379,7 +385,7 @@ def sample_create(request, workspace_id):
     sample = sample_service.create_sample_workspace(user=request.user, source_workspace=request.workspace)
     request.user.last_workspace_id = sample.id
     request.user.save(update_fields=["last_workspace_id"])
-    return redirect(reverse("calendar:calendar", kwargs={"workspace_id": sample.id}) + "?mode=calendar&view=week")
+    return redirect(reverse("calendar:calendar", kwargs={"workspace_id": sample.id}) + "?mode=calendar&view=month")
 
 
 @login_required
