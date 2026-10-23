@@ -94,6 +94,8 @@ class InboxMessage(models.Model):
         blank=True,
         related_name="inbox_messages",
     )
+    # Star rating (1-5) of a ``review``; null for every other message type.
+    rating = models.PositiveSmallIntegerField(null=True, blank=True)
     extra = models.JSONField(default=dict, blank=True)
     received_at = models.DateTimeField(db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -135,6 +137,10 @@ class InboxMessage(models.Model):
                 fields=["workspace", "sentiment", "-received_at"],
                 name="inbox_msg_ws_sent_recv",
             ),
+            models.Index(
+                fields=["workspace", "message_type", "rating", "-received_at"],
+                name="inbox_msg_ws_type_rating",
+            ),
             # Must match ``apps.inbox.feed.search_vector`` for the planner to use it.
             GinIndex(
                 SearchVector("body", "sender_name", "sender_handle", config="simple"),
@@ -150,11 +156,30 @@ class InboxMessage(models.Model):
         return self.social_account.platform
 
     @property
+    def review_reply(self) -> dict:
+        """The owner's public reply already on the platform (``comment``, ``update_time``), or {}."""
+        return (self.extra or {}).get("review_reply") or {}
+
+    @property
+    def needs_reply(self) -> bool:
+        """A review with no public reply yet."""
+        return self.message_type == self.MessageType.REVIEW and not self.review_reply
+
+    @property
     def attachments(self):
         from providers.meta_messaging import normalize_attachments
 
         extra = self.extra or {}
         return normalize_attachments(extra.get("attachments", (extra.get("message") or {}).get("attachments", [])))
+
+
+def rating_band(rating: int | None) -> str:
+    """The saved-reply band for a star rating: positive (4-5), neutral (3), negative (1-2), else ""."""
+    if not rating:
+        return ""
+    if rating >= 4:
+        return SavedReply.RatingBand.POSITIVE
+    return SavedReply.RatingBand.NEUTRAL if rating == 3 else SavedReply.RatingBand.NEGATIVE
 
 
 class InboxReply(models.Model):
@@ -223,6 +248,12 @@ class InternalNote(models.Model):
 
 
 class SavedReply(models.Model):
+    class RatingBand(models.TextChoices):
+        ANY = "", "Any message"
+        POSITIVE = "positive", "Reviews: 4-5 stars"
+        NEUTRAL = "neutral", "Reviews: 3 stars"
+        NEGATIVE = "negative", "Reviews: 1-2 stars"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     workspace = models.ForeignKey(
         "workspaces.Workspace",
@@ -233,6 +264,8 @@ class SavedReply(models.Model):
     body = models.TextField(
         help_text="Supports variables: {sender_name}, {account_name}, {post_url}",
     )
+    # Offered first for reviews in this star band; blank applies to everything.
+    rating_band = models.CharField(max_length=10, choices=RatingBand.choices, blank=True, default="")
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

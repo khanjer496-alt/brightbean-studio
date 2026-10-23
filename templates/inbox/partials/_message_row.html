@@ -48,6 +48,7 @@
         <div class="flex items-center gap-1.5 mt-1.5">
             <!-- Type badge -->
             <span class="badge-pill badge-type">{{ message.get_message_type_display }}</span>
+            {% if message.rating %}{% include "inbox/partials/_rating_stars.html" with rating=message.rating %}{% if message.needs_reply %}<span class="badge-pill badge-status-unread">Needs reply</span>{% endif %}{% endif %}
             <!-- Status badge -->
             <span class="badge-pill badge-status-{{ message.status }}">{{ message.get_status_display }}</span>
             <!-- Sentiment badge -->

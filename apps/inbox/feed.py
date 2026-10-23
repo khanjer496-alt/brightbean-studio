@@ -46,7 +46,20 @@ POLL_IDLE_SECONDS = 60
 POLL_IDLE_AFTER = 15
 
 # Query parameters that define "the messages matching this filter".
-FILTER_KEYS = ("view", "platform", "account", "type", "status", "assigned", "sentiment", "date_from", "date_to", "q")
+FILTER_KEYS = (
+    "view",
+    "platform",
+    "account",
+    "type",
+    "status",
+    "assigned",
+    "sentiment",
+    "rating",
+    "needs_reply",
+    "date_from",
+    "date_to",
+    "q",
+)
 
 
 def search_vector():
@@ -118,6 +131,15 @@ def filtered_messages(workspace, params, user):
     if sentiments:
         qs = qs.filter(sentiment__in=sentiments)
 
+    ratings = [r for r in _values(params, "rating") if r in {"1", "2", "3", "4", "5"}]
+    if ratings:
+        qs = qs.filter(rating__in=[int(r) for r in ratings])
+
+    needs_reply = params.get("needs_reply") == "1"
+    if needs_reply:
+        # A review the team has not answered; replies made on the platform itself count as answers.
+        qs = qs.filter(message_type=InboxMessage.MessageType.REVIEW).exclude(extra__has_key="review_reply")
+
     date_from = params.get("date_from")
     if date_from:
         qs = qs.filter(received_at__date__gte=date_from)
@@ -137,6 +159,8 @@ def filtered_messages(workspace, params, user):
         "status": statuses,
         "assigned": assigned,
         "sentiment": sentiments,
+        "rating": ratings,
+        "needs_reply": needs_reply,
         "date_from": date_from,
         "date_to": date_to,
         "q": q,

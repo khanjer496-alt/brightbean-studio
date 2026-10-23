@@ -27,8 +27,15 @@
         </button>
 
         <!-- Saved replies dropdown -->
+        {% if message.message_type == "review" and message.review_reply %}
+        <button type="button" class="ml-auto text-[11px] font-medium text-stone-500 hover:text-stone-700 underline underline-offset-2"
+                data-text="{{ message.review_reply.comment }}"
+                @click="mode = 'reply'; replyText = $el.dataset.text; document.getElementById('inbox-reply-body').focus()">
+            Edit reply
+        </button>
+        {% endif %}
         {% if saved_replies %}
-        <div class="relative ml-auto" x-data="{ srOpen: false }">
+        <div class="relative {% if not message.review_reply %}ml-auto{% endif %}" x-data="{ srOpen: false }">
             <button @click="srOpen = !srOpen"
                     class="text-[11px] font-medium text-stone-500 hover:text-stone-700 flex items-center gap-1 transition-colors">
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21l-7-5-7 5V5a2 2 0 012-2h10a2 2 0 012 2z"/></svg>
@@ -111,7 +118,7 @@
                             class="btn-primary-hover inline-flex items-center gap-1.5 px-4 py-1.5 text-[12px] font-semibold text-white rounded-full transition-all duration-150 cursor-pointer"
                             style="background: var(--primary); box-shadow: var(--shadow-primary);">
                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                        Send Reply
+                        {% if message.message_type == "review" and message.review_reply %}Update reply{% else %}Send Reply{% endif %}
                     </button>
                 </div>
             </div>

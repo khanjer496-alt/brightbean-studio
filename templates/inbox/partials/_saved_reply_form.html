@@ -12,6 +12,11 @@
                 {{ form.body }}
                 <p class="text-[11px] text-stone-400 mt-1">Variables: <code>{sender_name}</code>, <code>{account_name}</code>, <code>{post_url}</code></p>
             </div>
+            <div>
+                <label for="id_rating_band" class="block text-[13px] font-semibold text-stone-700 mb-1">Offer for</label>
+                {{ form.rating_band }}
+                <p class="text-[11px] text-stone-400 mt-1">Pick a star band to offer this reply only on matching Google reviews.</p>
+            </div>
         </div>
         <div class="flex items-center gap-3 mt-6">
             <button type="submit"

@@ -123,3 +123,15 @@ def reply_eligibility(message, *, origin=PROGRAMMATIC, actor=None, credentials=N
         )
     result.update(can_send=True, human_agent=True)
     return result
+
+
+def review_reply_allowed(message, *, origin=PROGRAMMATIC, actor=None):
+    """``(allowed, reason)`` for publishing a public reply to a review.
+
+    The single gate for review replies. Nothing restricts them yet: a person
+    sending from the web inbox always may. HOOK: when the autonomy dial lands,
+    an unattended sender (``origin`` other than ``WEB_INBOX``, or an agent
+    ``actor``) must be checked against the workspace's autonomy policy here and
+    refused with a sentence the team can act on until a person approves.
+    """
+    return True, ""

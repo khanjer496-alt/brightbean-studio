@@ -26,7 +26,7 @@ from providers.exceptions import MessagingError
 from providers.meta_messaging import META_DM_PLATFORMS
 
 from .models import InboxMessage, InboxReply, InboxSLAConfig, InternalNote
-from .reply_policy import PROGRAMMATIC, recipient_id, reply_eligibility
+from .reply_policy import PROGRAMMATIC, recipient_id, reply_eligibility, review_reply_allowed
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +34,6 @@ logger = logging.getLogger(__name__)
 _COMMENT_LIKE_TYPES = {
     InboxMessage.MessageType.COMMENT,
     InboxMessage.MessageType.MENTION,
-    InboxMessage.MessageType.REVIEW,
 }
 
 # States a reply can be sent (or re-sent) from.
@@ -91,7 +90,15 @@ def _dispatch_to_platform(message: InboxMessage, body: str, *, origin=PROGRAMMAT
     if recipient:
         extra.setdefault("recipient_id", recipient)
 
-    if message.message_type in _COMMENT_LIKE_TYPES:
+    if message.message_type == InboxMessage.MessageType.REVIEW:
+        allowed, reason = review_reply_allowed(message, origin=origin, actor=actor)
+        if not allowed:
+            raise MessagingError(reason, platform=account.platform)
+        # Replying again to a review that already has a reply replaces it (an edit).
+        result = provider.reply_to_review(
+            access_token=account.oauth_access_token, review_id=message.platform_message_id, text=body
+        )
+    elif message.message_type in _COMMENT_LIKE_TYPES:
         result = provider.reply_to_comment(
             access_token=account.oauth_access_token,
             comment_id=message.platform_message_id,
@@ -117,8 +124,40 @@ def _dispatch_to_platform(message: InboxMessage, body: str, *, origin=PROGRAMMAT
     return result.platform_message_id
 
 
-def _apply_post_send_side_effects(message: InboxMessage) -> None:
+def _record_review_reply(message: InboxMessage, body: str) -> None:
+    """Remember the public reply on the review, so "needs reply" and the response time see it."""
+    message.extra = {
+        **(message.extra or {}),
+        "review_reply": {"comment": body, "update_time": timezone.now().isoformat(), "state": ""},
+    }
+    message.save(update_fields=["extra"])
+
+
+def delete_review_reply(message: InboxMessage) -> InboxMessage:
+    """Remove the public reply from a review on the platform and forget it here.
+
+    Raises ``ValueError`` when ``message`` is not a review with a reply, and the
+    platform's own error (``ProviderError``) when it refuses.
+    """
+    from apps.publisher.engine import _resolve_publish_credentials
+
+    if not message.review_reply:
+        raise ValueError("This review has no reply to delete.")
+    account = message.social_account
+    provider = get_provider(account.platform, _resolve_publish_credentials(account))
+    provider.delete_review_reply(account.oauth_access_token, message.platform_message_id)
+    extra = dict(message.extra or {})
+    extra.pop("review_reply", None)
+    message.extra = extra
+    message.status = InboxMessage.Status.OPEN
+    message.save(update_fields=["extra", "status"])
+    return message
+
+
+def _apply_post_send_side_effects(message: InboxMessage, body: str = "") -> None:
     """Resolve or open the message after a reply goes out, per SLA config."""
+    if message.message_type == InboxMessage.MessageType.REVIEW:
+        _record_review_reply(message, body)
     sla_config = InboxSLAConfig.objects.filter(workspace=message.workspace, is_active=True).first()
     if sla_config and sla_config.auto_resolve_on_reply:
         if message.status != InboxMessage.Status.RESOLVED:
@@ -234,7 +273,7 @@ def send_reply_now(reply: InboxReply, *, actor=None, origin=PROGRAMMATIC) -> Inb
         raise failure
     # SLA bookkeeping must not roll back a reply already delivered externally.
     try:
-        _apply_post_send_side_effects(message)
+        _apply_post_send_side_effects(message, reply.body)
     except Exception:
         logger.exception("Inbox reply %s was sent, but updating the message status failed", reply.id)
     return reply
