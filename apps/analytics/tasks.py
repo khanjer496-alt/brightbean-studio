@@ -137,6 +137,7 @@ BACKFILL_DAYS_PER_PLATFORM: dict[str, int] = {
     "discord": 0,
     "slack": 0,
     "reddit": 0,
+    "x": 0,
 }
 DEFAULT_BACKFILL_DAYS = 90
 

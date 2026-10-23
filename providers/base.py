@@ -219,6 +219,12 @@ class SocialProvider(ABC):
     # Shown when the destination picker finds nothing to offer, and what to do about it.
     no_destinations_hint: ClassVar[str] = ""
 
+    # True when each customer registers their own developer app and enters its
+    # credentials while connecting (X bills API use to the app owner). The platform
+    # then counts as configured without app credentials in the environment, and
+    # ``connect_url_name`` is the form that collects them.
+    user_supplied_credentials: ClassVar[bool] = False
+
     # False when the platform can't be connected through a client connection
     # link (``apps.onboarding``), whose page only runs the plain OAuth flow.
     supports_connection_link: ClassVar[bool] = True
@@ -251,6 +257,14 @@ class SocialProvider(ABC):
         platform. The default adds nothing.
         """
         return {}
+
+    @classmethod
+    def char_limit_for_account(cls, account) -> int | None:
+        """This account's caption limit when it differs from ``max_caption_length``, else None.
+
+        For a limit the account's tier sets (X Premium), read from ``account.platform_data``.
+        """
+        return None
 
     @classmethod
     def validate_post_settings(cls, settings: dict) -> str:

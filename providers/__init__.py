@@ -27,6 +27,7 @@ from .telegram import TelegramProvider
 from .threads import ThreadsProvider
 from .tiktok import TikTokProvider
 from .types import MediaRules, PostSetting, PostType, ThreadCapability
+from .x import XProvider
 from .youtube import YouTubeProvider
 
 if TYPE_CHECKING:
@@ -50,6 +51,7 @@ PROVIDER_REGISTRY: dict[str, type[SocialProvider]] = {
     "discord": DiscordProvider,
     "slack": SlackProvider,
     "reddit": RedditProvider,
+    "x": XProvider,
 }
 
 # Characters a platform escapes in the caption it publishes. Each one costs two

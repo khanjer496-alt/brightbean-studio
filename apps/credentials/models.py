@@ -27,6 +27,8 @@ REQUIRED_CREDENTIAL_KEYS = {
     "discord": (("client_id",), ("client_secret",), ("bot_token",)),
     "slack": (("client_id",), ("client_secret",)),
     "reddit": (("client_id",), ("client_secret",)),
+    # Each customer's own X developer app (X bills API use to the app owner): never set in .env.
+    "x": (("client_id",), ("client_secret",)),
 }
 
 
@@ -62,6 +64,7 @@ class PlatformCredential(models.Model):
         DISCORD = "discord", "Discord"
         SLACK = "slack", "Slack"
         REDDIT = "reddit", "Reddit"
+        X = "x", "X (Twitter)"
 
     class TestResult(models.TextChoices):
         SUCCESS = "success", "Success"
