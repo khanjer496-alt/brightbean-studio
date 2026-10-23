@@ -36,7 +36,8 @@
             <label for="color_name_{{ forloop.counter }}" class="sr-only">Colour {{ forloop.counter }} name</label>
             <input id="color_name_{{ forloop.counter }}" name="color_name" type="text" maxlength="60" value="{{ color.name }}" placeholder="Name" class="form-input-styled text-sm flex-1 min-w-[8rem]" {% if not can_edit %}disabled{% endif %}>
             <label for="color_hex_{{ forloop.counter }}" class="sr-only">Colour {{ forloop.counter }} hex value</label>
-            <input id="color_hex_{{ forloop.counter }}" name="color_hex" type="text" maxlength="7" value="{{ color.hex }}" placeholder="#1a2b3c" pattern="#[0-9A-Fa-f]{6}" class="form-input-styled text-sm w-28 font-mono" {% if not can_edit %}disabled{% endif %}>
+            <input id="color_hex_{{ forloop.counter }}" name="color_hex" type="text" maxlength="7" value="{{ color.hex }}" placeholder="#1a2b3c" pattern="#[0-9A-Fa-f]{6}" class="form-input-styled text-sm w-28! flex-none font-mono" {% if not can_edit %}disabled{% endif %}>
+            <span aria-hidden="true" class="h-9 w-9 flex-none rounded-lg border border-line"{% if color.hex %} style="background: {{ color.hex }}"{% endif %}></span>
         </div>
         {% endfor %}
         {% if can_edit %}<div><button type="submit" class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer bg-[var(--neutral-100)] text-[var(--text-primary)]">Save colours</button></div>{% endif %}
@@ -54,12 +55,12 @@
             <label for="font_name_{{ forloop.counter }}" class="sr-only">Font {{ forloop.counter }} name</label>
             <input id="font_name_{{ forloop.counter }}" name="font_name" type="text" maxlength="60" value="{{ font.name }}" placeholder="Font name" class="form-input-styled text-sm flex-1 min-w-[8rem]" {% if not can_edit %}disabled{% endif %}>
             <label for="font_role_{{ forloop.counter }}" class="sr-only">Font {{ forloop.counter }} role</label>
-            <select id="font_role_{{ forloop.counter }}" name="font_role" class="form-input-styled text-sm w-32" {% if not can_edit %}disabled{% endif %}>
+            <select id="font_role_{{ forloop.counter }}" name="font_role" class="form-input-styled text-sm w-32! flex-none" {% if not can_edit %}disabled{% endif %}>
                 {% for role in font_roles %}<option value="{{ role }}" {% if role == font.role %}selected{% endif %}>{{ role|capfirst }}</option>{% endfor %}
             </select>
             <label for="font_asset_{{ forloop.counter }}" class="sr-only">Font {{ forloop.counter }} file</label>
             <select id="font_asset_{{ forloop.counter }}" name="font_asset" class="form-input-styled text-sm flex-1 min-w-[8rem]" {% if not can_edit %}disabled{% endif %}>
-                <option value="">No file</option>
+                <option value="">No PDF</option>
                 {% for asset in font_assets %}<option value="{{ asset.id }}" {% if asset.id|stringformat:"s" == font.asset_id %}selected{% endif %}>{{ asset.filename }}</option>{% endfor %}
             </select>
         </div>

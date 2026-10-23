@@ -76,7 +76,7 @@
                 <span class="sr-only">{{ message.rating }} out of 5 stars</span>
             </p>
             {% endif %}
-            {% if message.body %}<p class="text-[14px] text-stone-800 leading-relaxed whitespace-pre-wrap">{{ message.body }}</p>{% elif message.rating %}<p class="text-sm text-stone-500">The reviewer left a rating without a comment.</p>{% endif %}
+            {% if message.body %}<p dir="auto" class="text-[14px] text-stone-800 leading-relaxed whitespace-pre-wrap">{{ message.body }}</p>{% elif message.rating %}<p class="text-sm text-stone-500">The reviewer left a rating without a comment.</p>{% endif %}
             {% if message.extra.create_time and message.extra.update_time and message.extra.create_time != message.extra.update_time %}
             <p class="mt-2 text-[11px] text-stone-500">Edited by the reviewer {{ message.received_at|date:"N j, Y" }}</p>
             {% endif %}
@@ -106,8 +106,8 @@
         {% if message.message_type == "review" and message.review_reply %}
         <!-- The public reply already on the platform -->
         <div class="mb-4 rounded-xl border border-stone-200 p-4" id="review-public-reply">
-            <p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-stone-500">Your public reply</p>
-            <p class="text-[13px] text-stone-800 leading-relaxed whitespace-pre-wrap">{{ message.review_reply.comment }}</p>
+            <p class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-stone-500">{% if message.review_reply_rejected %}Your reply (not public){% else %}Your public reply{% endif %}</p>
+            <p dir="auto" class="text-[13px] text-stone-800 leading-relaxed whitespace-pre-wrap">{{ message.review_reply.comment }}</p>
             {% if message.review_reply_rejected %}
             <p class="mt-2 text-[12px] font-medium text-red-700">The platform rejected this reply under its content policy, so it isn't public. Edit it and send again.</p>
             {% elif message.review_reply.state == "PENDING" %}
