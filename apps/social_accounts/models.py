@@ -433,6 +433,14 @@ class SocialAccount(models.Model):
 
         return CAPTION_ESCAPED_CHARS.get(self.platform, "")
 
+    @property
+    def caption_counting(self) -> str:
+        """How the composer counts this platform's captions: "characters" or "weighted"."""
+        from providers import PROVIDER_REGISTRY
+
+        provider_cls = PROVIDER_REGISTRY.get(self.platform)
+        return provider_cls.caption_counting if provider_cls else "characters"
+
     def caption_wire_length(self, text: str) -> int:
         """Caption length as this platform counts it, after any escaping.
 

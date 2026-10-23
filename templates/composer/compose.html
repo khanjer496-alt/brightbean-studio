@@ -2339,6 +2339,7 @@ function composerApp() {
         // characters in what it publishes, so each one costs two against the
         // limit — mirrors providers.caption_wire_length on the server.
         wireLength(text, accId) {
+            if (this.charLimits[accId]?.caption_counting === 'weighted') return this.weightedLength(text);
             const escaped = this.charLimits[accId]?.escaped_chars || '';
             if (!escaped) return text.length;
             let extra = 0;
@@ -2346,6 +2347,54 @@ function composerApp() {
                 if (escaped.includes(ch)) extra++;
             }
             return text.length + extra;
+        },
+        // twitter-text's weighted count, for a platform whose caption_counting is
+        // "weighted": a URL counts 23, an emoji sequence 2, other code points 1 or 2
+        // by range. Mirrors providers.x.weighted_length on the server.
+        weightedLength(text) {
+            const tail = String.raw`(?:/\S*[^\s.,!?:;"')\]}>])?`;
+            const url = new RegExp(
+                String.raw`(?<![a-z0-9_@.-])(?:(?:https?://|www\.)\S*[^\s.,!?:;"')\]}>]` +
+                String.raw`|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+` +
+                '(?:com|net|org|io|co|ai|dev|app|me|ly|gg|tv|info|biz|edu|gov|xyz|news|blog|shop|link|site|online' +
+                String.raw`|uk|de|fr|es|it|nl|ca|au|in|jp|br|ru|ch|se|no|us|eu|ae|sa)(?![a-z0-9_])` + tail + ')',
+                'giu',
+            );
+            const light = [[0, 4351], [8192, 8205], [8208, 8223], [8242, 8247]];
+            const regional = (cp) => cp >= 0x1F1E6 && cp <= 0x1F1FF;
+            const continues = (cp) => cp === 0xFE0E || cp === 0xFE0F || cp === 0x20E3
+                || (cp >= 0x1F3FB && cp <= 0x1F3FF) || (cp >= 0xE0020 && cp <= 0xE007F);
+            const weigh = (part) => {
+                const cps = Array.from(part, (ch) => ch.codePointAt(0));
+                let total = 0;
+                let i = 0;
+                while (i < cps.length) {
+                    const cp = cps[i];
+                    const next = cps[i + 1];
+                    if (regional(cp) && next !== undefined && regional(next)) { total += 2; i += 2; continue; }
+                    if ((cp >= 0x1F000 && cp <= 0x1FAFF) || (cp >= 0x2190 && cp <= 0x2BFF) || next === 0xFE0F || next === 0x20E3) {
+                        total += 2;
+                        i += 1;
+                        while (i < cps.length) {
+                            if (continues(cps[i])) i += 1;
+                            else if (cps[i] === 0x200D && i + 1 < cps.length) i += 2;
+                            else break;
+                        }
+                        continue;
+                    }
+                    total += light.some(([lo, hi]) => cp >= lo && cp <= hi) ? 1 : 2;
+                    i += 1;
+                }
+                return total;
+            };
+            const normalized = (text || '').normalize('NFC');
+            let total = 0;
+            let position = 0;
+            for (const match of normalized.matchAll(url)) {
+                total += weigh(normalized.slice(position, match.index)) + 23;
+                position = match.index + match[0].length;
+            }
+            return total + weigh(normalized.slice(position));
         },
         // The counter shows one account: the one with the least headroom. Both
         // numbers have to come from the same account or the pair lies — 200 '#'

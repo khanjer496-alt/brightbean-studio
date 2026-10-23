@@ -13,7 +13,7 @@ from urllib.parse import parse_qs, urlparse
 import httpx
 import pytest
 
-from providers import PROVIDER_REGISTRY, get_provider, media_rules_for, post_settings_error_for
+from providers import PROVIDER_REGISTRY, caption_wire_length, get_provider, media_rules_for, post_settings_error_for
 from providers.exceptions import (
     APIError,
     OAuthError,
@@ -29,6 +29,7 @@ from providers.x import (
     DUPLICATE_MESSAGE,
     XProvider,
     parse_poll_options,
+    weighted_length,
 )
 
 CREDS = {"client_id": "app-id", "client_secret": "app-secret"}
@@ -291,7 +292,7 @@ class TestPublishText:
         provider().publish_post("at", PublishContent(text="a", extra={"reply_settings": "everyone"}))
         assert "reply_settings" not in body_of(x.requests[0])
 
-    @pytest.mark.parametrize("value", ["following", "mentionedUsers"])
+    @pytest.mark.parametrize("value", ["following", "mentionedUsers", "verified"])
     def test_restricted_replies(self, x, value):
         x.on("POST", "/2/tweets", tweet_created())
         provider().publish_post("at", PublishContent(text="a", extra={"reply_settings": value}))
@@ -562,11 +563,96 @@ class TestThreads:
         assert "poll" not in body
         assert body["reply_settings"] == "following"
 
-    def test_a_part_cannot_be_looked_up_so_an_ambiguous_one_is_terminal(self):
-        """No ``find_thread_part``: the engine holds the thread back instead of risking a double post."""
-        from apps.publisher.engine import _can_reconcile_thread_parts
+    def test_parts_and_first_comments_can_be_reconciled(self):
+        from apps.publisher.engine import _can_reconcile_comments, _can_reconcile_thread_parts
 
-        assert _can_reconcile_thread_parts(provider()) is False
+        assert _can_reconcile_thread_parts(provider()) is True
+        assert _can_reconcile_comments(provider()) is True
+
+
+class TestReconcile:
+    """An ambiguous reply is looked up on the account's own timeline before it is sent again."""
+
+    def timeline(self, x, *posts):
+        x.on("GET", "/2/users/me", json_response({"data": {"id": "42", "username": "alice"}}))
+        x.on("GET", "/2/users/42/tweets", json_response({"data": list(posts)} if posts else {"meta": {}}))
+
+    def find(self, text, parent="100"):
+        return provider().find_thread_part(
+            "at", root=PublishResult(platform_post_id="1"), parent=PublishResult(platform_post_id=parent), text=text
+        )
+
+    def test_finds_the_part_among_the_posts_since_its_parent(self, x):
+        self.timeline(x, {"id": "103", "text": "something else"}, {"id": "102", "text": "Part two &amp; more"})
+        assert self.find("Part two & more") == "102"
+        request = x.calls("GET", "/2/users/42/tweets")[0]
+        assert request.url.params["since_id"] == "100"
+        assert request.headers["Authorization"] == "Bearer at"
+
+    def test_links_rewritten_to_tco_still_match(self, x):
+        self.timeline(x, {"id": "102", "text": "Read this https://t.co/abc123"})
+        assert self.find("Read this https://example.com/a/long/article") == "102"
+
+    def test_a_long_posts_shortened_text_matches_as_a_prefix(self, x):
+        self.timeline(x, {"id": "102", "text": "word " * 50 + "\u2026"})
+        assert self.find("word " * 400) == "102"
+
+    def test_nothing_published_reads_as_missing(self, x):
+        self.timeline(x)
+        assert self.find("Part two") is None
+
+    def test_a_different_text_is_not_taken_for_the_part(self, x):
+        self.timeline(x, {"id": "102", "text": "Part three"})
+        assert self.find("Part two") is None
+
+    def test_a_first_comment_is_looked_up_after_its_post(self, x):
+        self.timeline(x, {"id": "201", "text": "First!"})
+        assert provider().find_own_comment("at", "200", "First!") == "201"
+        assert x.calls("GET", "/2/users/42/tweets")[0].url.params["since_id"] == "200"
+
+    def test_a_failed_lookup_raises_so_the_part_is_not_sent_blind(self, x):
+        x.on("GET", "/2/users/me", json_response({"title": "Service Unavailable"}, status=503))
+        with pytest.raises(APIError):
+            self.find("Part two")
+
+
+class TestWeightedLength:
+    """twitter-text v3: URLs 23, code points outside the light ranges 2, an emoji sequence 2."""
+
+    @pytest.mark.parametrize(
+        ("text", "expected"),
+        [
+            ("", 0),
+            ("a" * 280, 280),
+            ("日本語", 6),
+            ("한국어", 6),
+            ("“curly” — dash…", 16),  # U+2026 is outside the light ranges
+            ("see https://example.com/a/very/long/path?query=1. ok", 4 + 23 + 4),
+            ("www.example.org/x", 23),
+            ("visit example.com, not me@example.com", 6 + 23 + 20),
+            ("file.txt", 8),
+            ("👍", 2),
+            ("👍🏽", 2),
+            ("👨\u200d👩\u200d👧", 2),
+            ("🇯🇵", 2),
+            ("❤️", 2),
+            ("1️⃣", 2),
+            ("e\u0301", 1),
+        ],
+    )
+    def test_counts(self, text, expected):
+        assert weighted_length(text) == expected
+
+    def test_the_caption_counter_uses_it_for_x_only(self):
+        text = "日本 https://example.com/" + "a" * 100
+        assert caption_wire_length("x", text) == 2 + 2 + 1 + 23
+        assert caption_wire_length("bluesky", text) == len(text)
+        assert XProvider.caption_counting == "weighted"
+        assert PROVIDER_REGISTRY["bluesky"].caption_counting == "characters"
+
+    def test_a_post_of_280_cjk_characters_is_over_the_limit(self):
+        assert weighted_length("中" * 140) == 280
+        assert weighted_length("中" * 141) > provider().max_caption_length
 
 
 class TestDelete:

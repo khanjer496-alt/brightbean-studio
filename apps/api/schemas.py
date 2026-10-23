@@ -64,6 +64,14 @@ class AccountSummary(Schema):
             "Empty for platforms that publish the caption verbatim."
         ),
     )
+    caption_counting: str = Field(
+        "characters",
+        description=(
+            "How the platform counts a caption against ``char_limit``. ``characters``: one per "
+            "character (plus ``escaped_chars``). ``weighted``: the twitter-text v3 weighted count "
+            "X uses, where each URL counts as 23 and CJK characters and emoji as 2."
+        ),
+    )
     needs_title: bool = Field(
         False,
         description="True when the platform requires a title (YouTube, Pinterest). When false, the title field is ignored.",
@@ -128,6 +136,7 @@ class AccountSummary(Schema):
             connection_status=sa.connection_status,
             char_limit=sa.char_limit,
             escaped_chars=sa.escaped_chars,
+            caption_counting=sa.caption_counting,
             needs_title=bool(sa.field_config.get("needs_title", False)),
             supports_first_comment=sa.supports_first_comment(),
             requires_video=is_video_only(sa.platform),

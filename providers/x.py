@@ -32,9 +32,16 @@ API reference (checked against the current docs, October 2026):
 - ``GET /2/users/search``: https://docs.x.com/x-api/users/search
 - Rate limits (``x-rate-limit-reset`` is a Unix timestamp; ``POST /2/tweets`` is 100 per
   15 minutes per user): https://docs.x.com/x-api/fundamentals/rate-limits
-- Pricing (pay-per-use, $0.015 per post, $0.20 for a post containing a URL; the docs say
-  requests are blocked when credits run out but name no status code):
-  https://docs.x.com/x-api/getting-started/pricing
+- Post length is the twitter-text v3 weighted count (``weighted_length`` below):
+  https://docs.x.com/resources/fundamentals/counting-characters
+  https://github.com/twitter/twitter-text/blob/master/config/v3.json
+- Pricing (pay-per-use, $0.015 per post, $0.20 for a post containing a URL; reads of the
+  account's own posts $0.001 each; the docs say requests are blocked when credits run out but
+  name no status code): https://docs.x.com/x-api/getting-started/pricing
+- Errors: a spent usage cap is the ``https://api.x.com/2/problems/usage-capped`` problem, sent
+  with HTTP 429: https://docs.x.com/x-api/fundamentals/response-codes-and-errors
+- ``GET /2/users/{id}/tweets`` (``since_id``, ``max_results`` 5-100), which reconciles an
+  ambiguous reply: https://docs.x.com/x-api/users/get-posts
 
 Analytics are not implemented: every post-metrics read is billed to the customer
 (about $0.005 per post read), which is not a cost to incur on a schedule.
@@ -44,10 +51,13 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import html
 import logging
 import mimetypes
 import os
+import re
 import time
+import unicodedata
 from dataclasses import replace
 from datetime import UTC, datetime
 from functools import partial
@@ -116,8 +126,9 @@ POLL_DEFAULT_MINUTES = 1440
 POLL_MIN_MINUTES = 5
 POLL_MAX_MINUTES = 10080
 
-# ``reply_settings`` values X accepts besides the default of everyone.
-_RESTRICTED_REPLY_SETTINGS = ("following", "mentionedUsers")
+# ``reply_settings`` values offered besides the default of everyone. X also accepts
+# ``subscribers``, which only an account selling subscriptions can use.
+_RESTRICTED_REPLY_SETTINGS = ("following", "mentionedUsers", "verified")
 
 _X_DOCS = "https://docs.x.com/x-api/media/quickstart/media-upload-chunked"
 _IMAGE_RULES = MediaRules(
@@ -137,12 +148,87 @@ _VIDEO_RULES = MediaRules(
     advisory=frozenset({"max_duration", "max_video_bytes"}),
 )
 
-# Problem ``title``/``type`` fragments X uses for a spent budget, and what to tell the customer.
+# Problem ``title``/``type`` fragments X uses for a spent budget (``usage-capped`` arrives with a
+# 429, so it is checked before the rate limit), and what to tell the customer.
 _BUDGET_MARKERS = ("usagecap", "usage-capped", "creditsdepleted", "credits-depleted")
 BUDGET_MESSAGE = (
     "Your X developer app has no API credits or usage left. Add credits in the X Developer Console, then publish again."
 )
 DUPLICATE_MESSAGE = "X rejected this post as a duplicate of a recent one. Change the text and publish again."
+
+
+# twitter-text v3 (config/v3.json): code points in these ranges weigh 1, everything else 2;
+# a URL weighs 23 whatever its length and an emoji sequence 2.
+_LIGHT_RANGES = ((0, 4351), (8192, 8205), (8208, 8223), (8242, 8247))
+TRANSFORMED_URL_LENGTH = 23
+# What X's link detection treats as a URL: anything with a scheme or ``www.``, and a bare
+# domain on a common top-level domain (twitter-text knows every TLD; an unknown one here
+# counts by its characters, which can only undercount a rare bare domain). Trailing
+# punctuation is not part of the link. Mirrored by ``weightedLength`` in the composer.
+_URL_TAIL = r"(?:/\S*[^\s.,!?:;\"')\]}>])?"
+_URL_RE = re.compile(
+    r"(?<![a-z0-9_@.-])(?:(?:https?://|www\.)\S*[^\s.,!?:;\"')\]}>]"
+    r"|(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+"
+    r"(?:com|net|org|io|co|ai|dev|app|me|ly|gg|tv|info|biz|edu|gov|xyz|news|blog|shop|link|site|online"
+    r"|uk|de|fr|es|it|nl|ca|au|in|jp|br|ru|ch|se|no|us|eu|ae|sa)(?![a-z0-9_])" + _URL_TAIL + ")",
+    re.IGNORECASE,
+)
+# Code points that continue an emoji sequence: variation selectors, keycap, skin tones, tags.
+_EMOJI_CONTINUATION = frozenset({0xFE0E, 0xFE0F, 0x20E3}) | frozenset(range(0x1F3FB, 0x1F400))
+_ZWJ = 0x200D
+
+
+def _is_regional_indicator(cp: int) -> bool:
+    return 0x1F1E6 <= cp <= 0x1F1FF
+
+
+def _is_emoji_continuation(cp: int) -> bool:
+    return cp in _EMOJI_CONTINUATION or 0xE0020 <= cp <= 0xE007F
+
+
+def _weigh(text: str) -> int:
+    """Weighted length of ``text`` holding no URL: an emoji sequence counts 2, others by range."""
+    cps = [ord(ch) for ch in text]
+    total = 0
+    i = 0
+    while i < len(cps):
+        cp = cps[i]
+        following = cps[i + 1] if i + 1 < len(cps) else None
+        if _is_regional_indicator(cp) and following is not None and _is_regional_indicator(following):
+            total += 2  # a flag
+            i += 2
+            continue
+        if 0x1F000 <= cp <= 0x1FAFF or 0x2190 <= cp <= 0x2BFF or following in (0xFE0F, 0x20E3):
+            total += 2  # an emoji, with its modifiers and any ZWJ-joined parts
+            i += 1
+            while i < len(cps):
+                if _is_emoji_continuation(cps[i]):
+                    i += 1
+                elif cps[i] == _ZWJ and i + 1 < len(cps):
+                    i += 2
+                else:
+                    break
+            continue
+        total += 1 if any(start <= cp <= end for start, end in _LIGHT_RANGES) else 2
+        i += 1
+    return total
+
+
+def weighted_length(text: str) -> int:
+    """``text``'s length as X counts it against the 280 (or Premium 25,000) limit."""
+    text = unicodedata.normalize("NFC", text or "")
+    total = 0
+    position = 0
+    for match in _URL_RE.finditer(text):
+        total += _weigh(text[position : match.start()]) + TRANSFORMED_URL_LENGTH
+        position = match.end()
+    return total + _weigh(text[position:])
+
+
+def _comparable_text(text: str) -> str:
+    """``text`` as X echoes it back, reduced to what survives: no links, unescaped, single spaces."""
+    text = html.unescape(unicodedata.normalize("NFC", text or ""))
+    return " ".join(_URL_RE.sub(" ", text).split())
 
 
 def _is_budget_problem(status: int, body: dict) -> bool:
@@ -172,6 +258,7 @@ class XProvider(SocialProvider):
     supports_connection_link = False
     revokes_grant_on_disconnect = True
     mention_lookup = True
+    caption_counting = "weighted"
 
     media_rules = {PostType.IMAGE: _IMAGE_RULES, PostType.VIDEO: _VIDEO_RULES}
 
@@ -192,6 +279,7 @@ class XProvider(SocialProvider):
                 ("everyone", "Everyone"),
                 ("following", "Accounts you follow"),
                 ("mentionedUsers", "Only accounts you mention"),
+                ("verified", "Verified accounts"),
             ),
             help="Leave empty for everyone.",
         ),
@@ -238,8 +326,18 @@ class XProvider(SocialProvider):
         return DEFAULT_MAX_CHARS
 
     @classmethod
+    def caption_length(cls, text: str) -> int:
+        return weighted_length(text)
+
+    @classmethod
     def char_limit_for_account(cls, account) -> int | None:
-        """25,000 characters for a Premium account (read when it was connected), else the default."""
+        """25,000 characters for a Premium account, else the default.
+
+        The tier is read when the account connects or reconnects, not on token refresh: that
+        would be a billed ``users/me`` read every two hours on the customer's app for a flag
+        that rarely changes. An account that upgrades reconnects to get the longer limit; one
+        that lapses gets X's own "too long" rejection, which the post shows.
+        """
         return PREMIUM_MAX_CHARS if (account.platform_data or {}).get("premium") else None
 
     @property
@@ -551,6 +649,51 @@ class XProvider(SocialProvider):
                 ambiguous_write=True,
             )
         return CommentResult(platform_comment_id=str(data["id"]), extra={"tweet_id": str(data["id"])})
+
+    def find_thread_part(
+        self,
+        access_token: str,
+        *,
+        root: PublishResult,
+        parent: PublishResult,
+        text: str,
+    ) -> str | None:
+        """A part an ambiguous attempt published after all: the account's own post replying to ``parent``."""
+        return self._find_own_post_since(access_token, parent.platform_post_id, text)
+
+    def find_own_comment(self, access_token: str, post_id: str, text: str) -> str | None:
+        """A first comment (a reply to ``post_id``) an ambiguous attempt published after all."""
+        return self._find_own_post_since(access_token, post_id, text)
+
+    def _find_own_post_since(self, access_token: str, after_id: str, text: str) -> str | None:
+        """The id of the account's post newer than ``after_id`` whose text is ``text``, else None.
+
+        Reads the account's own timeline from ``after_id`` on (owned reads, about $0.001 a
+        post, plus one ``users/me``), so it only runs when a reply's first attempt timed out.
+        Only the default ``id`` and ``text`` fields are asked for. X rewrites links to t.co,
+        escapes ``&<>`` and shortens a long post's ``text``, so links are dropped and a
+        shortened text matches as a prefix. A post the timeline does not show yet reads as
+        missing; the retry then posts again and X rejects the duplicate rather than doubling it.
+        """
+        me = self._api("GET", "/2/users/me", access_token).json()["data"]["id"]
+        posts = (
+            self._api(
+                "GET",
+                f"/2/users/{me}/tweets",
+                access_token,
+                params={"since_id": str(after_id), "max_results": 20},
+            )
+            .json()
+            .get("data")
+            or []
+        )
+        wanted = _comparable_text(text)
+        for post in posts:
+            found = _comparable_text(post.get("text") or "")
+            shortened = found.endswith("\u2026") and len(found) > 1 and wanted.startswith(found[:-1].rstrip())
+            if found == wanted or shortened:
+                return str(post["id"])
+        return None
 
     def delete_post(self, access_token: str, post_id: str) -> bool:
         """Delete one of the account's posts (``DELETE /2/tweets/{id}``); one already gone counts as deleted."""

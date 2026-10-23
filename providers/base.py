@@ -225,6 +225,11 @@ class SocialProvider(ABC):
     # ``connect_url_name`` is the form that collects them.
     user_supplied_credentials: ClassVar[bool] = False
 
+    # How a caption counts against the limit: "characters" (one each), or "weighted" for a
+    # platform that overrides ``caption_length`` with twitter-text's weighted count (URLs
+    # count as 23, CJK and emoji as 2), which the composer's live counter mirrors.
+    caption_counting: ClassVar[str] = "characters"
+
     # False when the platform can't be connected through a client connection
     # link (``apps.onboarding``), whose page only runs the plain OAuth flow.
     supports_connection_link: ClassVar[bool] = True
@@ -257,6 +262,11 @@ class SocialProvider(ABC):
         platform. The default adds nothing.
         """
         return {}
+
+    @classmethod
+    def caption_length(cls, text: str) -> int:
+        """``text``'s length as the platform counts it against the caption limit."""
+        return len(text)
 
     @classmethod
     def char_limit_for_account(cls, account) -> int | None:
