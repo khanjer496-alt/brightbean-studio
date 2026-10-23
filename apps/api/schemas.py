@@ -1110,6 +1110,32 @@ class AdaptCaptionResponse(Schema):
 
 
 # ---------------------------------------------------------------------------
+# /hashtag-sets and /signatures — read
+# ---------------------------------------------------------------------------
+
+
+class HashtagSetSummary(Schema):
+    id: uuid.UUID
+    name: str
+    hashtags: list[str] = Field(..., description="Each with its leading ``#``, ready to append to a caption.")
+
+
+class HashtagSetsListResponse(Schema):
+    hashtag_sets: list[HashtagSetSummary]
+
+
+class SignatureSummary(Schema):
+    id: uuid.UUID
+    name: str
+    body: str = Field(..., description="Text to append to a caption, after a blank line.")
+    is_default: bool = Field(..., description="Whether the composer starts every new post in the workspace with it.")
+
+
+class SignaturesListResponse(Schema):
+    signatures: list[SignatureSummary]
+
+
+# ---------------------------------------------------------------------------
 # Error envelope (used by the exception handler in api.py)
 # ---------------------------------------------------------------------------
 

@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.http import Http404
 from django.shortcuts import redirect, render
@@ -7,6 +8,8 @@ from django.views.decorators.http import require_http_methods, require_POST
 
 from apps.billing.entitlements import PlanLimitError, check_can_add_workspace, require_feature
 from apps.billing.plans import Feature
+from apps.composer.models import HashtagSet, Signature
+from apps.composer.services import MAX_HASHTAGS_PER_SET, parse_hashtags
 from apps.members.decorators import require_org_role
 from apps.members.models import OrgMembership, WorkspaceMembership
 
@@ -294,5 +297,167 @@ def brand_voice_settings(request, workspace_id):
             "example_slots": (examples + [""] * BRAND_VOICE_MAX_EXAMPLES)[:BRAND_VOICE_MAX_EXAMPLES],
             "field_max": BRAND_VOICE_FIELD_MAX,
             "example_max": BRAND_VOICE_EXAMPLE_MAX,
+        },
+    )
+
+
+HASHTAG_SET_NAME_MAX = 100
+SIGNATURE_NAME_MAX = 100
+SIGNATURE_BODY_MAX = 1000
+
+
+def _member_workspace(request, workspace_id):
+    """The workspace, whether the user may manage its shared content, or 404 for a non-member."""
+    try:
+        workspace = Workspace.objects.get(id=workspace_id)
+    except Workspace.DoesNotExist:
+        raise Http404 from None
+
+    membership = WorkspaceMembership.objects.filter(user=request.user, workspace=workspace).first()
+    if not membership:
+        raise Http404
+
+    can_manage = membership.workspace_role in (
+        WorkspaceMembership.WorkspaceRole.OWNER,
+        WorkspaceMembership.WorkspaceRole.MANAGER,
+    )
+    return workspace, can_manage
+
+
+def _get_or_404(queryset, pk):
+    try:
+        return queryset.get(pk=pk)
+    except (queryset.model.DoesNotExist, ValidationError, ValueError):
+        raise Http404 from None
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def hashtag_sets_settings(request, workspace_id):
+    workspace, can_manage = _member_workspace(request, workspace_id)
+    sets = HashtagSet.objects.for_workspace(workspace.id)
+
+    if request.method == "POST":
+        if not can_manage:
+            raise Http404
+
+        action = request.POST.get("action")
+        if action == "delete":
+            _get_or_404(sets, request.POST.get("set_id")).delete()
+            messages.success(request, "Hashtag set deleted.")
+            return redirect("workspaces:hashtag_sets_settings", workspace_id=workspace.id)
+
+        if action in ("create", "update"):
+            hashtag_set = _get_or_404(sets, request.POST.get("set_id")) if action == "update" else None
+            name = request.POST.get("name", "").strip()
+            hashtags = parse_hashtags(request.POST.get("hashtags", ""))
+            error = None
+            if not name or len(name) > HASHTAG_SET_NAME_MAX:
+                error = f"Give the set a name of up to {HASHTAG_SET_NAME_MAX} characters."
+            elif not hashtags:
+                error = "Add at least one hashtag."
+            elif len(hashtags) > MAX_HASHTAGS_PER_SET:
+                error = f"A set holds up to {MAX_HASHTAGS_PER_SET} hashtags."
+            elif sets.filter(name__iexact=name).exclude(pk=hashtag_set.pk if hashtag_set else None).exists():
+                error = "You already have a set with that name."
+            if error:
+                messages.error(request, error)
+            elif hashtag_set:
+                hashtag_set.name = name
+                hashtag_set.hashtags = hashtags
+                hashtag_set.save(update_fields=["name", "hashtags", "updated_at"])
+                messages.success(request, "Hashtag set updated.")
+            else:
+                HashtagSet.objects.create(workspace=workspace, name=name, hashtags=hashtags, created_by=request.user)
+                messages.success(request, "Hashtag set added.")
+        return redirect("workspaces:hashtag_sets_settings", workspace_id=workspace.id)
+
+    return render(
+        request,
+        "workspaces/hashtag_sets_settings.html",
+        {
+            "workspace": workspace,
+            "settings_active": "hashtags",
+            "can_manage": can_manage,
+            "hashtag_sets": sets,
+            "name_max": HASHTAG_SET_NAME_MAX,
+            "max_hashtags": MAX_HASHTAGS_PER_SET,
+        },
+    )
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def signatures_settings(request, workspace_id):
+    workspace, can_manage = _member_workspace(request, workspace_id)
+    signatures = Signature.objects.available(workspace.id, request.user)
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        redirect_to = redirect("workspaces:signatures_settings", workspace_id=workspace.id)
+
+        def editable(signature):
+            """A personal signature is its owner's; a shared one needs a manager."""
+            return can_manage or signature.user_id is not None
+
+        if action == "delete":
+            signature = _get_or_404(signatures, request.POST.get("signature_id"))
+            if not editable(signature):
+                raise Http404
+            signature.delete()
+            messages.success(request, "Signature deleted.")
+            return redirect_to
+
+        if action in ("create", "update"):
+            if action == "update":
+                signature = _get_or_404(signatures, request.POST.get("signature_id"))
+                if not editable(signature):
+                    raise Http404
+                owner = {"workspace": signature.workspace, "user": signature.user}
+            else:
+                signature = None
+                if request.POST.get("scope") == "workspace":
+                    if not can_manage:
+                        raise Http404
+                    owner = {"workspace": workspace, "user": None}
+                else:
+                    owner = {"workspace": None, "user": request.user}
+
+            name = request.POST.get("name", "").strip()
+            body = request.POST.get("body", "").strip()
+            is_default = request.POST.get("is_default") == "on"
+            if not name or len(name) > SIGNATURE_NAME_MAX:
+                messages.error(request, f"Give the signature a name of up to {SIGNATURE_NAME_MAX} characters.")
+                return redirect_to
+            if not body or len(body) > SIGNATURE_BODY_MAX:
+                messages.error(request, f"Write a signature of up to {SIGNATURE_BODY_MAX:,} characters.")
+                return redirect_to
+
+            with transaction.atomic():
+                if is_default:
+                    # One default per owner: the new one replaces the old.
+                    Signature.objects.filter(**owner, is_default=True).exclude(
+                        pk=signature.pk if signature else None
+                    ).update(is_default=False)
+                if signature:
+                    signature.name, signature.body, signature.is_default = name, body, is_default
+                    signature.save(update_fields=["name", "body", "is_default", "updated_at"])
+                    messages.success(request, "Signature updated.")
+                else:
+                    Signature.objects.create(**owner, name=name, body=body, is_default=is_default)
+                    messages.success(request, "Signature added.")
+        return redirect_to
+
+    return render(
+        request,
+        "workspaces/signatures_settings.html",
+        {
+            "workspace": workspace,
+            "settings_active": "signatures",
+            "can_manage": can_manage,
+            "workspace_signatures": [s for s in signatures if s.user_id is None],
+            "personal_signatures": [s for s in signatures if s.user_id is not None],
+            "name_max": SIGNATURE_NAME_MAX,
+            "body_max": SIGNATURE_BODY_MAX,
         },
     )

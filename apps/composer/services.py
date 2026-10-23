@@ -15,9 +15,16 @@ from __future__ import annotations
 import copy
 import dataclasses
 import datetime as dt
+import hashlib
+import logging
+import re
 import uuid
 from collections.abc import Iterable
 from typing import Any
+
+from providers import mention_lookup_for
+
+logger = logging.getLogger(__name__)
 
 
 def sync_post_scheduled_at(post):
@@ -1103,3 +1110,123 @@ def thread_stopped_state(platform_post):
         .order_by("part__position", "part__created_at")
         .first()
     )
+
+
+# ---------------------------------------------------------------------------
+# Hashtag sets and signatures
+# ---------------------------------------------------------------------------
+
+MAX_HASHTAGS_PER_SET = 30
+RECENT_HASHTAG_POSTS = 50
+RECENT_HASHTAG_LIMIT = 15
+
+_HASHTAG_TOKEN = re.compile(r"^\w*[^\W\d_]\w*$")
+_HASHTAG_IN_TEXT = re.compile(r"(?<![\w#&])#(\w*[^\W\d_]\w*)")
+
+
+def parse_hashtags(raw: str) -> list[str]:
+    """Turn typed text ("coffee, #latteart  Coffee") into ``["#coffee", "#latteart"]``.
+
+    Splits on whitespace and commas, drops the leading ``#`` and anything that
+    is not a hashtag (punctuation, digits only), and keeps the first spelling of
+    a tag that repeats in another case. Order is preserved.
+    """
+    seen: set[str] = set()
+    tags: list[str] = []
+    for token in re.split(r"[\s,]+", raw or ""):
+        word = token.lstrip("#")
+        if not _HASHTAG_TOKEN.match(word) or word.lower() in seen:
+            continue
+        seen.add(word.lower())
+        tags.append(f"#{word}")
+    return tags
+
+
+def recent_hashtags(workspace_id, limit: int = RECENT_HASHTAG_LIMIT) -> list[str]:
+    """Hashtags the workspace used lately, most recently used first.
+
+    Read from the captions of its latest posts rather than stored, so there is
+    nothing to keep in step as posts are edited or deleted.
+    """
+    from apps.composer.models import Post
+
+    captions = (
+        Post.objects.filter(workspace_id=workspace_id).order_by("-created_at").values_list("caption", flat=True)
+    )[:RECENT_HASHTAG_POSTS]
+    seen: set[str] = set()
+    tags: list[str] = []
+    for caption in captions:
+        for word in _HASHTAG_IN_TEXT.findall(caption or ""):
+            if word.lower() in seen:
+                continue
+            seen.add(word.lower())
+            tags.append(f"#{word}")
+            if len(tags) >= limit:
+                return tags
+    return tags
+
+
+def default_signature(workspace, user):
+    """The signature a new post starts with, or None.
+
+    The user's own default wins over the workspace's, so a person can sign
+    their own way inside a workspace that has a house sign-off.
+    """
+    from apps.composer.models import Signature
+
+    if user is not None and user.is_authenticated:
+        personal = Signature.objects.for_user(user).filter(is_default=True).first()
+        if personal:
+            return personal
+    return Signature.objects.for_workspace(workspace.id).filter(is_default=True).first()
+
+
+def with_signature(caption: str, signature) -> str:
+    """``caption`` followed by the signature body, a blank line apart."""
+    if signature is None:
+        return caption
+    return f"{caption.rstrip()}\n\n{signature.body}" if caption.strip() else f"\n\n{signature.body}"
+
+
+# ---------------------------------------------------------------------------
+# @mention suggestions
+# ---------------------------------------------------------------------------
+
+MENTION_CACHE_SECONDS = 60
+MENTION_MAX_ACCOUNTS = 5
+
+
+def mention_suggestions(accounts: Iterable, query: str) -> list[dict[str, str]]:
+    """Accounts to @mention that match ``query``, asked of each of ``accounts``.
+
+    Every account is searched with its own credentials (its own instance, for
+    Mastodon) and answers are cached briefly per account and query, so typing
+    on does not re-ask. A platform that cannot be reached contributes nothing:
+    the composer treats this as a nicety, so an error here is logged and never
+    shown.
+    """
+    from django.core.cache import cache
+
+    from apps.publisher.engine import _provider_and_access_token
+
+    digest = hashlib.sha256(query.lower().encode()).hexdigest()[:24]
+    suggestions: list[dict[str, str]] = []
+    seen: set[str] = set()
+    for account in list(accounts)[:MENTION_MAX_ACCOUNTS]:
+        if not mention_lookup_for(account.platform):
+            continue
+        cache_key = f"composer:mentions:{account.id}:{digest}"
+        found = cache.get(cache_key)
+        if found is None:
+            try:
+                provider, access_token = _provider_and_access_token(account)
+                found = [dataclasses.asdict(m) for m in provider.search_mentions(access_token, query)]
+            except Exception:
+                logger.info("Mention lookup failed for %s", account.id, exc_info=True)
+                continue
+            cache.set(cache_key, found, MENTION_CACHE_SECONDS)
+        for item in found:
+            if item["handle"].lower() not in seen:
+                seen.add(item["handle"].lower())
+                suggestions.append(item)
+    return suggestions
