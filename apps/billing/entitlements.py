@@ -55,6 +55,7 @@ class Entitlements:
     max_workspaces: int | None
     max_scheduled_posts_per_month: int | None
     max_api_calls_per_day: int | None
+    max_ai_requests_per_day: int | None
     features: frozenset[str]
     unlimited: bool = False
 
@@ -68,6 +69,7 @@ UNLIMITED = Entitlements(
     max_workspaces=None,
     max_scheduled_posts_per_month=None,
     max_api_calls_per_day=None,
+    max_ai_requests_per_day=None,
     features=frozenset(),
     unlimited=True,
 )
@@ -102,6 +104,7 @@ def get_entitlements(org) -> Entitlements:
         max_workspaces=plan.max_workspaces,
         max_scheduled_posts_per_month=plan.max_scheduled_posts_per_month,
         max_api_calls_per_day=plan.max_api_calls_per_day,
+        max_ai_requests_per_day=plan.max_ai_requests_per_day,
         features=frozenset(str(f) for f in plan.features),
     )
 
@@ -151,6 +154,24 @@ def api_call_count(org, when: dt.datetime | None = None) -> int:
     return org_usage_in_day(org.pk, when or timezone.now())
 
 
+def ai_request_count(org, when: dt.datetime | None = None) -> int:
+    """AI writing-assistant requests on the platform key in ``when``'s UTC day.
+
+    Only answered calls count: a timeout or provider outage doesn't use up
+    the allowance.
+    """
+    from apps.ai_writer.models import AIRequestLog
+
+    start = (when or timezone.now()).astimezone(dt.UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    return AIRequestLog.objects.filter(
+        organization=org,
+        used_organization_key=False,
+        status=AIRequestLog.Status.OK,
+        created_at__gte=start,
+        created_at__lt=start + dt.timedelta(days=1),
+    ).count()
+
+
 def usage_summary(org) -> list[dict]:
     """Usage against each limit, for the Plan & billing page."""
     ent = get_entitlements(org)
@@ -166,6 +187,7 @@ def usage_summary(org) -> list[dict]:
         ),
         # Resets every UTC day, so there is never anything to remove.
         ("api_calls", "API & MCP calls today", api_call_count(org), ent.max_api_calls_per_day, ""),
+        ("ai_requests", "AI requests today", ai_request_count(org), ent.max_ai_requests_per_day, ""),
     ]
     summary = []
     for key, label, used, limit, remedy in rows:
@@ -250,6 +272,22 @@ def check_can_schedule_posts(org, count: int = 1, when: dt.datetime | None = Non
         f"and {month} already has {used}. Save this as a draft, schedule it for another month, "
         f"or upgrade for unlimited posts.",
         code="post_limit",
+    )
+
+
+def check_can_use_ai(org) -> None:
+    """Refuse once today's AI requests on the platform key reach the plan's cap."""
+    ent = get_entitlements(org)
+    if ent.max_ai_requests_per_day is None:
+        return
+    used = ai_request_count(org)
+    if used < ent.max_ai_requests_per_day:
+        return
+    raise PlanLimitError(
+        f"Your {ent.plan.name} plan includes {ent.max_ai_requests_per_day:,} AI requests a day and this "
+        f"organization has used them all. The allowance resets at midnight UTC — upgrade your plan "
+        f"or add your own AI provider key to keep writing with AI today.",
+        code="ai_request_limit",
     )
 
 

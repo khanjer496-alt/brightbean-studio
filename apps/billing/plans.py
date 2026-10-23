@@ -61,6 +61,10 @@ class Plan:
     # Agent API and MCP calls per UTC day, counted across the organization.
     # Agent access is on every plan; plans differ only in how much of it.
     max_api_calls_per_day: int | None
+    # AI writing-assistant requests per UTC day, counted across the
+    # organization. Requests made with the organization's own provider key
+    # don't count — that usage is billed to them, not to us.
+    max_ai_requests_per_day: int | None
     features: frozenset[Feature] = field(default_factory=frozenset)
 
     @property
@@ -94,6 +98,7 @@ PLANS: dict[str, Plan] = {
         max_workspaces=1,
         max_scheduled_posts_per_month=30,
         max_api_calls_per_day=100,
+        max_ai_requests_per_day=20,
     ),
     CREATOR: Plan(
         slug=CREATOR,
@@ -104,6 +109,7 @@ PLANS: dict[str, Plan] = {
         max_workspaces=2,
         max_scheduled_posts_per_month=None,
         max_api_calls_per_day=1_000,
+        max_ai_requests_per_day=200,
     ),
     TEAM: Plan(
         slug=TEAM,
@@ -114,6 +120,7 @@ PLANS: dict[str, Plan] = {
         max_workspaces=5,
         max_scheduled_posts_per_month=None,
         max_api_calls_per_day=10_000,
+        max_ai_requests_per_day=1_000,
         features=frozenset({Feature.APPROVALS, Feature.INBOX, Feature.ANALYTICS}),
     ),
     AGENCY: Plan(
@@ -125,6 +132,7 @@ PLANS: dict[str, Plan] = {
         max_workspaces=None,
         max_scheduled_posts_per_month=None,
         max_api_calls_per_day=100_000,
+        max_ai_requests_per_day=5_000,
         features=frozenset(
             {
                 Feature.APPROVALS,
