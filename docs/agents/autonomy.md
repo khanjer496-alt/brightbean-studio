@@ -58,7 +58,17 @@ Autonomous posts and replies wait (5 minutes by default) in "Going out soon", wh
 or hold them. After publishing, "Delete from platform" appears where the platform allows it. Undo and
 hold take effect against the publisher's claim, so either they land before the send starts or they say it
 already went out. Crisis pause stops every autonomous action and holds queued ones until it is turned
-off; the publisher re-checks it at the moment it sends. Every action, by a person,
+off; the publisher re-checks it at the moment it sends.
+
+The policy is asked again at the moment of sending, not only when the agent asked. If crisis pause is on
+or the level has been lowered below Auto with guardrails since, a post an agent queued (or a copy in a
+repeating series an agent started) is held as a draft for a person to approve in Activity, and a thread
+an automation started stops between parts (the live parts stay; approving it in Activity resumes it).
+Posts a person scheduled or approved last, and series a person set up, aren't stopped by the level.
+Unattended replies to reviews follow the reply level the same way.
+
+At Draft only a blocked phrase doesn't refuse a draft: the draft is saved and flagged, and the warning
+shows beside it in Activity. Every action, by a person,
 agent or automation, is in the workspace's Activity page and `GET /autonomy/actions`, with the decision,
 the guardrail results and a diff against the source text. Held and blocked actions notify owners and
 managers and send `agent.action.held` / `agent.action.blocked` webhooks. The trail can't be edited or

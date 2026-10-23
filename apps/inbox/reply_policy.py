@@ -128,10 +128,19 @@ def reply_eligibility(message, *, origin=PROGRAMMATIC, actor=None, credentials=N
 def review_reply_allowed(message, *, origin=PROGRAMMATIC, actor=None):
     """``(allowed, reason)`` for publishing a public reply to a review.
 
-    The single gate for review replies. Nothing restricts them yet: a person
-    sending from the web inbox always may. HOOK: when the autonomy dial lands,
-    an unattended sender (``origin`` other than ``WEB_INBOX``, or an agent
-    ``actor``) must be checked against the workspace's autonomy policy here and
-    refused with a sentence the team can act on until a person approves.
+    The single gate for review replies. A person sending from the web inbox
+    always may, and so may a send made for a person (``actor``): an agent's
+    request was already decided by the autonomy policy before it got here, and
+    an approval in Activity is a person's call. An unattended send (no actor:
+    the sweep that sends replies once their undo window ends) is checked
+    against the workspace's reply policy as it is now, so a crisis pause or a
+    level lowered since the agent asked stops it.
     """
+    if origin == WEB_INBOX or actor is not None:
+        return True, ""
+    from apps.autonomy.service import reply_send_blocker
+
+    reason = reply_send_blocker(message.workspace, message.social_account)
+    if reason:
+        return False, f"Not sent because {reason}. A person can send it from the inbox."
     return True, ""

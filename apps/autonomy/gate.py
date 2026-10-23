@@ -45,7 +45,12 @@ def notice(verdict: Verdict, action: AgentAction | None = None) -> dict:
         "decision": verdict.decision,
         "level": verdict.level,
         "reasons": verdict.reasons,
-        "message": verdict.agent_message or "Allowed by the workspace's autonomy policy.",
+        "message": verdict.agent_message
+        or (
+            f"Saved for a person to review; it was {verdict.reason_text}."
+            if verdict.reasons
+            else "Allowed by the workspace's autonomy policy."
+        ),
         "action_id": str(action.id) if action else None,
         "undo_until": None,
     }

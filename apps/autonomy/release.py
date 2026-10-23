@@ -17,7 +17,9 @@ from django.utils import timezone
 
 from . import service
 from .actors import ActorInfo, human
-from .models import ActionType, AgentAction, Decision
+from .models import ActionType, ActorType, AgentAction, Decision, Level, RecycleLevel
+from .policy import get_policy, resolve_level
+from .service import UNDOABLE_ACTIONS
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +63,95 @@ def reply_is_held(reply, now=None) -> bool:
     """Whether an autonomous reply must still wait (undo window, hold or crisis pause)."""
     now = now or timezone.now()
     return _live_autonomous().filter(reply_id=reply.pk).filter(_waiting(now)).exists()
+
+
+# ---------------------------------------------------------------------------
+# Re-checking the policy at the moment of sending
+# ---------------------------------------------------------------------------
+
+# Levels at which an agent or automation may put something out on its own.
+_SENDING_LEVELS = (Level.AUTO_GUARDRAILS, Level.FULL_AUTO, RecycleLevel.PER_ITEM)
+
+
+def _deciding_entry(platform_post):
+    """The latest entry that decides whether ``platform_post`` may go out unattended, or None.
+
+    A person's action (scheduling it, approving it, resuming it) is the latest
+    word when it comes last; an automation's executed decision otherwise.
+    Refusals don't count: they changed nothing.
+    """
+    return (
+        AgentAction.objects.filter(platform_post_id=platform_post.pk, undone_at__isnull=True)
+        .exclude(decision=Decision.BLOCKED)
+        .order_by("-created_at", "-id")
+        .first()
+    )
+
+
+def _started_by_an_agent(post_id) -> bool:
+    return AgentAction.objects.filter(
+        post_id=post_id,
+        actor_type=ActorType.AGENT,
+        action_type=ActionType.PUBLISH_POSTS,
+        decision=Decision.EXECUTED,
+        undone_at__isnull=True,
+    ).exists()
+
+
+def send_blocker(platform_post) -> str:
+    """Why an autonomous post must not go out right now, or "" when it may.
+
+    Asked at the moment of sending (the publisher's claim, each later thread
+    part), so a crisis pause or a level lowered after the decision still wins.
+    Posts a person scheduled or approved last are never stopped here. A copy in
+    a repeating series answers to the level only when an agent started the
+    series; a series a person set up keeps going (crisis pause still holds it).
+    """
+    entry = _deciding_entry(platform_post)
+    if entry is None or entry.actor_type == ActorType.HUMAN or entry.decision != Decision.EXECUTED:
+        return ""
+    workspace = platform_post.post.workspace
+    policy = get_policy(workspace)
+    if policy.crisis_paused:
+        return "crisis pause is on"
+    action_type = entry.action_type
+    if entry.operation == "recurrence.copy":
+        source_id = platform_post.post.recurrence_source_id
+        if source_id is None or not _started_by_an_agent(source_id):
+            return ""
+        action_type = ActionType.PUBLISH_POSTS
+    if action_type not in (ActionType.PUBLISH_POSTS, ActionType.RECYCLE_EVERGREEN):
+        return ""
+    level, source = resolve_level(workspace, platform_post.social_account, action_type, policy=policy)
+    if level in _SENDING_LEVELS:
+        return ""
+    label = RecycleLevel(level).label if level in RecycleLevel.values else level
+    where = "this account" if source == "account" else "this workspace"
+    return f"autonomy for '{ActionType(action_type).label.lower()}' is now {label} for {where}"
+
+
+def hold_at_send(platform_post, reason: str, *, what: str = "post") -> AgentAction:
+    """Record that the sender held ``platform_post`` for a person, so it shows in Activity to approve."""
+    from .actors import system
+
+    entry = _deciding_entry(platform_post)
+    return service.record(
+        workspace=platform_post.post.workspace,
+        actor=system("Publisher"),
+        action_type=entry.action_type if entry and entry.action_type in UNDOABLE_ACTIONS else ActionType.PUBLISH_POSTS,
+        operation="publish.held_at_send" if what == "post" else "thread.paused",
+        decision=Decision.HELD,
+        summary=(
+            f"Held for review because {reason}. It was not sent; approve it in Activity to send it."
+            if what == "post"
+            else f"Thread paused because {reason}. The parts already live stay; approve it in Activity to resume."
+        ),
+        account=platform_post.social_account,
+        post=platform_post.post,
+        platform_post=platform_post,
+        requested_at=platform_post.scheduled_at or platform_post.post.scheduled_at,
+        final_text=entry.final_text if entry else "",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +291,17 @@ def approve_held(action: AgentAction, user) -> AgentAction:
         if action.decision != Decision.HELD or action.review_outcome:
             raise ReleaseError("This is not waiting for review.")
         pp, reply = action.platform_post, action.reply
-        if pp is not None and action.action_type == ActionType.PUBLISH_POSTS:
+        if pp is not None and action.operation == "thread.paused":
+            from apps.publisher.engine import resume_thread
+
+            # Approving a paused thread resumes it from the part where it stopped.
+            try:
+                resume_thread(pp)
+            except ValueError as exc:
+                raise ReleaseError(str(exc)) from exc
+        elif pp is not None and (
+            action.action_type == ActionType.PUBLISH_POSTS or action.operation == "publish.held_at_send"
+        ):
             if pp.status not in ("draft", "approved"):
                 raise ReleaseError("The post has changed since it was held; open it to review it there.")
             when = action.requested_at

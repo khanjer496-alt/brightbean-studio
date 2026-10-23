@@ -114,7 +114,7 @@
         <div class="flex flex-col gap-6">
             <div>
                 <label for="blocked_phrases" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Blocked words and phrases</label>
-                <p id="blocked_help" class="text-xs mb-2 text-[var(--text-tertiary)]">One per line. At Auto with guardrails and Full auto, anything that contains one is refused outright (at Draft only a person reads everything first anyway). Matching ignores case, accents, hidden characters and look-alike letters; Arabic phrases also match with prefixes such as و or ال.</p>
+                <p id="blocked_help" class="text-xs mb-2 text-[var(--text-tertiary)]">One per line. At Auto with guardrails and Full auto, anything that contains one is refused outright (at Draft only it is saved and flagged for the reviewer instead). Matching ignores case, accents, hidden characters and look-alike letters; Arabic phrases also match with prefixes such as و or ال.</p>
                 <textarea id="blocked_phrases" name="blocked_phrases" rows="4" aria-describedby="blocked_help" class="form-input-styled text-sm resize-y" {% if not can_configure %}disabled{% endif %}>{{ blocked_phrases_text }}</textarea>
             </div>
 

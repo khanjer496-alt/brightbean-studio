@@ -84,7 +84,10 @@ class Verdict:
         if self.blocked:
             return f"Blocked because {self.reason_text}."
         if self.level:
-            return f"Allowed under {Level(self.level).label if self.level in Level.values else self.level}."
+            label = Level(self.level).label if self.level in Level.values else self.level
+            if self.reasons:
+                return f"Allowed under {label}, {self.reason_text}."
+            return f"Allowed under {label}."
         return ""
 
     @property
@@ -167,18 +170,24 @@ def evaluate(
         where = "this account" if level_source == "account" else "this workspace"
         return _verdict(BLOCK, action_type, level, level_source, [f"autonomy for '{label}' is Off for {where}"])
 
+    if level == Level.DRAFT_ONLY:
+        # Nothing goes out without a person here, so a blocked phrase doesn't refuse the draft:
+        # it is flagged, and the reviewer sees the warning beside it in Activity.
+        report = guardrails.Report([guardrails.check_blocked_phrases(policy, text)])
+        for result in report.results:
+            result.blocking = False
+        flags = [f"flagged: {r.reason}" for r in report.failures()]
+        if drafting_only or action_type == ActionType.DRAFT_CONTENT:
+            return _verdict(EXECUTE, action_type, level, level_source, flags, report)
+        reason = "its autonomy level is Draft only, so a person has to approve it"
+        report.results.insert(0, guardrails.GuardrailResult("policy", "Autonomy policy", False, reason))
+        return _verdict(HOLD, action_type, level, level_source, [reason, *flags], report)
+
     if drafting_only:
         return _verdict(EXECUTE, action_type, level, level_source, [])
 
     if level == RecycleLevel.PER_ITEM:
         return _verdict(EXECUTE, action_type, level, level_source, [], defer_to_item=True, undo_delay=delay)
-
-    if level == Level.DRAFT_ONLY:
-        if action_type == ActionType.DRAFT_CONTENT:
-            return _verdict(EXECUTE, action_type, level, level_source, [])
-        return _verdict(
-            HOLD, action_type, level, level_source, ["its autonomy level is Draft only, so a person has to approve it"]
-        )
 
     report = guardrails.run(
         policy,
@@ -327,6 +336,18 @@ def recycling_stopped(workspace, account) -> str:
     if level == Level.OFF:
         return "autonomy for recycling evergreen posts is Off"
     return ""
+
+
+def reply_send_blocker(workspace, account) -> str:
+    """Why an unattended reply must not be sent now, or "" when the reply policy allows it."""
+    policy = get_policy(workspace)
+    if policy.crisis_paused:
+        return "crisis pause is on"
+    level, source = resolve_level(workspace, account, ActionType.REPLY, policy=policy)
+    if level in (Level.AUTO_GUARDRAILS, Level.FULL_AUTO):
+        return ""
+    where = "this account" if source == "account" else "this workspace"
+    return f"autonomy for replies is now {Level(level).label} for {where}"
 
 
 def record_scheduled(

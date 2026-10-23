@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.utils import timezone
@@ -256,3 +256,183 @@ class TestKeysOnlyTighten:
         assert patch_json(world.full, "/api/v1/autonomy/", {"max_posts_per_day": 1}).status_code == 200
         assert patch_json(world.full, "/api/v1/autonomy/", {"max_posts_per_day": 50}).status_code == 403
         assert patch_json(world.full, "/api/v1/autonomy/", {"client_visible": True}).status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Crisis pause and the level are asked again at the moment of sending
+# ---------------------------------------------------------------------------
+
+
+def _due_agent_post(world, **policy):
+    set_policy(world.workspace, publish_level="full_auto", undo_delay_minutes=0)
+    when = (timezone.now() - timedelta(minutes=1)).isoformat()
+    body = schedule_via_rest(world.full, world.account1, when=when).json()
+    assert body["autonomy"]["decision"] == "executed"
+    if policy:
+        set_policy(world.workspace, **policy)
+    return PlatformPost.objects.select_related("post__workspace", "social_account").get(post_id=body["id"])
+
+
+class TestPublisherAsksAgainAtSendTime:
+    def test_a_level_lowered_after_scheduling_holds_the_post_for_a_person(self, world):
+        from apps.publisher.engine import PublishEngine
+
+        pp = _due_agent_post(world, publish_level="draft_only")
+        with patch.object(PublishEngine, "_publish_platform_post") as publish:
+            assert PublishEngine()._publish_post_group(pp.post, [pp]) is False
+        publish.assert_not_called()
+        assert PlatformPost.objects.get(pk=pp.pk).status == "draft"
+        held = the_action(workspace=world.workspace, operation="publish.held_at_send")
+        assert held.decision == "held" and "Draft only" in held.summary and held.requested_at
+
+        # A person approving it is the latest word: it goes out next time even at Draft only.
+        release.approve_held(held, world.owner)
+        pp = PlatformPost.objects.select_related("post__workspace", "social_account").get(pk=pp.pk)
+        assert pp.status == "scheduled" and release.send_blocker(pp) == ""
+
+    def test_an_account_override_down_to_off_holds_it_too(self, world):
+        from apps.autonomy.models import AccountAutonomyOverride
+
+        pp = _due_agent_post(world)
+        AccountAutonomyOverride.objects.create(
+            workspace=world.workspace, social_account=world.account1, publish_level="off"
+        )
+        assert "this account" in release.send_blocker(pp)
+
+    def test_a_post_a_person_scheduled_is_never_stopped_by_the_level(self, world):
+        post = make_post(world.workspace, world.owner, [world.account1], status="scheduled")
+        assert release.send_blocker(PlatformPost.objects.get(post=post)) == ""
+
+
+class TestRepeatingCopiesFollowTheLevel:
+    def series(self, world, client=None):
+        set_policy(world.workspace, publish_level="full_auto", undo_delay_minutes=0)
+        body = post_json(
+            world.full,
+            "/api/v1/posts/",
+            {
+                "social_account_id": str(world.account1.id),
+                "caption": "Weekly tip",
+                "action": "schedule",
+                "scheduled_at": (timezone.now() + timedelta(hours=2)).isoformat(),
+                "recurrence": {"frequency": "weekly", "count": 3},
+            },
+        ).json()
+        copy = PlatformPost.objects.filter(post__recurrence_source_id=body["id"]).select_related("post").first()
+        assert copy is not None and copy.status == "scheduled"
+        return copy
+
+    def test_a_copy_of_an_agents_series_is_held_once_the_level_drops(self, world):
+        copy = self.series(world)
+        assert release.send_blocker(copy) == ""
+        set_policy(world.workspace, publish_level="draft_only")
+        assert "Draft only" in release.send_blocker(copy)
+
+    def test_a_copy_of_a_persons_series_keeps_going(self, world):
+        from apps.calendar.services import save_recurrence
+
+        post = make_post(world.workspace, world.owner, [world.account1], status="scheduled")
+        save_recurrence(post, frequency="weekly", count=3)
+        copy = PlatformPost.objects.filter(post__recurrence_source=post).first()
+        assert copy is not None
+        assert release.send_blocker(copy) == ""  # the default Draft only doesn't stop a person's series
+        set_policy(world.workspace, crisis_paused=True)
+        assert PlatformPost.objects.filter(pk=copy.pk).filter(release.hold_exclusion()).exists()
+
+
+class TestThreadsPauseBetweenParts:
+    def thread(self, world):
+        from apps.composer.models import PostPart
+
+        set_policy(world.workspace, publish_level="full_auto", undo_delay_minutes=0)
+        body = schedule_via_rest(world.full, world.account1).json()
+        pp = PlatformPost.objects.get(post_id=body["id"])
+        PlatformPost.objects.filter(pk=pp.pk).update(status="published", platform_post_id="root-1")
+        parts = [PostPart.objects.create(post=pp.post, position=i, caption=f"part {i}") for i in (1, 2)]
+        return PlatformPost.objects.get(pk=pp.pk), parts
+
+    def run_part(self, pp, part):
+        from apps.publisher.engine import _publish_thread_part_task
+
+        provider = MagicMock()
+        with (
+            patch("apps.publisher.engine._provider_and_access_token", return_value=(provider, "token")),
+            patch("apps.publisher.engine._publish_thread_part_task"),
+        ):
+            _publish_thread_part_task.task_function(str(pp.id), str(part.id))
+        return provider
+
+    def test_crisis_pause_stops_the_remaining_parts_and_a_person_can_resume(self, world):
+        pp, parts = self.thread(world)
+        set_policy(world.workspace, crisis_paused=True)
+        provider = self.run_part(pp, parts[0])
+        provider.publish_thread_part.assert_not_called()
+        pp.refresh_from_db()
+        assert pp.thread_status == PlatformPost.ThreadStatus.PARTIAL and "paused" in pp.thread_error
+        paused = the_action(workspace=world.workspace, operation="thread.paused")
+        assert paused.decision == "held" and "crisis pause" in paused.summary
+
+        with patch("apps.publisher.engine._publish_thread_part_task") as queued:
+            release.approve_held(paused, world.owner)
+        queued.assert_called_once()
+        pp.refresh_from_db()
+        assert pp.thread_status == PlatformPost.ThreadStatus.PENDING
+
+    def test_a_level_lowered_mid_thread_pauses_it(self, world):
+        pp, parts = self.thread(world)
+        set_policy(world.workspace, publish_level="draft_only")
+        self.run_part(pp, parts[0]).publish_thread_part.assert_not_called()
+        assert the_action(workspace=world.workspace, operation="thread.paused").decision == "held"
+
+
+class TestDraftOnlyFlagsBlockedPhrases:
+    def test_a_draft_with_a_blocked_phrase_is_saved_and_flagged(self, world):
+        set_policy(world.workspace, blocked_phrases=["guaranteed cure"])
+        response = post_json(
+            world.full,
+            "/api/v1/posts/",
+            {"social_account_id": str(world.account1.id), "caption": "A guaranteed cure!", "action": "draft"},
+        )
+        assert response.status_code == 201
+        notice = response.json()["autonomy"]
+        assert notice["decision"] == "executed" and "blocked phrase" in notice["message"]
+        entry = the_action(workspace=world.workspace)
+        assert "flagged" in entry.summary
+        assert [c["name"] for c in entry.guardrail_results if not c["passed"]] == ["blocked_phrases"]
+
+    def test_a_held_schedule_carries_the_flag_too(self, world):
+        set_policy(world.workspace, blocked_phrases=["guaranteed cure"])
+        body = schedule_via_rest(world.full, world.account1, "A guaranteed cure!").json()
+        assert body["autonomy"]["decision"] == "held"
+        assert any("blocked phrase" in r for r in body["autonomy"]["reasons"])
+
+
+class TestReviewRepliesFollowTheReplyPolicy:
+    def review(self, world):
+        return InboxMessage.objects.create(
+            workspace=world.workspace,
+            social_account=world.account1,
+            platform_message_id="r-1",
+            message_type=InboxMessage.MessageType.REVIEW,
+            sender_name="Ada",
+            body="Lovely place",
+            received_at=timezone.now(),
+        )
+
+    def test_an_unattended_review_reply_is_refused_when_replies_need_a_person(self, world):
+        from apps.inbox.reply_policy import review_reply_allowed
+
+        message = self.review(world)
+        allowed, reason = review_reply_allowed(message)
+        assert not allowed and "Draft only" in reason
+        set_policy(world.workspace, reply_level="auto_guardrails")
+        assert review_reply_allowed(message) == (True, "")
+        set_policy(world.workspace, crisis_paused=True)
+        assert "crisis pause" in review_reply_allowed(message)[1]
+
+    def test_a_person_or_the_web_inbox_may_always_reply(self, world):
+        from apps.inbox.reply_policy import WEB_INBOX, review_reply_allowed
+
+        message = self.review(world)
+        assert review_reply_allowed(message, origin=WEB_INBOX)[0]
+        assert review_reply_allowed(message, actor=world.owner)[0]
