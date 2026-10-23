@@ -26,6 +26,7 @@ from apps.api.routers.inbox import router as inbox_router
 from apps.api.routers.me import router as me_router
 from apps.api.routers.media import router as media_router
 from apps.api.routers.posts import router as posts_router
+from apps.api.routers.reports import router as reports_router
 from apps.api.routers.signatures import router as signatures_router
 from apps.api.routers.webhooks import router as webhooks_router
 from apps.mcp.transport import router as mcp_router
@@ -118,6 +119,7 @@ api.add_router("/accounts", accounts_router)
 api.add_router("/posts", posts_router)
 api.add_router("/media", media_router)
 api.add_router("/analytics", analytics_router)
+api.add_router("/reports", reports_router)
 api.add_router("/inbox", inbox_router)
 api.add_router("/ai", ai_router)
 api.add_router("/webhooks", webhooks_router)
@@ -286,6 +288,8 @@ def _action_for_path(method: str, path: str, *, status_code: int) -> str:
         return f"analytics.read.account.{status_code}"
     if "/analytics/posts/" in path:
         return f"analytics.read.post.{status_code}"
+    if "/reports" in path:
+        return f"reports.{status_code}"
     if "/posts/" in path:
         if path.endswith("/schedule"):
             return f"post.schedule.{status_code}"

@@ -1390,3 +1390,41 @@ class WebhookDeliveriesListResponse(Schema):
     deliveries: list[WebhookDeliveryResponse]
     limit: int
     next_cursor: str | None = None
+
+
+# ---------------------------------------------------------------------------
+# /reports — scheduled client reports
+# ---------------------------------------------------------------------------
+
+
+class ReportRunResponse(Schema):
+    """One build of a report: its status, period and (when ready) headline figures."""
+
+    id: uuid.UUID
+    report_id: uuid.UUID
+    status: str = Field(..., description="``pending`` | ``running`` | ``succeeded`` | ``failed``.")
+    trigger: str = Field(..., description="``scheduled`` or ``manual``.")
+    period_start: dt.date
+    period_end: dt.date
+    created_at: dt.datetime
+    finished_at: dt.datetime | None = None
+    error: str = Field("", description="Why the run failed, when it did.")
+    emailed_to: int = Field(0, description="How many recipients the PDF was emailed to.")
+    summary: str | None = Field(None, description="The report's 'what changed and what to do next' text, once ready.")
+    metrics: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description="Headline figures once ready: ``key``, ``label``, ``value`` (display), ``delta`` (percent) per metric.",
+    )
+
+
+class ReportResponse(Schema):
+    id: uuid.UUID
+    name: str
+    range_type: str
+    sections: list[str]
+    recipients: int = Field(..., description="Number of email recipients.")
+    frequency: str = Field(..., description="``none`` | ``weekly`` | ``monthly``.")
+    is_active: bool
+    visible_to_clients: bool
+    white_label: bool
+    latest_run: ReportRunResponse | None = None

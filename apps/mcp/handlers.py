@@ -1590,6 +1590,123 @@ register_tool(
 
 
 # ---------------------------------------------------------------------------
+# Tools: client reports (list_reports, run_report, get_latest_report_run)
+# ---------------------------------------------------------------------------
+
+
+def _report_for_key(args: dict, context: dict[str, Any]):
+    from apps.reports.models import ReportDefinition
+
+    if "report_id" not in args:
+        raise JsonRpcError(INVALID_PARAMS, "report_id is required")
+    report_id = _parse_uuid(args["report_id"], "report_id")
+    try:
+        return ReportDefinition.objects.select_related("workspace__organization").get(
+            pk=report_id, workspace=context["api_key"].workspace
+        )
+    except ReportDefinition.DoesNotExist:
+        raise JsonRpcError(INVALID_PARAMS, "Report not found") from None
+
+
+def _require_reports(context: dict[str, Any]) -> None:
+    from apps.billing.entitlements import require_feature
+    from apps.billing.plans import Feature
+
+    _require_perm(context, "view_analytics")
+    require_feature(context["api_key"].workspace.organization, Feature.BRANDED_REPORTS)
+
+
+def _list_reports(args: dict, context: dict[str, Any]) -> dict:
+    from apps.reports import api_builders
+    from apps.reports.models import ReportDefinition
+
+    _require_reports(context)
+    definitions = ReportDefinition.objects.filter(workspace=context["api_key"].workspace)
+    return _wrap_text([api_builders.build_report(d).model_dump(mode="json") for d in definitions])
+
+
+def _run_report(args: dict, context: dict[str, Any]) -> dict:
+    from apps.reports import api_builders, services
+
+    _require_reports(context)
+    _require_perm(context, "manage_social_accounts")
+    definition = _report_for_key(args, context)
+    deliver = args.get("deliver", False)
+    if not isinstance(deliver, bool):
+        raise JsonRpcError(INVALID_PARAMS, "deliver must be a boolean")
+    user = context["api_key"].issued_by
+    run = services.queue_manual_run(definition, user, deliver=deliver)
+    return _wrap_text(api_builders.build_run(run).model_dump(mode="json"))
+
+
+def _get_latest_report_run(args: dict, context: dict[str, Any]) -> dict:
+    from apps.reports import api_builders
+
+    _require_reports(context)
+    definition = _report_for_key(args, context)
+    run = api_builders.latest_run(definition)
+    if run is None:
+        raise JsonRpcError(INVALID_PARAMS, "This report hasn't been run yet")
+    return _wrap_text(api_builders.build_run(run).model_dump(mode="json"))
+
+
+_REPORT_ID_SCHEMA = {
+    "type": "object",
+    "properties": {"report_id": {"type": "string", "format": "uuid", "description": "ID from list_reports."}},
+    "required": ["report_id"],
+    "additionalProperties": False,
+}
+
+register_tool(
+    Tool(
+        name="list_reports",
+        description=(
+            "List this workspace's scheduled client reports with their schedule, sections and latest run. "
+            "Requires the view_analytics permission and a plan that includes branded reports."
+        ),
+        input_schema={"type": "object", "properties": {}, "additionalProperties": False},
+        handler=_list_reports,
+        read_only=True,
+    )
+)
+
+register_tool(
+    Tool(
+        name="run_report",
+        description=(
+            "Build a report now. The build is queued: the returned run is ``pending``; poll "
+            "get_latest_report_run until it is ``succeeded``. With ``deliver`` the recipients are emailed "
+            "the PDF. Requires view_analytics and manage_social_accounts."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "report_id": {"type": "string", "format": "uuid"},
+                "deliver": {"type": "boolean", "default": False, "description": "Also email the recipients."},
+            },
+            "required": ["report_id"],
+            "additionalProperties": False,
+        },
+        handler=_run_report,
+        read_only=False,
+    )
+)
+
+register_tool(
+    Tool(
+        name="get_latest_report_run",
+        description=(
+            "Read a report's most recent run: status, period and, once ready, its headline figures and "
+            "summary text. Requires the view_analytics permission."
+        ),
+        input_schema=_REPORT_ID_SCHEMA,
+        handler=_get_latest_report_run,
+        read_only=True,
+    )
+)
+
+
+# ---------------------------------------------------------------------------
 # Inbox: shared helpers
 # ---------------------------------------------------------------------------
 
