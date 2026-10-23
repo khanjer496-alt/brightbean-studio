@@ -752,7 +752,7 @@ One platform bot posts to every connected channel or group; users never see the 
 1. Message [@BotFather](https://t.me/BotFather), send `/newbot` and follow the prompts
 2. Copy the bot token into `PLATFORM_TELEGRAM_BOT_TOKEN`
 
-To connect a chat, a user adds the bot to their channel or group as an **administrator** (for a channel, with **Post Messages** on), then enters `@channelname` (or the numeric id of a private chat) in Brightbean Studio. Connecting checks that the bot can really post there.
+To connect a chat, a user adds the bot to their channel or group as an **administrator** (for a channel, with **Post Messages** on), then enters `@channelname` (or the numeric id of a private chat) in Brightbean Studio. Because the bot is shared, the user also proves they run the chat by adding a one-time code shown on the connect page to the chat's description (removable afterwards); connecting checks that code and that the bot can really post there.
 
 Posts go out as HTML-formatted text (4096 characters), photos and videos (caption up to 1024 characters; a longer text follows as a separate message) and albums of up to 10. Thread parts and first comments are sent as replies.
 
