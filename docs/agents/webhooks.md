@@ -4,8 +4,10 @@ PostDelegate can call your server when something happens in a workspace. Set end
 **Workspace settings > Webhooks**, or with the REST API (`/api/v1/webhooks/`) and the MCP tools
 (`list_webhook_endpoints`, `create_webhook_endpoint`, `update_webhook_endpoint`,
 `delete_webhook_endpoint`, `rotate_webhook_secret`, `send_webhook_test`, `list_webhook_deliveries`,
-`resend_webhook_delivery`). Managing webhooks needs the `manage_workspace_settings` permission
-(workspace owners by default); an API key must carry it too.
+`resend_webhook_delivery`). Managing webhooks needs `manage_workspace_settings` or
+`manage_social_accounts` (workspace owners and managers by default). An API key must carry one of them
+and be allowed to act on every connected account in the workspace, because events report on all of
+them.
 
 ## Events
 
@@ -13,14 +15,19 @@ PostDelegate can call your server when something happens in a workspace. Set end
 | --- | --- |
 | `post.scheduled` | A post is scheduled for an account |
 | `post.published` | A post is live on an account |
-| `post.failed` | A post failed for good, after its retries |
+| `post.failed` | A post failed for good, after its retries (including when the platform may have accepted it but we could not confirm or record it; `error` says so) |
 | `post.partially_published` | A thread stopped part-way: the first post is live, later parts are not |
 | `post.approved` | A post got its final approval |
 | `post.changes_requested` | A reviewer asked for changes |
 | `comment.created` | Someone commented on a post (internal and client comments; see `visibility`) |
 | `inbox.message.received` | A new comment, mention, DM or review reached the inbox |
-| `account.disconnected` | A social account was disconnected or lost its connection |
+| `account.disconnected` | A social account lost its connection, or a member removed it (`removed: true`). Sent once per break: removing an account that had already lost its connection sends nothing more |
 | `webhook.test` | You pressed "Send test event" (never part of a subscription) |
+
+The `post.*` events (except approvals) are sent **once per account a post targets**: a post going to
+three accounts sends three `post.published` events, each with its own `platform_post_id` and
+`social_account`. `post.approved` and `post.changes_requested` are sent once per decision and list the
+targets that moved in `platform_post_ids` and `social_accounts`.
 
 ## The request
 
@@ -30,11 +37,26 @@ PostDelegate can call your server when something happens in a workspace. Set end
 {
   "id": "6f1c2f4e-9a3b-4d8e-8f0a-2b7f4c1d9e55",
   "type": "post.published",
+  "api_version": "2026-10-01",
   "created_at": "2026-10-23T14:03:11.482913+00:00",
   "workspace": {"id": "...", "name": "Acme"},
-  "data": {"post_id": "...", "platform_post_id": "...", "status": "published", "social_account": {"id": "...", "platform": "bluesky", "account_name": "...", "account_handle": "..."}, "published_at": "..."}
+  "data": {
+    "post_id": "...",
+    "platform_post_id": "...",
+    "status": "published",
+    "social_account": {"id": "...", "platform": "bluesky", "account_name": "...", "account_handle": "..."},
+    "scheduled_at": "...",
+    "published_at": "...",
+    "external_id": "at://did:plc:.../app.bsky.feed.post/...",
+    "permalink": "https://bsky.app/profile/.../post/..."
+  }
 }
 ```
+
+`external_id` is the post's id on the platform. `permalink` is its public URL when the platform returned
+one at publish time, otherwise `null`. `api_version` names the shape of the envelope and `data`; new
+fields can appear without notice, but a field is never removed or changed in meaning without a new
+`api_version`.
 
 Headers:
 
@@ -53,13 +75,14 @@ Check the signature against the **raw** body, before parsing it, and reject old 
 ```python
 import hashlib, hmac, time
 
+
 def verify(secret: str, raw_body: bytes, header: str, tolerance: int = 300) -> bool:
-    parts = dict(item.split("=", 1) for item in header.split(","))
+    parts = dict(item.strip().split("=", 1) for item in header.split(","))
     timestamp = int(parts["t"])
     if abs(time.time() - timestamp) > tolerance:
         return False
     expected = hmac.new(secret.encode(), f"{timestamp}.".encode() + raw_body, hashlib.sha256).hexdigest()
-    return hmac.compare_digest(expected, parts["v1"])
+    return hmac.compare_digest(expected.encode(), parts.get("v1", "").encode())
 ```
 
 ```js
@@ -81,10 +104,14 @@ in all). After 15 failed attempts in a row an endpoint is turned off and the wor
 notified; turn it back on from the settings page or with `PATCH /webhooks/{id}` (`"is_enabled": true`).
 The delivery log keeps the last 100 deliveries per endpoint on screen and is pruned after 30 days.
 
+A resend sends the same body under the same delivery id and starts the retry schedule again. It is
+refused while the delivery is being sent or is due for a retry within the next two minutes.
+
 ## URL rules
 
 Endpoints must be public `http(s)` URLs. Addresses that resolve to private, loopback or link-local
-ranges are refused when you save the endpoint and again at send time.
+ranges are refused when you save the endpoint and again at send time, and the request is sent to the
+address that was checked (the TLS certificate is still verified against your hostname).
 
 ## Secrets
 

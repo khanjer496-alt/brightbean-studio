@@ -2,8 +2,10 @@
 
 Thin adapters over :mod:`apps.webhooks.services`, the same functions the
 workspace settings page and the MCP webhook tools use. Every route needs
-``manage_workspace_settings`` and only ever sees the key's own workspace;
-an endpoint id from another workspace is a 404.
+``manage_workspace_settings`` or ``manage_social_accounts``, and a key whose
+account allowlist covers the whole workspace (events report on every account).
+Only the key's own workspace is visible; an endpoint id from another workspace
+is a 404.
 """
 
 from __future__ import annotations
@@ -37,10 +39,15 @@ _LIMIT_DEFAULT = 50
 _LIMIT_MAX = 100
 
 
-def _require_perm(request: HttpRequest, key: str) -> None:
+def _require_webhook_access(request: HttpRequest) -> None:
     membership = getattr(request, "workspace_membership", None)
-    if membership is None or not membership.effective_permissions.get(key, False):
-        raise HttpError(403, f"Permission denied: {key}")
+    if membership is None or not services.can_manage(membership.effective_permissions):
+        raise HttpError(403, f"Permission denied: needs one of {', '.join(services.MANAGE_PERMISSIONS)}")
+    if not services.key_covers_workspace(request.api_key):  # type: ignore[attr-defined]
+        raise HttpError(
+            403,
+            "Webhooks report on every account in the workspace, so they need a key that covers all of its accounts.",
+        )
 
 
 def _endpoint(request: HttpRequest, endpoint_id: uuid.UUID) -> WebhookEndpoint:
@@ -50,7 +57,7 @@ def _endpoint(request: HttpRequest, endpoint_id: uuid.UUID) -> WebhookEndpoint:
 @router.get("/", response=WebhookEndpointsListResponse, summary="List webhook endpoints")
 def list_endpoints(request):
     enforce_http_rate_limits(request, is_write=False)
-    _require_perm(request, "manage_workspace_settings")
+    _require_webhook_access(request)
     endpoints = WebhookEndpoint.objects.filter(workspace_id=request.api_key.workspace_id)  # type: ignore[attr-defined]
     log_audit_entry(request, action="webhooks.list", target_id=None, status_code=200)
     return WebhookEndpointsListResponse(endpoints=[WebhookEndpointResponse.from_endpoint(e) for e in endpoints])
@@ -64,7 +71,7 @@ def list_endpoints(request):
 )
 def create_endpoint(request, payload: CreateWebhookEndpointRequest):
     enforce_http_rate_limits(request, is_write=True)
-    _require_perm(request, "manage_workspace_settings")
+    _require_webhook_access(request)
     try:
         endpoint, secret = services.create_endpoint(
             request.workspace,  # type: ignore[attr-defined]
@@ -83,7 +90,7 @@ def create_endpoint(request, payload: CreateWebhookEndpointRequest):
 @router.get("/{endpoint_id}", response=WebhookEndpointResponse, summary="Get a webhook endpoint")
 def get_endpoint(request, endpoint_id: uuid.UUID):
     enforce_http_rate_limits(request, is_write=False)
-    _require_perm(request, "manage_workspace_settings")
+    _require_webhook_access(request)
     endpoint = _endpoint(request, endpoint_id)
     log_audit_entry(request, action="webhooks.get", target_id=endpoint.id, status_code=200)
     return WebhookEndpointResponse.from_endpoint(endpoint)
@@ -92,7 +99,7 @@ def get_endpoint(request, endpoint_id: uuid.UUID):
 @router.patch("/{endpoint_id}", response=WebhookEndpointResponse, summary="Update a webhook endpoint")
 def update_endpoint(request, endpoint_id: uuid.UUID, payload: UpdateWebhookEndpointRequest):
     enforce_http_rate_limits(request, is_write=True)
-    _require_perm(request, "manage_workspace_settings")
+    _require_webhook_access(request)
     endpoint = _endpoint(request, endpoint_id)
     try:
         services.update_endpoint(endpoint, **payload.dict(exclude_unset=True))
@@ -105,7 +112,7 @@ def update_endpoint(request, endpoint_id: uuid.UUID, payload: UpdateWebhookEndpo
 @router.delete("/{endpoint_id}", response={204: None}, summary="Delete a webhook endpoint")
 def delete_endpoint(request, endpoint_id: uuid.UUID):
     enforce_http_rate_limits(request, is_write=True)
-    _require_perm(request, "manage_workspace_settings")
+    _require_webhook_access(request)
     endpoint = _endpoint(request, endpoint_id)
     endpoint.delete()
     log_audit_entry(request, action="webhooks.delete", target_id=endpoint_id, status_code=204)
@@ -120,7 +127,7 @@ def delete_endpoint(request, endpoint_id: uuid.UUID):
 )
 def rotate_secret(request, endpoint_id: uuid.UUID):
     enforce_http_rate_limits(request, is_write=True)
-    _require_perm(request, "manage_workspace_settings")
+    _require_webhook_access(request)
     endpoint = _endpoint(request, endpoint_id)
     secret = services.rotate_secret(endpoint)
     log_audit_entry(request, action="webhooks.rotate_secret", target_id=endpoint.id, status_code=200)
@@ -135,7 +142,7 @@ def rotate_secret(request, endpoint_id: uuid.UUID):
 )
 def send_test_event(request, endpoint_id: uuid.UUID):
     enforce_http_rate_limits(request, is_write=True)
-    _require_perm(request, "manage_workspace_settings")
+    _require_webhook_access(request)
     endpoint = _endpoint(request, endpoint_id)
     delivery = services.send_test_event(endpoint, requested_by=None)
     log_audit_entry(request, action="webhooks.test", target_id=endpoint.id, status_code=202)
@@ -153,7 +160,7 @@ def list_deliveries(
     cursor: str | None = Query(None),
 ):
     enforce_http_rate_limits(request, is_write=False)
-    _require_perm(request, "manage_workspace_settings")
+    _require_webhook_access(request)
     endpoint = _endpoint(request, endpoint_id)
     if status is not None and status not in DeliveryStatus.values:
         raise HttpError(422, f"status must be one of {', '.join(DeliveryStatus.values)}")
@@ -184,9 +191,12 @@ def list_deliveries(
 )
 def resend_delivery(request, endpoint_id: uuid.UUID, delivery_id: uuid.UUID):
     enforce_http_rate_limits(request, is_write=True)
-    _require_perm(request, "manage_workspace_settings")
+    _require_webhook_access(request)
     endpoint = _endpoint(request, endpoint_id)
     delivery = get_object_or_404(WebhookDelivery, id=delivery_id, endpoint=endpoint)
-    services.resend(delivery)
+    try:
+        services.resend(delivery)
+    except WebhookError as exc:
+        raise HttpError(409, str(exc)) from exc
     log_audit_entry(request, action="webhooks.resend", target_id=delivery.id, status_code=202)
     return 202, WebhookDeliveryResponse.from_delivery(delivery)

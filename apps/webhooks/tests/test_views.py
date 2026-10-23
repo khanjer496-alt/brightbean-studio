@@ -28,7 +28,17 @@ def test_owner_sees_the_list_and_the_settings_nav_link(client, owner, workspace,
     assert _url("list", workspace) in html  # sidebar link
 
 
-def test_managers_and_non_members_are_refused_everywhere(client, manager, workspace, endpoint, org):
+def test_a_manager_can_manage_webhooks(client, manager, workspace, endpoint):
+    client.force_login(manager)
+    response = client.get(_url("list", workspace))
+    assert response.status_code == 200
+    assert PUBLIC_URL in response.content.decode()
+    assert client.get(_endpoint_url("detail", workspace, endpoint)).status_code == 200
+
+
+def test_editors_and_non_members_are_refused_everywhere(client, workspace, endpoint, org):
+    editor = make_user("editor@example.com")
+    add_member(editor, org, workspace, WorkspaceMembership.WorkspaceRole.EDITOR)
     outsider = make_user("outsider@example.com")
     delivery = services.send_test_event(endpoint)
     pages = [
@@ -42,7 +52,7 @@ def test_managers_and_non_members_are_refused_everywhere(client, manager, worksp
         ("post", _endpoint_url("delete", workspace, endpoint)),
         ("post", _endpoint_url("resend", workspace, endpoint, delivery_id=delivery.id)),
     ]
-    for user in (manager, outsider):
+    for user in (editor, outsider):
         client.force_login(user)
         for method, url in pages:
             assert getattr(client, method)(url, {"url": PUBLIC_URL}).status_code == 403, (user.email, method, url)

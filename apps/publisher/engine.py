@@ -805,6 +805,8 @@ class PublishEngine:
                 else:
                     platform_post.status = PlatformPost.Status.PUBLISHED
                     platform_post.published_at = timezone.now()
+                    # Not stored; read by the post.published webhook fired from save().
+                    setattr(platform_post, webhook_events.PERMALINK_ATTR, result.get("url") or "")
                 platform_post.save()
 
                 if not result.get("async_publish"):
@@ -855,9 +857,17 @@ class PublishEngine:
                 # errors must never put this post back on the retry queue.
                 logger.exception("Local recording failed after remote publish for %s", platform_post.id)
                 try:
-                    PlatformPost.objects.filter(pk=platform_post.pk).exclude(
-                        status=PlatformPost.Status.PUBLISHED
-                    ).update(status=PlatformPost.Status.FAILED, publish_error=PUBLISH_AMBIGUOUS_MESSAGE)
+                    marked_failed = (
+                        PlatformPost.objects.filter(pk=platform_post.pk)
+                        .exclude(status=PlatformPost.Status.PUBLISHED)
+                        .update(status=PlatformPost.Status.FAILED, publish_error=PUBLISH_AMBIGUOUS_MESSAGE)
+                    )
+                    if marked_failed:
+                        # A queryset update reaches no save() hook, so the
+                        # failure is reported here, as _fail_permanently does.
+                        platform_post.status = PlatformPost.Status.FAILED
+                        platform_post.publish_error = PUBLISH_AMBIGUOUS_MESSAGE
+                        webhook_events.post_failed(platform_post)
                 except Exception:
                     logger.exception(
                         "Could not record ambiguous outcome for %s; operator review required", platform_post.id

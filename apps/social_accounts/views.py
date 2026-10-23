@@ -869,18 +869,28 @@ def _render_account_card(request, account, workspace_id):
 # ------------------------------------------------------------------
 
 
+def _emit_removed(account):
+    """``account.disconnected`` for a member removing the account, queued in the deleting transaction.
+
+    An account that had already lost its connection was reported then.
+    """
+    if not account.needs_reconnect:
+        webhook_events.account_disconnected(account, reason="Removed by a workspace member.", removed=True)
+
+
 @login_required
 @require_permission("manage_social_accounts")
 @require_POST
 def disconnect(request, workspace_id, account_id):
     """Disconnect a social account."""
     account = get_object_or_404(SocialAccount.objects.for_workspace(workspace_id), id=account_id)
-    webhook_events.account_disconnected(account, reason="Disconnected by a workspace member.")
     if account.platform == "youtube":
         from .youtube_compliance import purge_connection
 
         name = account.account_name or account.account_handle
-        purge_connection(account)
+        with transaction.atomic():
+            _emit_removed(account)
+            purge_connection(account)
         messages.success(request, f"Disconnected {name}. YouTube data was deleted immediately.")
         if request.headers.get("HX-Request"):
             return render(request, "social_accounts/partials/_empty.html")
@@ -924,7 +934,9 @@ def disconnect(request, workspace_id, account_id):
         Post.objects.filter(id__in=orphan_post_ids).delete()
 
     account_name = account.account_name or account.account_handle
-    account.delete()
+    with transaction.atomic():
+        _emit_removed(account)
+        account.delete()
 
     messages.success(request, f"Disconnected {account_name}.")
 

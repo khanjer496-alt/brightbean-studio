@@ -1984,9 +1984,21 @@ register_tool(
 # Tools: outbound webhooks (same services as the REST /webhooks routes)
 # ---------------------------------------------------------------------------
 
-_WEBHOOK_PERMISSION = "manage_workspace_settings"
 _MCP_WEBHOOK_DELIVERY_LIMIT_DEFAULT = 50
 _MCP_WEBHOOK_DELIVERY_LIMIT_MAX = 100
+
+
+def _require_webhook_access(context: dict[str, Any]) -> None:
+    """The REST webhook routes' check: a managing permission, and a key covering every account."""
+    if not webhook_services.can_manage(context["membership"].effective_permissions):
+        raise JsonRpcError(
+            INVALID_PARAMS, f"Permission denied: needs one of {', '.join(webhook_services.MANAGE_PERMISSIONS)}"
+        )
+    if not webhook_services.key_covers_workspace(context["api_key"]):
+        raise JsonRpcError(
+            INVALID_PARAMS,
+            "Webhooks report on every account in the workspace, so they need a key that covers all of its accounts.",
+        )
 
 
 def _get_webhook_endpoint(args: dict, context: dict[str, Any]) -> WebhookEndpoint:
@@ -2000,7 +2012,7 @@ def _get_webhook_endpoint(args: dict, context: dict[str, Any]) -> WebhookEndpoin
 
 
 def _list_webhook_endpoints(args: dict, context: dict[str, Any]) -> dict:
-    _require_perm(context, _WEBHOOK_PERMISSION)
+    _require_webhook_access(context)
     endpoints = WebhookEndpoint.objects.filter(workspace=context["workspace"])
     return _wrap_text(
         {"endpoints": [WebhookEndpointResponse.from_endpoint(e).model_dump(mode="json") for e in endpoints]}
@@ -2008,7 +2020,7 @@ def _list_webhook_endpoints(args: dict, context: dict[str, Any]) -> dict:
 
 
 def _create_webhook_endpoint(args: dict, context: dict[str, Any]) -> dict:
-    _require_perm(context, _WEBHOOK_PERMISSION)
+    _require_webhook_access(context)
     for field in ("url", "event_types"):
         if field not in args:
             raise JsonRpcError(INVALID_PARAMS, f"{field} is required")
@@ -2030,7 +2042,7 @@ def _create_webhook_endpoint(args: dict, context: dict[str, Any]) -> dict:
 
 
 def _update_webhook_endpoint(args: dict, context: dict[str, Any]) -> dict:
-    _require_perm(context, _WEBHOOK_PERMISSION)
+    _require_webhook_access(context)
     endpoint = _get_webhook_endpoint(args, context)
     changes = {k: args[k] for k in ("url", "event_types", "description", "is_enabled") if k in args}
     try:
@@ -2041,7 +2053,7 @@ def _update_webhook_endpoint(args: dict, context: dict[str, Any]) -> dict:
 
 
 def _delete_webhook_endpoint(args: dict, context: dict[str, Any]) -> dict:
-    _require_perm(context, _WEBHOOK_PERMISSION)
+    _require_webhook_access(context)
     endpoint = _get_webhook_endpoint(args, context)
     endpoint_id = str(endpoint.id)
     endpoint.delete()
@@ -2049,7 +2061,7 @@ def _delete_webhook_endpoint(args: dict, context: dict[str, Any]) -> dict:
 
 
 def _rotate_webhook_secret(args: dict, context: dict[str, Any]) -> dict:
-    _require_perm(context, _WEBHOOK_PERMISSION)
+    _require_webhook_access(context)
     endpoint = _get_webhook_endpoint(args, context)
     secret = webhook_services.rotate_secret(endpoint)
     return _wrap_text(
@@ -2058,14 +2070,14 @@ def _rotate_webhook_secret(args: dict, context: dict[str, Any]) -> dict:
 
 
 def _send_webhook_test(args: dict, context: dict[str, Any]) -> dict:
-    _require_perm(context, _WEBHOOK_PERMISSION)
+    _require_webhook_access(context)
     endpoint = _get_webhook_endpoint(args, context)
     delivery = webhook_services.send_test_event(endpoint)
     return _wrap_text(WebhookDeliveryResponse.from_delivery(delivery).model_dump(mode="json"))
 
 
 def _list_webhook_deliveries(args: dict, context: dict[str, Any]) -> dict:
-    _require_perm(context, _WEBHOOK_PERMISSION)
+    _require_webhook_access(context)
     endpoint = _get_webhook_endpoint(args, context)
     status = args.get("status")
     if status is not None and status not in WebhookDeliveryStatus.values:
@@ -2100,7 +2112,7 @@ def _list_webhook_deliveries(args: dict, context: dict[str, Any]) -> dict:
 
 
 def _resend_webhook_delivery(args: dict, context: dict[str, Any]) -> dict:
-    _require_perm(context, _WEBHOOK_PERMISSION)
+    _require_webhook_access(context)
     endpoint = _get_webhook_endpoint(args, context)
     if "delivery_id" not in args:
         raise JsonRpcError(INVALID_PARAMS, "delivery_id is required")
@@ -2109,7 +2121,10 @@ def _resend_webhook_delivery(args: dict, context: dict[str, Any]) -> dict:
         delivery = endpoint.deliveries.get(id=delivery_id)
     except WebhookDelivery.DoesNotExist as exc:
         raise JsonRpcError(INVALID_PARAMS, "Webhook delivery not found") from exc
-    webhook_services.resend(delivery)
+    try:
+        webhook_services.resend(delivery)
+    except WebhookError as exc:
+        raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
     return _wrap_text(WebhookDeliveryResponse.from_delivery(delivery).model_dump(mode="json"))
 
 
@@ -2120,7 +2135,10 @@ _WEBHOOK_EVENT_TYPES_SCHEMA = {
     "minItems": 1,
     "description": "Events the endpoint is told about.",
 }
-_WEBHOOK_NOTE = "Requires the manage_workspace_settings permission."
+_WEBHOOK_NOTE = (
+    "Requires manage_workspace_settings or manage_social_accounts, and a key that covers every account in the "
+    "workspace."
+)
 
 register_tool(
     Tool(

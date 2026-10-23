@@ -43,7 +43,7 @@ On a `comments` account a thread can't also carry a `first_comment` — both are
 
 ## Webhooks
 
-To be told when posts publish or fail, approvals are decided or messages arrive, add an outbound webhook endpoint (needs `manage_workspace_settings`). See [webhooks.md](webhooks.md).
+To be told when posts publish or fail, approvals are decided or messages arrive, add an outbound webhook endpoint (needs `manage_workspace_settings` or `manage_social_accounts`, and a key covering every account in the workspace). See [webhooks.md](webhooks.md).
 
 ## Current limits
 

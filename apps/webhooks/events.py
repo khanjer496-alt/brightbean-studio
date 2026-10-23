@@ -14,6 +14,11 @@ from .models import EventType
 
 logger = logging.getLogger(__name__)
 
+# The publish engine sets this on a PlatformPost (it is never saved) when the
+# platform answered a publish with the post's public URL, so ``post.published``
+# can carry it. Rows published another way have no permalink.
+PERMALINK_ATTR = "_webhook_permalink"
+
 
 def _never_raises(func):
     """Webhooks are a side channel: building a payload must not fail the change that caused it."""
@@ -56,12 +61,17 @@ def _platform_post_data(platform_post) -> dict:
         "scheduled_at": _iso(platform_post.scheduled_at or platform_post.post.scheduled_at),
         "published_at": _iso(platform_post.published_at),
         "external_id": platform_post.platform_post_id,
+        "permalink": getattr(platform_post, PERMALINK_ATTR, None) or None,
     }
 
 
 @_never_raises
 def post_event(event_type: str, platform_post, **extra) -> None:
-    """Emit one of the per-platform-post events (scheduled, published, failed, partially_published)."""
+    """Emit one of the per-platform-post events (scheduled, published, failed, partially_published).
+
+    One event per account a post targets: a post going to three accounts sends
+    three ``post.published`` events, each naming its own account.
+    """
     data = {**_platform_post_data(platform_post), **extra}
     services.emit(event_type, platform_post.post.workspace, data)
 
@@ -85,6 +95,7 @@ def approval_event(event_type: str, post, workspace, user, platform_posts, comme
         {
             "post_id": str(post.id),
             "platform_post_ids": [str(pp.id) for pp in platform_posts],
+            "social_accounts": [_account_data(pp.social_account) for pp in platform_posts],
             "actor": _user_data(user),
             "comment": comment,
         },
@@ -127,9 +138,19 @@ def inbox_message_received(message) -> None:
 
 
 @_never_raises
-def account_disconnected(account, reason: str = "") -> None:
+def account_disconnected(account, reason: str = "", *, removed: bool = False) -> None:
+    """Emit ``account.disconnected``: the account lost its connection, or a member removed it.
+
+    Sent once per break: removing an account that had already lost its
+    connection sends nothing more, since receivers were told when it broke.
+    """
     services.emit(
         EventType.ACCOUNT_DISCONNECTED,
         account.workspace,
-        {**_account_data(account), "connection_status": account.connection_status, "reason": reason},
+        {
+            **_account_data(account),
+            "connection_status": "disconnected" if removed else account.connection_status,
+            "removed": removed,
+            "reason": reason,
+        },
     )

@@ -6,9 +6,10 @@ import pytest
 from django.test import Client
 
 from apps.api_keys import services as key_services
-from apps.members.models import PERMISSION_KEYS
+from apps.members.models import PERMISSION_KEYS, OrgMembership
+from apps.social_accounts.models import SocialAccount
 from apps.webhooks import services
-from apps.webhooks.models import WebhookEndpoint
+from apps.webhooks.models import DeliveryStatus, WebhookDelivery, WebhookEndpoint
 from apps.workspaces.models import Workspace
 
 from .conftest import PUBLIC_URL
@@ -105,8 +106,13 @@ def test_deliveries_list_paginates_filters_and_resends(api, endpoint):
     assert api.get(f"/api/v1/webhooks/{endpoint.id}/deliveries?status=bogus").status_code == 422
 
     delivery = endpoint.deliveries.first()
+    in_flight = api.post(f"/api/v1/webhooks/{endpoint.id}/deliveries/{delivery.id}/resend")
+    assert in_flight.status_code == 409  # still due now: the first attempt has not been made
+
+    WebhookDelivery.objects.filter(pk=delivery.pk).update(status=DeliveryStatus.FAILED, next_attempt_at=None)
     resent = api.post(f"/api/v1/webhooks/{endpoint.id}/deliveries/{delivery.id}/resend")
     assert resent.status_code == 202 and _json(resent)["id"] == str(delivery.id)
+    assert _json(resent)["status"] == "pending"
 
 
 def test_a_key_without_manage_workspace_settings_is_refused(unprivileged_api, endpoint):
@@ -117,6 +123,25 @@ def test_a_key_without_manage_workspace_settings_is_refused(unprivileged_api, en
     assert unprivileged_api.delete(f"{base}{endpoint.id}").status_code == 403
     assert unprivileged_api.get(f"{base}{endpoint.id}/deliveries").status_code == 403
     assert WebhookEndpoint.objects.filter(pk=endpoint.pk).exists()
+
+
+def test_a_key_scoped_to_some_accounts_is_refused(api, workspace, endpoint):
+    # Events report on every account, so a key that cannot see one of them
+    # must not be able to subscribe to its posts and messages.
+    SocialAccount.objects.create(
+        workspace=workspace, platform="bluesky", account_platform_id="bsky-2", account_name="Second"
+    )
+    for response in (api.get("/api/v1/webhooks/"), _create(api), api.get(f"/api/v1/webhooks/{endpoint.id}")):
+        assert response.status_code == 403
+        assert "covers all of its accounts" in _json(response)["detail"]
+    assert "covers all of its accounts" in json.dumps(_rpc(api, "list_webhook_endpoints"))
+
+
+def test_a_manager_key_can_manage_webhooks(workspace, account, manager):
+    # Issuing a key is an org permission; the webhook check is the workspace role.
+    OrgMembership.objects.filter(user=manager).update(org_role=OrgMembership.OrgRole.ADMIN)
+    manager_api = _client_for(workspace, account, manager, ["manage_social_accounts"])
+    assert _create(manager_api).status_code == 201
 
 
 def test_a_key_only_sees_its_own_workspace(api, org):
@@ -192,6 +217,9 @@ def test_mcp_full_lifecycle(api, workspace):
     test = _tool_result(_rpc(api, "send_webhook_test", {"endpoint_id": endpoint_id}))
     deliveries = _tool_result(_rpc(api, "list_webhook_deliveries", {"endpoint_id": endpoint_id}))["deliveries"]
     assert [d["id"] for d in deliveries] == [test["id"]]
+    in_flight = _rpc(api, "resend_webhook_delivery", {"endpoint_id": endpoint_id, "delivery_id": test["id"]})
+    assert "being sent" in json.dumps(in_flight)
+    WebhookDelivery.objects.filter(pk=test["id"]).update(status=DeliveryStatus.DELIVERED, next_attempt_at=None)
     resent = _tool_result(_rpc(api, "resend_webhook_delivery", {"endpoint_id": endpoint_id, "delivery_id": test["id"]}))
     assert resent["id"] == test["id"]
 

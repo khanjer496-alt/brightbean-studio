@@ -10,7 +10,7 @@
         </a>
     </div>
     <p class="text-sm mb-8 text-[var(--text-secondary)]">
-        Get a signed HTTPS request at your own server when something happens in {{ workspace.name }}: a post goes out or fails, an approval is decided, a message arrives. The webhook guide (<span class="font-mono">docs/agents/webhooks.md</span>) lists the payloads and shows how to check signatures.
+        Get a signed HTTPS request at your own server when something happens in {{ workspace.name }}: a post goes out or fails, an approval is decided, a message arrives. Each request carries a <span class="font-mono">PostDelegate-Signature</span> header, an HMAC-SHA256 of the timestamp and body keyed with the endpoint&rsquo;s secret, so your server can check it came from us. Endpoints can also be managed through the <a href="{{ agent_api_docs_url }}" class="underline focus-ring">REST API</a>.
     </p>
 
     {% if endpoints %}

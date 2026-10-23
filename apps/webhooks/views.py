@@ -1,16 +1,17 @@
 """Workspace webhook settings: endpoints, their secrets and the delivery log.
 
-Every view needs ``manage_workspace_settings`` (workspace owners by default)
-and looks endpoints up through ``request.workspace``, so an id from another
-workspace is a 404 rather than a 403.
+Every view needs one of ``services.MANAGE_PERMISSIONS`` (workspace owners and
+managers by default) and looks endpoints up through ``request.workspace``, so an
+id from another workspace is a 404 rather than a 403.
 """
+
+import functools
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
-
-from apps.members.decorators import require_permission
 
 from . import services
 from .models import SUBSCRIBABLE_EVENT_TYPES, EventType, WebhookDelivery, WebhookEndpoint
@@ -21,7 +22,16 @@ SECRET_SESSION_KEY = "webhook_secret_reveal"
 
 
 def _guard(view_func):
-    return login_required(require_permission("manage_workspace_settings")(view_func))
+    @functools.wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        membership = request.workspace_membership
+        if not membership:
+            raise PermissionDenied("You are not a member of this workspace.")
+        if not services.can_manage(membership.effective_permissions):
+            raise PermissionDenied("Permission denied: managing webhooks")
+        return view_func(request, *args, **kwargs)
+
+    return login_required(_wrapped)
 
 
 def _endpoint(request, endpoint_id) -> WebhookEndpoint:
@@ -168,6 +178,10 @@ def endpoint_delete(request, workspace_id, endpoint_id):
 def delivery_resend(request, workspace_id, endpoint_id, delivery_id):
     endpoint = _endpoint(request, endpoint_id)
     delivery = get_object_or_404(WebhookDelivery, id=delivery_id, endpoint=endpoint)
-    services.resend(delivery)
-    messages.success(request, "Delivery queued to be sent again.")
+    try:
+        services.resend(delivery)
+    except WebhookError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, "Delivery queued to be sent again.")
     return redirect("webhooks:detail", workspace_id=request.workspace.id, endpoint_id=endpoint.id)

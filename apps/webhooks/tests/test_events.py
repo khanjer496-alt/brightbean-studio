@@ -101,6 +101,7 @@ def test_final_approval_emits_post_approved(endpoint, post, account, workspace, 
     assert data["actor"]["email"] == "manager@example.com"
     assert data["comment"] == "Looks good"
     assert len(data["platform_post_ids"]) == 1
+    assert data["social_accounts"][0]["platform"] == "bluesky"
 
 
 def test_approval_by_the_author_still_emits(endpoint, post, account, workspace, owner):
@@ -203,6 +204,51 @@ def test_the_disconnect_view_emits_account_disconnected(endpoint, client, owner,
     assert response.status_code in (200, 302)
     assert not SocialAccount.objects.filter(pk=account.pk).exists()
     assert _events(endpoint) == ["account.disconnected"]
+    data = _last(endpoint)["data"]
+    assert data["removed"] is True and data["connection_status"] == "disconnected"
+
+
+def test_removing_an_account_that_already_broke_does_not_fire_again(endpoint, client, owner, account, workspace):
+    account.connection_status = SocialAccount.ConnectionStatus.ERROR
+    account.save(update_fields=["connection_status"])
+    client.force_login(owner)
+    client.post(reverse("social_accounts:disconnect", kwargs={"workspace_id": workspace.id, "account_id": account.id}))
+    assert not SocialAccount.objects.filter(pk=account.pk).exists()
+    assert _events(endpoint) == ["account.disconnected"]
+    assert _last(endpoint)["data"]["removed"] is False
+
+
+def test_a_sync_publish_carries_the_permalink(endpoint, post, account):
+    from unittest.mock import patch
+
+    platform_post = _make_platform_post(post, account, PlatformPost.Status.PUBLISHING)
+    result = {"success": True, "platform_post_id": "at://did/post/9", "url": "https://bsky.app/p/9", "response": {}}
+    with patch.object(PublishEngine, "_dispatch_to_provider", return_value=result):
+        PublishEngine()._publish_platform_post(platform_post)
+
+    assert _events(endpoint) == ["post.published"]
+    data = _last(endpoint)["data"]
+    assert data["permalink"] == "https://bsky.app/p/9" and data["external_id"] == "at://did/post/9"
+
+
+def test_a_publish_we_could_not_record_emits_post_failed(endpoint, post, account):
+    from unittest.mock import patch
+
+    from apps.social_accounts.error_messages import PUBLISH_AMBIGUOUS_MESSAGE
+
+    platform_post = _make_platform_post(post, account, PlatformPost.Status.PUBLISHING)
+    result = {"success": True, "platform_post_id": "at://did/post/9", "response": {}}
+    with (
+        patch.object(PublishEngine, "_dispatch_to_provider", return_value=result),
+        patch.object(PlatformPost, "save", side_effect=RuntimeError("db down")),
+    ):
+        PublishEngine()._publish_platform_post(platform_post)
+
+    platform_post.refresh_from_db()
+    assert platform_post.status == PlatformPost.Status.FAILED
+    assert _events(endpoint) == ["post.failed"]
+    data = _last(endpoint)["data"]
+    assert data["error"] == PUBLISH_AMBIGUOUS_MESSAGE and data["external_id"] == "at://did/post/9"
 
 
 def test_a_failing_payload_builder_never_breaks_the_caller(endpoint, post, account):

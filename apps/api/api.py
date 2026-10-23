@@ -90,7 +90,7 @@ api = NinjaAPI(
         "`BILLING_ENABLED` count against the plan's daily AI allowance (402 "
         "`ai_request_limit` once it is used up).\n\n"
         "**Webhooks.** `/webhooks/` manages outbound webhook endpoints (needs the "
-        "`manage_workspace_settings` permission): signed JSON requests sent when posts are scheduled, "
+        "`manage_workspace_settings` or `manage_social_accounts` permission and a key covering every account): signed JSON requests sent when posts are scheduled, "
         "published or fail, approvals are decided, messages arrive or an account disconnects. "
         "The signing secret is returned only when an endpoint is created or its secret rotated.\n\n"
         "**Deleting posts.** Posts cannot be deleted via the API in v1. "
