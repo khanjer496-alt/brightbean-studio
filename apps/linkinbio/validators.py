@@ -14,40 +14,97 @@ _SLUG_RE = re.compile(r"[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])")
 _DOMAIN_RE = re.compile(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}")
 _CONTROL_OR_SPACE = re.compile(r"[\x00-\x20\x7f]")
 
-# Words that would shadow a route of the app or read as an official page.
+# Words that would shadow a route of the app, read as an official page of this service or of a
+# platform, or that people mistake for support. Brand names also match as part of a slug
+# (``RESERVED_FRAGMENTS``), so "instagram-support" is refused as well as "instagram".
 RESERVED_SLUGS = frozenset(
-    {
-        "admin",
-        "api",
-        "app",
+    [
+        "abuse",
         "about",
         "account",
         "accounts",
+        "admin",
+        "administrator",
+        "api",
+        "app",
+        "apps",
+        "assets",
+        "auth",
         "billing",
-        "calendar",
+        "blog",
+        "cdn",
         "client",
+        "clients",
+        "contact",
         "dashboard",
+        "dev",
+        "docs",
+        "download",
+        "faq",
         "help",
+        "home",
         "inbox",
+        "info",
+        "l",
         "legal",
         "login",
         "logout",
+        "mail",
         "mcp",
         "media",
+        "me",
+        "meta",
+        "moderator",
+        "news",
+        "null",
         "oauth",
+        "official",
+        "password",
         "pricing",
         "privacy",
+        "register",
         "reports",
+        "root",
+        "security",
         "settings",
+        "signin",
         "signup",
+        "staff",
         "static",
         "status",
         "support",
+        "system",
+        "team",
         "terms",
+        "threads",
+        "undefined",
+        "verified",
+        "verify",
         "webhooks",
         "workspace",
-        "postdelegate",
-    }
+        "www",
+    ]
+)
+RESERVED_FRAGMENTS = (
+    "postdelegate",
+    "brightbean",
+    "instagram",
+    "facebook",
+    "tiktok",
+    "twitter",
+    "youtube",
+    "linkedin",
+    "bluesky",
+    "pinterest",
+    "mastodon",
+    "reddit",
+    "google",
+    "whatsapp",
+    "telegram",
+    "discord",
+    "snapchat",
+    "x-support",
+    "x-official",
 )
 
 
@@ -58,7 +115,7 @@ def validate_slug(value: str) -> None:
         )
     if "--" in value:
         raise ValidationError("Hyphens can't come twice in a row.")
-    if value in RESERVED_SLUGS:
+    if value in RESERVED_SLUGS or any(fragment in value for fragment in RESERVED_FRAGMENTS):
         raise ValidationError("That address is reserved. Pick another.")
 
 

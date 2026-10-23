@@ -15,6 +15,8 @@
             <span class="absolute left-0 top-0 max-w-full rounded-br bg-surface-0 px-1.5 py-0.5 text-[10px] font-semibold text-ink sm:text-[11px]">Scheduled &middot; {{ tile.moment|timezone:timezone_name|date:"M j, H:i" }}{% if tile.status_label != "Scheduled" %} ({{ tile.status_label }}){% endif %}</span>
             {% elif tile.state == 'draft' %}
             <span class="absolute left-0 top-0 max-w-full rounded-br bg-surface-0 px-1.5 py-0.5 text-[10px] font-semibold text-ink sm:text-[11px]">Draft &middot; suggested {{ tile.moment|timezone:timezone_name|date:"M j, H:i" }}</span>
+            {% elif tile.public_url %}
+            <a href="{{ tile.public_url }}" target="_blank" rel="noopener noreferrer" class="absolute inset-0 focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent"><span class="sr-only">Published {{ tile.moment|timezone:timezone_name|date:"M j, Y" }}: open the post (new tab)</span></a>
             {% else %}
             <span class="sr-only">Published {{ tile.moment|timezone:timezone_name|date:"M j, Y" }}</span>
             {% endif %}

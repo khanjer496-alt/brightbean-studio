@@ -39,3 +39,24 @@ def test_only_instagram_providers_preview_a_grid():
         "instagram",
         "instagram_login",
     }
+
+
+@pytest.mark.parametrize(
+    ("platform", "remote_id", "expected"),
+    [
+        ("x", "1790000000000000001", "https://x.com/i/web/status/1790000000000000001"),
+        ("youtube", "dQw4w9WgXcQ", "https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+        ("pinterest", "123456789", "https://www.pinterest.com/pin/123456789/"),
+        (
+            "bluesky",
+            "at://did:plc:abc123/app.bsky.feed.post/3kq2xyz",
+            "https://bsky.app/profile/did:plc:abc123/post/3kq2xyz",
+        ),
+        # The media id is not the shortcode an instagram.com/p/ link needs.
+        ("instagram", "17900000000000000", ""),
+        ("x", "12/../evil", ""),
+        ("youtube", 'x"><script>', ""),
+    ],
+)
+def test_permalink_for(platform, remote_id, expected):
+    assert PROVIDER_REGISTRY[platform].permalink_for(remote_id, account("acme")) == expected

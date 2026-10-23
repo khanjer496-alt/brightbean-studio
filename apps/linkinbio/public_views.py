@@ -9,11 +9,15 @@ outbound link carries ``rel="noopener nofollow ugc"``.
 from __future__ import annotations
 
 import uuid
+from urllib.parse import urljoin
 
+from django.conf import settings
 from django.core.cache import cache
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404
 from django.template.loader import render_to_string
+from django.urls import reverse
+from django.utils.text import Truncator
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods, require_POST
 
@@ -36,19 +40,45 @@ def _accent_ink(hex_color: str) -> str:
     return "#111111" if luminance > _LIGHT_ACCENT_LUMINANCE else "#ffffff"
 
 
-def _render(page: BioPage, request) -> str:
+# Browser chrome colour and colour scheme per preset, so the phone's address bar matches the page.
+_THEME_CHROME = {
+    BioPage.Theme.CLEAN: ("#f7f7f5", "light"),
+    BioPage.Theme.MIDNIGHT: ("#101218", "dark"),
+    BioPage.Theme.SUNRISE: ("#fff4e8", "light"),
+    BioPage.Theme.FOREST: ("#eef4ee", "light"),
+}
+
+
+def _absolute(url: str) -> str:
+    """``url`` made absolute against APP_URL, never the request's Host, so the cached page is the same everywhere."""
+    return urljoin(f"{settings.APP_URL.rstrip('/')}/", url) if url else ""
+
+
+def canonical_url(page: BioPage) -> str:
+    if page.custom_domain and getattr(settings, "LINKINBIO_CUSTOM_DOMAINS_ENABLED", False):
+        return f"https://{page.custom_domain}/"
+    return _absolute(reverse("linkinbio_public:page", kwargs={"slug": page.slug}))
+
+
+def _render(page: BioPage) -> str:
     avatar = page.avatar.preview_url if page.avatar_id else ""
+    theme_color, color_scheme = _THEME_CHROME.get(page.theme, _THEME_CHROME[BioPage.Theme.CLEAN])
     return render_to_string(
         "linkinbio/public.html",
         {
             "page": page,
             "avatar_url": avatar,
+            "og_image": _absolute(avatar),
+            "canonical_url": canonical_url(page),
+            "description": Truncator(page.bio or f"{page.title}: links").chars(160),
+            "theme_color": theme_color,
+            "color_scheme": color_scheme,
+            "app_url": _absolute("/"),
             "links": services.visible_links(page),
             "socials": services.social_links(page),
             "tiles": services.latest_posts(page) if page.show_latest_posts else [],
             "show_badge": services.shows_badge(page),
         },
-        request=request,
     )
 
 
@@ -58,7 +88,7 @@ def public_page(request, slug):
     key = services.page_cache_key(page.slug)
     html = cache.get(key)
     if html is None:
-        html = _render(page, request)
+        html = _render(page)
         cache.set(key, html, services.PAGE_CACHE_SECONDS)
     services.record_view(page, request)
     response = HttpResponse(html)

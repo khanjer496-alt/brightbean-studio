@@ -552,6 +552,10 @@ class PlatformPost(models.Model):
         default="",
         help_text="The post ID on the platform after publishing.",
     )
+    # The published post's public address, as the platform reported it on publish. Rows published
+    # before this column existed (or by a provider that reports none) stay null until
+    # :meth:`public_url` derives one from ``platform_post_id``.
+    permalink = models.CharField(max_length=500, null=True, blank=True)
     publish_error = models.TextField(blank=True, default="")
     published_at = models.DateTimeField(blank=True, null=True)
     # Durable proof that the *current publishable payload* completed the
@@ -633,6 +637,26 @@ class PlatformPost(models.Model):
 
     def __str__(self):
         return f"PlatformPost({self.social_account.platform}): {self.status}"
+
+    def public_url(self) -> str:
+        """Where the published post can be seen (https), or "" when it isn't known.
+
+        Uses the stored permalink, else asks the provider to build one from the remote id and
+        keeps it, so the derivation happens once per row. Only https addresses are returned,
+        because they end up as links on public pages.
+        """
+        if self.status != self.Status.PUBLISHED:
+            return ""
+        url = self.permalink or ""
+        if not url and self.platform_post_id:
+            from providers import PROVIDER_REGISTRY
+
+            provider = PROVIDER_REGISTRY.get(self.social_account.platform)
+            url = (provider.permalink_for(self.platform_post_id, self.social_account) if provider else "")[:500]
+            if url:
+                self.permalink = url
+                type(self).objects.filter(pk=self.pk, permalink__isnull=True).update(permalink=url)
+        return url if url.startswith("https://") else ""
 
     @property
     def is_reschedulable(self):

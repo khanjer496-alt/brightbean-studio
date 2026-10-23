@@ -1,9 +1,10 @@
 """Link-in-bio rules shared by the editor, the public page, the REST API and MCP.
 
 Nothing here reads a request except :func:`record_view` and :func:`record_click`,
-which turn the visitor into a throw-away, day-salted token: the address and
-browser are hashed together with the day and the server secret, used to dedupe
-and rate-limit inside the cache, and never written to the database.
+which turn the visitor into a throw-away token: the address and browser are
+hashed under a random salt that exists only in the cache for about two days,
+used to dedupe and rate-limit inside the cache, and never written to the
+database or the logs.
 """
 
 from __future__ import annotations
@@ -12,9 +13,9 @@ import datetime as dt
 import hashlib
 import hmac
 import logging
+import secrets
 import uuid
 
-from django.conf import settings
 from django.core.cache import cache
 from django.core.exceptions import ValidationError
 from django.db import transaction
@@ -88,8 +89,10 @@ def page_cache_key(slug: str) -> str:
     return f"linkinbio:page:{slug}"
 
 
-def invalidate(*slugs: str) -> None:
-    cache.delete_many([page_cache_key(s) for s in slugs if s])
+def invalidate(*slugs: str, domains=()) -> None:
+    from .middleware import domain_cache_key
+
+    cache.delete_many([page_cache_key(s) for s in slugs if s] + [domain_cache_key(d) for d in domains if d])
 
 
 def _clean(instance, exclude=()):
@@ -165,7 +168,7 @@ def create_page(workspace, *, user=None, **data) -> BioPage:
 
 
 def update_page(page: BioPage, *, social_account_ids=None, **data) -> BioPage:
-    old_slug = page.slug
+    old_slug, old_domain = page.slug, page.custom_domain
     for name, value in _normalise_page_values(page.workspace, data).items():
         setattr(page, name, value)
     _clean(page)
@@ -179,14 +182,14 @@ def update_page(page: BioPage, *, social_account_ids=None, **data) -> BioPage:
             if len(accounts) != len(set(str(i) for i in social_account_ids)):
                 raise BioError("One of those accounts isn't connected to this workspace.", "social_accounts")
             page.social_accounts.set(accounts)
-    invalidate(old_slug, page.slug)
+    invalidate(old_slug, page.slug, domains=(old_domain, page.custom_domain))
     return page
 
 
 def delete_page(page: BioPage) -> None:
-    slug = page.slug
+    slug, domain = page.slug, page.custom_domain
     page.delete()
-    invalidate(slug)
+    invalidate(slug, domains=(domain,))
 
 
 # ---------------------------------------------------------------------------
@@ -305,7 +308,11 @@ def social_links(page: BioPage) -> list[dict]:
 
 
 def latest_posts(page: BioPage, limit: int = LATEST_POSTS_LIMIT) -> list[dict]:
-    """Published posts, newest first, as tiles; a tile is a link only when a post link was attached."""
+    """Published posts, newest first, as tiles.
+
+    A tile opens the address attached to its post (counted as a tile click), else the post itself
+    on its platform when that address is known; otherwise it is a plain picture.
+    """
     media = Prefetch(
         "post__media_attachments",
         queryset=PostMedia.objects.select_related("media_asset").order_by("position", "id"),
@@ -316,7 +323,7 @@ def latest_posts(page: BioPage, limit: int = LATEST_POSTS_LIMIT) -> list[dict]:
             status=PlatformPost.Status.PUBLISHED,
             published_at__isnull=False,
         )
-        .select_related("post", "post__bio_link")
+        .select_related("post", "post__bio_link", "social_account")
         .prefetch_related(media)
         .order_by("-published_at", "id")
     )
@@ -336,9 +343,9 @@ def latest_posts(page: BioPage, limit: int = LATEST_POSTS_LIMIT) -> list[dict]:
         tiles.append(
             {
                 "id": link.id if link else None,
-                "url": link.url if link else "",
+                "url": link.url if link else platform_post.public_url(),
                 "image": image,
-                "alt": (attachments[0].alt_text or post.caption or "")[:120],
+                "alt": (attachments[0].alt_text or post.caption or "Latest post")[:120],
             }
         )
         if len(tiles) >= limit:
@@ -359,13 +366,30 @@ def _today() -> dt.date:
     return timezone.now().astimezone(dt.UTC).date()
 
 
+# How long a day's salt outlives the day: long enough for the 30-hour "seen" keys, then it is gone.
+_SALT_SECONDS = 60 * 60 * 48
+
+
+def _daily_salt(day: dt.date) -> bytes:
+    """A random secret for ``day`` that exists only in the cache.
+
+    Not derived from anything stored, so once it expires the day's visitor tokens can't be
+    recomputed from an address, even by someone holding the server's secrets or database.
+    """
+    key = f"linkinbio:salt:{day.isoformat()}"
+    cache.add(key, secrets.token_hex(32), _SALT_SECONDS)
+    salt = cache.get(key)
+    if salt is None:  # cache unavailable or evicted between the two calls: count, but don't dedupe
+        salt = secrets.token_hex(32)
+    return salt.encode()
+
+
 def _visitor_token(request, day: dt.date) -> str:
-    """Hash of address + browser, salted with the day and the server secret; lives only in the cache."""
+    """Keyed hash of address + browser under the day's salt; it lives only in cache keys and is never stored."""
     from apps.api.limits import _client_ip
 
-    material = f"{day.isoformat()}|{_client_ip(request) or ''}|{request.META.get('HTTP_USER_AGENT', '')}"
-    key = f"linkinbio:{settings.SECRET_KEY}".encode()
-    return hmac.new(key, material.encode(), hashlib.sha256).hexdigest()[:32]
+    material = f"{_client_ip(request) or ''}|{request.META.get('HTTP_USER_AGENT', '')}"
+    return hmac.new(_daily_salt(day), material.encode(), hashlib.sha256).hexdigest()[:32]
 
 
 def is_bot(request) -> bool:

@@ -120,6 +120,28 @@ class TestLatestPostsGrid:
         html = get().content.decode()
         assert html.count('class="bio-tile"') == 2 and html.count('rel="noopener nofollow ugc"') == 1
 
+    def test_unlinked_tile_opens_the_post_itself_when_its_address_is_known(self, page, workspace, instagram, image):
+        post = self.make_post(workspace, instagram, image, "p", 5)
+        PlatformPost.objects.filter(post=post).update(permalink="https://www.instagram.com/p/AbC123/")
+        services.update_page(page, show_latest_posts=True)
+        html = get().content.decode()
+        assert 'href="https://www.instagram.com/p/AbC123/"' in html
+        # Not a tile with an attached link, so the beacon has nothing to count.
+        assert "data-bio-id" not in html
+
+    def test_permalink_is_derived_from_the_remote_id_and_kept(self, workspace, image):
+        from apps.analytics.tests.helpers import make_account
+
+        x = make_account(workspace, "x", "Acme X")
+        post = self.make_post(workspace, x, image, "p", 5)
+        pp = PlatformPost.objects.get(post=post)
+        pp.platform_post_id = "1790000000000000001"
+        pp.save(update_fields=["platform_post_id"])
+        assert pp.public_url() == "https://x.com/i/web/status/1790000000000000001"
+        assert PlatformPost.objects.get(pk=pp.pk).permalink == "https://x.com/i/web/status/1790000000000000001"
+        pp.permalink = "javascript:alert(1)"
+        assert pp.public_url() == ""
+
     def test_hidden_unless_switched_on_and_filtered_by_account(self, page, workspace, instagram, image):
         from apps.analytics.tests.helpers import make_account
 
@@ -191,6 +213,23 @@ class TestCustomDomains:
         assert (
             Client().post("/click/", {"l": str(link.id)}, HTTP_HOST="links.example.com", **BROWSER).status_code == 204
         )
+
+    def test_only_the_page_is_reachable_on_the_domain(self, page, settings, workspace):
+        settings.LINKINBIO_CUSTOM_DOMAINS_ENABLED = True
+        settings.ALLOWED_HOSTS = ["*"]
+        services.update_page(page, custom_domain="links.example.com")
+        services.create_page(workspace, title="Other", slug="other-page")
+        on_domain = Client(HTTP_HOST="links.example.com", **BROWSER)
+        assert on_domain.get("/accounts/login/").status_code == 404
+        assert on_domain.get("/api/v1/me").status_code == 404
+        assert on_domain.get("/l/other-page/").status_code == 404
+        assert on_domain.get("/l/acme/theme.css").status_code == 200
+
+    def test_sharing_tags_use_the_canonical_address(self, page, settings):
+        settings.APP_URL = "https://app.example.com"
+        html = get(HTTP_HOST="evil.example.com").content.decode()
+        assert '<meta property="og:url" content="https://app.example.com/l/acme/">' in html
+        assert 'name="twitter:card"' in html and "evil.example.com" not in html
 
     def test_unpublished_page_and_unknown_host_are_not_served(self, page, settings):
         settings.LINKINBIO_CUSTOM_DOMAINS_ENABLED = True

@@ -263,6 +263,11 @@ class XProvider(SocialProvider):
     mention_lookup = True
     caption_counting = "weighted"
 
+    @classmethod
+    def permalink_for(cls, platform_post_id: str, account) -> str:
+        post_id = (platform_post_id or "").strip()
+        return f"https://x.com/i/web/status/{post_id}" if re.fullmatch(r"[0-9]{1,30}", post_id) else ""
+
     media_rules = {PostType.IMAGE: _IMAGE_RULES, PostType.VIDEO: _VIDEO_RULES}
 
     # Source: https://sproutsocial.com/insights/best-times-to-post-on-social-media/ (published 2026-03-31; checked 2026-10-24):

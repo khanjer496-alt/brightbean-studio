@@ -301,6 +301,15 @@ class SocialProvider(ABC):
         return cls.profile_url_template.format(handle=handle)
 
     @classmethod
+    def permalink_for(cls, platform_post_id: str, account) -> str:
+        """The public address of a published post, built from its remote id alone, or "".
+
+        Used to fill in a link for posts whose publish didn't record one. Providers whose
+        post address needs an API call (or more than the id and the account) leave it "".
+        """
+        return ""
+
+    @classmethod
     def caption_length(cls, text: str) -> int:
         """``text``'s length as the platform counts it against the caption limit."""
         return len(text)

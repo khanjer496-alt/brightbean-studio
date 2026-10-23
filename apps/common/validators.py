@@ -19,7 +19,7 @@ MAX_YT_TAG_LENGTH = 50
 # from runaway documents.
 MAX_XML_BYTES = 5 * 1024 * 1024
 
-_HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+_HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}\Z")
 
 
 def is_safe_url(url: str) -> bool:

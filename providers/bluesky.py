@@ -84,6 +84,14 @@ class BlueskyProvider(SocialProvider):
     # Each part is a post whose ``reply`` points at the thread root and its parent.
     thread = ThreadCapability(mode=ThreadMode.REPLY_CHAIN, max_parts=25, media_per_part=True)
 
+    @classmethod
+    def permalink_for(cls, platform_post_id: str, account) -> str:
+        # The stored id is the post's at://<did>/app.bsky.feed.post/<rkey> URI.
+        match = re.fullmatch(
+            r"at://(did:[a-z]+:[A-Za-z0-9._:%-]+)/app\.bsky\.feed\.post/([A-Za-z0-9._~:-]+)", platform_post_id or ""
+        )
+        return f"https://bsky.app/profile/{match[1]}/post/{match[2]}" if match else ""
+
     mention_lookup = True
 
     # Unverified: none of the Sprout Social, Hootsuite or Buffer studies covers Bluesky, so the generic

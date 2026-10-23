@@ -64,6 +64,8 @@ class Tile:
     movable: bool
     can_earlier: bool = False
     can_later: bool = False
+    # Where a published post can be seen on the platform, when known.
+    public_url: str = ""
 
     @property
     def id(self):
@@ -125,14 +127,15 @@ def _tile(pp: PlatformPost, state: str, moment, user, membership, now) -> Tile:
         and pp.real_time > now
         and services.reschedule_denial(pp, user, membership) is None
     )
-    return Tile(pp, state, moment, image, caption, movable)
+    public_url = pp.public_url() if state == "published" else ""
+    return Tile(pp, state, moment, image, caption, movable, public_url=public_url)
 
 
 def build_grid(account: SocialAccount, user, membership, now: dt.datetime | None = None) -> Grid:
     now = now or timezone.now()
     base = (
         PlatformPost.objects.filter(social_account=account)
-        .select_related("post")
+        .select_related("post", "social_account")
         .prefetch_related(_media_prefetch())
         .annotate(
             real_time=Coalesce("scheduled_at", "post__scheduled_at"),
