@@ -1,9 +1,11 @@
 {% load report_extras humanize %}
 {# One finished report, drawn from a run's stored data. Used by the shared link, the app and the client portal. #}
+{# It is the client's document, so it always reads light, exactly as the link and the PDF do: #}
+{# data-platform-preview opts it out of the app's dark-theme colour remapping (theme/static/css/postdelegate.css). #}
 <style>
-  .pd-report { --report-accent: {{ data.branding.accent }}; --report-accent-text: {{ data.branding.accent_text }}; }
+  .pd-report { --report-accent: {{ data.branding.accent }}; --report-accent-text: {{ data.branding.accent_text }}; color-scheme: light; }
 </style>
-<article class="pd-report mx-auto max-w-4xl overflow-hidden rounded-2xl border border-gray-200 bg-white text-gray-900" aria-labelledby="report-title">
+<article data-platform-preview class="pd-report mx-auto max-w-4xl overflow-hidden rounded-2xl border border-gray-200 bg-white text-gray-900" aria-labelledby="report-title">
     <header class="flex flex-wrap items-center gap-4 bg-[var(--report-accent)] px-5 py-5 text-[var(--report-accent-text)] sm:px-8">
         {% if data.branding.logo %}
         <span class="flex h-12 items-center rounded-lg bg-white px-3"><img src="{{ data.branding.logo }}" alt="{{ data.branding.agency }}" class="h-9 w-auto max-w-40 object-contain"></span>
@@ -58,8 +60,11 @@
             {% for t in data.trends %}
             <figure class="m-0 mb-6">
                 <figcaption class="mb-1 flex flex-wrap items-baseline justify-between gap-2 text-sm font-semibold text-gray-900">
-                    <span>{{ t.label }} per day</span><span class="font-normal text-gray-600">Total {{ t.total_display }}</span>
+                    <span>{{ t.label }} per day</span>{% if t.total is not None %}<span class="font-normal text-gray-600">Total {{ t.total_display }}</span>{% endif %}
                 </figcaption>
+                {% if t.total is None %}
+                <p class="m-0 text-sm text-gray-600">Not reported by these networks in this period.</p>
+                {% else %}
                 <div class="[&>svg]:h-auto [&>svg]:w-full">{% trend_chart t data.branding.accent %}</div>
                 <p class="m-0 mt-1 flex flex-wrap gap-x-4 text-xs text-gray-600">
                     <span class="inline-flex items-center gap-1.5"><span class="inline-block h-0.5 w-5 bg-[var(--report-accent)]" aria-hidden="true"></span>This period</span>
@@ -74,6 +79,7 @@
                         </table>
                     </div>
                 </details>
+                {% endif %}
             </figure>
             {% endfor %}
         </section>

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load tz %}
 {% block title %}Reports — {{ workspace.name }} — {{ brand_short_name }}{% endblock %}
 
 {% block content %}
@@ -18,7 +19,7 @@
                     <a href="{% url 'reports:history' workspace_id=workspace.id report_id=row.definition.id %}" class="text-[15px] font-semibold text-ink no-underline hover:underline">{{ row.definition.name }}</a>
                     <p class="m-0 mt-1 text-xs text-ink-3">
                         {{ row.definition.get_range_type_display }}
-                        &middot; {% if row.definition.is_scheduled %}{{ row.definition.get_frequency_display }}{% if row.next_fire %}, next {{ row.next_fire|date:"M j, H:i" }}{% endif %}{% elif row.definition.frequency != "none" %}Schedule paused{% else %}Not scheduled{% endif %}
+                        &middot; {% if row.definition.is_scheduled %}{{ row.definition.get_frequency_display }}{% if row.next_fire %}, next {{ row.next_fire|timezone:timezone_name|date:"M j, H:i" }} <span class="whitespace-nowrap">({{ timezone_name }})</span>{% endif %}{% elif row.definition.frequency != "none" %}Schedule paused{% else %}Not scheduled{% endif %}
                         {% if row.definition.visible_to_clients %}&middot; Shared with clients{% endif %}
                     </p>
                 </div>

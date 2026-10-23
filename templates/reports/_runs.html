@@ -1,4 +1,4 @@
-{# Run history for one report; re-fetches itself while something is still building. #}
+{% load tz %}{# Run history for one report; re-fetches itself while something is still building. #}
 <div id="report-runs" {% if polling %}hx-get="{% url 'reports:history' workspace_id=workspace.id report_id=definition.id %}" hx-trigger="every 4s" hx-swap="outerHTML"{% endif %}>
     {% if runs %}
     <ul class="m-0 flex list-none flex-col gap-3 p-0">
@@ -8,7 +8,7 @@
                 <div>
                     <p class="m-0 text-[14px] font-semibold text-ink">{{ run.period_start|date:"M j" }} – {{ run.period_end|date:"M j, Y" }}</p>
                     <p class="m-0 mt-0.5 text-xs text-ink-3">
-                        {{ run.get_trigger_display }} &middot; {{ run.created_at|date:"M j, H:i" }}
+                        {{ run.get_trigger_display }} &middot; {{ run.created_at|timezone:timezone_name|date:"M j, H:i" }}
                         {% if run.emailed_to %}&middot; emailed to {{ run.emailed_to|length }}{% endif %}
                         {% if run.attempts > 1 and run.status != "succeeded" %}&middot; attempt {{ run.attempts }}{% endif %}
                     </p>

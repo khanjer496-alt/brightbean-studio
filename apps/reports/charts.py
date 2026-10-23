@@ -150,8 +150,13 @@ def line_chart(title: str, labels: list[str], current: list[float | None], previ
 
 
 def column_chart(title: str, labels: list[str], values: list[float], accent: str):
-    """One column per day (posts published)."""
-    top = _nice_max(max(values, default=0))
+    """One column per day (posts published).
+
+    The values are whole counts, so the scale is too: the midline never lands on half a post.
+    """
+    top = max(_nice_max(max(values, default=0)), 2)
+    if top % 2:
+        top += 1
     plot_w, plot_h = WIDTH - PAD_LEFT - PAD_RIGHT, HEIGHT - PAD_TOP - PAD_BOTTOM
     n = max(len(values), 1)
     slot = plot_w / n

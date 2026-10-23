@@ -123,7 +123,9 @@ def report_list(request, workspace_id):
     }
     now = timezone.now()
     rows = [{"definition": d, "latest": latest.get(d.id), "next_fire": periods.next_fire(d, now)} for d in definitions]
-    return _page(request, workspace, "reports/list.html", {"rows": rows})
+    return _page(
+        request, workspace, "reports/list.html", {"rows": rows, "timezone_name": workspace.effective_timezone or "UTC"}
+    )
 
 
 def _form_page(request, workspace, form, definition):
@@ -217,6 +219,7 @@ def report_history(request, workspace_id, report_id):
         "runs": runs,
         "polling": any(r.status in ("pending", "running") for r in runs),
         "link_days": settings.REPORT_LINK_MAX_AGE_DAYS,
+        "timezone_name": workspace.effective_timezone or "UTC",
     }
     if request.headers.get("HX-Request") and request.headers.get("HX-Target") == "report-runs":
         return render(

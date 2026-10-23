@@ -6,6 +6,7 @@ from django import forms
 
 from apps.social_accounts.models import SocialAccount
 
+from .branding import DEFAULT_ACCENT
 from .models import SECTIONS, ReportDefinition
 
 INPUT = "form-input-styled text-sm"
@@ -53,7 +54,7 @@ class ReportDefinitionForm(forms.ModelForm):
             "is_active",
         ]
         widgets = {
-            "name": forms.TextInput(attrs={"class": INPUT, "maxlength": 120, "autocomplete": "off"}),
+            "name": forms.TextInput(attrs={"class": INPUT, "maxlength": 120, "autocomplete": "off", "dir": "auto"}),
             "range_type": forms.Select(attrs={"class": INPUT}),
             "custom_start": forms.DateInput(attrs={"type": "date", "class": INPUT}),
             "custom_end": forms.DateInput(attrs={"type": "date", "class": INPUT}),
@@ -103,7 +104,8 @@ class ReportDefinitionForm(forms.ModelForm):
         if self.instance.pk and not self.is_bound:
             self.initial["recipients"] = "\n".join(self.instance.recipients)
         if not self.instance.accent_color:
-            self.initial.setdefault("accent_color", workspace.primary_color or "#0b6bcb")
+            # A colour input can't be blank (it shows, and submits, black), so start from the workspace colour.
+            self.initial["accent_color"] = workspace.primary_color or DEFAULT_ACCENT
 
     def clean_recipients(self):
         raw = self.cleaned_data.get("recipients", "")

@@ -147,6 +147,19 @@ class TestPdf:
         assert render_pdf(build(definition, with_ai=False)).startswith(b"%PDF-")
 
 
+class TestCharts:
+    def test_gridline_values_keep_halves(self):
+        from apps.reports.charts import compact
+
+        assert [compact(v) for v in (0, 0.5, 2.5, 1000, 1500, 2_500_000)] == ["0", "0.5", "2.5", "1k", "1.5k", "2.5M"]
+
+    def test_post_counts_use_whole_gridlines(self):
+        from apps.reports.charts import column_chart
+
+        svg = column_chart("Posts", ["2026-10-01", "2026-10-02"], [1, 0], "#0b6bcb")
+        assert ">0.5<" not in svg and ">1<" in svg and ">2<" in svg
+
+
 class TestBranding:
     def test_pale_accent_is_darkened_to_be_readable(self):
         pale = "#ffee99"

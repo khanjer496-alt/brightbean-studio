@@ -253,11 +253,18 @@ def _trends(pdf: _Report):
     _heading(pdf, "Trends")
     accent = pdf.data["branding"]["accent"]
     for t in pdf.data["trends"]:
-        if pdf.will_page_break(70):
+        if pdf.will_page_break(70 if t["total"] is not None else 14):
             pdf.add_page()
         pdf.set_font(FONT, "B", 10)
         pdf.set_text_color(*INK)
-        pdf.cell(0, 6, clean(f"{t['label']} per day  (total {t['total_display']})"), new_x="LMARGIN", new_y="NEXT")
+        if t["total"] is None:
+            pdf.cell(0, 6, clean(f"{t['label']} per day"), new_x="LMARGIN", new_y="NEXT")
+            pdf.set_font(FONT, "", 9)
+            pdf.set_text_color(*MUTED)
+            pdf.cell(0, 5, "Not reported by these networks in this period.", new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(3)
+            continue
+        pdf.cell(0, 6, clean(f"{t['label']} per day (total {t['total_display']})"), new_x="LMARGIN", new_y="NEXT")
         svg = charts.line_chart(t["label"], t["labels"], t["current"], t["previous"], accent)
         pdf.image(_svg(svg), x=MARGIN, w=CONTENT_W)
         pdf.set_font(FONT, "", 8)
@@ -337,10 +344,13 @@ def _top_posts(pdf: _Report):
             f"{post['exposure']} views  |  {post['engagements']} engagements  |  {post['rate']} rate"
         )
         pdf.multi_cell(CONTENT_W - (text_x - MARGIN), 4.5, clean(meta), new_x="LMARGIN", new_y="NEXT")
-        pdf.set_y(max(pdf.get_y(), top + 20) + 3)
+        pdf.set_y((max(pdf.get_y(), top + 20) if thumb is not None else pdf.get_y()) + 3)
 
 
 def _activity(pdf: _Report):
+    # Keep the heading, its sentence and the chart together.
+    if pdf.will_page_break(90):
+        pdf.add_page()
     _heading(pdf, "Posting activity")
     a = pdf.data["activity"]
     pdf.set_font(FONT, "", 10)
@@ -351,8 +361,6 @@ def _activity(pdf: _Report):
     if a["formats"]:
         summary += " Formats: " + ", ".join(f"{f['posts']} {f['format'].lower()}" for f in a["formats"]) + "."
     pdf.multi_cell(0, 5.5, clean(summary), new_x="LMARGIN", new_y="NEXT")
-    if pdf.will_page_break(65):
-        pdf.add_page()
     svg = charts.column_chart("Posts per day", a["labels"], a["counts"], pdf.data["branding"]["accent"])
     pdf.image(_svg(svg), x=MARGIN, w=CONTENT_W)
 

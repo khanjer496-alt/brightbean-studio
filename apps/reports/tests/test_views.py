@@ -95,6 +95,12 @@ class TestEditor:
         assert d.recipients == ["a@client.test", "b@client.test"] and d.created_by == owner
         assert list(d.social_accounts.all()) == [ig] and d.schedule_anchor is not None
 
+    def test_blank_accent_starts_from_the_workspace_colour(self, client, workspace, owner, definition):
+        # A colour input can't be blank: it would show and submit black.
+        client.force_login(owner)
+        page = client.get(url("edit", workspace, report_id=definition.id)).content.decode()
+        assert 'value="#aa2255"' in page
+
     def test_invalid_form_shows_errors(self, client, workspace, owner):
         client.force_login(owner)
         response = client.post(url("create", workspace), form_data(recipients="nope", sections=[]))
