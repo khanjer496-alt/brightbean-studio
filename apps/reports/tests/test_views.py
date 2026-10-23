@@ -136,8 +136,9 @@ class TestEditor:
     def test_form_page_has_no_inline_styles(self, client, workspace, owner, definition):
         client.force_login(owner)
         page = client.get(url("edit", workspace, report_id=definition.id)).content.decode()
-        ours = page[page.index('id="report-form"') : page.index("</form>")]
-        assert " style=" not in ours and "Live preview" in ours
+        start = page.index('id="report-form"')
+        ours = page[start : page.index("</form>", start)]
+        assert " style=" not in ours and "Live preview" in page
 
 
 class TestRunsAndDownloads:
