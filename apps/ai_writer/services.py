@@ -204,6 +204,8 @@ class AIRun:
 
     config: AIConfig
     remaining: int | None
+    # The model that answered the last call: the configured one, or the one a refusal fell back to.
+    last_model: str = ""
 
     def can_call(self) -> bool:
         return self.remaining is None or self.remaining > 0
@@ -235,6 +237,7 @@ def _run(ctx: AIContext, run: AIRun, *, action: str, prompt: str, schema: dict, 
         log.save()
         raise
     log.model = completion.model or provider.model
+    run.last_model = log.model
     log.input_tokens = completion.input_tokens
     log.output_tokens = completion.output_tokens
     log.latency_ms = int((time.monotonic() - started) * 1000)

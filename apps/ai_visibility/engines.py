@@ -89,7 +89,9 @@ class AnthropicEngine(AnswerEngine):
         if not isinstance(text, str) or not text.strip():
             raise ai.AIResponseError()
         sources = data.get("sources") if isinstance(data.get("sources"), list) else []
-        return EngineAnswer(text=text.strip(), model=run.config.provider.model, urls=extract_urls(text, sources))
+        return EngineAnswer(
+            text=text.strip(), model=run.last_model or run.config.provider.model, urls=extract_urls(text, sources)
+        )
 
 
 ENGINES: dict[str, type[AnswerEngine]] = {"anthropic": AnthropicEngine}

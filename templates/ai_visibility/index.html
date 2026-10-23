@@ -40,7 +40,8 @@
                     </label>
                 </div>
                 <label class="flex flex-col gap-1 text-xs font-semibold text-ink-3">Other names (comma separated, optional)
-                    <input type="text" name="aliases" maxlength="400" value="{{ aliases_text }}" {% if not can_edit %}disabled{% endif %} class="min-h-11 rounded-lg border border-line bg-surface-0 px-3 text-sm font-normal text-ink">
+                    <input type="text" name="aliases" maxlength="400" value="{{ aliases_text }}" aria-describedby="aliases-help" {% if not can_edit %}disabled{% endif %} class="min-h-11 rounded-lg border border-line bg-surface-0 px-3 text-sm font-normal text-ink">
+                    <span id="aliases-help" class="font-normal text-ink-3">Add every spelling people use, such as the Arabic name and its English transliteration. Case, accents and Arabic diacritics are already ignored.</span>
                 </label>
                 <label class="flex flex-col gap-1 text-xs font-semibold text-ink-3">Category prompts, one per line
                     <textarea name="prompts" rows="5" placeholder="best social media scheduler for agencies in Dubai" {% if not can_edit %}disabled{% endif %} class="rounded-lg border border-line bg-surface-0 px-3 py-2 text-sm font-normal text-ink">{{ prompt_text }}</textarea>
@@ -66,7 +67,7 @@
         {% if pending %}
         <div class="rounded-xl border border-line bg-surface-1 px-5 py-4 text-[13px] text-ink-2" role="status">A report is running. Reload this page in a minute or two.</div>
         {% elif last_failed %}
-        <div class="rounded-xl border border-line bg-surface-1 px-5 py-4 text-[13px] text-ink-2" role="status">The last report couldn't be completed ({{ last_failed.created_at|date:"M j" }}). Nothing was charged to your allowance for questions that weren't answered.</div>
+        <div class="rounded-xl border border-line bg-surface-1 px-5 py-4 text-[13px] text-ink-2" role="status">The last report couldn't be completed ({{ last_failed.created_at|date:"M j" }}). Run it again, or wait for the weekly report.</div>
         {% endif %}
 
         {% if report %}
@@ -127,7 +128,7 @@
                                     <summary class="cursor-pointer">{{ a.question }}</summary>
                                     {% if a.answered %}
                                     <p class="m-0 mt-2 whitespace-pre-line text-xs font-normal text-ink-2">{{ a.answer }}</p>
-                                    {% if a.cited_urls %}<p class="m-0 mt-2 text-xs font-normal text-ink-3">Web addresses in the answer{% if a.cites_brand_site %} (includes your site){% endif %}: {{ a.cited_urls|join:", " }}</p>{% endif %}
+                                    {% if a.cited_urls %}<p class="m-0 mt-2 text-xs font-normal text-ink-3">Web addresses the model gave from memory, not checked{% if a.cites_brand_site %} (includes your site){% endif %}: {{ a.cited_urls|join:", " }}</p>{% endif %}
                                     <p class="m-0 mt-2 text-[11px] font-normal text-ink-3">{{ a.model }} · {{ run.created_at|date:"M j, Y" }}</p>
                                     {% endif %}
                                 </details>

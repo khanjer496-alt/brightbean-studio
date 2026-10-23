@@ -41,6 +41,22 @@ class TestBrandMatcher:
     def test_names(self, text, expected):
         assert self.matcher().names(text) is expected
 
+    @pytest.mark.parametrize(
+        "brand,aliases,text,expected",
+        [
+            ("Café Noir", [], "try CAFE NOIR downtown", True),
+            ("أسواق", [], "جرب اسواق اليوم", True),  # hamza seat written or dropped
+            ("أسواق", [], "تسوّق وأسواق", True),  # joined "and"
+            ("الراجحي", [], "حوّل للراجحي الآن", True),  # ل + ال contracts to لل
+            ("مدرسة", [], "مدرسه ممتازة", True),  # ta marbuta written as ha
+            ("نون", ["Noon"], "Order on noon.com or NOON", True),
+            ("نون", [], "Order on Noon", False),  # a transliteration needs an alias
+            ("مكتبة", [], "مكتبات كثيرة", False),
+        ],
+    )
+    def test_arabic_and_accented_names(self, brand, aliases, text, expected):
+        assert services.BrandMatcher(brand, aliases).names(text) is expected
+
     def test_brand_characters_are_not_regex(self):
         assert services.BrandMatcher("C++ (Pro)").names("we like C++ (Pro) a lot")
         assert not services.BrandMatcher("a.c").names("abc")
@@ -228,6 +244,19 @@ class TestRun:
         assert not run.is_done
 
 
+def test_the_model_that_actually_answered_is_recorded(profile, fake_claude, reader):
+    from apps.ai_writer.tests.fakes import message
+
+    queue_report(fake_claude)
+    fell_back = message(answer("Use Buffer or Later for Instagram."))
+    fell_back.model = "claude-opus-5"
+    fake_claude.responses[-1] = fell_back
+    fake_claude.queue({"items": []})
+    run = run_report(profile)
+    assert run.answers.get(question=Q2).model == "claude-opus-5"
+    assert run.answers.get(question=Q1).model == "claude-opus-5-5"
+
+
 class TestLimits:
     def test_plan_without_the_feature(self, workspace, profile):
         set_plan(workspace.organization, "creator")
@@ -313,6 +342,16 @@ class TestLimits:
         assert exc.value.code == "visibility_cooldown"
         VisibilityRun.objects.update(created_at=timezone.now() - timedelta(hours=25))
         services.start_run(profile, trigger="manual")
+
+    def test_a_run_lost_with_its_worker_stops_blocking(self, profile, fake_claude, reader):
+        stuck = services.start_run(profile, trigger="manual")
+        VisibilityRun.objects.filter(pk=stuck.pk).update(
+            status="running", created_at=timezone.now() - services.STALE_AFTER - timedelta(minutes=1)
+        )
+        assert services.pending_run(profile) is None
+        services.start_run(profile, trigger="weekly")
+        stuck.refresh_from_db()
+        assert (stuck.status, stuck.error_code) == ("failed", "stale")
 
     def test_an_edit_does_not_rewrite_an_old_report(self, workspace, profile, fake_claude, reader):
         run = services.start_run(profile, trigger="manual")

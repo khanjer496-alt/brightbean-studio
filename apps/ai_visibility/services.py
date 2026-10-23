@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from collections.abc import Sequence
 from datetime import timedelta
 from urllib.parse import urlsplit
@@ -58,6 +59,9 @@ MAX_IDEAS = 5
 _SYSTEMIC = (AIAuthenticationError, AIRateLimitError, AIUnavailableError, AIDailyCapError)
 SCHEDULED_EVERY = timedelta(days=7)
 MANUAL_COOLDOWN = timedelta(hours=24)
+# A run still queued or running after this long was lost with its worker; it is closed as failed
+# so it stops blocking the next one.
+STALE_AFTER = timedelta(hours=2)
 
 _SENTIMENTS = {s.value for s in VisibilityAnswer.Sentiment}
 
@@ -198,19 +202,56 @@ def _host(url: str) -> str:
     return host.removeprefix("www.")
 
 
+# Arabic letters that are written several ways for the same name (hamza seats, ta marbuta,
+# alef maqsura) and the tatweel used to stretch words; folded before matching.
+_ARABIC_FOLD = str.maketrans({"ٱ": "ا", "ة": "ه", "ى": "ي", "ـ": None})
+_ARABIC_LETTER = re.compile(r"[\u0621-\u064A]")
+# One-letter Arabic prefixes written joined to the next word: and, so, with, like, for.
+_ARABIC_PROCLITICS = "وفبكل"
+
+
+def fold(text: str) -> str:
+    """Text reduced for name matching: case, accents, Arabic diacritics and letter variants removed.
+
+    NFKD splits accented Latin letters and hamza-carrying Arabic letters (أ إ آ ؤ ئ) into a
+    base letter plus a combining mark, and the marks (with Arabic short vowels) are dropped,
+    so "Café" matches "cafe" and "أسواق" matches "اسواق".
+    """
+    decomposed = unicodedata.normalize("NFKD", text or "")
+    bare = "".join(c for c in decomposed if not unicodedata.combining(c))
+    return bare.translate(_ARABIC_FOLD).casefold()
+
+
+def _name_pattern(name: str) -> str:
+    """A regex for one folded name as a whole word; an Arabic name may carry a joined prefix."""
+    body = re.escape(name)
+    if not _ARABIC_LETTER.match(name) or len(name) < 3:
+        return r"(?<!\w)" + body + r"(?!\w)"
+    variants = [rf"[{_ARABIC_PROCLITICS}]{{0,2}}(?:ال)?{body}"]
+    if name.startswith("ال"):  # ل + ال contracts to لل ("for the brand")
+        variants.append(rf"[وف]?لل{re.escape(name[2:])}")
+    return r"(?<!\w)(?:" + "|".join(variants) + r")(?!\w)"
+
+
 class BrandMatcher:
-    """Does a text name the brand: by name, alias or website address."""
+    """Does a text name the brand: by name, alias or website address.
+
+    Matching is on folded text (see ``fold``), so case, accents, Arabic diacritics,
+    hamza and ta-marbuta spellings and joined Arabic prefixes ("وأمازون") all count.
+    A transliteration ("Noon" for "نون") is a different spelling: it matches only when
+    it is saved as an alias.
+    """
 
     def __init__(self, brand: str, aliases: Sequence[str] = (), website: str = ""):
-        names = [n for n in (brand, *aliases) if n and n.strip()]
+        names = list(dict.fromkeys(fold(n.strip()) for n in (brand, *aliases) if n and n.strip()))
         self.host = _host(website) if website else ""
-        parts = [r"(?<![\w])" + re.escape(n.strip()) + r"(?![\w])" for n in names]
+        parts = [_name_pattern(n) for n in names]
         if self.host:
             parts.append(r"(?<![\w.-])" + re.escape(self.host) + r"(?![\w-])")
-        self._pattern = re.compile("|".join(parts), re.IGNORECASE) if parts else None
+        self._pattern = re.compile("|".join(parts)) if parts else None
 
     def names(self, text: str) -> bool:
-        return bool(self._pattern and self._pattern.search(text or ""))
+        return bool(self._pattern and self._pattern.search(fold(text)))
 
     def cites_site(self, urls: Sequence[str]) -> bool:
         return bool(self.host) and any(_host(u) == self.host or _host(u).endswith("." + self.host) for u in urls)
@@ -265,26 +306,46 @@ def start_run(profile: VisibilityProfile, *, trigger: str, user=None) -> Visibil
     # Refuse now, not after a queued row exists, when the allowance cannot cover the whole report.
     ctx = ai.AIContext(workspace=profile.workspace, user=user, source=AIRequestLog.Source.SYSTEM)
     ai.reserve_run(ctx, reserve=calls_needed(len(prompts), len(engines)))
-    if profile.runs.filter(status__in=[VisibilityRun.Status.QUEUED, VisibilityRun.Status.RUNNING]).exists():
-        raise VisibilityError("A report is already running.", code="visibility_running", status=409)
-    if trigger == VisibilityRun.Trigger.MANUAL:
-        recent = profile.runs.filter(
-            trigger=VisibilityRun.Trigger.MANUAL, created_at__gte=timezone.now() - MANUAL_COOLDOWN
-        ).exists()
-        if recent:
-            raise VisibilityError(
-                "You've already run a report in the last 24 hours. Each one uses AI requests from your allowance.",
-                code="visibility_cooldown",
-                status=429,
-            )
-    return VisibilityRun.objects.create(
-        profile=profile,
-        trigger=trigger,
-        requested_by=user if getattr(user, "is_authenticated", False) else None,
-        brand_name=profile.brand_name,
-        website=profile.website,
-        prompts_total=len(prompts),
-    )
+    close_stale_runs(profile)
+    with transaction.atomic():
+        # Serialises two "Run now" clicks (or a click racing the weekly sweep) on one profile.
+        VisibilityProfile.objects.select_for_update().filter(pk=profile.pk).first()
+        if profile.runs.filter(status__in=[VisibilityRun.Status.QUEUED, VisibilityRun.Status.RUNNING]).exists():
+            raise VisibilityError("A report is already running.", code="visibility_running", status=409)
+        if trigger == VisibilityRun.Trigger.MANUAL:
+            recent = profile.runs.filter(
+                trigger=VisibilityRun.Trigger.MANUAL, created_at__gte=timezone.now() - MANUAL_COOLDOWN
+            ).exists()
+            if recent:
+                raise VisibilityError(
+                    "You've already run a report in the last 24 hours. Each one uses AI requests from your allowance.",
+                    code="visibility_cooldown",
+                    status=429,
+                )
+        return VisibilityRun.objects.create(
+            profile=profile,
+            trigger=trigger,
+            requested_by=user if getattr(user, "is_authenticated", False) else None,
+            brand_name=profile.brand_name,
+            website=profile.website,
+            prompts_total=len(prompts),
+        )
+
+
+def pending_run(profile: VisibilityProfile) -> VisibilityRun | None:
+    """The run in progress, if any; one older than ``STALE_AFTER`` no longer counts."""
+    return profile.runs.filter(
+        status__in=[VisibilityRun.Status.QUEUED, VisibilityRun.Status.RUNNING],
+        created_at__gte=timezone.now() - STALE_AFTER,
+    ).first()
+
+
+def close_stale_runs(profile: VisibilityProfile) -> int:
+    """Fail runs a lost worker left queued or running, so they stop blocking new ones."""
+    return profile.runs.filter(
+        status__in=[VisibilityRun.Status.QUEUED, VisibilityRun.Status.RUNNING],
+        created_at__lt=timezone.now() - STALE_AFTER,
+    ).update(status=VisibilityRun.Status.FAILED, error_code="stale", finished_at=timezone.now())
 
 
 def execute_run(run: VisibilityRun) -> VisibilityRun:

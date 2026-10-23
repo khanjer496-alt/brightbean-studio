@@ -50,7 +50,7 @@ def visibility_index(request: HttpRequest, workspace_id) -> HttpResponse:
     profile = VisibilityProfile.objects.filter(workspace=workspace).first() if enabled else None
     run = services.latest_run(profile) if profile else None
     chart = services.trend_chart(profile) if profile else None
-    pending = profile.runs.filter(status__in=["queued", "running"]).first() if profile else None
+    pending = services.pending_run(profile) if profile else None
     last_failed = (
         profile.runs.filter(status="failed").order_by("-created_at").first()
         if profile and run is None and pending is None
