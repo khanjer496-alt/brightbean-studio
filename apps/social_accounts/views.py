@@ -378,6 +378,13 @@ def oauth_callback(request, platform):
         ) and hasattr(provider, "get_user_pages"):
             tokens, promoted = promote_meta_user_token(provider, platform, tokens)
             pages = provider.get_user_pages(tokens.access_token)
+            meta_user_id = ""
+            if platform != PlatformCredential.Platform.LINKEDIN_COMPANY:
+                # Meta's data deletion callback names the user, not the Page.
+                try:
+                    meta_user_id = str(provider.get_profile(tokens.access_token).platform_id or "")
+                except Exception:
+                    logger.warning("Could not read the Meta user id for %s", platform)
             if pages:
                 # Filtered by workspace only: that set is bounded by what this
                 # workspace has connected, while the page list is bounded only
@@ -398,6 +405,7 @@ def oauth_callback(request, platform):
                     "user_tokens": {
                         "access_token": tokens.access_token,
                         "refresh_token": tokens.refresh_token,
+                        "meta_user_id": meta_user_id,
                         # None once promoted: a Page token derived from a
                         # long-lived user token does not expire. On the fallback
                         # path it is the short-lived expiry, which the account
@@ -589,6 +597,7 @@ def select_account(request):
                     expires_in=user_tokens.get("expires_in"),
                     facebook_user_access_token=user_tokens.get("access_token", "") if platform == "instagram" else None,
                     facebook_user_token_expires_at=user_tokens.get("user_expires_at"),
+                    meta_user_id=user_tokens.get("meta_user_id", ""),
                     # Instagram-via-Facebook receives its webhooks through the
                     # linked Page, so remember which Page to subscribe.
                     webhook_target_id=page.get("page_id", ""),
@@ -1202,6 +1211,7 @@ def _create_or_update_account(
     facebook_user_token_expires_at=None,
     messaging_access=None,
     authorizing_user=None,
+    meta_user_id="",
 ):
     """Create or update a SocialAccount from OAuth results."""
     token_expires_at = None
@@ -1242,6 +1252,9 @@ def _create_or_update_account(
         from apps.workspaces.models import Workspace
 
         check_can_add_channel(Workspace.objects.select_related("organization").get(pk=workspace_id).organization)
+
+    if meta_user_id:
+        analytics_defaults = {**analytics_defaults, "meta_user_id": meta_user_id}
 
     account, created = SocialAccount.objects.update_or_create(
         workspace_id=workspace_id,
