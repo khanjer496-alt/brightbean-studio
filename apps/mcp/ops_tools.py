@@ -887,3 +887,59 @@ _tool(
     lambda a: {},
     read_only=True,
 )
+
+
+# ---------------------------------------------------------------------------
+# Client reports
+# ---------------------------------------------------------------------------
+
+
+def _run_report_args(a: dict) -> dict[str, Any]:
+    deliver = a.get("deliver", False)
+    if not isinstance(deliver, bool):
+        raise JsonRpcError(INVALID_PARAMS, "deliver must be a boolean")
+    return {"_args": (_uuid_arg(a, "report_id", required=True),), "deliver": deliver}
+
+
+_tool(
+    "list_reports",
+    (
+        "List the workspace's client reports (name, range, sections, schedule, recipient count, latest run), A-Z. "
+        "Reports covering an account outside the key's allowlist are not shown. Needs view_analytics and a plan "
+        "with branded reports."
+    ),
+    ops.list_reports,
+    _page,
+    properties=_list_props(),
+    read_only=True,
+)
+
+_tool(
+    "run_report",
+    (
+        "Build a report now. The build is queued, so the run comes back 'pending': poll get_latest_report_run "
+        "until it is 'succeeded'. With deliver, the report's own recipients are emailed the PDF (never anyone "
+        "else). Limited per workspace: 20 runs an hour, 10 emailed runs a day. Needs view_analytics and "
+        "manage_social_accounts."
+    ),
+    ops.run_report,
+    _run_report_args,
+    properties={
+        "report_id": _uuid_prop("ID from list_reports."),
+        "deliver": {"type": "boolean", "default": False, "description": "Also email the report's recipients."},
+    },
+    required=["report_id"],
+)
+
+_tool(
+    "get_latest_report_run",
+    (
+        "Read a report's most recent run: status, period and, once ready, its headline figures and summary text. "
+        "Needs view_analytics."
+    ),
+    ops.get_latest_report_run,
+    lambda a: {"_args": (_uuid_arg(a, "report_id", required=True),)},
+    properties={"report_id": _uuid_prop("ID from list_reports.")},
+    required=["report_id"],
+    read_only=True,
+)

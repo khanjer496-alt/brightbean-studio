@@ -29,6 +29,7 @@ Every row is a capability of the PostDelegate web app. **Before** is what REST a
 | Billing: plan, limits, usage (read-only; org owners and admins) | none | `GET /usage` / `get_usage` | read |
 | Inbox, replies | yes / yes | unchanged | `use_inbox`, `reply_from_inbox` |
 | Analytics | yes / yes | unchanged | `view_analytics` |
+| Client reports: list, run now, latest run | none | `GET /reports`, `POST /reports/{id}/run`, `GET /reports/{id}/runs/latest` / `list_reports`, `run_report`, `get_latest_report_run`; a report covering an account outside the allowlist is hidden | `view_analytics`; run: + `manage_social_accounts`; plan feature `branded_reports` |
 | AI writing assistant | yes / yes | unchanged | `create_posts` |
 | Webhooks | yes / yes | unchanged | `manage_workspace_settings` or `manage_social_accounts` |
 

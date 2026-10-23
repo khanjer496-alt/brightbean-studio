@@ -34,6 +34,7 @@ from apps.api.routers.media import router as media_router
 from apps.api.routers.members import router as members_router
 from apps.api.routers.posts import router as posts_router
 from apps.api.routers.queues import router as queues_router
+from apps.api.routers.reports import router as reports_router
 from apps.api.routers.signatures import router as signatures_router
 from apps.api.routers.slots import router as slots_router
 from apps.api.routers.tags import router as tags_router
@@ -154,6 +155,7 @@ api.add_router("/accounts", accounts_router)
 api.add_router("/posts", posts_router)
 api.add_router("/media", media_router)
 api.add_router("/analytics", analytics_router)
+api.add_router("/reports", reports_router)
 api.add_router("/inbox", inbox_router)
 api.add_router("/ai", ai_router)
 api.add_router("/webhooks", webhooks_router)
@@ -189,7 +191,7 @@ api.add_router("/mcp", mcp_router, auth=McpAuth())
 def _http_error_handler(request: HttpRequest, exc: HttpError) -> HttpResponse:
     body, headers = (
         _parse_quota_message(exc.message)
-        if exc.status_code == 429
+        if exc.status_code == 429 and exc.message.startswith("rate_limited")
         else (
             {"error": _slug_for(exc.status_code), "detail": exc.message},
             {},
@@ -334,6 +336,8 @@ def _action_for_path(method: str, path: str, *, status_code: int) -> str:
         return f"analytics.read.account.{status_code}"
     if "/analytics/posts/" in path:
         return f"analytics.read.post.{status_code}"
+    if "/reports" in path:
+        return f"reports.{status_code}"
     if "/posts/" in path:
         if method == "DELETE":
             return f"post.delete.{status_code}"

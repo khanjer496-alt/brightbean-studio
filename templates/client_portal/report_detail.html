@@ -1,0 +1,12 @@
+{% extends "client_portal/portal_base.html" %}
+{% block title %}{{ data.title }} - {{ workspace.name }}{% endblock %}
+
+{% block content %}
+<div>
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <a href="{% url 'client_portal:reports' %}" class="inline-flex min-h-11 items-center text-sm text-gray-700 underline">&larr; Reports</a>
+        <a href="{% url 'client_portal:report_pdf' run_id=run.id %}" class="inline-flex min-h-11 items-center rounded-full bg-gray-900 px-5 text-sm font-semibold text-white no-underline">Download PDF</a>
+    </div>
+    {% include "reports/_report.html" %}
+</div>
+{% endblock %}

@@ -1,0 +1,10 @@
+{{ data.title }}
+{{ data.period.label }} - {{ data.workspace }}
+{% if summary %}
+{{ summary }}
+{% endif %}
+Open the full report: {{ link }}
+The link works without signing in and expires in {{ valid_days }} days. The PDF is attached.
+
+{{ data.branding.agency }}{% if brand_name %}
+Prepared with {{ brand_name }}{% endif %}

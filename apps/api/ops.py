@@ -57,6 +57,9 @@ from apps.api.schemas import (
     QueuesListResponse,
     QueueSummary,
     RecurrenceSpec,
+    ReportResponse,
+    ReportRunResponse,
+    ReportsListResponse,
     SignaturesListResponse,
     SignatureSummary,
     TagResponse,
@@ -1548,3 +1551,110 @@ def get_usage(actor: Actor) -> UsageResponse:
             for row in usage_summary(org)
         ],
     )
+
+
+# ---------------------------------------------------------------------------
+# Client reports
+# ---------------------------------------------------------------------------
+
+
+def _visible_reports(actor: Actor) -> QuerySet:
+    """Reports this key may see: the post rule, applied to the accounts a report covers.
+
+    A report covering any workspace account outside the allowlist is hidden,
+    since its figures and top posts would show that account. A report with no
+    picked accounts covers the whole workspace, so only a key that covers every
+    account sees it.
+    """
+    from apps.reports.models import ReportDefinition
+
+    qs = ReportDefinition.objects.filter(workspace_id=actor.workspace_id).select_related("workspace__organization")
+    foreign = SocialAccount.objects.for_workspace(actor.workspace_id).exclude(id__in=actor.allowed_account_ids)
+    if foreign.exists():
+        picked = ReportDefinition.social_accounts.through.objects.filter(reportdefinition_id=OuterRef("pk"))
+        qs = qs.filter(Exists(picked)).exclude(Exists(picked.filter(socialaccount_id__in=foreign.values("id"))))
+    return qs
+
+
+def _require_reports(actor: Actor) -> None:
+    from apps.billing.entitlements import require_feature
+    from apps.billing.plans import Feature
+
+    actor.require("view_analytics")
+    require_feature(actor.workspace.organization, Feature.BRANDED_REPORTS)
+
+
+def _get_report(actor: Actor, report_id: uuid.UUID):
+    from apps.reports.models import ReportDefinition
+
+    try:
+        return _visible_reports(actor).get(id=report_id)
+    except ReportDefinition.DoesNotExist as exc:
+        raise OpError(404, "Report not found") from exc
+
+
+def _report_run_response(run) -> ReportRunResponse:
+    ready = run.is_ready and bool(run.data)
+    return ReportRunResponse(
+        id=run.id,
+        report_id=run.definition_id,
+        status=run.status,
+        trigger=run.trigger,
+        period_start=run.period_start,
+        period_end=run.period_end,
+        created_at=run.created_at,
+        finished_at=run.finished_at,
+        error=run.error if run.status == run.Status.FAILED else "",
+        emailed_to=len(run.emailed_to),
+        summary=(run.data.get("ai_summary") or {}).get("text") if ready else None,
+        metrics=[
+            {"key": k["key"], "label": k["label"], "value": k["display"], "delta": k["delta"]}
+            for k in run.data.get("kpis", [])
+        ]
+        if ready
+        else [],
+    )
+
+
+def _report_response(definition) -> ReportResponse:
+    run = definition.runs.order_by("-created_at").first()
+    return ReportResponse(
+        id=definition.id,
+        name=definition.name,
+        range_type=definition.range_type,
+        sections=list(definition.sections),
+        recipients=len(definition.recipients),
+        frequency=definition.frequency,
+        is_active=definition.is_active,
+        visible_to_clients=definition.visible_to_clients,
+        white_label=definition.white_label,
+        latest_run=_report_run_response(run) if run else None,
+    )
+
+
+def list_reports(actor: Actor, *, limit: int = LIMIT_DEFAULT, cursor: str | None = None) -> ReportsListResponse:
+    _require_reports(actor)
+    rows, next_cursor = _paginate(_visible_reports(actor).order_by("name", "id"), limit=limit, cursor=cursor)
+    return ReportsListResponse(reports=[_report_response(d) for d in rows], limit=limit, next_cursor=next_cursor)
+
+
+def run_report(actor: Actor, report_id: uuid.UUID, *, deliver: bool = False) -> ReportRunResponse:
+    """Queue a build now (the web app's "Run now"); a worker builds it, so the run comes back pending."""
+    from apps.reports import services as report_services
+
+    _require_reports(actor)
+    actor.require("manage_social_accounts")
+    definition = _get_report(actor, report_id)
+    try:
+        run = report_services.queue_manual_run(definition, actor.user, deliver=deliver)
+    except report_services.RunLimitError as exc:
+        raise OpError(429, str(exc)) from exc
+    return _report_run_response(run)
+
+
+def get_latest_report_run(actor: Actor, report_id: uuid.UUID) -> ReportRunResponse:
+    _require_reports(actor)
+    run = _get_report(actor, report_id).runs.order_by("-created_at").first()
+    if run is None:
+        raise OpError(404, "This report hasn't been run yet")
+    return _report_run_response(run)

@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Reports — {{ workspace.name }} — {{ brand_short_name }}{% endblock %}
+
+{% block content %}
+<div class="flex flex-1 flex-col">
+    {% include "analytics/_nav.html" %}
+    <div class="mx-auto max-w-md rounded-xl border border-line bg-surface-1 p-8 text-center">
+        <h2 class="m-0 text-lg font-semibold text-ink">Branded reports aren't in your plan</h2>
+        <p class="mt-2 text-[13px] text-ink-3">Scheduled, white-label client reports with PDF delivery come with the Agency plan.</p>
+        {% if billing_enabled %}<a href="{% url 'billing:overview' %}" class="btn-brand mt-4 inline-flex min-h-11 w-auto items-center px-5 py-2">See plans</a>{% endif %}
+    </div>
+</div>
+{% endblock %}

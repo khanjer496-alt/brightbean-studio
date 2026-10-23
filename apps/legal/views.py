@@ -71,6 +71,13 @@ THIRD_PARTY_ASSETS = [
         "delivery": "Bundled (theme/static/fonts, licence text included)",
     },
     {
+        "name": "Noto Sans, Noto Sans Arabic and Noto Emoji (fonts)",
+        "version": "",
+        "license": "SIL Open Font License 1.1",
+        "url": "https://notofonts.github.io",
+        "delivery": "Embedded in report PDFs (apps/reports/fonts, licence texts included)",
+    },
+    {
         "name": "Emoji names and groups",
         "version": "",
         "license": "Unicode emoji data (Unicode License)",

@@ -179,6 +179,7 @@ def _nav(workspace, rng: AnalyticsRange, active: str, extra: dict | None = None)
         "overview": reverse("analytics:index", kwargs=kwargs) + qs,
         "accounts": reverse("analytics:accounts", kwargs=kwargs) + qs,
         "compare": reverse("analytics:compare", kwargs=kwargs) + qs,
+        "reports": reverse("reports:list", kwargs=kwargs),
     }
 
 

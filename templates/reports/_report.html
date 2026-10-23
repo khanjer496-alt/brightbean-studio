@@ -1,0 +1,168 @@
+{% load report_extras humanize %}
+{# One finished report, drawn from a run's stored data. Used by the shared link, the app and the client portal. #}
+{# It is the client's document, so it always reads light, exactly as the link and the PDF do: #}
+{# data-platform-preview opts it out of the app's dark-theme colour remapping (theme/static/css/postdelegate.css). #}
+<style>
+  .pd-report { --report-accent: {{ data.branding.accent }}; --report-accent-text: {{ data.branding.accent_text }}; color-scheme: light; }
+</style>
+<article data-platform-preview class="pd-report mx-auto max-w-4xl overflow-hidden rounded-2xl border border-gray-200 bg-white text-gray-900" aria-labelledby="report-title">
+    <header class="flex flex-wrap items-center gap-4 bg-[var(--report-accent)] px-5 py-5 text-[var(--report-accent-text)] sm:px-8">
+        {% if data.branding.logo %}
+        <span class="flex h-12 items-center rounded-lg bg-white px-3"><img src="{{ data.branding.logo }}" alt="{{ data.branding.agency }}" class="h-9 w-auto max-w-40 object-contain"></span>
+        {% endif %}
+        <div class="min-w-0">
+            <p class="m-0 text-lg font-bold leading-tight" dir="auto">{{ data.branding.agency }}</p>
+            <p class="m-0 text-sm opacity-90" dir="auto">{{ data.workspace }}</p>
+        </div>
+    </header>
+
+    <div class="px-5 pb-8 pt-6 sm:px-8">
+        <h1 id="report-title" class="m-0 text-2xl font-bold tracking-tight text-gray-900" dir="auto">{{ data.title }}</h1>
+        <p class="mt-1 text-sm text-gray-600">
+            {{ data.period.label }} &middot; {{ data.period.days }} days
+            {% if data.period.compare %}&middot; compared with {{ data.period.previous_label }}{% endif %}
+        </p>
+
+        {% if data.ai_summary %}
+        <section class="mt-6" aria-labelledby="report-summary-h">
+            <h2 id="report-summary-h" class="m-0 mb-2 text-base font-semibold text-gray-900">What changed and what to do next</h2>
+            <div class="space-y-3 text-[15px] leading-relaxed text-gray-800">
+                {% for paragraph in data.ai_summary.text.splitlines %}{% if paragraph.strip %}<p class="m-0" dir="auto">{{ paragraph }}</p>{% endif %}{% endfor %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if "summary" in data.sections %}
+        <section class="mt-8" aria-labelledby="report-kpis-h">
+            <h2 id="report-kpis-h" class="m-0 mb-3 text-base font-semibold text-gray-900">Summary</h2>
+            <dl class="m-0 grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {% for k in data.kpis %}
+                <div class="rounded-xl border border-gray-200 p-4">
+                    <dt class="text-xs font-semibold text-gray-600">{{ k.label }}</dt>
+                    <dd class="m-0 mt-1 text-2xl font-bold tracking-tight text-gray-900">{{ k.display }}</dd>
+                    {% if k.delta_display %}
+                    <dd class="m-0 mt-1 text-xs font-bold {% if k.tone == 'good' %}text-green-700{% elif k.tone == 'bad' %}text-red-700{% else %}text-gray-600{% endif %}">
+                        <span aria-hidden="true">{% if k.tone == 'good' %}&#9650;{% elif k.tone == 'bad' %}&#9660;{% endif %}</span>
+                        {{ k.delta_display }} <span class="font-normal text-gray-600">vs previous period</span>
+                    </dd>
+                    {% elif k.value is not None and data.period.compare and k.key != "followers" %}
+                    <dd class="m-0 mt-1 text-xs text-gray-600">No earlier data to compare</dd>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </dl>
+        </section>
+        {% endif %}
+
+        {% if "trends" in data.sections and data.trends %}
+        <section class="mt-8" aria-labelledby="report-trends-h">
+            <h2 id="report-trends-h" class="m-0 mb-3 text-base font-semibold text-gray-900">Trends</h2>
+            {% for t in data.trends %}
+            <figure class="m-0 mb-6">
+                <figcaption class="mb-1 flex flex-wrap items-baseline justify-between gap-2 text-sm font-semibold text-gray-900">
+                    <span>{{ t.label }} per day</span>{% if t.total is not None %}<span class="font-normal text-gray-600">Total {{ t.total_display }}</span>{% endif %}
+                </figcaption>
+                {% if t.total is None %}
+                <p class="m-0 text-sm text-gray-600">Not reported by these networks in this period.</p>
+                {% else %}
+                <div class="[&>svg]:h-auto [&>svg]:w-full">{% trend_chart t data.branding.accent %}</div>
+                <p class="m-0 mt-1 flex flex-wrap gap-x-4 text-xs text-gray-600">
+                    <span class="inline-flex items-center gap-1.5"><span class="inline-block h-0.5 w-5 bg-[var(--report-accent)]" aria-hidden="true"></span>This period</span>
+                    {% if t.previous %}<span class="inline-flex items-center gap-1.5"><span class="inline-block w-5 border-t-2 border-dashed border-gray-500" aria-hidden="true"></span>Previous period</span>{% endif %}
+                </p>
+                <details class="mt-2 text-sm">
+                    <summary class="cursor-pointer text-gray-700">View as table</summary>
+                    <div class="mt-2 max-h-64 overflow-auto">
+                        <table class="w-full border-collapse text-left text-xs">
+                            <thead><tr class="text-gray-600"><th scope="col" class="py-1 pr-3 font-semibold">Day</th><th scope="col" class="py-1 pr-3 text-right font-semibold">This period</th>{% if t.previous %}<th scope="col" class="py-1 text-right font-semibold">Previous period</th>{% endif %}</tr></thead>
+                            <tbody>{% trend_rows t as rows %}{% for day, cur, prev in rows %}<tr class="border-t border-gray-100"><th scope="row" class="py-1 pr-3 font-normal">{{ day }}</th><td class="py-1 pr-3 text-right font-mono">{{ cur }}</td>{% if t.previous %}<td class="py-1 text-right font-mono">{{ prev }}</td>{% endif %}</tr>{% endfor %}</tbody>
+                        </table>
+                    </div>
+                </details>
+                {% endif %}
+            </figure>
+            {% endfor %}
+        </section>
+        {% endif %}
+
+        {% if "networks" in data.sections %}
+        <section class="mt-8" aria-labelledby="report-networks-h">
+            <h2 id="report-networks-h" class="m-0 mb-3 text-base font-semibold text-gray-900">Results by network</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse text-left text-sm">
+                    <thead><tr class="text-xs text-gray-600">
+                        <th scope="col" class="py-2 pr-3 font-semibold">Network</th>
+                        <th scope="col" class="px-3 py-2 text-right font-semibold">Followers</th>
+                        <th scope="col" class="px-3 py-2 text-right font-semibold">Views</th>
+                        <th scope="col" class="px-3 py-2 text-right font-semibold">Engagements</th>
+                        <th scope="col" class="px-3 py-2 text-right font-semibold">Rate</th>
+                        <th scope="col" class="px-3 py-2 text-right font-semibold">New followers</th>
+                        <th scope="col" class="py-2 pl-3 text-right font-semibold">Posts</th>
+                    </tr></thead>
+                    <tbody>
+                    {% for n in data.networks %}
+                        <tr class="border-t border-gray-200">
+                            <th scope="row" class="whitespace-nowrap py-2 pr-3 font-medium">{{ n.name }} <span class="font-normal text-gray-600">({{ n.accounts }})</span></th>
+                            <td class="px-3 py-2 text-right font-mono">{{ n.followers }}</td>
+                            <td class="px-3 py-2 text-right font-mono">{{ n.exposure }}</td>
+                            <td class="px-3 py-2 text-right font-mono">{{ n.engagements }}</td>
+                            <td class="px-3 py-2 text-right font-mono">{{ n.rate }}</td>
+                            <td class="px-3 py-2 text-right font-mono">{{ n.new_followers }}</td>
+                            <td class="py-2 pl-3 text-right font-mono">{{ n.posts }}</td>
+                        </tr>
+                    {% empty %}
+                        <tr><td colspan="7" class="py-3 text-gray-600">No channels were included in this report.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% for reason in data.excluded %}<p class="m-0 mt-2 text-xs text-gray-600">{{ reason }}</p>{% endfor %}
+        </section>
+        {% endif %}
+
+        {% if "top_posts" in data.sections %}
+        <section class="mt-8" aria-labelledby="report-posts-h">
+            <h2 id="report-posts-h" class="m-0 mb-3 text-base font-semibold text-gray-900">Top posts</h2>
+            <ol class="m-0 list-none space-y-3 p-0">
+                {% for p in data.top_posts %}
+                <li class="flex gap-3 rounded-xl border border-gray-200 p-3">
+                    {% if p.thumb %}<img src="{{ p.thumb }}" alt="" class="h-16 w-16 shrink-0 rounded-lg object-cover">{% endif %}
+                    <div class="min-w-0">
+                        <p class="m-0 break-words text-sm text-gray-900" dir="auto">{{ p.caption }}</p>
+                        <p class="m-0 mt-1 text-xs text-gray-600">{{ p.network }} &middot; {{ p.published }} &middot; {{ p.format }} &middot; <strong class="text-gray-900">{{ p.exposure }}</strong> views &middot; {{ p.engagements }} engagements &middot; {{ p.rate }} rate</p>
+                    </div>
+                </li>
+                {% empty %}
+                <li class="text-sm text-gray-600">No published posts with reported views in this period.</li>
+                {% endfor %}
+            </ol>
+        </section>
+        {% endif %}
+
+        {% if "activity" in data.sections and data.activity %}
+        <section class="mt-8" aria-labelledby="report-activity-h">
+            <h2 id="report-activity-h" class="m-0 mb-1 text-base font-semibold text-gray-900">Posting activity</h2>
+            <p class="m-0 mb-2 text-sm text-gray-700">
+                {{ data.activity.total }} post{{ data.activity.total|pluralize }} published{% if data.activity.busiest_weekday %}. Busiest day: {{ data.activity.busiest_weekday }}{% endif %}.
+                {% if data.activity.formats %}Formats: {% for f in data.activity.formats %}{{ f.posts }} {{ f.format|lower }}{% if not forloop.last %}, {% endif %}{% endfor %}.{% endif %}
+            </p>
+            <div class="[&>svg]:h-auto [&>svg]:w-full">{% activity_chart data.activity data.branding.accent %}</div>
+        </section>
+        {% endif %}
+
+        {% if "inbox" in data.sections and data.inbox %}
+        <section class="mt-8" aria-labelledby="report-inbox-h">
+            <h2 id="report-inbox-h" class="m-0 mb-3 text-base font-semibold text-gray-900">Inbox response</h2>
+            <dl class="m-0 grid grid-cols-3 gap-3">
+                <div class="rounded-xl border border-gray-200 p-4"><dt class="text-xs font-semibold text-gray-600">Messages</dt><dd class="m-0 mt-1 text-xl font-bold">{{ data.inbox.received }}</dd></div>
+                <div class="rounded-xl border border-gray-200 p-4"><dt class="text-xs font-semibold text-gray-600">Replied</dt><dd class="m-0 mt-1 text-xl font-bold">{{ data.inbox.reply_rate }}</dd></div>
+                <div class="rounded-xl border border-gray-200 p-4"><dt class="text-xs font-semibold text-gray-600">Median first reply</dt><dd class="m-0 mt-1 text-xl font-bold">{{ data.inbox.median_response }}</dd></div>
+            </dl>
+        </section>
+        {% endif %}
+
+        <footer class="mt-10 border-t border-gray-200 pt-4 text-xs text-gray-600">
+            <p class="m-0">Generated {{ data.generated_at }}.{% if data.branding.product %} Prepared with {{ data.branding.product }}.{% endif %}</p>
+        </footer>
+    </div>
+</article>

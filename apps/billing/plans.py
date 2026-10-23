@@ -28,7 +28,7 @@ class Feature(StrEnum):
     INBOX = "inbox"  # unified social inbox
     ANALYTICS = "analytics"  # channel and post analytics
     CLIENT_PORTAL = "client_portal"  # inviting clients to review posts
-    BRANDED_REPORTS = "branded_reports"  # reserved: no reports surface exists yet
+    BRANDED_REPORTS = "branded_reports"  # scheduled, white-label client reports (apps.reports)
 
 
 FEATURE_LABELS = {

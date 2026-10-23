@@ -334,20 +334,48 @@ def portal_activity(request):
 
 
 # ---------------------------------------------------------------------------
-# Reports (Placeholder)
+# Reports
 # ---------------------------------------------------------------------------
+
+
+def _portal_runs(workspace):
+    """Finished reports this workspace's clients may see: shared ones, and only while the plan includes reports."""
+    from apps.reports.models import ReportRun
+    from apps.reports.services import reports_enabled
+
+    if not reports_enabled(workspace.organization):
+        return ReportRun.objects.none()
+    return ReportRun.objects.filter(
+        definition__workspace=workspace,
+        definition__visible_to_clients=True,
+        status=ReportRun.Status.SUCCEEDED,
+    ).select_related("definition")
 
 
 @portal_auth_required
 @require_GET
 def portal_reports(request):
-    """Placeholder reports page."""
+    """Reports the team has shared with this client."""
     workspace = request.portal_workspace
-
     return render(
         request,
         "client_portal/reports.html",
-        {
-            "workspace": workspace,
-        },
+        {"workspace": workspace, "runs": _portal_runs(workspace)[:50]},
     )
+
+
+@portal_auth_required
+@require_GET
+def portal_report_detail(request, run_id):
+    workspace = request.portal_workspace
+    run = get_object_or_404(_portal_runs(workspace), pk=run_id)
+    return render(request, "client_portal/report_detail.html", {"workspace": workspace, "run": run, "data": run.data})
+
+
+@portal_auth_required
+@require_GET
+def portal_report_pdf(request, run_id):
+    from apps.reports.views import pdf_response
+
+    run = get_object_or_404(_portal_runs(request.portal_workspace), pk=run_id)
+    return pdf_response(run)
