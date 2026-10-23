@@ -189,7 +189,10 @@ def evergreen_update(request, workspace_id, item_id):
     workspace = _get_workspace(request, workspace_id)
     item = _item_or_404(workspace, item_id)
     rules = _rules_from(request)
-    _guard_pre_approval(request, rules)
+    # Someone who can't approve keeps an existing pre-approval (the form posts it
+    # back hidden) but can't grant one.
+    if rules["pre_approved"] != item.pre_approved:
+        _guard_pre_approval(request, rules)
     try:
         interval_days, max_repeats = evergreen.clean_rules(rules["interval_days"], rules["max_repeats"])
         category = _category_from(request, workspace)
@@ -199,8 +202,7 @@ def evergreen_update(request, workspace_id, item_id):
     item.vary_with_ai = rules["vary_with_ai"]
     item.category = category
     if rules["pre_approved"] != item.pre_approved:
-        item.pre_approved = rules["pre_approved"]
-        item.pre_approved_by = request.user if rules["pre_approved"] else None
+        evergreen.set_pre_approval(item, rules["pre_approved"], request.user)
     item.save()
     return redirect("calendar:evergreen_detail", workspace_id=workspace.id, item_id=item.id)
 

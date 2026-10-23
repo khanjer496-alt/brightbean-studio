@@ -13,17 +13,33 @@ A repeat is never created when:
   ``interval_days`` before the slot;
 * its media is gone or no longer passes the platform's media rules;
 * the organization's plan has no scheduled-post allowance left for that month,
-  or the account hit its daily post cap.
+  or the account hit its daily post cap;
+* the account is disconnected, the organization is being deleted, or the
+  workspace is archived;
+* the original post was deleted here or is no longer published (the item is
+  paused), or the network has stopped returning it (analytics keep failing on
+  it, the only sign we get that it was deleted on the platform);
+* the text doesn't fit the account's character limit.
 
 When the workspace requires approval, a repeat is made as a draft and sent to
 review instead of being scheduled, unless the item was pre-approved for
-recycling by someone who can approve posts. Only one repeat per account waits
-for review at a time, so an unattended queue doesn't fill with drafts.
+recycling by someone who can approve posts *and* nothing has changed since:
+the content (media files included) still matches the fingerprint taken at
+pre-approval and it isn't reworded by AI (new wording is new content). Only one
+repeat per account waits for review at a time, so an unattended queue doesn't
+fill with drafts.
+
+Every repeat is recorded as an :class:`EvergreenRepeat` with the exact text
+written and how approval was settled, the audit trail of what went out
+unattended.
 """
 
 from __future__ import annotations
 
+import hashlib
+import json
 import logging
+import re
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
@@ -50,6 +66,11 @@ REVIEW_BACKLOG_WINDOW = timedelta(days=14)
 MIN_INTERVAL_DAYS = 1
 MAX_INTERVAL_DAYS = 3650
 MAX_REPEATS_LIMIT = 1000
+# Analytics failing on the original this many syncs in a row means the network
+# no longer returns it: most likely deleted there.
+ORIGINAL_GONE_FAILURES = 3
+# Links, @mentions and #hashtags an AI rewording must keep, or the original is used.
+_KEPT_TOKENS = re.compile(r"https?://\S+|[@#][\w.]+")
 
 _EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 
@@ -111,18 +132,18 @@ def _new_item(
     interval_days, max_repeats = clean_rules(interval_days, max_repeats)
     if not (content.get("caption") or content.get("media_asset_ids")):
         raise EvergreenError("There is nothing to recycle: the post has no text and no media.")
-    return EvergreenItem(
+    item = EvergreenItem(
         workspace=workspace,
         social_account=social_account,
         category=category,
         interval_days=interval_days,
         max_repeats=max_repeats,
         vary_with_ai=vary_with_ai,
-        pre_approved=pre_approved,
-        pre_approved_by=user if pre_approved else None,
         created_by=user,
         **content,
     )
+    set_pre_approval(item, pre_approved, user)
+    return item
 
 
 def add_from_platform_post(
@@ -143,6 +164,11 @@ def add_from_platform_post(
         raise EvergreenError("Only a published post can be added to evergreen.")
     if post.thread_parts.exists():
         raise EvergreenError("Threads can't be recycled yet.")
+    rule = post.series_rule
+    if rule is not None and rule.is_active:
+        raise EvergreenError("This post already repeats on a schedule; stop the series before recycling it.")
+    if post.evergreen_repeats.exists():
+        raise EvergreenError("This post is itself an evergreen repeat; recycle the original instead.")
     if EvergreenItem.objects.filter(social_account=platform_post.social_account, source_post=post).exists():
         raise EvergreenError("This post is already in the evergreen library for that account.")
     item = _new_item(
@@ -215,6 +241,34 @@ def add_from_idea(idea, social_account, *, user=None, category=None, **rules) ->
     return item
 
 
+def content_fingerprint(item) -> str:
+    """A hash of everything a repeat would publish, media files included."""
+    from apps.media_library.models import MediaAsset
+
+    files = {
+        str(pk): name
+        for pk, name in MediaAsset.objects.filter(
+            id__in=item.media_asset_ids or [], workspace_id=item.workspace_id
+        ).values_list("id", "file")
+    }
+    payload = {
+        "title": item.title,
+        "caption": item.caption,
+        "platform_caption": item.platform_caption,
+        "first_comment": item.first_comment,
+        "platform_extra": item.platform_extra,
+        "media": [[str(i), files.get(str(i))] for i in item.media_asset_ids or []],
+    }
+    return hashlib.sha256(json.dumps(payload, sort_keys=True, default=str).encode()).hexdigest()
+
+
+def set_pre_approval(item, approved: bool, user) -> None:
+    """Pre-approve ``item`` for recycling (fingerprinting its content as of now) or withdraw it. Not saved."""
+    item.pre_approved = approved
+    item.pre_approved_by = user if approved else None
+    item.approved_fingerprint = content_fingerprint(item) if approved else ""
+
+
 def set_paused(item, paused: bool) -> EvergreenItem:
     if item.is_paused != paused:
         item.is_paused = paused
@@ -282,6 +336,40 @@ def media_problem(item) -> str:
     ) or media_rules_blocker(item.social_account, assets, platform_extra=item.platform_extra)
 
 
+def original_problem(item) -> tuple[str, bool]:
+    """``(reason, permanent)`` when the post an item came from is gone, else ``("", False)``.
+
+    A permanent problem pauses the item: the original was deleted here or is
+    no longer published. Analytics failing on it repeatedly is the only sign
+    of deletion on the platform; that only skips, as it may recover.
+    """
+    from apps.composer.models import PlatformPost
+
+    if item.source_kind != EvergreenItem.SourceKind.POST:
+        return "", False
+    if item.source_post_id is None:
+        return "The original post was deleted.", True
+    original = (
+        PlatformPost.objects.filter(post_id=item.source_post_id, social_account_id=item.social_account_id)
+        .only("status", "analytics_failure_count")
+        .first()
+    )
+    if original is None or original.status != PlatformPost.Status.PUBLISHED:
+        return "The original post is no longer published.", True
+    if original.analytics_failure_count >= ORIGINAL_GONE_FAILURES:
+        return (
+            f"{item.social_account.get_platform_display()} no longer returns the original post; it may have been "
+            "deleted there.",
+            False,
+        )
+    return "", False
+
+
+def _keeps_tokens(original: str, reworded: str) -> bool:
+    """Whether ``reworded`` still has every link, @mention and #hashtag of ``original``."""
+    return set(_KEPT_TOKENS.findall(original)) <= set(_KEPT_TOKENS.findall(reworded))
+
+
 def _reworded(item):
     """``(text, wording)``: the AI's rewording when asked for and available, else the original."""
     from apps.ai_writer.client import AIError
@@ -293,7 +381,11 @@ def _reworded(item):
         return base, EvergreenRepeat.Wording.ORIGINAL
     ctx = AIContext(workspace=item.workspace, user=None, source=AIRequestLog.Source.SYSTEM)
     try:
-        return vary_caption(ctx, base, item.social_account), EvergreenRepeat.Wording.AI
+        text = vary_caption(ctx, base, item.social_account)
+        if text.strip() and _keeps_tokens(base, text):
+            return text, EvergreenRepeat.Wording.AI
+        logger.info("Evergreen %s posted as written: the rewording dropped a link, mention or hashtag", item.pk)
+        return base, EvergreenRepeat.Wording.ORIGINAL
     except (AIError, PlanLimitError, ValueError) as exc:
         logger.info("Evergreen %s posted as written: %s", item.pk, exc)
     except Exception:
@@ -302,11 +394,23 @@ def _reworded(item):
     return base, EvergreenRepeat.Wording.ORIGINAL
 
 
-def _needs_approval(item) -> bool:
+def _approval_basis(item) -> str:
+    """How a repeat of ``item`` is approved: not needed, pre-approved, or sent for review.
+
+    Pre-approval only covers the content as it was approved: an AI rewording
+    or any change since (its fingerprint) goes to review.
+    """
     from apps.approvals.policy import APPROVAL_REQUIRED_MODES
 
-    mode = getattr(item.workspace, "approval_workflow_mode", "none")
-    return mode in APPROVAL_REQUIRED_MODES and not item.pre_approved
+    if getattr(item.workspace, "approval_workflow_mode", "none") not in APPROVAL_REQUIRED_MODES:
+        return EvergreenRepeat.Approval.NOT_REQUIRED
+    if item.pre_approved and not item.vary_with_ai and item.approved_fingerprint == content_fingerprint(item):
+        return EvergreenRepeat.Approval.PRE_APPROVED
+    return EvergreenRepeat.Approval.REVIEW
+
+
+def _needs_approval(item) -> bool:
+    return _approval_basis(item) == EvergreenRepeat.Approval.REVIEW
 
 
 def _review_backlog(account, now) -> bool:
@@ -321,7 +425,7 @@ def _review_backlog(account, now) -> bool:
 
 def _make_post(item, queue, slot_dt, text, wording, needs_approval):
     """Create the repeat's post and give it its slot (or send it for review). Raises ``SkipError`` to roll back."""
-    from apps.approvals.policy import APPROVAL_REQUIRED_MODES, mark_final_approval
+    from apps.approvals.policy import mark_final_approval
     from apps.approvals.services import submit_for_review
     from apps.composer import services as composer_services
     from apps.composer.models import PlatformPost
@@ -358,7 +462,7 @@ def _make_post(item, queue, slot_dt, text, wording, needs_approval):
         pp.refresh_from_db()
         return pp, EvergreenRepeat.Outcome.AWAITING_APPROVAL, slot_dt
 
-    if item.pre_approved and getattr(item.workspace, "approval_workflow_mode", "none") in APPROVAL_REQUIRED_MODES:
+    if _approval_basis(item) == EvergreenRepeat.Approval.PRE_APPROVED:
         mark_final_approval(pp)
     queue_services._lock_channel(queue)
     if slot_dt in queue_services._occupied_datetimes(account):
@@ -376,12 +480,23 @@ def _make_post(item, queue, slot_dt, text, wording, needs_approval):
 def recycle(item, queue, slot_dt, *, now=None) -> EvergreenRepeat:
     """Post ``item`` again at ``slot_dt`` through ``queue``; raises ``SkipError`` / ``PlanLimitError`` when it can't."""
     from apps.api.limits import check_platform_quota
+    from apps.social_accounts.models import SocialAccount
 
     now = now or timezone.now()
+    if item.social_account.connection_status != SocialAccount.ConnectionStatus.CONNECTED:
+        raise SkipError("The account is disconnected.")
+    problem, permanent = original_problem(item)
+    if problem:
+        if permanent:
+            EvergreenItem.objects.filter(pk=item.pk).update(is_paused=True)
+            item.is_paused = True
+            problem += " Paused."
+        raise SkipError(problem)
     problem = media_problem(item)
     if problem:
         raise SkipError(problem)
-    needs_approval = _needs_approval(item)
+    approval = _approval_basis(item)
+    needs_approval = approval == EvergreenRepeat.Approval.REVIEW
     if not needs_approval:
         check_can_schedule_posts(item.workspace.organization, count=1, when=slot_dt)
         try:
@@ -389,6 +504,9 @@ def recycle(item, queue, slot_dt, *, now=None) -> EvergreenRepeat:
         except HttpError as exc:
             raise SkipError(exc.message) from exc
     text, wording = _reworded(item)
+    account = item.social_account
+    if account.caption_wire_length(text) > account.char_limit:
+        raise SkipError(f"The text is longer than {account.get_platform_display()} allows ({account.char_limit}).")
     with transaction.atomic():
         locked = (
             EvergreenItem.objects.select_for_update(of=("self",))
@@ -406,8 +524,25 @@ def recycle(item, queue, slot_dt, *, now=None) -> EvergreenRepeat:
             update_fields=["repeat_count", "last_posted_at", "last_recycled_at", "last_skip_reason", "updated_at"]
         )
         repeat = EvergreenRepeat.objects.create(
-            item=locked, post=pp.post, platform_post=pp, scheduled_for=when, outcome=outcome, wording=wording
+            item=locked,
+            post=pp.post,
+            platform_post=pp,
+            scheduled_for=when,
+            outcome=outcome,
+            wording=wording,
+            text=text,
+            approval=approval,
         )
+    logger.info(
+        "Evergreen %s: repeat %s %s for %s on account %s (%s, %s)",
+        item.pk,
+        repeat.pk,
+        outcome,
+        when.isoformat(),
+        account.pk,
+        wording,
+        approval,
+    )
     for field in ("repeat_count", "last_posted_at", "last_recycled_at", "last_skip_reason"):
         setattr(item, field, getattr(locked, field))
     return repeat
@@ -483,6 +618,8 @@ def fill_queues(*, now=None) -> FillResult:
         connection_status=SocialAccount.ConnectionStatus.CONNECTED,
         evergreen_items__is_paused=False,
         workspace__is_archived=False,
+        workspace__organization__deletion_requested_at__isnull=True,
+        workspace__organization__deleted_at__isnull=True,
     ).distinct()
     for account in accounts:
         try:

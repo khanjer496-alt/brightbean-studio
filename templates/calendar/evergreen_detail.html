@@ -60,7 +60,7 @@
             {% if can_pre_approve %}
             <label class="sm:col-span-2 inline-flex items-start gap-2 text-sm text-stone-700">
                 <input type="checkbox" name="pre_approved" class="mt-0.5" {% if item.pre_approved %}checked{% endif %}>
-                <span>Pre-approve repeats. They skip the approval workflow because this content was already approved for recycling.</span>
+                <span>Pre-approve repeats. They skip the approval workflow because this content was already approved for recycling. AI-varied wording, and any change to the content or its media since, still goes to review.</span>
             </label>
             {% elif item.pre_approved %}
             <input type="hidden" name="pre_approved" value="on">
@@ -91,7 +91,7 @@
                     <tr class="border-b border-stone-100">
                         <td class="py-2 pr-3 whitespace-nowrap tabular-nums">{% if repeat.post %}<a href="{% url 'composer:compose_edit' workspace_id=workspace.id post_id=repeat.post_id %}?account={{ item.social_account_id }}" class="text-stone-800 hover:underline">{{ repeat.scheduled_for|date:"M j, Y H:i" }}</a>{% else %}{{ repeat.scheduled_for|date:"M j, Y H:i" }}{% endif %}</td>
                         <td class="py-2 pr-3">{% if repeat.platform_post %}{{ repeat.platform_post.get_status_display }}{% else %}{{ repeat.get_outcome_display }}{% endif %}</td>
-                        <td class="py-2 pr-3">{{ repeat.get_wording_display }}</td>
+                        <td class="py-2 pr-3">{{ repeat.get_wording_display }}<span class="block text-xs text-stone-500">{{ repeat.get_approval_display }}</span></td>
                         <td class="py-2 pr-3 text-right tabular-nums">{% if repeat.stats %}{{ repeat.stats.engagements }}{% else %}<span class="text-stone-400">–<span class="sr-only"> not available</span></span>{% endif %}</td>
                         <td class="py-2 pr-3 text-right tabular-nums">{% if repeat.stats and repeat.stats.reach is not None %}{{ repeat.stats.reach }}{% else %}<span class="text-stone-400">–<span class="sr-only"> not available</span></span>{% endif %}</td>
                         <td class="py-2 text-right tabular-nums">{% if repeat.stats and repeat.stats.rate is not None %}{{ repeat.stats.rate }}%{% else %}<span class="text-stone-400">–<span class="sr-only"> not available</span></span>{% endif %}</td>

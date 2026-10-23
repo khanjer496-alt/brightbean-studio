@@ -33,6 +33,7 @@ class Migration(migrations.Migration):
                 ('max_repeats', models.PositiveIntegerField(blank=True, help_text='Stop after this many repeats. Empty means no limit.', null=True)),
                 ('vary_with_ai', models.BooleanField(default=False, help_text='Reword it with the AI writer each time; the original wording is the fallback.')),
                 ('pre_approved', models.BooleanField(default=False, help_text='Repeats skip the approval workflow because the original was already approved for recycling.')),
+                ('approved_fingerprint', models.CharField(blank=True, default='', help_text="The content's fingerprint when it was pre-approved; any change since sends repeats to review.", max_length=64)),
                 ('is_paused', models.BooleanField(default=False)),
                 ('repeat_count', models.PositiveIntegerField(default=0)),
                 ('last_posted_at', models.DateTimeField(blank=True, help_text='When it last went out (or is due to), originals included.', null=True)),
@@ -59,6 +60,8 @@ class Migration(migrations.Migration):
                 ('scheduled_for', models.DateTimeField()),
                 ('outcome', models.CharField(choices=[('scheduled', 'Scheduled in the queue'), ('awaiting_approval', 'Waiting for approval')], max_length=20)),
                 ('wording', models.CharField(choices=[('original', 'Original wording'), ('ai', 'Reworded with AI')], default='original', max_length=10)),
+                ('text', models.TextField(blank=True, default='')),
+                ('approval', models.CharField(choices=[('not_required', 'Workspace needs no approval'), ('pre_approved', 'Pre-approved for recycling'), ('review', 'Sent for review')], default='not_required', max_length=12)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('item', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='repeats', to='calendar.evergreenitem')),
                 ('platform_post', models.ForeignKey(blank=True, null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='evergreen_repeats', to='composer.platformpost')),
@@ -67,6 +70,7 @@ class Migration(migrations.Migration):
             options={
                 'db_table': 'calendar_evergreen_repeat',
                 'ordering': ['-scheduled_for'],
+                'constraints': [models.UniqueConstraint(fields=('item', 'scheduled_for'), name='evergreen_one_repeat_per_item_and_slot')],
             },
         ),
         migrations.AddIndex(

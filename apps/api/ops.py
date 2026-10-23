@@ -1671,6 +1671,8 @@ def _evergreen_detail(item: EvergreenItem) -> EvergreenDetailResponse:
                 scheduled_for=repeat.scheduled_for,
                 outcome=repeat.outcome,
                 wording=repeat.wording,
+                approval=repeat.approval,
+                text=repeat.text,
                 status=repeat.platform_post.status if repeat.platform_post else None,
                 engagements=stats.get("engagements"),
                 reach=stats.get("reach"),
@@ -1783,9 +1785,8 @@ def update_evergreen(actor: Actor, item_id: uuid.UUID, changes: dict[str, Any]) 
         item.vary_with_ai = changes["vary_with_ai"]
         fields.append("vary_with_ai")
     if changes.get("pre_approved") is not None and changes["pre_approved"] != item.pre_approved:
-        item.pre_approved = changes["pre_approved"]
-        item.pre_approved_by = actor.user if item.pre_approved else None
-        fields += ["pre_approved", "pre_approved_by"]
+        evergreen_service.set_pre_approval(item, changes["pre_approved"], actor.user)
+        fields += ["pre_approved", "pre_approved_by", "approved_fingerprint"]
     if changes.get("is_paused") is not None:
         item.is_paused = changes["is_paused"]
         fields.append("is_paused")

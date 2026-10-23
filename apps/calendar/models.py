@@ -314,6 +314,12 @@ class EvergreenItem(models.Model):
         blank=True,
         related_name="+",
     )
+    approved_fingerprint = models.CharField(
+        max_length=64,
+        blank=True,
+        default="",
+        help_text="The content's fingerprint when it was pre-approved; any change since sends repeats to review.",
+    )
     is_paused = models.BooleanField(default=False)
 
     # Progress.
@@ -385,6 +391,11 @@ class EvergreenRepeat(models.Model):
         ORIGINAL = "original", "Original wording"
         AI = "ai", "Reworded with AI"
 
+    class Approval(models.TextChoices):
+        NOT_REQUIRED = "not_required", "Workspace needs no approval"
+        PRE_APPROVED = "pre_approved", "Pre-approved for recycling"
+        REVIEW = "review", "Sent for review"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     item = models.ForeignKey(EvergreenItem, on_delete=models.CASCADE, related_name="repeats")
     post = models.ForeignKey(
@@ -404,11 +415,19 @@ class EvergreenRepeat(models.Model):
     scheduled_for = models.DateTimeField()
     outcome = models.CharField(max_length=20, choices=Outcome.choices)
     wording = models.CharField(max_length=10, choices=Wording.choices, default=Wording.ORIGINAL)
+    # The audit of what went out unattended: the exact text the task wrote and
+    # why it did or didn't need a person's approval.
+    text = models.TextField(blank=True, default="")
+    approval = models.CharField(max_length=12, choices=Approval.choices, default=Approval.NOT_REQUIRED)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         db_table = "calendar_evergreen_repeat"
         ordering = ["-scheduled_for"]
+        constraints = [
+            # Two overlapping runs can never book the same item into the same slot twice.
+            models.UniqueConstraint(fields=["item", "scheduled_for"], name="evergreen_one_repeat_per_item_and_slot"),
+        ]
 
     def __str__(self):
         return f"EvergreenRepeat({self.item_id} @ {self.scheduled_for:%Y-%m-%d %H:%M})"

@@ -1691,6 +1691,10 @@ class EvergreenRepeatResponse(Schema):
     scheduled_for: dt.datetime
     outcome: str = Field(..., description="``scheduled`` or ``awaiting_approval``.")
     wording: str = Field(..., description="``original`` or ``ai``.")
+    approval: str = Field(
+        "not_required", description="``not_required``, ``pre_approved`` or ``review``: how it got past approval."
+    )
+    text: str = Field("", description="The exact text the recycling task wrote.")
     status: str | None = Field(None, description="The repeat's current post status, when the post still exists.")
     engagements: int | None = None
     reach: int | None = None

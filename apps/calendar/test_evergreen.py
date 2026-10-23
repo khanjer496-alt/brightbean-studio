@@ -342,6 +342,24 @@ class TestApproval:
     def test_approval_not_required_means_normal_scheduling(self, workspace, account, queue, author):
         add(published_post(workspace, account, author=author), account, author)
         assert evergreen.fill_account(account, now=NOW).scheduled == 1
+        repeat = EvergreenRepeat.objects.get()
+        assert repeat.approval == "not_required" and repeat.text == "Ten tips for better sleep"
+
+    def test_media_changed_after_pre_approval_goes_to_review(self, workspace, account, queue, author):
+        Workspace.objects.filter(pk=workspace.pk).update(approval_workflow_mode="required_internal")
+        post = published_post(workspace, account, author=author)
+        asset = make_asset(workspace)
+        PostMedia.objects.create(post=post, media_asset=asset)
+        item = add(post, account, author, pre_approved=True)
+        assert item.approved_fingerprint == evergreen.content_fingerprint(item)
+        MediaAsset.objects.filter(pk=asset.pk).update(file="media/replaced.jpg")
+        assert evergreen.fill_account(account, now=NOW).awaiting_approval == 1
+        assert EvergreenRepeat.objects.get().approval == "review"
+
+    def test_ai_wording_is_not_covered_by_pre_approval(self, workspace, account, queue, author):
+        Workspace.objects.filter(pk=workspace.pk).update(approval_workflow_mode="required_internal")
+        add(published_post(workspace, account, author=author), account, author, pre_approved=True, vary_with_ai=True)
+        assert evergreen.fill_account(account, now=NOW).awaiting_approval == 1
 
 
 @pytest.mark.django_db
@@ -397,6 +415,63 @@ class TestAiVariation:
         add(published_post(workspace, account, author=author), account, author, vary_with_ai=False)
         evergreen.fill_account(account, now=NOW)
         assert fake_claude.calls == []
+
+    def test_a_rewording_that_drops_a_link_falls_back_to_the_original(
+        self, workspace, account, queue, author, settings, fake_claude
+    ):
+        settings.ANTHROPIC_API_KEY = "sk-ant-platform-key-for-tests"
+        caption = "Ten tips https://example.com/sleep #rest"
+        item = add(published_post(workspace, account, caption, author=author), account, author, vary_with_ai=True)
+        fake_claude.queue({"text": "Ten sleep tips, freshly worded #rest"})
+        evergreen.fill_account(account, now=NOW)
+        repeat = EvergreenRepeat.objects.get(item=item)
+        assert repeat.wording == "original" and repeat.post.caption == caption
+
+
+@pytest.mark.django_db
+class TestOriginalAndAccountState:
+    def test_a_deleted_original_pauses_the_item(self, workspace, account, queue, author):
+        post = published_post(workspace, account, author=author)
+        item = add(post, account, author)
+        post.delete()
+        assert evergreen.fill_account(account, now=NOW).skipped == 1
+        item.refresh_from_db()
+        assert item.is_paused and "deleted" in item.last_skip_reason
+        assert not EvergreenRepeat.objects.exists()
+
+    def test_an_original_the_network_stopped_returning_is_skipped_not_paused(self, workspace, account, queue, author):
+        post = published_post(workspace, account, author=author)
+        item = add(post, account, author)
+        post.platform_posts.update(analytics_failure_count=evergreen.ORIGINAL_GONE_FAILURES)
+        assert evergreen.fill_account(account, now=NOW).skipped == 1
+        item.refresh_from_db()
+        assert not item.is_paused and "deleted there" in item.last_skip_reason
+
+    def test_disconnected_accounts_and_deleting_organizations_are_left_alone(self, workspace, account, queue, author):
+        add(published_post(workspace, account, author=author), account, author)
+        workspace.organization.deletion_requested_at = timezone.now()
+        workspace.organization.save()
+        assert evergreen.fill_queues(now=NOW).scheduled == 0
+        workspace.organization.deletion_requested_at = None
+        workspace.organization.save()
+        SocialAccount.objects.filter(pk=account.pk).update(connection_status="disconnected")
+        account.refresh_from_db()
+        with pytest.raises(evergreen.SkipError, match="disconnected"):
+            evergreen.recycle(EvergreenItem.objects.get(), queue, NOW + timedelta(days=1))
+
+    def test_text_over_the_platform_limit_is_skipped(self, workspace, account, queue, author):
+        item = add(published_post(workspace, account, "x" * (account.char_limit + 1), author=author), account, author)
+        assert evergreen.fill_account(account, now=NOW).skipped == 1
+        item.refresh_from_db()
+        assert "longer than" in item.last_skip_reason
+
+    def test_series_posts_and_repeats_are_refused(self, workspace, account, queue, author):
+        item = add(published_post(workspace, account, author=author), account, author)
+        evergreen.fill_account(account, now=NOW)
+        repeat_post = EvergreenRepeat.objects.get(item=item).post
+        PlatformPost.objects.filter(post=repeat_post).update(status="published", published_at=timezone.now())
+        with pytest.raises(evergreen.EvergreenError, match="itself an evergreen repeat"):
+            add(repeat_post, account, author)
 
 
 @pytest.fixture
