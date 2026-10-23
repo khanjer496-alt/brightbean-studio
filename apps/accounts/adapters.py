@@ -1,4 +1,5 @@
 from allauth.account.adapter import DefaultAccountAdapter
+from allauth.account.models import EmailAddress
 from allauth.core.exceptions import ImmediateHttpResponse
 from allauth.socialaccount.adapter import DefaultSocialAccountAdapter
 from allauth.utils import build_absolute_uri
@@ -30,6 +31,10 @@ def create_account_under_invitation(request, save):
     account is rolled back. ``apps.accounts.signals`` then only moves the new
     user out of their auto-provisioned org.
 
+    The account must also be for the invited address. The token only proves
+    the link was opened, and links get forwarded; a Google signup under any
+    other email is refused and rolled back the same way.
+
     Re-entrant, because a social signup through the form saves via both adapters.
     """
     if settings.SIGNUP_MODE != "invite" or getattr(request, "_creating_invited_account", False):
@@ -53,10 +58,11 @@ def create_account_under_invitation(request, save):
             user = save()
         finally:
             request._creating_invited_account = False
-        # Skip the email-match check: the session token is proof of delivery,
-        # and social logins return a provider-controlled email that often
-        # differs from the invited address.
-        accept_invitation(invitation, user, require_email_match=False)
+        if user.email.lower() != invitation.email.lower():
+            raise ImmediateHttpResponse(
+                render(request, "account/signup_closed.html", {"invited_email": invitation.email})
+            )
+        accept_invitation(invitation, user)
     return user
 
 
@@ -84,6 +90,11 @@ class AccountAdapter(DefaultAccountAdapter):
     ``ImmediateHttpResponse`` on the signup page and the provider callback.
     ``save_user`` makes the invite that allowed an invite-mode signup single-use
     (``create_account_under_invitation``).
+
+    An invitee who signs up with a password confirms the address like anyone
+    else. Holding the invite link does not prove it: links get forwarded, and
+    whoever registered the invited address with their own password would keep
+    it once the real owner signed in with Google.
     """
 
     def is_open_for_signup(self, request):
@@ -126,7 +137,26 @@ class AccountAdapter(DefaultAccountAdapter):
 
 
 class SocialAccountAdapter(DefaultSocialAccountAdapter):
-    """Custom adapter that syncs Google social logins to OAuthConnection."""
+    """Syncs Google social logins to OAuthConnection, and only trusts verified emails.
+
+    A Google login whose email matches an existing account signs into it
+    (``SOCIALACCOUNT_EMAIL_AUTHENTICATION``) only when that account has
+    verified the address. Otherwise the account may have been registered by
+    someone else ahead of the real owner, and connecting would hand them the
+    owner's Google sign-in. allauth then offers the signup form instead, which
+    refuses the taken address. Auto-signup likewise needs an email the provider
+    itself vouches for; anything else goes through the form and verification.
+    """
+
+    def can_authenticate_by_email(self, login, email):
+        if not super().can_authenticate_by_email(login, email):
+            return False
+        return EmailAddress.objects.filter(email__iexact=email, verified=True).exists()
+
+    def is_auto_signup_allowed(self, request, sociallogin):
+        if not super().is_auto_signup_allowed(request, sociallogin):
+            return False
+        return any(address.verified for address in sociallogin.email_addresses)
 
     def populate_user(self, request, sociallogin, data):
         """Set user.name from Google profile (custom User model has 'name', not first/last)."""

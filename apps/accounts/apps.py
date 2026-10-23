@@ -1,4 +1,8 @@
+import logging
+
 from django.apps import AppConfig
+
+logger = logging.getLogger(__name__)
 
 
 class AccountsConfig(AppConfig):
@@ -13,6 +17,19 @@ class AccountsConfig(AppConfig):
 
         post_migrate.connect(self._register_tasks, sender=self)
         post_migrate.connect(self._sync_site_identity, sender=self)
+        self._warn_if_rate_limits_are_process_local()
+
+    @staticmethod
+    def _warn_if_rate_limits_are_process_local():
+        """Say so at startup when rate limits cannot hold across workers (see production.py)."""
+        from django.conf import settings
+
+        if getattr(settings, "RATE_LIMIT_CACHE_IS_PROCESS_LOCAL", False):
+            logger.warning(
+                "REDIS_URL is not set: rate limits (login, signup, password reset, Agent API) are "
+                "counted per process, so each worker allows the full limit and restarts reset it. "
+                "Set REDIS_URL to share them."
+            )
 
     @staticmethod
     def _register_tasks(sender, **kwargs):

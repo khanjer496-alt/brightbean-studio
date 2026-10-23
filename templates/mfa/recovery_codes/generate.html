@@ -1,0 +1,26 @@
+{% extends "mfa/base_manage.html" %}
+{% load i18n %}
+{% block head_title %}{% trans "Generate recovery codes" %}{% endblock %}
+{% block content %}
+<div class="max-w-2xl">
+    <a href="{% url 'mfa_index' %}" class="text-sm font-medium hover:underline text-[var(--text-secondary)]">&larr; {% trans "Security" %}</a>
+    <h2 class="text-xl font-semibold mt-4 mb-2 text-[var(--text-primary)]">{% trans "Generate new recovery codes?" %}</h2>
+    <p class="text-sm mb-8 text-[var(--text-secondary)]">
+        {% if unused_code_count %}
+        {% trans "Your current codes will stop working." %}
+        {% endif %}
+        {% trans "Save the new ones somewhere safe straight away." %}
+    </p>
+    <form method="POST" action="{% url 'mfa_generate_recovery_codes' %}" class="flex gap-3">
+        {% csrf_token %}
+        <a href="{% url 'mfa_index' %}"
+           class="btn-neutral px-5 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap bg-[var(--neutral-100)] text-[var(--text-primary)]">
+            {% trans "Cancel" %}
+        </a>
+        <button type="submit"
+                class="{% if unused_code_count %}btn-danger-soft bg-[var(--error-50)] text-[var(--error-500)]{% else %}btn-neutral bg-[var(--neutral-100)] text-[var(--text-primary)]{% endif %} px-5 py-2 text-sm font-medium rounded-full transition-colors cursor-pointer whitespace-nowrap">
+            {% trans "Generate" %}
+        </button>
+    </form>
+</div>
+{% endblock %}

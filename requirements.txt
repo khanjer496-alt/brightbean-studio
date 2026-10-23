@@ -5,7 +5,9 @@ psycopg[binary]>=3.1,<4.0
 gunicorn>=22.0,<23.0
 
 # Auth
-django-allauth[socialaccount]>=65.0,<66.0
+# [mfa] brings qrcode (authenticator-app setup) and fido2, which allauth.mfa
+# imports even with WebAuthn left out of MFA_SUPPORTED_TYPES.
+django-allauth[socialaccount,mfa]>=65.0,<66.0
 bcrypt>=4.2,<5.0
 
 # Background tasks

@@ -51,6 +51,8 @@ services:
       # named volume outlives the switch, and Caddy cannot read Django's
       # SERVE_MEDIA. See the Caddyfile.
       - CADDY_MEDIA_ROOT=${CADDY_MEDIA_ROOT:-/app/media}
+      # Behind Cloudflare: its IP ranges, space-separated. See the Caddyfile.
+      - CADDY_TRUSTED_PROXIES=${CADDY_TRUSTED_PROXIES:-private_ranges}
     depends_on:
       - app
     restart: unless-stopped

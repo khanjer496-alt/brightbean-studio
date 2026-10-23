@@ -1,0 +1,44 @@
+{% extends "mfa/base_manage.html" %}
+{% load i18n %}
+{% block head_title %}{% trans "Set up authenticator app" %}{% endblock %}
+{% block content %}
+<div class="max-w-2xl">
+    <a href="{% url 'mfa_index' %}" class="text-sm font-medium hover:underline text-[var(--text-secondary)]">&larr; {% trans "Security" %}</a>
+    <h2 class="text-xl font-semibold mt-4 mb-8 text-[var(--text-primary)]">{% trans "Set up an authenticator app" %}</h2>
+
+    <section aria-labelledby="mfa-scan-heading" class="mb-10">
+        <h3 id="mfa-scan-heading" class="text-sm font-semibold mb-2 text-[var(--text-primary)]">{% trans "1. Scan this QR code with your authenticator app" %}</h3>
+        <img src="{{ totp_svg_data_uri }}" alt="{% blocktrans %}QR code that adds {{ brand_name }} to an authenticator app{% endblocktrans %}"
+             class="w-44 h-44 p-2 rounded-lg bg-white border border-[var(--border)]">
+        <p class="text-xs mt-3 text-[var(--text-tertiary)]">
+            {% trans "Can't scan it? Enter this key in the app instead:" %}
+        </p>
+        <code class="block mt-1 text-sm font-mono break-all select-all text-[var(--text-primary)]">{{ form.secret }}</code>
+    </section>
+
+    <form method="POST" action="{% url 'mfa_activate_totp' %}">
+        {% csrf_token %}
+        {% if form.non_field_errors %}
+        <div class="alert-error mb-4" role="alert">{{ form.non_field_errors.0 }}</div>
+        {% endif %}
+        <label for="{{ form.code.id_for_label }}" class="block text-sm font-semibold mb-2 text-[var(--text-primary)]">
+            {% trans "2. Enter the code the app shows" %}
+        </label>
+        <div class="flex items-start gap-4">
+            <div class="flex-1">
+                <input type="text" id="{{ form.code.id_for_label }}" name="{{ form.code.html_name }}" required
+                       inputmode="numeric" autocomplete="one-time-code" placeholder="123456"
+                       {% if form.code.errors %}aria-invalid="true" aria-describedby="{{ form.code.id_for_label }}-error"{% endif %}
+                       class="input-focus w-full px-3 py-2 text-sm rounded-lg outline-none transition-colors border border-[var(--border)] bg-[var(--surface-0)] text-[var(--text-primary)]">
+                {% if form.code.errors %}
+                <p id="{{ form.code.id_for_label }}-error" class="text-xs mt-1 text-[var(--error-500)]">{{ form.code.errors.0 }}</p>
+                {% endif %}
+            </div>
+            <button type="submit"
+                    class="btn-neutral px-5 py-2 text-sm font-medium rounded-full transition-colors cursor-pointer whitespace-nowrap bg-[var(--neutral-100)] text-[var(--text-primary)]">
+                {% trans "Turn on" %}
+            </button>
+        </div>
+    </form>
+</div>
+{% endblock %}

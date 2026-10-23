@@ -15,6 +15,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from allauth.account.models import EmailAddress
 from allauth.socialaccount.models import SocialAccount as AllAuthSocialAccount
 from allauth.socialaccount.models import SocialLogin
 from django.contrib.sessions.middleware import SessionMiddleware
@@ -134,7 +135,8 @@ class TestExistingUsersAreUnaffected:
 
     def test_existing_user_can_log_in_when_closed(self, settings, client):
         settings.SIGNUP_MODE = "closed"
-        User.objects.create_user(email="existing@example.com", password="pw-for-test-only")
+        user = User.objects.create_user(email="existing@example.com", password="pw-for-test-only")
+        EmailAddress.objects.create(user=user, email="existing@example.com", verified=True, primary=True)
 
         response = client.post(
             reverse("account_login"),

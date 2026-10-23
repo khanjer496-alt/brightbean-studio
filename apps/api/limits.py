@@ -25,6 +25,8 @@ on ``tier`` without parsing free text.
 from __future__ import annotations
 
 import datetime as dt
+import ipaddress
+import logging
 
 from django.conf import settings
 from django.core.cache import cache as _cache
@@ -37,6 +39,8 @@ from apps.api.usage import actor_for, day_start, hour_start, usage_in_windows
 from apps.api_keys.models import ApiKey
 from apps.composer.models import PlatformPost
 from apps.social_accounts.models import SocialAccount
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Tier 2 — channel-aligned per-(SocialAccount, 24h) creation caps
@@ -411,19 +415,55 @@ def _client_ip(request: HttpRequest) -> str | None:
     that terminate TLS at a proxy you actually run (Cloudflare, ALB,
     nginx, …), set that list in env config. Otherwise fall back to the
     socket peer — which is the only IP we can vouch for ourselves.
+
+    Also used by ``apps.accounts.middleware.AuthRateLimitMiddleware``.
+
+    Entries may be single addresses or CIDR ranges. Behind Cloudflare and
+    the bundled Caddy, the app's peer is Caddy on a Docker network whose
+    address changes between restarts, and the hop before it is one of
+    Cloudflare's edge addresses — neither can be listed as fixed IPs, so
+    list the Docker network range and Cloudflare's published ranges.
     """
-    trusted = set(getattr(settings, "BB_TRUSTED_PROXIES", ()) or ())
+    trusted = _trusted_proxy_networks()
     remote = request.META.get("REMOTE_ADDR")
-    if trusted and remote in trusted:
+    if trusted and _is_trusted_proxy(remote, trusted):
         forwarded = request.META.get("HTTP_X_FORWARDED_FOR")
         if forwarded:
-            # Per RFC 7239 the rightmost value is the closest proxy to
-            # us; we want the originating client, which is the leftmost
-            # value that wasn't itself a trusted proxy. Cheapest safe
-            # heuristic: take the leftmost untrusted hop.
+            # Each proxy appends the peer it received the request from, so
+            # the header reads client, proxy1, proxy2 — but a client can
+            # send its own header first, and proxies append to it rather
+            # than replace it. Only the values our trusted proxies appended
+            # are reliable: walk from the right and take the first hop that
+            # is not one of them. The leftmost hop is whatever the client
+            # chose to write.
             hops = [h.strip() for h in forwarded.split(",") if h.strip()]
-            for hop in hops:
-                if hop not in trusted:
+            for hop in reversed(hops):
+                if not _is_trusted_proxy(hop, trusted):
                     return hop
             # Every hop was a trusted proxy — fall back to remote.
     return remote
+
+
+def _trusted_proxy_networks() -> tuple[ipaddress.IPv4Network | ipaddress.IPv6Network, ...]:
+    """Parse ``BB_TRUSTED_PROXIES`` into networks, skipping malformed entries.
+
+    Parsed per call rather than cached so ``override_settings`` in tests
+    takes effect; the list is short and this runs once per request.
+    """
+    networks = []
+    for entry in getattr(settings, "BB_TRUSTED_PROXIES", ()) or ():
+        try:
+            networks.append(ipaddress.ip_network(entry, strict=False))
+        except ValueError:
+            logger.warning("Ignoring malformed BB_TRUSTED_PROXIES entry %r", entry)
+    return tuple(networks)
+
+
+def _is_trusted_proxy(value: str | None, networks) -> bool:
+    if not value:
+        return False
+    try:
+        address = ipaddress.ip_address(value)
+    except ValueError:
+        return False
+    return any(address in network for network in networks)

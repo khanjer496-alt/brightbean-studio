@@ -1,0 +1,67 @@
+{% extends "mfa/base_manage.html" %}
+{% load i18n %}
+{% block head_title %}{% trans "Security" %}{% endblock %}
+{% block content %}
+<div class="max-w-2xl">
+    <h2 class="text-xl font-semibold mb-2 text-[var(--text-primary)]">{% trans "Security" %}</h2>
+    <p class="text-sm mb-8 text-[var(--text-secondary)]">
+        {% blocktrans %}Two-factor authentication asks for a code from your phone each time you sign in, after your password or Google.{% endblocktrans %}
+    </p>
+
+    <!-- Authenticator app -->
+    <section aria-labelledby="mfa-totp-heading" class="flex items-start justify-between gap-4 mb-10">
+        <div>
+            <h3 id="mfa-totp-heading" class="text-base font-semibold mb-1 text-[var(--text-primary)]">{% trans "Authenticator app" %}</h3>
+            <p class="text-sm text-[var(--text-secondary)]">
+                {% if authenticators.totp %}
+                {% trans "On. Signing in asks for a code from your authenticator app." %}
+                {% else %}
+                {% trans "Off. Use an app such as 1Password, Google Authenticator or Authy." %}
+                {% endif %}
+            </p>
+        </div>
+        {% if authenticators.totp %}
+        <a href="{% url 'mfa_deactivate_totp' %}"
+           class="btn-danger-soft px-5 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap shrink-0 bg-[var(--error-50)] text-[var(--error-500)]">
+            {% trans "Turn off" %}
+        </a>
+        {% else %}
+        <a href="{% url 'mfa_activate_totp' %}"
+           class="btn-neutral px-5 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap shrink-0 bg-[var(--neutral-100)] text-[var(--text-primary)]">
+            {% trans "Set up" %}
+        </a>
+        {% endif %}
+    </section>
+
+    <!-- Recovery codes -->
+    {% if is_mfa_enabled %}
+    {% with total_count=authenticators.recovery_codes.generate_codes|length unused_count=authenticators.recovery_codes.get_unused_codes|length %}
+    <hr class="my-10 border-[var(--border)]">
+    <section aria-labelledby="mfa-recovery-heading" class="flex items-start justify-between gap-4">
+        <div>
+            <h3 id="mfa-recovery-heading" class="text-base font-semibold mb-1 text-[var(--text-primary)]">{% trans "Recovery codes" %}</h3>
+            <p class="text-sm max-w-md text-[var(--text-secondary)]">
+                {% if authenticators.recovery_codes %}
+                {% blocktrans count unused_count=unused_count %}{{ unused_count }} of {{ total_count }} codes left. Each one signs you in once if you lose your phone.{% plural %}{{ unused_count }} of {{ total_count }} codes left. Each one signs you in once if you lose your phone.{% endblocktrans %}
+                {% else %}
+                {% trans "No recovery codes yet. Generate a set and keep it somewhere safe." %}
+                {% endif %}
+            </p>
+        </div>
+        <div class="flex gap-2 shrink-0">
+            {% if authenticators.recovery_codes and unused_count > 0 %}
+            <a href="{% url 'mfa_view_recovery_codes' %}"
+               class="btn-neutral px-5 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap bg-[var(--neutral-100)] text-[var(--text-primary)]">
+                {% trans "View" %}
+            </a>
+            {% endif %}
+            <a href="{% url 'mfa_generate_recovery_codes' %}"
+               class="btn-neutral px-5 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap bg-[var(--neutral-100)] text-[var(--text-primary)]">
+                {% trans "Generate new" %}
+            </a>
+        </div>
+    </section>
+    {% endwith %}
+    {% endif %}
+</div>
+{% endblock %}

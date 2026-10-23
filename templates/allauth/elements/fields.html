@@ -1,5 +1,28 @@
 {% load allauth %}
-{% for field in attrs.form %}
-    {% element field field=field %}
-    {% endelement %}
+{% comment %}
+Renders a bound form through the styled field element. allauth's own pages
+(the 2FA code step, reauthentication, the third-party signup form) reach this
+with ``form=``, and the field element only sees the attrs it is given, so each
+field's name, id and type are passed explicitly. ``unlabeled`` keeps the label
+for screen readers and hides it visually. Passwords are never echoed back.
+{% endcomment %}
+{% for bound_field in attrs.form %}
+    {% if bound_field.is_hidden %}
+        {{ bound_field }}
+    {% else %}
+        {% with widget=bound_field.field.widget %}
+        {% if widget.input_type == "password" %}
+            {% element field id=bound_field.auto_id name=bound_field.html_name type="password" required=bound_field.field.required errors=bound_field.errors placeholder=widget.attrs.placeholder autocomplete=widget.attrs.autocomplete unlabeled=attrs.unlabeled %}
+                {% slot label %}{{ bound_field.label }}{% endslot %}
+                {% if bound_field.help_text %}{% slot help_text %}{{ bound_field.help_text }}{% endslot %}{% endif %}
+            {% endelement %}
+        {% else %}
+            {% element field id=bound_field.auto_id name=bound_field.html_name type=widget.input_type|default:"textarea" value=bound_field.value checked=bound_field.value required=bound_field.field.required errors=bound_field.errors placeholder=widget.attrs.placeholder autocomplete=widget.attrs.autocomplete unlabeled=attrs.unlabeled %}
+                {% slot label %}{{ bound_field.label }}{% endslot %}
+                {% slot value %}{{ bound_field.value|default_if_none:"" }}{% endslot %}
+                {% if bound_field.help_text %}{% slot help_text %}{{ bound_field.help_text }}{% endslot %}{% endif %}
+            {% endelement %}
+        {% endif %}
+        {% endwith %}
+    {% endif %}
 {% endfor %}
