@@ -18,11 +18,14 @@ import logging
 from django.db import transaction
 from django.utils import timezone
 
+from apps.members.models import WorkspaceMembership
+from apps.notifications.engine import notify
+from apps.notifications.models import EventType
 from providers import get_provider
 from providers.exceptions import MessagingError
 from providers.meta_messaging import META_DM_PLATFORMS
 
-from .models import InboxMessage, InboxReply, InboxSLAConfig
+from .models import InboxMessage, InboxReply, InboxSLAConfig, InternalNote
 from .reply_policy import PROGRAMMATIC, recipient_id, reply_eligibility
 
 logger = logging.getLogger(__name__)
@@ -251,3 +254,78 @@ def send_reply(*, message: InboxMessage, body: str, author=None, origin=PROGRAMM
         if not (message.message_type == "dm" and message.social_account.platform in META_DM_PLATFORMS):
             InboxReply.objects.filter(pk=reply.pk, status=InboxReply.Status.FAILED).delete()
         raise
+
+
+# ---------------------------------------------------------------------------
+# Triage and bulk actions
+# ---------------------------------------------------------------------------
+
+# "Select all matching the filter" acts on at most this many messages at once.
+BULK_SELECT_ALL_MAX = 5000
+
+
+class BulkActionError(ValueError):
+    """Raised when a bulk action can't be applied as asked (shown to the person)."""
+
+
+def apply_triage(message: InboxMessage, action: str, *, actor) -> InboxMessage:
+    """One keyboard-triage action. ``resolve`` on an already resolved message archives it."""
+    if action == "resolve":
+        resolved = message.status == InboxMessage.Status.RESOLVED
+        message.status = InboxMessage.Status.ARCHIVED if resolved else InboxMessage.Status.RESOLVED
+        message.save(update_fields=["status"])
+    elif action == "unread":
+        message.status = InboxMessage.Status.UNREAD
+        message.save(update_fields=["status"])
+    elif action == "assign_me":
+        message.assigned_to = actor
+        message.save(update_fields=["assigned_to"])
+    return message
+
+
+def bulk_update(workspace, message_ids, *, action: str, value: str = "", actor=None) -> int:
+    """Apply ``action`` to the workspace's messages in ``message_ids``; returns how many it matched.
+
+    Ids outside the workspace are ignored, so a forged list can't reach
+    another workspace's messages.
+    """
+    qs = InboxMessage.objects.filter(id__in=message_ids, workspace=workspace)
+    if action == "mark_read":
+        qs.filter(status=InboxMessage.Status.UNREAD).update(status=InboxMessage.Status.OPEN)
+    elif action == "mark_unread":
+        qs.update(status=InboxMessage.Status.UNREAD)
+    elif action == "resolve":
+        qs.exclude(status=InboxMessage.Status.ARCHIVED).update(status=InboxMessage.Status.RESOLVED)
+    elif action == "archive":
+        qs.update(status=InboxMessage.Status.ARCHIVED)
+    elif action == "status":
+        qs.update(status=value)
+    elif action == "sentiment":
+        qs.update(sentiment=value, sentiment_source=InboxMessage.SentimentSource.MANUAL)
+    elif action == "unassign":
+        qs.update(assigned_to=None)
+    elif action == "assign":
+        membership = (
+            WorkspaceMembership.objects.filter(workspace=workspace, user_id=value).select_related("user").first()
+        )
+        if membership is None:
+            raise BulkActionError("That person is not a member of this workspace.")
+        count = qs.update(assigned_to=membership.user)
+        if count and membership.user != actor:
+            notify(
+                user=membership.user,
+                event_type=EventType.NEW_INBOX_MESSAGE,
+                title=f"{count} inbox message{'s were' if count != 1 else ' was'} assigned to you",
+                body="Open your queue to see them.",
+                data={"workspace_id": str(workspace.id)},
+            )
+        return count
+    elif action == "note":
+        ids = list(qs.values_list("id", flat=True))
+        InternalNote.objects.bulk_create(
+            [InternalNote(inbox_message_id=mid, author=actor, body=value) for mid in ids], batch_size=500
+        )
+        return len(ids)
+    else:
+        raise BulkActionError("Unknown bulk action.")
+    return qs.count()

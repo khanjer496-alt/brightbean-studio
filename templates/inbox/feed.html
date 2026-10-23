@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load humanize %}
+{% load humanize static %}
 
 {% block title %}Inbox - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
 
@@ -108,6 +108,80 @@
     .bulk-bar button:hover { background: rgba(255,255,255,0.1); }
     @keyframes slideUp { from { transform: translateY(100%); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 
+    .inbox-row:focus-visible { outline: 2px solid var(--primary); outline-offset: -2px; }
+    .inbox-mark { background: var(--warning-50); color: var(--warning-700); border-radius: 2px; padding: 0 1px; }
+
+    /* List toolbar (select page) */
+    .inbox-list-toolbar {
+        display: flex; align-items: center; gap: 8px; padding: 6px 16px;
+        border-bottom: 1px solid var(--surface-2); font-size: 11px; color: var(--text-tertiary);
+        flex-shrink: 0;
+    }
+
+    /* "N new messages" pill and Load more */
+    .inbox-poll { position: sticky; top: 8px; z-index: 5; display: flex; justify-content: center; pointer-events: none; }
+    .inbox-poll:empty { display: none; }
+    .inbox-new-pill {
+        pointer-events: auto; font-size: 12px; font-weight: 600; padding: 6px 14px;
+        border-radius: var(--radius-full); background: var(--primary); color: white;
+        box-shadow: var(--shadow-primary); cursor: pointer; border: none;
+    }
+    .inbox-new-pill:focus-visible, .inbox-load-more-btn:focus-visible, .bulk-bar button:focus-visible,
+    .bulk-bar select:focus-visible, .bulk-bar input:focus-visible, .inbox-ghost-btn:focus-visible {
+        outline: 2px solid var(--primary); outline-offset: 2px;
+    }
+    .inbox-load-more { display: flex; justify-content: center; padding: 12px; }
+    .inbox-load-more-btn {
+        font-size: 12px; font-weight: 600; padding: 6px 16px; border-radius: var(--radius-full);
+        border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary); cursor: pointer;
+    }
+    .inbox-load-more.htmx-request .inbox-load-more-btn { opacity: 0.6; }
+
+    /* Bulk bar extras */
+    .bulk-bar { flex-wrap: wrap; row-gap: 8px; }
+    .bulk-bar .bulk-bar-close { margin-left: auto; border: none; }
+    .bulk-bar select, .bulk-bar input[type=text] {
+        font-size: 12px; padding: 4px 8px; border-radius: var(--radius-md);
+        border: 1px solid rgba(255,255,255,0.2); background: transparent; color: white; max-width: 100%;
+    }
+    .bulk-bar select option { color: var(--neutral-900); }
+    .bulk-bar input[type=text]::placeholder { color: rgba(255,255,255,0.6); }
+    .bulk-bar-status { font-size: 12px; color: var(--text-secondary); padding: 4px 16px; }
+    .bulk-confirm { flex-basis: 100%; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+
+    /* Shortcuts dialog */
+    .inbox-dialog {
+        margin: auto; /* preflight zeroes the UA margin that centres a modal dialog */
+        border: 1px solid var(--border); border-radius: var(--radius-lg, 12px); padding: 20px;
+        background: var(--surface-1); color: var(--text-primary); width: min(420px, calc(100vw - 32px));
+    }
+    .inbox-dialog::backdrop { background: rgba(0, 0, 0, 0.5); }
+    .inbox-shortcut-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: 13px; }
+    .inbox-kbd {
+        font-family: var(--font-mono); font-size: 11px; font-weight: 600; min-width: 22px; text-align: center;
+        padding: 2px 6px; border-radius: var(--radius-sm, 4px); border: 1px solid var(--border); background: var(--surface-2);
+    }
+    .inbox-ghost-btn {
+        font-size: 12px; font-weight: 600; padding: 6px 12px; border-radius: var(--radius-full);
+        border: 1px solid var(--border); color: var(--text-secondary); background: transparent; cursor: pointer;
+    }
+
+    /* Reply box: "/" saved-reply picker and AI draft */
+    .inbox-slash-picker {
+        position: absolute; left: 0; right: 0; bottom: 100%; margin-bottom: 4px; z-index: 20; list-style: none;
+        background: var(--surface-1); border: 1px solid var(--border); border-radius: var(--radius-md);
+        max-height: 220px; overflow-y: auto; padding: 4px 0; box-shadow: var(--shadow-primary);
+    }
+    .inbox-slash-option { display: block; padding: 6px 12px; cursor: pointer; }
+    .inbox-slash-option[aria-selected=true], .inbox-slash-option:hover { background: var(--primary-soft); }
+    .inbox-slash-title { display: block; font-size: 12px; font-weight: 600; color: var(--text-primary); }
+    .inbox-slash-body { display: block; font-size: 11px; color: var(--text-tertiary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .inbox-ai-draft { margin-bottom: 8px; padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-2); }
+    .inbox-ai-draft-label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-tertiary); margin-bottom: 4px; }
+    .inbox-ai-draft-text { font-size: 13px; white-space: pre-line; overflow-wrap: anywhere; color: var(--text-primary); }
+    .inbox-ai-draft-actions { display: flex; gap: 8px; margin-top: 10px; }
+    .inbox-ai-error { font-size: 12px; color: var(--error-700); }
+
     /* SLA countdown */
     .sla-countdown { font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
     .sla-ok { color: var(--text-tertiary); }
@@ -123,7 +197,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="inbox-shell" x-data="inboxController()">
+<div class="inbox-shell" x-data="inboxController()" @inbox-bulk-done.window="bulkDone($event.detail.count)">
 
     <!-- Header -->
     <div class="flex flex-wrap items-center justify-between gap-2 px-3 sm:px-5 py-3 border-b border-stone-200 flex-shrink-0">
@@ -151,6 +225,15 @@
             </div>
         </div>
         <div class="flex items-center gap-2">
+            <button type="button"
+                    class="inbox-ghost-btn"
+                    aria-keyshortcuts="?"
+                    aria-haspopup="dialog"
+                    @click="document.getElementById('inbox-shortcuts').showModal()">
+                <span class="inbox-kbd" aria-hidden="true">?</span>
+                <span class="hidden sm:inline">Shortcuts</span>
+                <span class="sm:hidden sr-only">Keyboard shortcuts</span>
+            </button>
             <a href="{% url 'inbox:saved_replies' workspace_id=workspace.id %}"
                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-semibold text-stone-600 bg-white border border-stone-200 rounded-full hover:border-stone-300 hover:bg-stone-50 transition-all duration-150"
                title="Saved Replies">
@@ -177,21 +260,80 @@
             <!-- Filters -->
             {% include "inbox/partials/_filter_bar.html" %}
 
+            <!-- Select page / select all matching -->
+            <div class="inbox-list-toolbar">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox"
+                           class="w-3.5 h-3.5 rounded border-stone-300 text-orange-500 focus:ring-orange-200 cursor-pointer"
+                           :checked="pageSelected"
+                           @change="selectPage($event.target.checked)">
+                    Select all on page
+                </label>
+            </div>
+
             <!-- Message list (HTMX target) -->
             <div class="flex-1 overflow-y-auto" id="inbox-message-list">
                 {% include "inbox/partials/_message_list.html" %}
             </div>
 
+            <p class="bulk-bar-status" role="status" aria-live="polite" x-show="bulkMessage" x-cloak x-text="bulkMessage"></p>
+            <span id="inbox-poll-announce" class="sr-only" role="status" aria-live="polite"></span>
+
             <!-- Bulk action bar -->
-            <div x-show="selectedCount > 0" x-cloak class="bulk-bar">
-                <span x-text="selectedCount + ' selected'"></span>
-                <button @click="bulkAction('mark_read')">Mark Read</button>
-                <button @click="bulkAction('resolve')">Resolve</button>
-                <button @click="bulkAction('archive')">Archive</button>
-                <button @click="closeBulk()" class="ml-auto" style="border: none;">
+            <form x-show="selectedCount > 0 || allMatching" x-cloak class="bulk-bar" x-ref="bulkForm"
+                  aria-label="Bulk actions"
+                  hx-post="{% url 'inbox:bulk_action' workspace_id=workspace.id %}"
+                  hx-target="#inbox-message-list"
+                  hx-swap="innerHTML"
+                  @htmx:after-request="if ($event.detail.xhr.status === 409) selectAllMatching()"
+                  @submit.prevent>
+                <input type="hidden" name="message_ids" :value="allMatching ? '' : Array.from(selected).join(',')">
+                <input type="hidden" name="select_all" :value="allMatching ? '1' : ''">
+                <input type="hidden" name="expected_count" :value="allMatching ? matchCount : ''">
+                <input type="hidden" name="filters" x-ref="bulkFilters">
+                <input type="hidden" name="action" :value="bulk.action">
+                <input type="hidden" name="value" :value="bulk.value">
+
+                <span x-show="!allMatching" x-text="selectedCount + ' selected'"></span>
+                <span x-show="allMatching" x-text="'All ' + matchCount + ' matching messages selected'"></span>
+                <button type="button" x-show="!allMatching" @click="selectAllMatching()">Select all matching filter</button>
+
+                <button type="button" @click="request('mark_read')">Mark Read</button>
+                <button type="button" @click="request('mark_unread')">Mark Unread</button>
+                <button type="button" @click="request('resolve')">Resolve</button>
+                <button type="button" @click="request('archive')">Archive</button>
+
+                <select aria-label="Assign to" @change="request($event.target.value ? 'assign' : 'unassign', $event.target.value); $event.target.value = ''">
+                    <option value="" disabled selected>Assign to...</option>
+                    {% for member in team_members %}
+                    <option value="{{ member.user.id }}">{{ member.user.display_name }}</option>
+                    {% endfor %}
+                </select>
+                <select aria-label="Change status" @change="request('status', $event.target.value); $event.target.value = ''">
+                    <option value="" disabled selected>Status...</option>
+                    {% for value, label in status_choices %}
+                    <option value="{{ value }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <select aria-label="Change sentiment" @change="request('sentiment', $event.target.value); $event.target.value = ''">
+                    <option value="" disabled selected>Sentiment...</option>
+                    {% for value, label in sentiment_choices %}
+                    <option value="{{ value }}">{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <input type="text" x-model="noteText" placeholder="Note for each message" aria-label="Internal note for selected messages" maxlength="2000">
+                <button type="button" :disabled="!noteText.trim()" @click="request('note', noteText.trim())">Add note</button>
+
+                <button type="button" @click="closeBulk()" class="bulk-bar-close" aria-label="Clear selection">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
-            </div>
+
+                <div class="bulk-confirm" x-show="confirming" x-cloak role="alertdialog" aria-label="Confirm bulk action">
+                    <span x-text="'Apply to all ' + matchCount + ' matching messages?'"></span>
+                    <button type="button" @click="confirmPending()">Yes, apply</button>
+                    <button type="button" @click="confirming = false">Cancel</button>
+                </div>
+            </form>
         </div>
 
         <!-- Right: Detail Panel -->
@@ -214,9 +356,32 @@
 
     </div>
 </div>
+
+<dialog id="inbox-shortcuts" class="inbox-dialog" aria-labelledby="inbox-shortcuts-title">
+    <div class="flex items-center justify-between mb-3">
+        <h2 id="inbox-shortcuts-title" class="text-sm font-semibold">Keyboard shortcuts</h2>
+        <form method="dialog"><button class="inbox-ghost-btn" autofocus>Close</button></form>
+    </div>
+    <dl>
+        <div class="inbox-shortcut-row"><dt>Next / previous message</dt><dd><kbd class="inbox-kbd">j</kbd> <kbd class="inbox-kbd">k</kbd></dd></div>
+        <div class="inbox-shortcut-row"><dt>Open message</dt><dd><kbd class="inbox-kbd">Enter</kbd></dd></div>
+        <div class="inbox-shortcut-row"><dt>Resolve (archive if resolved)</dt><dd><kbd class="inbox-kbd">e</kbd></dd></div>
+        <div class="inbox-shortcut-row"><dt>Reply</dt><dd><kbd class="inbox-kbd">r</kbd></dd></div>
+        <div class="inbox-shortcut-row"><dt>Assign to me</dt><dd><kbd class="inbox-kbd">a</kbd></dd></div>
+        <div class="inbox-shortcut-row"><dt>Mark unread</dt><dd><kbd class="inbox-kbd">u</kbd></dd></div>
+        <div class="inbox-shortcut-row"><dt>Select message</dt><dd><kbd class="inbox-kbd">x</kbd></dd></div>
+        <div class="inbox-shortcut-row"><dt>Saved replies (in the reply box)</dt><dd><kbd class="inbox-kbd">/</kbd></dd></div>
+        <div class="inbox-shortcut-row"><dt>This help</dt><dd><kbd class="inbox-kbd">?</kbd></dd></div>
+    </dl>
+    <label class="inbox-shortcut-row mt-2 cursor-pointer">
+        <span>Single-key shortcuts</span>
+        <input type="checkbox" id="inbox-shortcuts-enabled" class="w-4 h-4 rounded border-stone-300 text-orange-500 focus:ring-orange-200 cursor-pointer" checked>
+    </label>
+</dialog>
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/inbox-keyboard.js' %}"></script>
 <script nonce="{{ request.csp_nonce }}">
 function inboxController() {
     return {
@@ -224,12 +389,21 @@ function inboxController() {
         selected: new Set(),
         get selectedCount() { return this.selected.size; },
 
+        allMatching: false,
+        matchCount: 0,
+        matchFilters: '',
+        bulk: { action: '', value: '' },
+        confirming: false,
+        noteText: '',
+        bulkMessage: '',
+
         toggleSelect(id) {
             if (this.selected.has(id)) {
                 this.selected.delete(id);
             } else {
                 this.selected.add(id);
             }
+            this.allMatching = false;
             /* Force Alpine reactivity */
             this.selected = new Set(this.selected);
         },
@@ -238,32 +412,80 @@ function inboxController() {
             return this.selected.has(id);
         },
 
-        closeBulk() {
-            this.selected = new Set();
+        pageIds() {
+            return Array.from(document.querySelectorAll('#inbox-message-list .inbox-row')).map(row => row.dataset.messageId);
         },
 
-        bulkAction(action) {
-            const ids = Array.from(this.selected).join(',');
+        get pageSelected() {
+            const ids = this.pageIds();
+            return ids.length > 0 && ids.every(id => this.selected.has(id));
+        },
 
-            /* Build a hidden form and submit via HTMX */
-            const container = document.createElement('div');
-            container.innerHTML = `<form>
-                <input type="hidden" name="message_ids" value="${ids}">
-                <input type="hidden" name="action" value="${action}">
-            </form>`;
-            const form = container.querySelector('form');
-            document.body.appendChild(form);
+        selectPage(checked) {
+            const next = new Set(this.selected);
+            this.pageIds().forEach(id => (checked ? next.add(id) : next.delete(id)));
+            this.allMatching = false;
+            this.selected = next;
+        },
 
-            htmx.ajax('POST',
-                '{% url "inbox:bulk_action" workspace_id=workspace.id %}',
-                {
-                    source: form,
-                    target: '#inbox-message-list',
-                    swap: 'innerHTML',
-                }
-            );
-            setTimeout(() => form.remove(), 100);
+        closeBulk() {
             this.selected = new Set();
+            this.allMatching = false;
+            this.confirming = false;
+        },
+
+        /* The filters the list on screen was rendered with (it is re-rendered on every filter change). */
+        filterQuery() {
+            const state = document.getElementById('inbox-filter-state');
+            return state ? state.dataset.filterQuery : '';
+        },
+
+        async selectAllMatching() {
+            this.bulkMessage = '';
+            try {
+                const filters = this.filterQuery();
+                const response = await fetch('{% url "inbox:bulk_count" workspace_id=workspace.id %}?' + filters, { credentials: 'same-origin' });
+                if (!response.ok) throw new Error(response.status);
+                const data = await response.json();
+                if (data.count > data.limit) {
+                    this.bulkMessage = data.count + ' messages match; the limit is ' + data.limit + '. Narrow the filters first.';
+                    return;
+                }
+                this.matchCount = data.count;
+                /* The action runs on the very filters that were counted and confirmed. */
+                this.matchFilters = filters;
+                this.allMatching = true;
+            } catch (error) {
+                this.bulkMessage = 'Could not count the matching messages. Try again.';
+            }
+        },
+
+        /* Acting on every matching message asks for confirmation, with the count, first. */
+        request(action, value = '') {
+            this.bulk = { action, value };
+            if (this.allMatching) {
+                this.confirming = true;
+                return;
+            }
+            this.submitBulk();
+        },
+
+        confirmPending() {
+            this.confirming = false;
+            this.submitBulk();
+        },
+
+        submitBulk() {
+            /* Read at submit time: the list (and its filters) is swapped by htmx without Alpine knowing. */
+            this.$refs.bulkFilters.value = this.allMatching ? this.matchFilters : this.filterQuery();
+            this.$nextTick(() => htmx.trigger(this.$refs.bulkForm, 'submit'));
+        },
+
+        bulkDone(count) {
+            this.closeBulk();
+            this.noteText = '';
+            this.bulkMessage = count + (count === 1 ? ' message updated.' : ' messages updated.');
+            setTimeout(() => { this.bulkMessage = ''; }, 6000);
         },
 
         selectMessage(id, url) {

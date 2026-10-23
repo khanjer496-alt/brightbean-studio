@@ -1,8 +1,8 @@
 {% load humanize %}
+<div id="inbox-filter-state" data-filter-query="{{ filter_query }}" hidden></div>
+{% include "inbox/partials/_poll.html" %}
 {% if inbox_messages %}
-{% for msg in inbox_messages %}
-{% include "inbox/partials/_message_row.html" with message=msg %}
-{% endfor %}
+{% include "inbox/partials/_message_page.html" %}
 {% else %}
 {% include "inbox/partials/_empty_state.html" %}
 {% endif %}

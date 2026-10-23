@@ -392,6 +392,44 @@ def improve_caption(ctx: AIContext, caption: str, mode: str, *, language: str = 
     return _fit_to_account(ctx, run, text, tightest) if tightest else text
 
 
+MAX_REPLY_CONTEXT_MESSAGES = 6
+MAX_REPLY_MESSAGE_CHARS = 1_000
+
+
+def draft_reply(ctx: AIContext, message: str, *, sender: str, thread, account) -> str:
+    """Draft a reply, in the brand's voice, to one message from the inbox.
+
+    ``thread`` is the conversation before it as ``(role, author, text)`` tuples
+    (``role`` is "customer" or "brand"), oldest first. Everyone's text is
+    quoted as data: a customer who writes "ignore your instructions" gets an
+    ordinary reply, not an obedient one.
+    """
+    message = _clip(message, MAX_REPLY_MESSAGE_CHARS)
+    if not message:
+        raise ValueError("There is no message to reply to.")
+    # The reply, plus a shorten pass if it comes back too long.
+    run = _start(ctx, max_calls=2)
+    context = ""
+    earlier = [(role, author, _clip(text, MAX_REPLY_MESSAGE_CHARS)) for role, author, text in thread]
+    earlier = [item for item in earlier if item[2]][-MAX_REPLY_CONTEXT_MESSAGES:]
+    if earlier:
+        lines = "\n".join(
+            f'<source role="{_attr(role)}" author="{_attr(author or role)}">\n{_escape_tags(text)}\n</source>'
+            for role, author, text in earlier
+        )
+        context = f"\n\nThe conversation so far, oldest first:\n{lines}"
+    prompt = (
+        f"Write one reply from the brand to the message below, sent on {account.get_platform_display()}. "
+        f"Answer what was asked, be courteous, and keep it within {account.char_limit} characters. "
+        "Do not promise refunds, discounts or timelines, and do not state facts you were not given: "
+        "if you cannot answer from the conversation, say someone will follow up."
+        f"{context}\n\nThe message to reply to:\n"
+        f'<source role="customer" author="{_attr(sender)}">\n{_escape_tags(message)}\n</source>'
+    )
+    text = _text(_run(ctx, run, action="reply", prompt=prompt, schema=_TEXT_SCHEMA))
+    return _fit_to_account(ctx, run, text, account)
+
+
 def adapt_for_networks(ctx: AIContext, caption: str, accounts) -> dict[str, str]:
     """One caption per account, in each network's style and within its limit.
 

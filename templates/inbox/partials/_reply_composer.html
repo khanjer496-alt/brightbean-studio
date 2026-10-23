@@ -60,12 +60,41 @@
               hx-swap="beforeend"
               @htmx:after-request="if (!$event.detail.xhr.getResponseHeader('HX-Reply-Failed')) replyText = ''">
             {% csrf_token %}
-            <textarea name="body"
-                      x-model="replyText"
-                      placeholder="Write a reply..."
-                      rows="2"
-                      class="w-full px-3 py-2 text-[13px] bg-white border border-stone-200 rounded-lg resize-none focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all"
-                      required></textarea>
+            <div class="relative">
+                {% if saved_reply_options %}
+                {{ saved_reply_options|json_script:"saved-replies-data" }}
+                <ul id="saved-reply-picker" role="listbox" aria-label="Saved replies" class="inbox-slash-picker" hidden></ul>
+                {% endif %}
+                <textarea name="body"
+                          id="inbox-reply-body"
+                          x-model="replyText"
+                          placeholder="Write a reply...{% if saved_reply_options %} Type / for saved replies.{% endif %}"
+                          rows="2"
+                          {% if saved_reply_options %}
+                          data-saved-replies="saved-replies-data"
+                          role="combobox"
+                          aria-autocomplete="list"
+                          aria-expanded="false"
+                          aria-controls="saved-reply-picker"
+                          {% endif %}
+                          class="w-full px-3 py-2 text-[13px] bg-white border border-stone-200 rounded-lg resize-none focus:outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all"
+                          required></textarea>
+            </div>
+            {% if ai_enabled %}
+            <div data-inline-error="#ai-draft-error" class="mt-2">
+                <div id="ai-draft-result"></div>
+                <p id="ai-draft-error" class="inbox-ai-error" role="alert"></p>
+                <button type="button"
+                        class="inbox-ghost-btn"
+                        hx-post="{% url 'inbox:ai_draft_reply' workspace_id=workspace.id message_id=message.id %}"
+                        hx-target="#ai-draft-result"
+                        hx-swap="innerHTML"
+                        hx-disabled-elt="this"
+                        @click="document.getElementById('ai-draft-error').textContent = ''">
+                    Draft reply
+                </button>
+            </div>
+            {% endif %}
             <div class="flex {% if message.social_account.platform == 'youtube' %}flex-col sm:flex-row gap-2{% endif %} items-center justify-between mt-2">
                 <p class="text-[10px] text-stone-400">Reply will be posted on {% if message.social_account.platform == "youtube" %}YouTube{% else %}{{ message.social_account.get_platform_display|default:message.social_account.platform|title }}{% endif %}</p>
                 <div class="flex items-center gap-2">

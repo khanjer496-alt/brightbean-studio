@@ -40,32 +40,38 @@ logger = logging.getLogger(__name__)
 AI_ACTION_RATE = "20/m"
 
 
-def _ai_view(view_func):
-    """Shared guard for the composer actions: login, permission, POST, rate, AI on.
+def ai_action(permission):
+    """Shared guard for the AI actions: login, ``permission``, POST, rate, AI on.
 
     The wrapped view gets an ``AIContext`` instead of ``workspace_id``, and any
     ``ValueError`` / ``PlanLimitError`` / ``AIError`` it raises becomes a
     plain-text error response the panel shows inline.
     """
 
-    @functools.wraps(view_func)
-    def _wrapped(request, workspace_id, *args, **kwargs):
-        if not ai_available(request.workspace.organization):
-            raise Http404
-        if getattr(request, "limited", False):
-            return HttpResponse(
-                "That's a lot of AI requests in a row. Wait a minute and try again.",
-                status=429,
-                content_type="text/plain",
-            )
-        try:
-            return view_func(request, AIContext(workspace=request.workspace, user=request.user), *args, **kwargs)
-        except (ValueError, PlanLimitError, AIError) as exc:
-            status = getattr(exc, "status_code", 402 if isinstance(exc, PlanLimitError) else 400)
-            return HttpResponse(getattr(exc, "message", str(exc)), status=status, content_type="text/plain")
+    def decorator(view_func):
+        @functools.wraps(view_func)
+        def _wrapped(request, workspace_id, *args, **kwargs):
+            if not ai_available(request.workspace.organization):
+                raise Http404
+            if getattr(request, "limited", False):
+                return HttpResponse(
+                    "That's a lot of AI requests in a row. Wait a minute and try again.",
+                    status=429,
+                    content_type="text/plain",
+                )
+            try:
+                return view_func(request, AIContext(workspace=request.workspace, user=request.user), *args, **kwargs)
+            except (ValueError, PlanLimitError, AIError) as exc:
+                status = getattr(exc, "status_code", 402 if isinstance(exc, PlanLimitError) else 400)
+                return HttpResponse(getattr(exc, "message", str(exc)), status=status, content_type="text/plain")
 
-    guarded = ratelimit(key="user", rate=AI_ACTION_RATE, method="POST", block=False)(_wrapped)
-    return login_required(require_permission("create_posts")(require_POST(guarded)))
+        guarded = ratelimit(key="user", rate=AI_ACTION_RATE, method="POST", block=False)(_wrapped)
+        return login_required(require_permission(permission)(require_POST(guarded)))
+
+    return decorator
+
+
+_ai_view = ai_action("create_posts")
 
 
 def _selected_accounts(request):
