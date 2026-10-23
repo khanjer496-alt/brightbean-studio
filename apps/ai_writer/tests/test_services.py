@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -21,6 +21,16 @@ pytestmark = pytest.mark.django_db
 @pytest.fixture
 def ctx(platform_key, workspace, owner):
     return AIContext(workspace=workspace, user=owner)
+
+
+def _streamed(status_code, headers, chunks=()):
+    """What ``httpx.stream(...)`` returns: a context manager yielding a streamed response."""
+    response = MagicMock(status_code=status_code, headers=headers)
+    response.iter_bytes = MagicMock(return_value=list(chunks))
+    cm = MagicMock()
+    cm.__enter__ = MagicMock(return_value=response)
+    cm.__exit__ = MagicMock(return_value=False)
+    return cm
 
 
 def _long(n):
@@ -175,20 +185,20 @@ class TestLinkToPosts:
         assert AIRequestLog.objects.get().action == "link"
 
     def test_private_addresses_are_refused_without_fetching(self, ctx, fake_claude):
-        with patch("apps.composer.views.httpx.get") as get, pytest.raises(ValueError):
+        with patch("apps.composer.views.httpx.stream") as stream, pytest.raises(ValueError):
             services.link_to_posts(ctx, "http://127.0.0.1:8000/admin/")
-        get.assert_not_called()
+        stream.assert_not_called()
         assert fake_claude.calls == []
 
     def test_redirect_to_a_private_address_is_refused(self, ctx, fake_claude):
-        redirect = SimpleNamespace(status_code=302, headers={"Location": "http://10.0.0.5/secret"})
+        redirect = _streamed(302, {"Location": "http://10.0.0.5/secret"})
         with (
             patch("apps.composer.views.is_safe_url", side_effect=lambda url: "10.0.0.5" not in url),
-            patch("apps.composer.views.httpx.get", return_value=redirect) as get,
+            patch("apps.composer.views.httpx.stream", return_value=redirect) as stream,
             pytest.raises(ValueError),
         ):
             services.link_to_posts(ctx, "https://example.com/r")
-        assert get.call_count == 1  # the private hop is never requested
+        assert stream.call_count == 1  # the private hop is never requested
         assert fake_claude.calls == []
 
     def test_non_html_is_refused(self, ctx, fake_claude):
@@ -200,6 +210,27 @@ class TestLinkToPosts:
             pytest.raises(ValueError),
         ):
             services.link_to_posts(ctx, "https://example.com/file.pdf")
+        assert fake_claude.calls == []
+
+    def test_page_over_two_megabytes_is_refused(self, ctx, fake_claude):
+        page = _streamed(200, {"content-type": "text/html"}, [b"<p>" + b"x" * 1024 * 1024] * 3)
+        with (
+            patch("apps.composer.views.is_safe_url", return_value=True),
+            patch("apps.composer.views.httpx.stream", return_value=page),
+            pytest.raises(ValueError, match="under 2 MB"),
+        ):
+            services.link_to_posts(ctx, "https://example.com/huge")
+        assert fake_claude.calls == []
+
+    def test_video_is_refused_before_download(self, ctx, fake_claude):
+        video = _streamed(200, {"content-type": "video/mp4"}, [b"\x00" * 10])
+        with (
+            patch("apps.composer.views.is_safe_url", return_value=True),
+            patch("apps.composer.views.httpx.stream", return_value=video),
+            pytest.raises(ValueError),
+        ):
+            services.link_to_posts(ctx, "https://example.com/clip.mp4")
+        video.__enter__.return_value.iter_bytes.assert_not_called()
         assert fake_claude.calls == []
 
     def test_save_as_ideas_and_drafts(self, ctx, workspace, owner, bluesky):
@@ -274,6 +305,46 @@ class TestAllowanceAndAudit:
         fake_claude.queue({"text": "Hi"})
         assert services.write_caption(ctx, "hello") == "Hi"
         assert AIRequestLog.objects.filter(used_organization_key=True).count() == 1
+
+    def test_adapt_reserves_a_call_per_account_up_front(self, ctx, settings, bluesky, linkedin, facebook, fake_claude):
+        settings.BILLING_ENABLED = True
+        set_plan(ctx.organization, "free")
+        self._use_allowance(ctx, 17)  # 3 left; adapting for 3 accounts can take 4
+        with pytest.raises(PlanLimitError) as exc_info:
+            services.adapt_for_networks(ctx, "Launch", [bluesky, linkedin, facebook])
+        assert "up to 4 AI requests" in str(exc_info.value) and "3 left" in str(exc_info.value)
+        assert fake_claude.calls == []
+
+    def test_link_reserves_its_shorten_passes(self, ctx, settings, bluesky, fake_claude):
+        settings.BILLING_ENABLED = True
+        set_plan(ctx.organization, "free")
+        self._use_allowance(ctx, 17)
+        with (
+            patch("apps.composer.views._safe_fetch_feed") as fetch,
+            pytest.raises(PlanLimitError),
+        ):
+            services.link_to_posts(ctx, "https://example.com/a", count=3, accounts=[bluesky])
+        fetch.assert_not_called()
+
+    def test_shorten_pass_is_skipped_rather_than_overshooting(self, ctx, settings, bluesky, fake_claude):
+        settings.BILLING_ENABLED = True
+        set_plan(ctx.organization, "free")
+        self._use_allowance(ctx, 19)  # the last one
+        fake_claude.queue({"text": _long(500)})
+        text = services.write_caption(ctx, "launch", [bluesky])
+        assert len(text) <= 300 and len(fake_claude.calls) == 1
+
+    def test_own_key_has_a_daily_safety_cap(self, ctx, settings, fake_claude):
+        from apps.ai_writer.client import AIDailyCapError
+
+        settings.AI_ORGANIZATION_KEY_DAILY_CAP = 3
+        OrganizationAIKey.objects.create(organization=ctx.organization, api_key="sk-ant-own-key-000000")
+        self._use_allowance(ctx, 2, used_organization_key=True, status=AIRequestLog.Status.FAILED)
+        fake_claude.queue({"text": "Hi"})
+        services.write_caption(ctx, "hello")  # the 3rd
+        with pytest.raises(AIDailyCapError):
+            services.write_caption(ctx, "hello")
+        assert len(fake_claude.calls) == 1
 
     def test_unlimited_without_billing(self, ctx, fake_claude):
         self._use_allowance(ctx, 10_000)

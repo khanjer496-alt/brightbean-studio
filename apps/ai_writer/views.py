@@ -194,7 +194,9 @@ def thread(request, ctx):
 @require_http_methods(["GET", "POST"])
 def org_settings(request):
     org = request.org
-    org_key = OrganizationAIKey.objects.filter(organization=org).first()
+    # The key itself is never needed here (only its hint), so it isn't loaded
+    # or decrypted — the page works even if it can no longer be decrypted.
+    org_key = OrganizationAIKey.objects.filter(organization=org).defer("api_key").first()
 
     if request.method == "POST":
         action = request.POST.get("action")

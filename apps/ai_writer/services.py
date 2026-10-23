@@ -9,31 +9,38 @@ Every action:
 
 1. resolves the organization's provider (``client.resolve_ai``) — its own
    key if it saved one, otherwise the platform key;
-2. checks the plan's daily AI allowance (platform key only);
+2. reserves the most provider calls it can make against the day's budget —
+   the plan's allowance on the platform key, a fixed safety cap
+   (``AI_ORGANIZATION_KEY_DAILY_CAP``) on the organization's own key — and
+   refuses up front if they don't fit, so no action overshoots it;
 3. sends one prompt whose system part carries the workspace's brand voice
    and the rule that quoted material is data, never instructions;
 4. writes an ``AIRequestLog`` row, answered or not;
 5. fits whatever comes back to each account's character limit — the model
    is told the limit, but a caption that would be rejected at publish time
    is never returned: an over-long answer gets one "shorten" pass and is
-   then trimmed at a word boundary.
+   then trimmed at a word boundary (the shorten pass is skipped once the
+   action's reservation is spent).
 """
 
 from __future__ import annotations
 
+import datetime as dt
 import html
 import logging
 import re
 import time
 from dataclasses import dataclass
 
+from django.conf import settings
 from django.db import transaction
+from django.utils import timezone
 from django.utils.html import strip_tags
 
-from apps.billing.entitlements import check_can_use_ai
+from apps.billing.entitlements import ai_requests_remaining, check_can_use_ai
 from providers import writing_style_for
 
-from .client import AIConfig, AIError, AINotConfiguredError, AIResponseError, resolve_ai
+from .client import AIConfig, AIDailyCapError, AIError, AINotConfiguredError, AIResponseError, resolve_ai
 from .models import AIRequestLog
 
 logger = logging.getLogger(__name__)
@@ -173,16 +180,23 @@ _ADAPT_SCHEMA = {
 }
 
 
-def _config_for(ctx: AIContext) -> AIConfig:
-    config = resolve_ai(ctx.organization)
-    if config is None:
-        raise AINotConfiguredError()
-    return config
+@dataclass
+class AIRun:
+    """One action's provider and what's left of the calls it reserved (None: no cap)."""
+
+    config: AIConfig
+    remaining: int | None
+
+    def can_call(self) -> bool:
+        return self.remaining is None or self.remaining > 0
 
 
-def _run(ctx: AIContext, config: AIConfig, *, action: str, prompt: str, schema: dict) -> dict:
+def _run(ctx: AIContext, run: AIRun, *, action: str, prompt: str, schema: dict) -> dict:
     """Send one prompt, log it, and return the JSON object the schema describes."""
+    config = run.config
     provider = config.provider
+    if run.remaining is not None:
+        run.remaining -= 1
     started = time.monotonic()
     log = AIRequestLog(
         organization=ctx.organization,
@@ -210,12 +224,38 @@ def _run(ctx: AIContext, config: AIConfig, *, action: str, prompt: str, schema: 
     return completion.data
 
 
-def _start(ctx: AIContext) -> AIConfig:
-    """Resolve the provider and check the plan's allowance, before any prompt is sent."""
-    config = _config_for(ctx)
-    if not config.uses_organization_key:
-        check_can_use_ai(ctx.organization)
-    return config
+def _organization_key_requests_today(organization) -> int:
+    """Calls on the organization's own key in the current UTC day, answered or not."""
+    start = timezone.now().astimezone(dt.UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+    return AIRequestLog.objects.filter(
+        organization=organization, used_organization_key=True, created_at__gte=start
+    ).count()
+
+
+def _start(ctx: AIContext, *, reserve: int = 1, max_calls: int | None = None) -> AIRun:
+    """Resolve the provider and reserve ``reserve`` calls, before any prompt is sent.
+
+    ``reserve`` must fit in what's left of the day or the action is refused
+    with a message saying so; the action may then make up to ``max_calls``
+    (default ``reserve``) while the day's budget lasts — a best-effort
+    shorten pass is skipped rather than run past it.
+
+    On the platform key the budget is the plan's daily allowance. On the
+    organization's own key the allowance doesn't apply (their provider bills
+    them), but a fixed daily safety cap does, so a runaway script stops.
+    """
+    max_calls = max(max_calls or reserve, reserve)
+    config = resolve_ai(ctx.organization)
+    if config is None:
+        raise AINotConfiguredError()
+    if config.uses_organization_key:
+        remaining = max(settings.AI_ORGANIZATION_KEY_DAILY_CAP - _organization_key_requests_today(ctx.organization), 0)
+        if remaining < reserve:
+            raise AIDailyCapError()
+    else:
+        check_can_use_ai(ctx.organization, reserve)
+        remaining = ai_requests_remaining(ctx.organization)
+    return AIRun(config=config, remaining=max_calls if remaining is None else min(remaining, max_calls))
 
 
 def _text(data: dict) -> str:
@@ -262,16 +302,18 @@ def truncate_to_limit(text: str, limit: int, measure=len) -> str:
     return candidate + ELLIPSIS if candidate else ""
 
 
-def _fit_to_account(ctx: AIContext, config: AIConfig, text: str, account) -> str:
-    """Return ``text`` within ``account``'s limit: one shorten pass, then a trim."""
+def _fit_to_account(ctx: AIContext, run: AIRun, text: str, account) -> str:
+    """Return ``text`` within ``account``'s limit: one shorten pass (if the reservation allows), then a trim."""
     limit = account.char_limit
     if account.caption_wire_length(text) <= limit:
         return text
+    if not run.can_call():
+        return truncate_to_limit(text, limit, account.caption_wire_length)
     try:
         shorter = _text(
             _run(
                 ctx,
-                config,
+                run,
                 action="shorten",
                 prompt=(
                     f"This post is too long for {account.get_platform_display()}, which allows at most {limit} "
@@ -302,8 +344,9 @@ def write_caption(ctx: AIContext, prompt: str, accounts=()) -> str:
     if not prompt:
         raise ValueError("Describe what the post should be about.")
     accounts = list(accounts)
-    config = _start(ctx)
     tightest = _tightest(accounts)
+    # The caption, plus a shorten pass if it comes back too long.
+    run = _start(ctx, max_calls=2 if tightest else 1)
     targets = ""
     if accounts:
         targets = "\n\nIt will be posted to:\n" + "\n".join(_account_line(a) for a in accounts)
@@ -311,13 +354,13 @@ def write_caption(ctx: AIContext, prompt: str, accounts=()) -> str:
     text = _text(
         _run(
             ctx,
-            config,
+            run,
             action="write",
             prompt=f"Write one social media post based on this request.{targets}\n\n<request>\n{_escape_tags(prompt)}\n</request>",
             schema=_TEXT_SCHEMA,
         )
     )
-    return _fit_to_account(ctx, config, text, tightest) if tightest else text
+    return _fit_to_account(ctx, run, text, tightest) if tightest else text
 
 
 def improve_caption(ctx: AIContext, caption: str, mode: str, *, language: str = "", accounts=()) -> str:
@@ -334,19 +377,19 @@ def improve_caption(ctx: AIContext, caption: str, mode: str, *, language: str = 
             raise ValueError("Name the language to translate into, e.g. Spanish.")
         instruction = instruction.format(language=language)
     accounts = list(accounts)
-    config = _start(ctx)
     tightest = _tightest(accounts)
+    run = _start(ctx, max_calls=2 if tightest else 1)
     limit_note = f" Keep it within {tightest.char_limit} characters." if tightest else ""
     text = _text(
         _run(
             ctx,
-            config,
+            run,
             action=f"improve_{mode}",
             prompt=f"Rewrite this social media post. {instruction}{limit_note}\n\n<draft>\n{_escape_tags(caption)}\n</draft>",
             schema=_TEXT_SCHEMA,
         )
     )
-    return _fit_to_account(ctx, config, text, tightest) if tightest else text
+    return _fit_to_account(ctx, run, text, tightest) if tightest else text
 
 
 def adapt_for_networks(ctx: AIContext, caption: str, accounts) -> dict[str, str]:
@@ -361,10 +404,12 @@ def adapt_for_networks(ctx: AIContext, caption: str, accounts) -> dict[str, str]
         raise ValueError("Write a caption first, then adapt it for each network.")
     if not accounts:
         raise ValueError("Choose at least one account to adapt the caption for.")
-    config = _start(ctx)
+    # One call for every caption, plus a possible shorten pass per account:
+    # all reserved up front so adapting can't run past the day's allowance.
+    run = _start(ctx, reserve=1 + len(accounts))
     data = _run(
         ctx,
-        config,
+        run,
         action="adapt",
         prompt=(
             "Adapt this social media post for each account below. Keep the core message and facts; change "
@@ -383,7 +428,7 @@ def adapt_for_networks(ctx: AIContext, caption: str, accounts) -> dict[str, str]
     for account in accounts:
         # An account the model skipped keeps the original, fitted to its limit.
         text = by_id.get(str(account.id)) or caption
-        adapted[str(account.id)] = _fit_to_account(ctx, config, text, account)
+        adapted[str(account.id)] = _fit_to_account(ctx, run, text, account)
     return adapted
 
 
@@ -393,11 +438,11 @@ def suggest_hashtags(ctx: AIContext, caption: str, *, count: int = 10) -> list[s
     if not caption:
         raise ValueError("Write a caption first, then ask for hashtags.")
     count = max(1, min(int(count), MAX_HASHTAGS))
-    config = _start(ctx)
+    run = _start(ctx)
     items = _items(
         _run(
             ctx,
-            config,
+            run,
             action="hashtags",
             prompt=(
                 f"Suggest up to {count} relevant hashtags for this post, most relevant first. Mix broad and niche "
@@ -432,11 +477,11 @@ def split_into_thread(ctx: AIContext, text: str, account) -> list[str]:
         return [text]
     # Room for the longest numbering this split could need (" 99/99").
     budget = limit - len(" 99/99")
-    config = _start(ctx)
+    run = _start(ctx)
     parts = _items(
         _run(
             ctx,
-            config,
+            run,
             action="thread",
             prompt=(
                 f"Split this text into a thread of posts for {account.get_platform_display()}. Each part must be at "
@@ -477,15 +522,20 @@ def _page_text(markup: str) -> tuple[str, str]:
     return title[:300], body[:MAX_PAGE_CHARS]
 
 
+# A page read for link → posts is cut off past this many bytes (decoded), and
+# only these media types are read at all, so a link to a video or a huge file
+# is refused before its body is downloaded.
+LINK_MAX_BYTES = 2 * 1024 * 1024
+LINK_CONTENT_TYPES = frozenset({"text/html", "application/xhtml+xml", "text/plain"})
+
+
 def fetch_link(url: str) -> tuple[str, str]:
     """Fetch a public web page for summarising and return (title, text).
 
     Uses the composer's SSRF-safe fetch (the one RSS feeds go through): http(s)
     only, every redirect hop re-checked against private and reserved
-    addresses.
+    addresses, the body streamed and capped at ``LINK_MAX_BYTES``.
     """
-    from django.conf import settings
-
     # Lives with the feed reader in the composer; imported here rather than
     # duplicated so both share one set of SSRF rules.
     from apps.composer.views import _safe_fetch_feed
@@ -497,13 +547,16 @@ def fetch_link(url: str) -> tuple[str, str]:
         "Accept": "text/html,application/xhtml+xml;q=0.9,text/plain;q=0.8",
         "User-Agent": f"{settings.BRAND_SHORT_NAME} Link Reader/1.0",
     }
-    response, _final_url = _safe_fetch_feed(url, headers)
+    response, _final_url = _safe_fetch_feed(url, headers, max_bytes=LINK_MAX_BYTES, content_types=LINK_CONTENT_TYPES)
     if response is None:
-        raise ValueError("That link couldn't be opened. Check it's a public http(s) page.")
+        raise ValueError(
+            "That link couldn't be read. Check it's a public http(s) web page (not a file or video) "
+            f"under {LINK_MAX_BYTES // (1024 * 1024)} MB."
+        )
     if response.status_code >= 400:
         raise ValueError(f"That page answered with an error (HTTP {response.status_code}).")
-    content_type = response.headers.get("Content-Type", "").lower()
-    if content_type and not any(t in content_type for t in ("text/html", "application/xhtml", "text/plain")):
+    content_type = response.headers.get("Content-Type", "").split(";")[0].strip().lower()
+    if content_type not in LINK_CONTENT_TYPES:
         raise ValueError("That link isn't a web page the assistant can read.")
     title, text = _page_text(response.text)
     if len(text) < 40:
@@ -515,16 +568,17 @@ def link_to_posts(ctx: AIContext, url: str, *, count: int = 3, accounts=()) -> l
     """Summarise the page at ``url`` into ``count`` distinct post drafts."""
     count = max(1, min(int(count), MAX_LINK_POSTS))
     accounts = list(accounts)
-    # Resolve the provider and allowance first, so a request that can't run
-    # doesn't fetch the page.
-    config = _start(ctx)
-    title, text = fetch_link(url)
     tightest = _tightest(accounts)
+    # Resolve the provider and reserve the calls first (the drafts, plus a
+    # possible shorten pass for each), so a request that can't run doesn't
+    # fetch the page.
+    run = _start(ctx, reserve=1 + (count if tightest else 0))
+    title, text = fetch_link(url)
     limit_note = f" Keep each within {tightest.char_limit} characters." if tightest else ""
     items = _items(
         _run(
             ctx,
-            config,
+            run,
             action="link",
             prompt=(
                 f"Below is text extracted from a web page. Write {count} distinct social media posts that share it, "
@@ -538,7 +592,7 @@ def link_to_posts(ctx: AIContext, url: str, *, count: int = 3, accounts=()) -> l
     if not items:
         raise AIResponseError()
     if tightest:
-        items = [_fit_to_account(ctx, config, item, tightest) for item in items]
+        items = [_fit_to_account(ctx, run, item, tightest) for item in items]
     return items
 
 

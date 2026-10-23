@@ -51,6 +51,14 @@ class TestResolution:
         _generate(organization)
         assert fake_claude.clients[-1]["api_key"] == "sk-ant-org-own-key-0000"
 
+    def test_undecryptable_organization_key_falls_back_instead_of_crashing(self, platform_key, organization):
+        from unittest.mock import patch
+
+        OrganizationAIKey.objects.create(organization=organization, api_key="sk-ant-org-own-key-0000")
+        with patch("apps.common.encryption.decrypt_value", side_effect=ValueError("bad tag")):
+            config = resolve_ai(organization)
+        assert config.uses_organization_key is False
+
     def test_organization_key_alone_turns_ai_on(self, organization):
         OrganizationAIKey.objects.create(organization=organization, api_key="sk-ant-org-own-key-0000")
         assert ai_available(organization)

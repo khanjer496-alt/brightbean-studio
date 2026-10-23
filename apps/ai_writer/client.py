@@ -73,6 +73,16 @@ class AIRefusalError(AIError):
     default_message = "The AI assistant declined to write that. Try rephrasing your request."
 
 
+class AIDailyCapError(AIError):
+    """An organization's own key hit the platform's per-day safety cap (``AI_ORGANIZATION_KEY_DAILY_CAP``)."""
+
+    code = "ai_daily_cap"
+    status_code = 429
+    default_message = (
+        "This organization has reached today's safety limit for AI requests on its own key. It resets at midnight UTC."
+    )
+
+
 class AIResponseError(AIError):
     code = "ai_bad_response"
     default_message = "The AI assistant returned something unexpected. Please try again."
@@ -133,8 +143,12 @@ class AnthropicProvider(AIProvider):
             response = client.beta.messages.create(
                 model=self.model,
                 max_tokens=max_tokens,
-                # The system prompt carries the workspace's brand voice, which is
-                # stable across a writing session — cache it.
+                # The system prompt (fixed rules + the workspace's brand voice) is
+                # byte-identical across a writing session, and the user's text
+                # comes after it, so one breakpoint here caches it. Below the
+                # model's minimum cacheable prefix (512 tokens on Opus 5.5) the
+                # marker is silently ignored at no cost — that's the case for
+                # the bare rules; a brand voice with examples crosses it.
                 system=[{"type": "text", "text": system, "cache_control": {"type": "ephemeral"}}],
                 messages=[{"role": "user", "content": prompt}],
                 # Captions are short and the instructions explicit; low effort
@@ -232,7 +246,13 @@ def resolve_ai(organization) -> AIConfig | None:
     from .models import OrganizationAIKey
 
     if organization is not None:
-        org_key = OrganizationAIKey.objects.filter(organization=organization).first()
+        try:
+            org_key = OrganizationAIKey.objects.filter(organization=organization).first()
+        except ValueError:
+            # Undecryptable (e.g. after a SECRET_KEY rotation): don't break the
+            # composer; the admin can replace or remove it on the settings page.
+            logger.error("Organization %s has an AI key that can't be decrypted", organization.pk)
+            org_key = None
         if org_key and org_key.api_key and org_key.provider in AI_PROVIDERS:
             provider_cls = AI_PROVIDERS[org_key.provider]
             return AIConfig(

@@ -798,6 +798,10 @@ ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
 # Seconds per provider call. The composer waits on it, so keep it short; the
 # SDK retries once on a timeout or 5xx before the user sees an error.
 AI_REQUEST_TIMEOUT = env.int("AI_REQUEST_TIMEOUT", default=45)
+# Requests on an organization's own key don't count against the plan's daily
+# allowance, but this many a UTC day (answered or not) is a hard safety stop
+# for a runaway script or loop.
+AI_ORGANIZATION_KEY_DAILY_CAP = env.int("AI_ORGANIZATION_KEY_DAILY_CAP", default=10_000)
 
 # ---------------------------------------------------------------------------
 # Intelligence integration (optional hosted SaaS)

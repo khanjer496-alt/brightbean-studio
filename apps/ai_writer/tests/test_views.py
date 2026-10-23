@@ -35,6 +35,35 @@ class TestComposerPanel:
         response = owner_client.get(reverse("composer:compose", kwargs={"workspace_id": workspace.id}))
         assert b'id="ai-panel"' in response.content
 
+    def test_viewers_cannot_spend_ai_requests(self, platform_key, workspace, organization, fake_claude):
+        from django.test import Client
+        from django.utils import timezone
+
+        from apps.accounts.models import User
+        from apps.members.models import OrgMembership, WorkspaceMembership
+
+        viewer = User.objects.create_user(
+            email="viewer@example.com", password="testpass123", name="Viewer", tos_accepted_at=timezone.now()
+        )
+        OrgMembership.objects.filter(user=viewer).exclude(organization=organization).delete()
+        OrgMembership.objects.create(user=viewer, organization=organization, org_role=OrgMembership.OrgRole.MEMBER)
+        WorkspaceMembership.objects.create(
+            user=viewer, workspace=workspace, workspace_role=WorkspaceMembership.WorkspaceRole.VIEWER
+        )
+        client = Client()
+        client.force_login(viewer)
+        for name in ("write", "improve", "adapt", "hashtags", "link", "link_save", "thread"):
+            assert client.post(_url(name, workspace), {"ai_prompt": "x", "caption": "x"}).status_code == 403
+        assert fake_claude.calls == []
+
+    def test_actions_need_the_csrf_token(self, platform_key, owner, workspace, fake_claude):
+        from django.test import Client
+
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(owner)
+        assert client.post(_url("write", workspace), {"ai_prompt": "x"}).status_code == 403
+        assert fake_claude.calls == []
+
     def test_endpoints_404_without_a_key(self, owner_client, workspace, fake_claude):
         for name in ("write", "improve", "adapt", "hashtags", "link", "link_save", "thread"):
             assert owner_client.post(_url(name, workspace), {"ai_prompt": "x"}).status_code == 404
@@ -173,6 +202,18 @@ class TestOrganizationKeySettings:
     def test_rejects_junk(self, owner_client):
         owner_client.post(reverse("ai_writer_org:settings"), {"provider": "anthropic", "api_key": "short"})
         owner_client.post(reverse("ai_writer_org:settings"), {"provider": "other", "api_key": "x" * 40})
+        assert not OrganizationAIKey.objects.exists()
+
+    def test_page_works_when_the_key_cannot_be_decrypted(self, owner_client, organization):
+        from unittest.mock import patch
+
+        OrganizationAIKey.objects.create(
+            organization=organization, api_key="sk-ant-api03-first-key-AAAA", key_hint="AAAA"
+        )
+        with patch("apps.common.encryption.decrypt_value", side_effect=ValueError("bad tag")):
+            page = owner_client.get(reverse("ai_writer_org:settings"))
+            assert page.status_code == 200 and "…AAAA" in page.content.decode()
+            owner_client.post(reverse("ai_writer_org:settings"), {"action": "remove_key"})
         assert not OrganizationAIKey.objects.exists()
 
     def test_members_cannot_open_it(self, editor_client):

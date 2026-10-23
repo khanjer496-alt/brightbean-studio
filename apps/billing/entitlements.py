@@ -275,18 +275,38 @@ def check_can_schedule_posts(org, count: int = 1, when: dt.datetime | None = Non
     )
 
 
-def check_can_use_ai(org) -> None:
-    """Refuse once today's AI requests on the platform key reach the plan's cap."""
+def ai_requests_remaining(org) -> int | None:
+    """AI requests left on the platform key today, or None when the plan has no cap."""
     ent = get_entitlements(org)
     if ent.max_ai_requests_per_day is None:
+        return None
+    return max(ent.max_ai_requests_per_day - ai_request_count(org), 0)
+
+
+def check_can_use_ai(org, count: int = 1) -> None:
+    """Refuse unless ``count`` more AI requests on the platform key fit in today's plan cap.
+
+    ``count`` is the most provider calls one action can make (adapting a
+    caption for five accounts may need a "shorten" pass for each), reserved
+    up front so an action can't run the organization past its allowance.
+    """
+    remaining = ai_requests_remaining(org)
+    if remaining is None or remaining >= count:
         return
-    used = ai_request_count(org)
-    if used < ent.max_ai_requests_per_day:
-        return
+    ent = get_entitlements(org)
+    if remaining == 0:
+        message = (
+            f"Your {ent.plan.name} plan includes {ent.max_ai_requests_per_day:,} AI requests a day and this "
+            f"organization has used them all."
+        )
+    else:
+        message = (
+            f"That can take up to {count} AI requests and this organization has {remaining} left today on "
+            f"the {ent.plan.name} plan. Try it with fewer accounts or posts."
+        )
     raise PlanLimitError(
-        f"Your {ent.plan.name} plan includes {ent.max_ai_requests_per_day:,} AI requests a day and this "
-        f"organization has used them all. The allowance resets at midnight UTC — upgrade your plan "
-        f"or add your own AI provider key to keep writing with AI today.",
+        f"{message} The allowance resets at midnight UTC — upgrade your plan or add your own AI provider "
+        f"key to keep writing with AI today.",
         code="ai_request_limit",
     )
 
