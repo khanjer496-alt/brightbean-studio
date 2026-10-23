@@ -1,7 +1,9 @@
 {% comment %}
 Preview Panel - platform-specific post previews.
 Context: previews (list of dicts with account, title, caption, first_comment, char_count, char_limit, is_over_limit, truncated_caption, needs_title), media_items, workspace.
+Optional: media_issue_groups + media_issues_oob - the preview endpoint swaps the media checks under the composer's media row.
 {% endcomment %}
+{% if media_issues_oob %}{% include "composer/partials/media_issues.html" with oob=True %}{% endif %}
 
 {% if previews %}
     {% for p in previews %}

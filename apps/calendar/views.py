@@ -180,7 +180,17 @@ def _get_filtered_platform_posts(workspace, request):
 
     qs = (
         PlatformPost.objects.filter(post__workspace_id=workspace.id)
-        .select_related("post", "post__author", "post__category", "social_account")
+        .select_related(
+            "post",
+            "post__author",
+            "post__category",
+            "social_account",
+            # Chips mark a repeating series — the first post holds the rule,
+            # its copies reach it through recurrence_source. Joined here so a
+            # chip doesn't query for it.
+            "post__recurrence_rule",
+            "post__recurrence_source__recurrence_rule",
+        )
         # Chips render the post's first media thumbnail; without this each chip
         # would fire its own media_attachments + media_asset queries (N+1) on
         # every month/week/day render.
@@ -1276,7 +1286,12 @@ def bulk_platform_action(request, workspace_id):
     from django.db.models.functions import Coalesce
     from django.utils import timezone as _tz
 
-    from apps.composer.services import media_types_by_post, require_publishable, sync_post_scheduled_at
+    from apps.composer.services import (
+        media_assets_by_post,
+        media_types_by_post,
+        require_publishable,
+        sync_post_scheduled_at,
+    )
 
     workspace = _get_workspace(request, workspace_id)
     action = request.POST.get("action")
@@ -1315,10 +1330,15 @@ def bulk_platform_action(request, workspace_id):
         # before, and publishing now only moves them in time.
         promoting = [pp for pp in pps if _promotes_to_scheduled(pp)]
         media_by_post = media_types_by_post({pp.post_id for pp in promoting})
+        assets_by_post = media_assets_by_post({pp.post_id for pp in promoting})
         blocked = []
         for pp in promoting:
             try:
-                require_publishable(pp, media_types=media_by_post.get(pp.post_id, set()))
+                require_publishable(
+                    pp,
+                    media_types=media_by_post.get(pp.post_id, set()),
+                    assets=assets_by_post.get(pp.post_id, []),
+                )
             except ValueError as exc:
                 blocked.append(str(exc))
         if blocked:
