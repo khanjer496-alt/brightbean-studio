@@ -1,0 +1,9 @@
+{% extends "legal/base.html" %}
+{% block title %}Data deletion status{% endblock %}
+{% block content %}
+<h1>Data deletion status</h1>
+<p class="legal-meta">Confirmation code <code>{{ deletion_request.code }}</code></p>
+<p><strong>Completed.</strong> We processed this {{ deletion_request.get_source_display }} data deletion request on {{ deletion_request.created_at|date:"j F Y" }}.
+{% if deletion_request.accounts_removed %}We deleted {{ deletion_request.accounts_removed }} connected account{{ deletion_request.accounts_removed|pluralize }} and the data held for {{ deletion_request.accounts_removed|pluralize:"it,them" }}.{% else %}We found no connected accounts or data for this user.{% endif %}</p>
+<p>Questions? Email <a href="mailto:{{ brand_support_email }}">{{ brand_support_email }}</a> and quote the confirmation code.</p>
+{% endblock %}

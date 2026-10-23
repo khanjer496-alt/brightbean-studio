@@ -1,0 +1,29 @@
+{% extends "legal/base.html" %}
+{% block title %}Licenses{% endblock %}
+{% block description %}Open source licences and attributions for {{ brand_name }}.{% endblock %}
+{% block content %}
+<h1>Licenses</h1>
+<p class="legal-meta">Open source notices</p>
+
+<h2>{{ brand_name }} source code (AGPL-3.0)</h2>
+<p>{{ brand_name }} is free software under the GNU Affero General Public License, version 3. It is a modified version of <a href="{{ upstream_source_url }}" rel="noopener noreferrer">BrightBean Studio</a>. As the AGPL requires, you may obtain the complete corresponding source code of the version running here at <a href="{{ source_code_url }}" rel="noopener noreferrer">{{ source_code_url }}</a>, and the upstream project at <a href="{{ upstream_source_url }}" rel="noopener noreferrer">{{ upstream_source_url }}</a>. The licence text is in the <code>LICENSE</code> file of the repository and at <a href="https://www.gnu.org/licenses/agpl-3.0.html" rel="noopener noreferrer">gnu.org/licenses/agpl-3.0</a>. The software comes with no warranty. These notices do not change the <a href="{% url 'legal:terms' %}">Terms of Service</a>, which govern the hosted service.</p>
+
+<h2>Bundled front-end assets</h2>
+<div class="legal-table-wrap" tabindex="0" role="region" aria-label="Third-party front-end assets">
+<table class="legal-table">
+    <caption>Third-party assets used in the web interface</caption>
+    <thead><tr><th scope="col">Asset</th><th scope="col">Version</th><th scope="col">Licence</th><th scope="col">Delivery</th></tr></thead>
+    <tbody>
+    {% for asset in assets %}
+        <tr>
+            <th scope="row"><a href="{{ asset.url }}" rel="noopener noreferrer">{{ asset.name }}</a></th>
+            <td>{{ asset.version|default:"-" }}</td>
+            <td>{{ asset.license }}</td>
+            <td>{{ asset.delivery }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+<p>Back-end dependencies (Django, allauth and others) are listed with their licences in the source repository's requirements files.</p>
+{% endblock %}

@@ -1,0 +1,36 @@
+{% extends "legal/base.html" %}
+{% block title %}Data deletion{% endblock %}
+{% block description %}How to delete your {{ brand_name }} account and data.{% endblock %}
+{% block content %}
+{# DRAFT FOR THE OWNER'S LEGAL REVIEW: not reviewed by a lawyer; do not treat as final legal text. #}
+<h1>Data deletion</h1>
+<p class="legal-meta">How to remove your {{ brand_name }} data</p>
+
+<h2>Delete your account in the app</h2>
+<ol>
+    <li>Sign in and open <strong>Settings</strong> from the profile menu.</li>
+    <li>Choose <strong>Delete account</strong> at the bottom of the Profile page{% if user.is_authenticated %} (<a href="{% url 'accounts:delete_account' %}">go there now</a>){% endif %}.</li>
+    <li>Confirm with your password (and your authenticator or recovery code if you use two-factor sign-in), then type the confirmation phrase.</li>
+</ol>
+<p>What happens:</p>
+<ul>
+    <li>We ask each connected platform to revoke the access you granted, where the platform supports revocation. YouTube data is deleted immediately.</li>
+    <li>Your profile, sign-in methods, sessions and notifications are deleted right away.</li>
+    <li>Organizations in which you are the only member are deleted with everything in them: workspaces, connected channels, posts, media, inbox messages and analytics.</li>
+    <li>In organizations with other members, channels and content stay with the organization and are no longer attributed to you. If you are the only owner of an organization that has other members, make someone else an owner first.</li>
+    <li>An active paid subscription must be cancelled first under Plan &amp; billing, so you are not charged after deletion.</li>
+    <li>You are signed out. Backups are overwritten on their normal rotation, and billing records we must keep by law are retained.</li>
+</ul>
+
+<h2>Disconnect a single channel</h2>
+<p>You can remove a connected social account at any time from the workspace's Social accounts page. This revokes the platform grant where supported and deletes the data we hold from it.</p>
+
+<h2>Ask us by email</h2>
+<p>If you cannot sign in, or you are a person whose data reached us through a customer's connected account, email <a href="mailto:{{ brand_support_email }}?subject=Data%20deletion%20request">{{ brand_support_email }}</a> from the address on the account, or tell us enough to find the data. We will confirm and complete the request within 30 days.</p>
+
+<h2>Facebook, Instagram and Threads</h2>
+<p>If you remove {{ brand_name }} from your Facebook or Instagram settings (Business Integrations), Meta sends us a data deletion request and we delete the connected accounts and data we hold for that Meta user. Meta gives you a confirmation code, and you can check progress at <code>{{ request.scheme }}://{{ request.get_host }}{% url 'legal:data_deletion' %}status/&lt;code&gt;/</code>. Developers: our callback URL is <code>{{ request.scheme }}://{{ request.get_host }}{{ meta_callback_path }}</code>.</p>
+
+<h2>Google and YouTube</h2>
+<p>You can also revoke our access to your Google data at <a href="https://security.google.com/settings/security/permissions" rel="noopener noreferrer">Google security settings</a>. See the <a href="{% url 'legal:privacy' %}">Privacy Policy</a> for details.</p>
+{% endblock %}

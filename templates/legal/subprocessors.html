@@ -1,0 +1,24 @@
+{% extends "legal/base.html" %}
+{% block title %}Subprocessors{% endblock %}
+{% block description %}Third parties that process data for {{ brand_name }}.{% endblock %}
+{% block content %}
+{# DRAFT FOR THE OWNER'S LEGAL REVIEW: not reviewed by a lawyer; do not treat as final legal text. #}
+<h1>Subprocessors</h1>
+<p class="legal-meta">Third parties that process customer data for {{ legal_name }}</p>
+<p>We use the providers below to run {{ brand_name }}. Platforms you connect (such as Meta, Google, TikTok or LinkedIn) are not our subprocessors: they receive data because you asked us to publish to or read from them.</p>
+<div class="legal-table-wrap" tabindex="0" role="region" aria-label="Subprocessors">
+<table class="legal-table">
+    <caption>Subprocessors</caption>
+    <thead><tr><th scope="col">Provider</th><th scope="col">Purpose</th><th scope="col">Data</th><th scope="col">Location</th></tr></thead>
+    <tbody>
+    {% for item in subprocessors %}
+        <tr><th scope="row">{{ item.name }}</th><td>{{ item.purpose }}</td><td>{{ item.data }}</td><td>{{ item.location }}</td></tr>
+    {% endfor %}
+    {% if sentry_enabled %}
+        <tr><th scope="row">Sentry (Functional Software, Inc.)</th><td>Error monitoring and performance tracing.</td><td>Error details, request metadata, IP address</td><td>United States or EU, per the project's configuration</td></tr>
+    {% endif %}
+    </tbody>
+</table>
+</div>
+<p>Questions or objections about a subprocessor: <a href="mailto:{{ brand_support_email }}">{{ brand_support_email }}</a>. We will update this page before adding a new subprocessor.</p>
+{% endblock %}

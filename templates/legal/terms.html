@@ -1,0 +1,59 @@
+{% extends "legal/base.html" %}
+{% block title %}Terms of Service{% endblock %}
+{% block description %}The terms for using {{ brand_name }}.{% endblock %}
+{% block content %}
+{# DRAFT FOR THE OWNER'S LEGAL REVIEW: not reviewed by a lawyer; do not treat as final legal text. #}
+<h1>Terms of Service</h1>
+<p class="legal-meta">Effective {{ legal_effective_date }}</p>
+
+<p>These terms govern your use of {{ brand_name }}, a hosted service for scheduling and publishing social media posts and managing related messages, operated by {{ legal_name }}, {{ legal_jurisdiction }} ("we", "us"). By creating an account or using the service you agree to them. If you use the service for an organization, you confirm you may bind it.</p>
+
+<h2>1. The service</h2>
+<p>{{ brand_name }} lets you connect social media accounts you control, draft and schedule posts, collaborate with teammates and clients, read and reply to comments and messages from connected platforms, view analytics, and use optional AI writing tools. Features and platform support change over time and depend on what each platform allows.</p>
+
+<h2>2. Your account</h2>
+<ul>
+    <li>You must be at least 16 years old and able to form a binding contract.</li>
+    <li>Give accurate information and keep your credentials and two-factor methods secure. You are responsible for activity under your account.</li>
+    <li>Tell us promptly at <a href="mailto:{{ brand_support_email }}">{{ brand_support_email }}</a> if you suspect unauthorized access.</li>
+</ul>
+
+<h2>3. Connected platforms</h2>
+<p>You may connect only accounts you own or are authorized to manage. Connecting an account grants us the access you approve in that platform's consent screen, which we use to act on your instructions. You must follow each platform's own terms and policies, including those of Meta (Facebook, Instagram, Threads), Google and YouTube, TikTok, LinkedIn, Pinterest, X, Reddit, Discord, Slack, Telegram, Bluesky and Mastodon, as applicable. Platforms may limit, change or withdraw access at any time, and we are not responsible for their actions. By using YouTube features you also agree to the <a href="https://www.youtube.com/t/terms" rel="noopener noreferrer">YouTube Terms of Service</a>. You can revoke our access at any time from the platform's settings or by disconnecting the account in {{ brand_name }}.</p>
+
+<h2>4. Your content</h2>
+<p>You keep ownership of the posts, media, messages and other content you submit ("Your Content"). You grant us a limited licence to host, process, transmit and display it only as needed to run the service for you, including publishing to the platforms you choose and sending it to the AI provider when you use AI features. You are responsible for Your Content, for having the rights to it, and for complying with law and platform rules.</p>
+
+<h2>5. Acceptable use</h2>
+<p>Do not use the service to: break the law or infringe rights; publish spam, deceptive, harassing, hateful or malicious content; evade platform rate limits or rules; scrape or reverse engineer the service beyond what the AGPL licence of the source code allows; probe or disrupt the service; resell access without our written consent; or use the AI tools to generate content that violates the AI provider's usage policy. We may suspend content or accounts that put users, platforms or the service at risk.</p>
+
+<h2>6. AI features</h2>
+<p>AI tools produce suggestions that may be inaccurate or unsuitable. You decide whether to use them and you are responsible for what you publish. When you use them, the text you provide and related context are sent to our AI provider (see the <a href="{% url 'legal:privacy' %}">Privacy Policy</a>).</p>
+
+<h2>7. Plans, billing and cancellation</h2>
+<p>Paid plans are billed in advance through Stripe on the interval you choose and renew automatically until cancelled. You can cancel at any time under Plan &amp; billing; the plan stays active until the end of the paid period. Unless law requires otherwise, fees already paid are not refunded. Trial and plan limits are shown in the app. We may change prices with advance notice for future billing periods.</p>
+
+<h2>8. Third-party and open source software</h2>
+<p>{{ brand_name }} is built on <a href="{{ upstream_source_url }}" rel="noopener noreferrer">BrightBean Studio</a> and other open source software, and the source of this deployment is available at <a href="{{ source_code_url }}" rel="noopener noreferrer">{{ source_code_url }}</a> under the AGPL-3.0. See <a href="{% url 'legal:licenses' %}">Licenses</a>. These terms apply to the hosted service; the software licence governs your rights to the code.</p>
+
+<h2>9. Termination</h2>
+<p>You may stop using the service and delete your account at any time (see <a href="{% url 'legal:data_deletion' %}">Data deletion</a>). We may suspend or terminate access if you breach these terms, if required by law or a platform, or if your use creates risk, and we will give notice where reasonable. On termination your data is deleted as described in the Privacy Policy.</p>
+
+<h2>10. Availability and changes</h2>
+<p>We aim for a reliable service but do not guarantee uninterrupted operation, and scheduled posts depend on third-party platforms being available. We may modify the service. We will give reasonable notice of material changes to these terms, and continued use after the effective date means you accept them.</p>
+
+<h2>11. Disclaimers</h2>
+<p>The service is provided "as is" and "as available", without warranties of any kind to the extent permitted by law, including merchantability, fitness for a particular purpose and non-infringement.</p>
+
+<h2>12. Limitation of liability</h2>
+<p>To the extent permitted by law, we are not liable for indirect, incidental, special, consequential or punitive damages, or for lost profits, revenue, data or goodwill. Our total liability for claims relating to the service is limited to the amount you paid us in the 12 months before the claim. Nothing in these terms limits liability that cannot be limited by law.</p>
+
+<h2>13. Indemnity</h2>
+<p>You will defend and indemnify us against claims arising from Your Content or your breach of these terms or of a platform's rules, to the extent permitted by law.</p>
+
+<h2>14. Governing law and disputes</h2>
+<p>These terms are governed by the laws of {{ legal_governing_law }}, without regard to conflict of law rules. Courts located there have exclusive jurisdiction, except that mandatory consumer protections of your country of residence still apply where required.</p>
+
+<h2>15. Contact</h2>
+<p>{{ legal_name }}<br>{{ legal_address }}<br><a href="mailto:{{ brand_support_email }}">{{ brand_support_email }}</a></p>
+{% endblock %}

@@ -1,0 +1,41 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Legal{% endblock %} - {{ brand_name }}</title>
+    <meta name="description" content="{% block description %}{{ brand_name }} legal information.{% endblock %}">
+    <link rel="icon" href="{% static brand_favicon_ico_static %}" sizes="any">
+    <link rel="icon" type="image/svg+xml" href="{% static brand_favicon_static %}">
+    <link rel="apple-touch-icon" sizes="180x180" href="{% static brand_apple_touch_icon_static %}">
+    <link rel="stylesheet" href="{% static 'css/dist/styles.css' %}">
+    <link rel="stylesheet" href="{% static 'css/postdelegate.css' %}">
+    <link rel="stylesheet" href="{% static 'css/legal.css' %}">
+</head>
+<body class="legal-page">
+<!-- DRAFT: the legal text on these pages is a draft for the owner's legal review and is not legal advice. -->
+<a class="legal-skip" href="#legal-content">Skip to content</a>
+<header class="legal-header">
+    <a class="legal-brand" href="{% url 'dashboard' %}">
+        <img src="{% if brand_name == 'PostDelegate' %}{% static 'img/postdelegate-mark.svg' %}{% else %}{% static brand_logo_static %}{% endif %}" alt="">
+        <span>{{ brand_name }}</span>
+    </a>
+    <nav aria-label="Legal">
+        <ul class="legal-nav">
+            <li><a href="{% url 'legal:terms' %}"{% if legal_page == "terms" %} aria-current="page"{% endif %}>Terms</a></li>
+            <li><a href="{% url 'legal:privacy' %}"{% if legal_page == "privacy" %} aria-current="page"{% endif %}>Privacy</a></li>
+            <li><a href="{% url 'legal:data_deletion' %}"{% if legal_page == "data_deletion" %} aria-current="page"{% endif %}>Data deletion</a></li>
+            <li><a href="{% url 'legal:subprocessors' %}"{% if legal_page == "subprocessors" %} aria-current="page"{% endif %}>Subprocessors</a></li>
+            <li><a href="{% url 'legal:licenses' %}"{% if legal_page == "licenses" %} aria-current="page"{% endif %}>Licenses</a></li>
+        </ul>
+    </nav>
+</header>
+<main id="legal-content" class="legal-main">
+    {% block content %}{% endblock %}
+</main>
+<footer class="legal-footer">
+    <p>&copy; {{ legal_name }}. Questions: <a href="mailto:{{ brand_support_email }}">{{ brand_support_email }}</a></p>
+    {% include "partials/_source_credit.html" %}
+</footer>
+</body>
+</html>
