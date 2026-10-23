@@ -1,0 +1,82 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="strict-origin-when-cross-origin">
+    <meta name="description" content="{{ description }}">
+    <meta name="color-scheme" content="{{ color_scheme }}">
+    <meta name="theme-color" content="{{ theme_color }}">
+    <link rel="canonical" href="{{ canonical_url }}">
+    <meta property="og:type" content="profile">
+    <meta property="og:url" content="{{ canonical_url }}">
+    <meta property="og:title" content="{{ page.title }}">
+    <meta property="og:description" content="{{ description }}">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{{ page.title }}">
+    <meta name="twitter:description" content="{{ description }}">
+    {% if og_image %}<meta property="og:image" content="{{ og_image }}">
+    <meta property="og:image:alt" content="{{ page.title }}">
+    <meta name="twitter:image" content="{{ og_image }}">
+    <link rel="icon" href="{{ avatar_url }}">
+    <link rel="apple-touch-icon" href="{{ avatar_url }}">{% else %}<link rel="icon" href="data:,">{% endif %}
+    <title>{{ page.title }}</title>
+    <link rel="stylesheet" href="{% static 'css/linkinbio.css' %}">
+    {% if page.accent_color %}<link rel="stylesheet" href="{% url 'linkinbio_public:theme' slug=page.slug %}">{% endif %}
+</head>
+<body class="bio bio-theme-{{ page.theme }}" data-click-url="{% url 'linkinbio_public:click' slug=page.slug %}">
+    <main class="bio-main">
+        <header class="bio-header">
+            {% if avatar_url %}<img class="bio-avatar" src="{{ avatar_url }}" alt="" width="96" height="96">{% endif %}
+            <h1 class="bio-title">{{ page.title }}</h1>
+            {% if page.bio %}<p class="bio-text">{{ page.bio|linebreaksbr }}</p>{% endif %}
+        </header>
+
+        {% if socials %}
+        <nav class="bio-socials" aria-label="Social profiles">
+            <ul class="bio-socials-list">
+                {% for social in socials %}
+                <li><a class="bio-social" href="{{ social.url }}" rel="noopener nofollow ugc" target="_blank">{{ social.label }}<span class="bio-sr"> (opens in a new tab)</span></a></li>
+                {% endfor %}
+            </ul>
+        </nav>
+        {% endif %}
+
+        {% if links %}
+        <ul class="bio-links">
+            {% for link in links %}
+            <li>
+                <a class="bio-link" href="{{ link.url }}" rel="noopener nofollow ugc" target="_blank" data-bio-id="{{ link.id }}">
+                    {% if link.thumbnail and link.thumbnail.preview_url %}<img class="bio-thumb" src="{{ link.thumbnail.preview_url }}" alt="" width="44" height="44">{% elif link.icon %}{% include "linkinbio/_icon.html" with icon=link.icon %}{% endif %}
+                    <span class="bio-link-title">{{ link.title }}</span>
+                    <span class="bio-sr">(opens in a new tab)</span>
+                </a>
+            </li>
+            {% endfor %}
+        </ul>
+        {% endif %}
+
+        {% if tiles %}
+        <section class="bio-grid-section" aria-labelledby="bio-latest">
+            <h2 class="bio-subtitle" id="bio-latest">Latest posts</h2>
+            <ul class="bio-grid">
+                {% for tile in tiles %}
+                <li>
+                    {% if tile.url %}
+                    <a class="bio-tile" href="{{ tile.url }}" rel="noopener nofollow ugc" target="_blank"{% if tile.id %} data-bio-id="{{ tile.id }}"{% endif %}><img src="{{ tile.image }}" alt="{{ tile.alt }}" loading="lazy"><span class="bio-sr">(opens in a new tab)</span></a>
+                    {% else %}
+                    <span class="bio-tile"><img src="{{ tile.image }}" alt="{{ tile.alt }}" loading="lazy"></span>
+                    {% endif %}
+                </li>
+                {% endfor %}
+            </ul>
+        </section>
+        {% endif %}
+
+        {% if show_badge %}
+        <footer class="bio-footer"><a class="bio-badge" href="{{ app_url }}" rel="noopener">Made with PostDelegate</a></footer>
+        {% endif %}
+    </main>
+    <script src="{% static 'js/linkinbio.js' %}" defer></script>
+</body>
+</html>

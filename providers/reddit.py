@@ -100,6 +100,8 @@ def default_user_agent() -> str:
 class RedditProvider(SocialProvider):
     """Reddit provider: text and link posts, flair, NSFW/spoiler marks, comment threads."""
 
+    profile_url_template = "https://www.reddit.com/user/{handle}"
+
     # No media: see the module docstring. A post with any is refused before it is
     # scheduled (``accepts_media``) rather than published without it.
     accepts_media = False

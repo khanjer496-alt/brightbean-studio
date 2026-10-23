@@ -2064,3 +2064,114 @@ class UsageResponse(Schema):
     plan_name: str | None = None
     features: list[str] = Field(default_factory=list)
     usage: list[UsageMeterResponse]
+
+
+# ---------------------------------------------------------------------------
+# /bio — link-in-bio pages
+# ---------------------------------------------------------------------------
+
+
+class BioLinkResponse(Schema):
+    id: uuid.UUID
+    title: str
+    url: str
+    icon: str = Field(
+        "", description="``link`` | ``shop`` | ``video`` | ``music`` | ``mail`` | ``calendar`` | ``star`` | ````."
+    )
+    thumbnail_media_id: uuid.UUID | None = None
+    position: int = Field(..., description="Order on the page, 0 first.")
+    starts_at: dt.datetime | None = Field(None, description="The link shows from this instant (UTC).")
+    ends_at: dt.datetime | None = Field(None, description="The link stops showing at this instant (UTC).")
+    is_active: bool
+    visible_now: bool = Field(..., description="Whether visitors see it right now (active and inside its schedule).")
+
+
+class BioPageResponse(Schema):
+    id: uuid.UUID
+    slug: str
+    path: str = Field(..., description="The public path, ``/l/<slug>/``.")
+    url: str = Field(..., description="The public address on this installation.")
+    title: str
+    bio: str
+    theme: str = Field(..., description="``clean`` | ``midnight`` | ``sunrise`` | ``forest``.")
+    accent_color: str = Field("", description="``#RRGGBB`` or blank for the theme's own.")
+    avatar_media_id: uuid.UUID | None = None
+    is_published: bool
+    show_latest_posts: bool
+    posts_account_id: uuid.UUID | None = None
+    social_account_ids: list[uuid.UUID]
+    custom_domain: str | None = None
+    links: list[BioLinkResponse]
+
+
+class BioPagesListResponse(Schema):
+    pages: list[BioPageResponse]
+    limit: int
+    next_cursor: str | None = None
+
+
+class UpdateBioPageRequest(Schema):
+    slug: str | None = Field(None, max_length=40)
+    title: str | None = Field(None, max_length=80)
+    bio: str | None = Field(None, max_length=300)
+    theme: Literal["clean", "midnight", "sunrise", "forest"] | None = None
+    accent_color: str | None = Field(None, max_length=7, description="``#RRGGBB``; ```` clears it.")
+    avatar_media_id: uuid.UUID | None = Field(
+        None, description="An image from the workspace's media library; null removes it."
+    )
+    is_published: bool | None = None
+    show_latest_posts: bool | None = None
+    posts_account_id: uuid.UUID | None = Field(None, description="Only show posts from this account; null for all.")
+    social_account_ids: list[uuid.UUID] | None = Field(None, description="Accounts whose profile icons show.")
+    custom_domain: str | None = Field(
+        None, max_length=253, description="A hostname pointing a CNAME at the app; null clears it."
+    )
+
+
+class CreateBioLinkRequest(Schema):
+    title: str = Field(..., min_length=1, max_length=100)
+    url: str = Field(..., max_length=2000, description="An absolute http(s) address.")
+    icon: str = Field("", max_length=12)
+    thumbnail_media_id: uuid.UUID | None = None
+    starts_at: dt.datetime | None = None
+    ends_at: dt.datetime | None = None
+    is_active: bool = True
+
+
+class UpdateBioLinkRequest(Schema):
+    title: str | None = Field(None, min_length=1, max_length=100)
+    url: str | None = Field(None, max_length=2000)
+    icon: str | None = Field(None, max_length=12)
+    thumbnail_media_id: uuid.UUID | None = None
+    starts_at: dt.datetime | None = None
+    ends_at: dt.datetime | None = None
+    is_active: bool | None = None
+    move: Literal["up", "down"] | None = Field(None, description="Swap the link with its neighbour above or below.")
+
+
+class BioDayStats(Schema):
+    day: dt.date
+    views: int
+    clicks: int
+
+
+class BioLinkStats(Schema):
+    link_id: uuid.UUID
+    title: str
+    kind: str = Field(..., description="``link`` or ``tile`` (a post tile on the latest-posts grid).")
+    clicks: int
+    unique_clicks: int = Field(..., description="Sum of each day's estimated distinct visitors.")
+
+
+class BioStatsResponse(Schema):
+    page_id: uuid.UUID
+    days: int
+    start: dt.date
+    end: dt.date
+    views: int
+    unique_visitors: int = Field(
+        ..., description="Sum of each day's estimated distinct visitors (daily-salted, not stored)."
+    )
+    clicks: int
+    series: list[BioDayStats]
+    links: list[BioLinkStats]

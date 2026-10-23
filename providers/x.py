@@ -253,6 +253,8 @@ def _code_challenge(code_verifier: str) -> str:
 class XProvider(SocialProvider):
     """X provider: OAuth 2.0 + PKCE on the customer's own app; posts, threads, media, polls."""
 
+    profile_url_template = "https://x.com/{handle}"
+
     uses_pkce = True
     user_supplied_credentials = True
     connect_url_name = "connect_x"
@@ -260,6 +262,11 @@ class XProvider(SocialProvider):
     revokes_grant_on_disconnect = True
     mention_lookup = True
     caption_counting = "weighted"
+
+    @classmethod
+    def permalink_for(cls, platform_post_id: str, account) -> str:
+        post_id = (platform_post_id or "").strip()
+        return f"https://x.com/i/web/status/{post_id}" if re.fullmatch(r"[0-9]{1,30}", post_id) else ""
 
     media_rules = {PostType.IMAGE: _IMAGE_RULES, PostType.VIDEO: _VIDEO_RULES}
 

@@ -23,6 +23,7 @@ from apps.api.routers.ai import router as ai_router
 from apps.api.routers.analytics import router as analytics_router
 from apps.api.routers.approvals import router as approvals_router
 from apps.api.routers.best_times import router as best_times_router
+from apps.api.routers.bio import router as bio_router
 from apps.api.routers.brand_kit import router as brand_kit_router
 from apps.api.routers.brand_voice import router as brand_voice_router
 from apps.api.routers.categories import router as categories_router
@@ -163,6 +164,7 @@ api.add_router("/posts", posts_router)
 api.add_router("/media", media_router)
 api.add_router("/analytics", analytics_router)
 api.add_router("/reports", reports_router)
+api.add_router("/bio", bio_router)
 api.add_router("/inbox", inbox_router)
 api.add_router("/ai", ai_router)
 api.add_router("/webhooks", webhooks_router)
@@ -346,6 +348,8 @@ def _action_for_path(method: str, path: str, *, status_code: int) -> str:
         return f"analytics.read.account.{status_code}"
     if "/analytics/posts/" in path:
         return f"analytics.read.post.{status_code}"
+    if "/bio/" in path:
+        return f"bio.{status_code}"
     if "/reports" in path:
         return f"reports.{status_code}"
     if "/posts/" in path:

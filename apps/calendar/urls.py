@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views, views_best_times, views_evergreen
+from . import grid_views, views, views_best_times, views_evergreen
 
 app_name = "calendar"
 
@@ -9,6 +9,11 @@ urlpatterns = [
     path("", views.calendar_view, name="calendar"),
     # Drag-and-drop reschedule
     path("reschedule/", views.reschedule_post, name="reschedule"),
+    # Instagram-style grid preview: reorder scheduled posts by swapping their times
+    path("grid/", grid_views.grid_index, name="grid_index"),
+    path("grid/<uuid:account_id>/", grid_views.account_grid, name="account_grid"),
+    path("grid/<uuid:account_id>/swap/", grid_views.grid_swap, name="grid_swap"),
+    path("grid/<uuid:account_id>/move/<uuid:platform_post_id>/", grid_views.grid_move, name="grid_move"),
     # Bulk selection actions (floating bar): draft / delete / publish
     path("bulk-action/", views.bulk_platform_action, name="bulk_platform_action"),
     # Posting slots

@@ -57,6 +57,8 @@ class Entitlements:
     max_api_calls_per_day: int | None
     max_ai_requests_per_day: int | None
     features: frozenset[str]
+    max_bio_pages: int | None = None
+    shows_bio_badge: bool = False
     unlimited: bool = False
 
     def has(self, feature: Feature | str) -> bool:
@@ -106,6 +108,8 @@ def get_entitlements(org) -> Entitlements:
         max_api_calls_per_day=plan.max_api_calls_per_day,
         max_ai_requests_per_day=plan.max_ai_requests_per_day,
         features=frozenset(str(f) for f in plan.features),
+        max_bio_pages=plan.max_bio_pages,
+        shows_bio_badge=plan.bio_badge,
     )
 
 
@@ -127,6 +131,12 @@ def channel_count(org) -> int:
 
     # The example workspace's placeholder channel is not the customer's.
     return SocialAccount.objects.filter(workspace__organization=org, workspace__sample_marker__isnull=True).count()
+
+
+def bio_page_count(org) -> int:
+    from apps.linkinbio.models import BioPage
+
+    return BioPage.objects.filter(workspace__organization=org).count()
 
 
 def workspace_count(org) -> int:
@@ -239,6 +249,21 @@ def check_can_add_channel(org) -> None:
         f"Your {ent.plan.name} plan includes {ent.max_channels} channels and this organization has {used}. "
         f"{_remove_hint(used, ent.max_channels, 'channel', 'Disconnect')} or upgrade your plan to connect more.",
         code="channel_limit",
+    )
+
+
+def check_can_add_bio_page(org) -> None:
+    ent = get_entitlements(org)
+    if ent.max_bio_pages is None:
+        return
+    used = bio_page_count(org)
+    if used < ent.max_bio_pages:
+        return
+    raise PlanLimitError(
+        f"Your {ent.plan.name} plan includes {ent.max_bio_pages} link-in-bio "
+        f"page{'s' if ent.max_bio_pages != 1 else ''} and this organization has {used}. "
+        f"{_remove_hint(used, ent.max_bio_pages, 'page', 'Delete')} or upgrade your plan to add more.",
+        code="bio_page_limit",
     )
 
 

@@ -101,6 +101,9 @@ class InstagramLoginProvider(SocialProvider):
     directly through Instagram, without requiring a linked Facebook Page.
     """
 
+    supports_grid_preview = True
+    profile_url_template = "https://www.instagram.com/{handle}/"
+
     media_rules = INSTAGRAM_MEDIA_RULES
     # Instagram comments share the caption's 2,200-character limit.
     thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=2200)
@@ -450,9 +453,26 @@ class InstagramLoginProvider(SocialProvider):
         media_id = data.get("id", "")
         return PublishResult(
             platform_post_id=media_id,
-            url=f"https://www.instagram.com/p/{media_id}/",
+            url=self._permalink(access_token, media_id),
             extra=data,
         )
+
+    def _permalink(self, access_token: str, media_id: str) -> str | None:
+        """The post's instagram.com address. The media id is not the shortcode a /p/ link needs, so ask.
+
+        Best-effort: the post is already live, so a failure here only leaves the link unknown.
+        """
+        if not media_id:
+            return None
+        try:
+            resp = self._request(
+                "GET", f"{API_BASE}/{media_id}", access_token=access_token, params={"fields": "permalink"}
+            )
+            permalink = resp.json().get("permalink") or ""
+        except Exception:  # noqa: BLE001 - never fail a publish that already happened
+            logger.warning("Instagram permalink lookup failed for media %s", media_id, exc_info=True)
+            return None
+        return permalink if isinstance(permalink, str) and permalink.startswith("https://") else None
 
     # ------------------------------------------------------------------
     # Comments

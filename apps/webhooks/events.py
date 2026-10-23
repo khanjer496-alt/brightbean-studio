@@ -61,7 +61,7 @@ def _platform_post_data(platform_post) -> dict:
         "scheduled_at": _iso(platform_post.scheduled_at or platform_post.post.scheduled_at),
         "published_at": _iso(platform_post.published_at),
         "external_id": platform_post.platform_post_id,
-        "permalink": getattr(platform_post, PERMALINK_ATTR, None) or None,
+        "permalink": getattr(platform_post, PERMALINK_ATTR, None) or getattr(platform_post, "permalink", None) or None,
     }
 
 

@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Grid preview — {{ profile_name }} — {{ brand_short_name }}{% endblock %}
+
+{% block content %}
+<div class="flex flex-1 flex-col">
+    <a href="{% url 'calendar:calendar' workspace_id=workspace.id %}" class="mb-3 inline-flex min-h-11 items-center text-[13px] text-ink-3 underline">&larr; Back to the calendar</a>
+    <div class="mb-4">
+        <h1 class="m-0 text-2xl font-semibold tracking-tight text-ink">Grid preview</h1>
+        <p class="m-0 mt-1 max-w-2xl text-[13px] text-ink-3">See how {{ profile_name }}'s profile grid will look. Published posts are solid; upcoming posts have a dashed outline and sit where they will land. Swap two scheduled posts to change their order: they trade publish times.</p>
+    </div>
+    {% if accounts|length > 1 %}
+    <nav aria-label="Accounts with a grid" class="mb-4 flex flex-wrap gap-2">
+        {% for other in accounts %}<a href="{% url 'calendar:account_grid' workspace_id=workspace.id account_id=other.id %}" {% if other.id == account.id %}aria-current="page"{% endif %} class="inline-flex min-h-11 items-center rounded-full border px-4 text-[13px] font-semibold no-underline {% if other.id == account.id %}border-accent text-ink{% else %}border-line text-ink-3 hover:text-ink{% endif %}">{{ other.account_name }}</a>{% endfor %}
+    </nav>
+    {% endif %}
+    <div class="mx-auto w-full max-w-xl">
+        {% include "calendar/partials/_grid.html" %}
+    </div>
+</div>
+<script src="{% static 'js/grid-reorder.js' %}" defer></script>
+{% endblock %}
