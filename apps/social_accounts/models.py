@@ -51,6 +51,10 @@ class SocialAccount(models.Model):
         max_length=255,
         help_text="The account's native ID on the platform.",
     )
+    # App-scoped id of the Facebook user who authorised this Page / Instagram
+    # connection, so Meta's data deletion callback can find the accounts that
+    # user connected. Blank for accounts connected before it was recorded.
+    meta_user_id = models.CharField(max_length=64, blank=True, default="", db_index=True)
     account_name = models.CharField(max_length=255)
     account_handle = models.CharField(max_length=255, blank=True, default="")
     avatar_url = models.URLField(max_length=2000, blank=True, default="")

@@ -753,6 +753,9 @@ class InstagramProvider(SocialProvider):
         )
         return resp.json().get("data") or None
 
+    def debug_token(self, access_token: str) -> dict:
+        return self.inspect_token(access_token) or {}
+
     def get_user_granted_scopes(self, user_access_token: str = "", *, user_id: str = "") -> set[str] | None:
         """Read the person's consent, using their token or an app-authorized ID."""
         access_token = user_access_token
