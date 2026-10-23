@@ -14,6 +14,9 @@ from django.views.decorators.http import require_GET, require_POST
 from apps.ai_writer import services as ai_services
 from apps.ai_writer.client import ai_available
 from apps.ai_writer.views import ai_action
+from apps.autonomy import service as autonomy_service
+from apps.autonomy.actors import human as human_actor
+from apps.autonomy.models import ActionType, Decision
 from apps.members.decorators import require_permission
 from apps.members.models import WorkspaceMembership
 from apps.notifications.engine import notify
@@ -273,6 +276,17 @@ def send_reply(request, workspace_id, message_id):
         response["HX-Reply-Failed"] = "1"
         return response
 
+    autonomy_service.record(
+        workspace=workspace,
+        actor=human_actor(request.user),
+        action_type=ActionType.REPLY,
+        operation="reply.send",
+        decision=Decision.EXECUTED,
+        account=account,
+        reply=reply,
+        final_text=body,
+        summary="Sent from the inbox.",
+    )
     context = {"reply": reply, "workspace": workspace, "message": message}
     return render(request, "inbox/partials/_reply_item.html", context)
 

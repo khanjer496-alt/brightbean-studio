@@ -11,6 +11,8 @@ from django.db import transaction
 from django.db.models import Q
 from django.utils import timezone
 
+from apps.autonomy.actors import system as system_actor
+from apps.autonomy.service import record_scheduled
 from apps.billing.entitlements import PlanLimitError, check_can_schedule_posts
 from apps.composer.models import PlatformPost, Post, PostMedia
 from apps.composer.services import post_media_types, publish_blocker
@@ -255,6 +257,16 @@ def _create_occurrence(source, scheduled_dt, d, source_pps, source_media, media_
                 )
             )
         PlatformPost.objects.bulk_create(new_pps)
+        record_scheduled(
+            workspace=source.workspace,
+            actor=system_actor("Repeating post"),
+            operation="recurrence.copy",
+            post=new_post,
+            platform_posts=[pp for pp in new_pps if pp.status == "scheduled"],
+            text=source.caption,
+            source_text=source.caption,
+            summary="Queued as part of a repeating series.",
+        )
 
         # Sync Post.scheduled_at to min of children.
         from apps.composer.services import sync_post_scheduled_at

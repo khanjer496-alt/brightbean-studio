@@ -286,7 +286,7 @@ class TestInboxReplyTools:
         with (
             patch("apps.mcp.handlers._get_inbox_reply_for_key") as get_reply,
             patch("apps.mcp.handlers.create_reply_draft") as create,
-            patch("apps.mcp.handlers.send_reply_now") as send,
+            patch("apps.mcp.handlers.deliver_reply") as send,
             pytest.raises(JsonRpcError, match="cannot be combined"),
         ):
             _send_reply({"reply_id": reply_id, **extra_fields}, context)

@@ -46,6 +46,8 @@ from apps.api.schemas import (
     ScheduleRequest,
     UpdatePostRequest,
 )
+from apps.autonomy.actors import agent as agent_actor
+from apps.autonomy.gate import gate_existing, gate_post, record_all, refusal_for
 from apps.calendar.services import save_recurrence
 from apps.composer.models import Post
 from apps.composer.services import (
@@ -267,12 +269,34 @@ def create(request, payload: CreatePostRequest):
             "An identical request with this idempotency_key is still in flight; retry shortly.",
         )
 
+    # The workspace's autonomy policy decides whether this agent's schedule
+    # request goes out as asked, is saved as a draft for a person to approve,
+    # or is refused. Checked inside the claim window so a replay never repeats it.
+    gate = gate_post(
+        workspace=request.api_key.workspace,
+        actor=agent_actor(request.api_key, None if request.user.is_anonymous else request.user),
+        account=social_account,
+        text=payload.caption,
+        schedule=payload.action == "schedule",
+        scheduled_at=payload.scheduled_at,
+        operation=f"post.create.{payload.action}",
+    )
+    if gate.blocked:
+        release_idempotent_claim(api_key=request.api_key, idempotency_key=idempotency_key)
+        raise HttpError(403, gate.refuse().message)
+    schedule_now = payload.action == "schedule" and gate.schedule
+    repeat = repeat if schedule_now else None
+    if payload.action != "schedule":
+        proposed_publish_at = payload.proposed_publish_at
+    else:
+        proposed_publish_at = None if schedule_now else payload.scheduled_at
+
     # Platform-quota check has to be inside the claim window because it
     # depends on database state that other concurrent claims could
     # change. Drafts are excluded from the count inside
     # ``check_platform_quota`` so creating drafts cannot exhaust the
     # platform's posting cap.
-    if payload.action == "schedule":
+    if schedule_now:
         try:
             check_platform_quota(social_account)
         except HttpError:
@@ -292,12 +316,13 @@ def create(request, payload: CreatePostRequest):
                 title=payload.title,
                 first_comment=payload.first_comment,
                 internal_notes=payload.internal_notes,
-                scheduled_at=payload.scheduled_at,
+                scheduled_at=payload.scheduled_at if schedule_now or payload.action != "schedule" else None,
                 # A scheduled post carries a real time, not a proposal — ignore any
-                # proposed_publish_at when scheduling so the two never coexist.
-                proposed_publish_at=None if payload.action == "schedule" else payload.proposed_publish_at,
+                # proposed_publish_at when scheduling so the two never coexist. A
+                # schedule the policy held keeps its time as the proposal.
+                proposed_publish_at=proposed_publish_at,
                 author=request.user if not request.user.is_anonymous else None,
-                status="scheduled" if payload.action == "schedule" else "draft",
+                status="scheduled" if schedule_now else "draft",
                 platform_overrides=platform_overrides,
                 parts=[part.to_spec() for part in payload.parts],
                 post_settings=payload.post_settings,
@@ -306,6 +331,8 @@ def create(request, payload: CreatePostRequest):
             if repeat is not None:
                 save_recurrence(post, **repeat.rule_fields())
             body = _post_to_response(request, post)
+            _, note = gate.record_with_notice(post=post, platform_post=post.platform_posts.first())
+            body.with_autonomy(note)
             status_code = 201
             log_audit_entry(
                 request,
@@ -421,6 +448,22 @@ def schedule(request, post_id: uuid.UUID, payload: ScheduleRequest):
             )
         _check_recurrence(repeat, workspace=post.workspace, scheduled_at=payload.scheduled_at)
 
+    # The autonomy policy decides, per account, whether each child is scheduled
+    # as asked or stays a draft for a person to approve; a refusal stops the call.
+    pairs = gate_existing(
+        workspace=post.workspace,
+        actor=agent_actor(request.api_key, None if request.user.is_anonymous else request.user),
+        platform_posts=schedulable,
+        scheduled_at=payload.scheduled_at,
+        operation="post.schedule",
+    )
+    refusal = refusal_for(pairs, post)
+    if refusal is not None:
+        raise HttpError(403, refusal.message)
+    schedulable = [pp for pp, gate in pairs if gate.schedule]
+    if not schedulable:
+        repeat = None
+
     # Quota check is per-account, so we evaluate it once per child before
     # we touch any state. Doing the checks first means an over-quota
     # account fails the whole route with 429 — no partial commit.
@@ -446,8 +489,10 @@ def schedule(request, post_id: uuid.UUID, payload: ScheduleRequest):
             save_recurrence(post, **repeat.rule_fields(), refresh=True)
 
     post.refresh_from_db()
+    body = _post_to_response(request, post)
+    body.with_autonomy(record_all(pairs, post))
     log_audit_entry(request, action="post.schedule", target_id=post.id, status_code=200)
-    return _post_to_response(request, post)
+    return body
 
 
 @router.post("/{post_id}/cancel", response=PostResponse, summary="Cancel a scheduled post (back to draft)")

@@ -34,6 +34,8 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from apps.approvals.policy import approval_allows_publish
+from apps.autonomy.release import hold_exclusion as autonomy_hold_exclusion
+from apps.autonomy.release import is_platform_post_held as is_autonomy_held
 from apps.common.db import in_worker_thread, release_idle_connection
 from apps.common.worker import SHUTDOWN_REQUESTED
 from apps.composer.models import PlatformPost, PlatformPostPart
@@ -517,6 +519,9 @@ class PublishEngine:
             # parks the whole post out of the publish path even if a sibling
             # platform is already scheduled.
             .exclude(post__platform_posts__status=PlatformPost.Status.ON_HOLD)
+            # An autonomous post waits out its undo window, and stays put while
+            # a person holds it or the workspace is in a crisis pause.
+            .exclude(autonomy_hold_exclusion(now))
             .select_related("post__workspace", "social_account")
             .order_by("effective_at")[: _max_concurrent_publishes()]
         )
@@ -557,6 +562,7 @@ class PublishEngine:
                 for pp in locked
                 if pp.id in due_ids
                 and pp.status == PlatformPost.Status.SCHEDULED
+                and not is_autonomy_held(pp, now)
                 and (
                     (
                         pp.retry_count == 0
@@ -1388,6 +1394,7 @@ class PublishEngine:
                 next_retry_at__lte=now,
             )
             .exclude(post__platform_posts__status=PlatformPost.Status.ON_HOLD)
+            .exclude(autonomy_hold_exclusion(now))
             .select_related("social_account", "post")
         )
 

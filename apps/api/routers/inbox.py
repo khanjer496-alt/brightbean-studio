@@ -37,12 +37,13 @@ from apps.api.schemas import (
     InboxReplyResponse,
     UpdateReplyRequest,
 )
+from apps.autonomy.actors import agent as agent_actor
+from apps.autonomy.gate import deliver_reply, gate_reply
 from apps.inbox.models import InboxMessage, InboxReply
 from apps.inbox.services import (
     ReplyStateError,
     create_reply_draft,
     discard_reply_draft,
-    send_reply_now,
     update_reply_draft,
 )
 
@@ -178,11 +179,26 @@ def create_reply(request, message_id: uuid.UUID, payload: CreateReplyRequest):
     if disposition == "in_flight":
         raise HttpError(409, "An identical request with this idempotency_key is still in flight; retry shortly.")
 
+    # The autonomy policy decides whether this agent's reply is sent (after the
+    # undo window), left as a draft for a person, or refused.
+    user = request.user if not request.user.is_anonymous else None
+    gate = gate_reply(
+        workspace=message.workspace,
+        actor=agent_actor(request.api_key, user),
+        account=message.social_account,
+        text=payload.body,
+        send=payload.send,
+        operation="reply.create",
+    )
+    if gate.blocked:
+        release_idempotent_claim(api_key=request.api_key, idempotency_key=idempotency_key)
+        raise HttpError(403, gate.refuse().message)
+
     try:
         reply = create_reply_draft(
             message=message,
             body=payload.body,
-            author=request.user if not request.user.is_anonymous else None,
+            author=user,
         )
     except ValueError as exc:
         release_idempotent_claim(api_key=request.api_key, idempotency_key=idempotency_key)
@@ -194,15 +210,14 @@ def create_reply(request, message_id: uuid.UUID, payload: CreateReplyRequest):
     # Once a draft exists, retain the claim even on failure: replaying a
     # create-and-send request must never create another reply or send twice.
     try:
-        if payload.send:
-            try:
-                send_reply_now(reply, actor=request.user if not request.user.is_anonymous else None)
-            except ReplyStateError as exc:
-                raise HttpError(409, str(exc)) from exc
-            except Exception as exc:  # platform refused it — reply is left in "failed"
-                raise HttpError(502, f"Reply not sent: {reply.send_error or 'Please try again later.'}") from exc
+        try:
+            note = deliver_reply(gate, reply, user)
+        except ReplyStateError as exc:
+            raise HttpError(409, str(exc)) from exc
+        except Exception as exc:  # platform refused it — reply is left in "failed"
+            raise HttpError(502, f"Reply not sent: {reply.send_error or 'Please try again later.'}") from exc
 
-        body = InboxReplyResponse.from_reply(reply)
+        body = InboxReplyResponse.from_reply(reply).with_autonomy(note)
         log_audit_entry(request, action="inbox.reply.create", target_id=reply.id, status_code=201)
         finalize_idempotent_response(
             api_key=request.api_key,
@@ -241,14 +256,26 @@ def send_reply(request, reply_id: uuid.UUID):
     enforce_http_rate_limits(request, is_write=True)
     _require_perm(request, "reply_from_inbox")
     reply = _get_reply(request, reply_id)
+    user = request.user if not request.user.is_anonymous else None
+    message = reply.inbox_message
+    gate = gate_reply(
+        workspace=message.workspace,
+        actor=agent_actor(request.api_key, user),
+        account=message.social_account,
+        text=reply.body,
+        send=True,
+        operation="reply.send",
+    )
+    if gate.blocked:
+        raise HttpError(403, gate.refuse(reply=reply).message)
     try:
-        send_reply_now(reply, actor=request.user if not request.user.is_anonymous else None)
+        note = deliver_reply(gate, reply, user)
     except ReplyStateError as exc:
         raise HttpError(409, str(exc)) from exc
     except Exception as exc:
         raise HttpError(502, f"Reply not sent: {reply.send_error or 'Please try again later.'}") from exc
     log_audit_entry(request, action="inbox.reply.send", target_id=reply.id, status_code=200)
-    return InboxReplyResponse.from_reply(reply)
+    return InboxReplyResponse.from_reply(reply).with_autonomy(note)
 
 
 @router.delete("/replies/{reply_id}", response={204: None}, summary="Discard a draft reply")

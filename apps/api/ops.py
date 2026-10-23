@@ -31,8 +31,12 @@ from ninja.errors import HttpError
 from apps.api.limits import check_platform_quota
 from apps.api.pagination import decode_offset_cursor, encode_offset_cursor
 from apps.api.schemas import (
+    AccountAutonomyResponse,
     AddEvergreenRequest,
+    AgentActionResponse,
+    AgentActionsListResponse,
     ApplyBestTimesResponse,
+    AutonomyPolicyResponse,
     BestTimeResponse,
     BestTimesResponse,
     BrandVoiceResponse,
@@ -81,6 +85,12 @@ from apps.api.schemas import (
 from apps.approvals import comments as comment_service
 from apps.approvals import services as approval_services
 from apps.approvals.models import PostComment
+from apps.autonomy import configure as autonomy_configure
+from apps.autonomy import policy as autonomy_policy
+from apps.autonomy import service as autonomy_service
+from apps.autonomy.actors import agent as agent_actor
+from apps.autonomy.gate import gate_post, record_all, refusal_for
+from apps.autonomy.models import AccountAutonomyOverride, ActionType, ActorType, AgentAction, Decision
 from apps.calendar import evergreen as evergreen_service
 from apps.calendar import services as calendar_services
 from apps.calendar.models import CustomCalendarEvent, EvergreenItem, PostingSlot, Queue
@@ -127,10 +137,12 @@ BRAND_VOICE_MAX_EXAMPLES = 3
 class OpError(Exception):
     """A refused operation. ``status`` is the HTTP status REST answers with."""
 
-    def __init__(self, status: int, message: str):
+    def __init__(self, status: int, message: str, *, refusal=None):
         super().__init__(message)
         self.status = status
         self.message = message
+        # An autonomy refusal to log again once the caller's transaction has rolled back.
+        self.refusal = refusal
 
 
 @dataclass
@@ -428,6 +440,43 @@ def _post_settings_by_child(post: Post, settings: dict) -> dict:
     return result
 
 
+_CONTENT_FIELDS = ("caption", "title", "first_comment", "media_asset_ids", "parts", "scheduled_at")
+
+
+def _gate_content_change(actor: Actor, post: Post, payload: UpdatePostRequest) -> list:
+    """Run the autonomy policy over an agent's edit of what a post says or when it goes out.
+
+    Changing a scheduled post is a publish decision again (the approved content
+    is no longer what is queued); changing a draft only needs drafting allowed.
+    Returns the gated children to record once the edit is written.
+    """
+    if not any(getattr(payload, name) is not None for name in _CONTENT_FIELDS):
+        return []
+    children = list(post.platform_posts.select_related("social_account"))
+    scheduled = [pp for pp in children if pp.status == "scheduled"]
+    caption = payload.caption if payload.caption is not None else post.caption
+    who = agent_actor(actor.api_key, actor.user)
+    pairs = [
+        (
+            pp,
+            gate_post(
+                workspace=post.workspace,
+                actor=who,
+                account=pp.social_account,
+                text=caption,
+                schedule=bool(scheduled),
+                scheduled_at=payload.scheduled_at or pp.scheduled_at or post.scheduled_at,
+                operation="post.update",
+            ),
+        )
+        for pp in (scheduled or children)
+    ]
+    refusal = refusal_for(pairs, post)
+    if refusal is not None:
+        raise OpError(403, refusal.message, refusal=refusal)
+    return pairs
+
+
 def update_post(actor: Actor, post_id: uuid.UUID, payload: UpdatePostRequest) -> PostResponse:
     """Edit a post that hasn't gone out. Omitted (null) fields are left as they are.
 
@@ -507,6 +556,8 @@ def update_post(actor: Actor, post_id: uuid.UUID, payload: UpdatePostRequest) ->
     if payload.post_settings is not None:
         settings_by_child = _post_settings_by_child(post, payload.post_settings)
 
+    gated = _gate_content_change(actor, post, payload)
+
     with transaction.atomic():
         update_fields: list[str] = []
         for pp, platform_extra in settings_by_child.items():
@@ -557,7 +608,13 @@ def update_post(actor: Actor, post_id: uuid.UUID, payload: UpdatePostRequest) ->
         elif payload.recurrence is not None:
             calendar_services.stop_recurrence(post)
 
-    return post_response(actor, _get_visible_post(actor, post_id))
+        # A scheduled post the policy won't let this agent change in place goes back to a draft for review.
+        for pp, gate in gated:
+            if pp.status == "scheduled" and not gate.schedule:
+                transition_platform_post(pp, "draft")
+        note = record_all(gated, post) if gated else None
+
+    return post_response(actor, _get_visible_post(actor, post_id)).with_autonomy(note)
 
 
 def delete_post(actor: Actor, post_id: uuid.UUID) -> DeletedResponse:
@@ -579,9 +636,22 @@ def duplicate_post(actor: Actor, post_id: uuid.UUID) -> PostResponse:
     """A fresh draft copy of a post (content, media, per-platform settings; no schedule)."""
     actor.require("create_posts")
     post = _get_visible_post(actor, post_id)
+    first = post.platform_posts.select_related("social_account").first()
+    gate = gate_post(
+        workspace=post.workspace,
+        actor=agent_actor(actor.api_key, actor.user),
+        account=first.social_account if first else None,
+        text=post.caption,
+        schedule=False,
+        operation="post.duplicate",
+    )
+    if gate.blocked:
+        refusal = gate.refuse()
+        raise OpError(403, refusal.message, refusal=refusal)
     copy = clone_post(post, author=actor.user)
     copy = Post.objects.prefetch_related(*_POST_PREFETCH).select_related("recurrence_rule").get(id=copy.id)
-    return post_response(actor, copy)
+    _, note = gate.record_with_notice(post=copy, platform_post=copy.platform_posts.first(), source_text=post.caption)
+    return post_response(actor, copy).with_autonomy(note)
 
 
 # ---------------------------------------------------------------------------
@@ -637,6 +707,16 @@ def decide_approval(actor: Actor, post_id: uuid.UUID, decision: str, comment: st
         raise OpError(422, str(exc)) from exc
     if not result:
         raise OpError(409, "Nothing to update: no platform post of this post is waiting for your review.")
+    autonomy_service.record(
+        workspace=actor.workspace,
+        actor=agent_actor(actor.api_key, actor.user),
+        action_type=ActionType.APPROVAL,
+        operation=f"approval.{decision}",
+        decision="executed",
+        post=post,
+        summary=f"Recorded {decision.replace('_', ' ')} on behalf of {user.display_name}.",
+        final_text=comment,
+    )
     return post_response(actor, _get_visible_post(actor, post_id))
 
 
@@ -1919,3 +1999,130 @@ def get_latest_report_run(actor: Actor, report_id: uuid.UUID) -> ReportRunRespon
     if run is None:
         raise OpError(404, "This report hasn't been run yet")
     return _report_run_response(run)
+
+
+# ---------------------------------------------------------------------------
+# Autonomy policy and the agent audit trail
+# ---------------------------------------------------------------------------
+
+# How much each level lets an agent do on its own, so a key can be held to tightening the policy.
+_LEVEL_RANK = {"off": 0, "draft_only": 1, "auto_guardrails": 2, "per_item": 2.5, "full_auto": 3}
+_LEVEL_SETTINGS = ("draft_level", "publish_level", "reply_level", "recycle_level")
+
+
+def _autonomy_policy_response(workspace) -> AutonomyPolicyResponse:
+    policy = autonomy_policy.get_policy(workspace)
+    overrides = AccountAutonomyOverride.objects.filter(workspace=workspace).order_by("social_account_id")
+    return AutonomyPolicyResponse(
+        draft_level=policy.draft_level,
+        publish_level=policy.publish_level,
+        reply_level=policy.reply_level,
+        recycle_level=policy.recycle_level,
+        account_overrides=[
+            AccountAutonomyResponse(
+                social_account_id=o.social_account_id,
+                draft_level=o.draft_level,
+                publish_level=o.publish_level,
+                reply_level=o.reply_level,
+                recycle_level=o.recycle_level,
+                max_posts_per_day=o.max_posts_per_day,
+            )
+            for o in overrides
+        ],
+        blocked_phrases=list(policy.blocked_phrases or []),
+        review_links=policy.review_links,
+        review_mentions=policy.review_mentions,
+        review_prices=policy.review_prices,
+        review_sensitive=policy.review_sensitive,
+        max_posts_per_day=policy.max_posts_per_day,
+        max_replies_per_day=policy.max_replies_per_day,
+        quiet_hours_enabled=policy.quiet_hours_enabled,
+        quiet_start=policy.quiet_start.strftime("%H:%M") if policy.quiet_start else None,
+        quiet_end=policy.quiet_end.strftime("%H:%M") if policy.quiet_end else None,
+        ai_risk_check=policy.ai_risk_check,
+        ai_risk_threshold=policy.ai_risk_threshold,
+        ai_voice_check=policy.ai_voice_check,
+        ai_voice_threshold=policy.ai_voice_threshold,
+        undo_delay_minutes=policy.undo_delay_minutes,
+        crisis_paused=policy.crisis_paused,
+        client_visible=policy.client_visible,
+    )
+
+
+def get_autonomy_policy(actor: Actor) -> AutonomyPolicyResponse:
+    """What this workspace lets agents do on their own. Any key may read it, so agents can plan around it."""
+    return _autonomy_policy_response(actor.workspace)
+
+
+def _require_tightening(policy, changes: dict) -> None:
+    """A key may tighten the policy (lower a level, pause, add blocked phrases); loosening it is for a person."""
+    for name, value in changes.items():
+        if name in _LEVEL_SETTINGS:
+            if _LEVEL_RANK[value] > _LEVEL_RANK[getattr(policy, name)]:
+                raise OpError(403, f"A key can lower {name} but not raise it: ask a person to change it in Settings.")
+        elif name == "crisis_paused":
+            if not value:
+                raise OpError(403, "Only a person can turn crisis pause off, in Settings.")
+        elif name == "blocked_phrases":
+            current = {p.casefold() for p in policy.blocked_phrases or []}
+            if not current <= {str(p).strip().casefold() for p in value}:
+                raise OpError(403, "A key can add blocked phrases but not remove them: ask a person.")
+        else:
+            raise OpError(403, f"A key can't change {name}: ask a person to change it in Settings.")
+
+
+def update_autonomy_policy(actor: Actor, **fields: Any) -> AutonomyPolicyResponse:
+    """Change the policy. Needs `manage_workspace_settings`, and a key can only make it stricter."""
+    actor.require("manage_workspace_settings")
+    overrides = fields.pop("account_overrides", None)
+    changes = {k: v for k, v in fields.items() if v is not None}
+    who = agent_actor(actor.api_key, actor.user)
+    policy = autonomy_policy.get_policy(actor.workspace)
+    _require_tightening(policy, changes)
+    if overrides:
+        raise OpError(403, "A key can't set per-account overrides: ask a person to change them in Settings.")
+    try:
+        if changes:
+            autonomy_configure.update_policy(actor.workspace, who, **changes)
+    except ValueError as exc:
+        raise OpError(422, str(exc)) from exc
+    return _autonomy_policy_response(actor.workspace)
+
+
+def list_agent_actions(
+    actor: Actor,
+    *,
+    actor_type: str | None = None,
+    action_type: str | None = None,
+    decision: str | None = None,
+    social_account_id: uuid.UUID | None = None,
+    since: dt.datetime | None = None,
+    until: dt.datetime | None = None,
+    limit: int = LIMIT_DEFAULT,
+    cursor: str | None = None,
+) -> AgentActionsListResponse:
+    """The audit trail of what people, agents and automations did here and what the policy decided."""
+    actor.require_any("create_posts", "manage_workspace_settings")
+    if actor_type is not None and actor_type not in ActorType.values:
+        raise OpError(422, f"actor_type must be one of {', '.join(ActorType.values)}")
+    if action_type is not None and action_type not in ActionType.values:
+        raise OpError(422, f"action_type must be one of {', '.join(ActionType.values)}")
+    if decision is not None and decision not in Decision.values:
+        raise OpError(422, f"decision must be one of {', '.join(Decision.values)}")
+    qs = AgentAction.objects.filter(workspace=actor.workspace).filter(
+        Q(social_account_id__in=actor.allowed_account_ids) | Q(social_account__isnull=True)
+    )
+    if social_account_id is not None:
+        _require_account(actor, social_account_id)
+        qs = qs.filter(social_account_id=social_account_id)
+    for name, value in (("actor_type", actor_type), ("action_type", action_type), ("decision", decision)):
+        if value is not None:
+            qs = qs.filter(**{name: value})
+    if since is not None:
+        qs = qs.filter(created_at__gte=_aware(since))
+    if until is not None:
+        qs = qs.filter(created_at__lte=_aware(until))
+    rows, next_cursor = _paginate(qs.order_by("-created_at", "id"), limit=limit, cursor=cursor)
+    return AgentActionsListResponse(
+        actions=[AgentActionResponse.from_action(a) for a in rows], limit=limit, next_cursor=next_cursor
+    )

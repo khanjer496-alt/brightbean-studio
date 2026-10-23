@@ -69,6 +69,8 @@ def run_op(
                 )
     except OpError as exc:
         release_idempotent_claim(api_key=request.api_key, idempotency_key=idempotency_key)
+        if exc.refusal is not None:
+            exc.refusal.log()  # the rollback above took the first entry with it
         raise HttpError(exc.status, exc.message) from exc
     except Exception:
         release_idempotent_claim(api_key=request.api_key, idempotency_key=idempotency_key)
