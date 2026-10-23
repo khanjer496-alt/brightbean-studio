@@ -18,5 +18,8 @@ def intelligence_flag(request):
     intend templates to see.
     """
     return {
-        "INTELLIGENCE_ENABLED": getattr(settings, "INTELLIGENCE_ENABLED", False),
+        # A deployment that bills for itself (BILLING_ENABLED) never shows
+        # Intelligence's competing subscription, whatever its env vars say.
+        "INTELLIGENCE_ENABLED": getattr(settings, "INTELLIGENCE_ENABLED", False)
+        and not getattr(settings, "BILLING_ENABLED", False),
     }

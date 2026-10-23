@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Upgrade to unlock - {{ brand_short_name }}{% endblock %}
+{% block content %}
+<div class="max-w-lg mx-auto px-4 py-16 text-center">
+    <div class="pd-billing-card p-6 sm:p-8">
+        <svg class="mx-auto mb-4 pd-billing-faint" width="32" height="32" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+        <h1 class="text-lg font-semibold pd-billing-heading mb-2">Not included in your plan</h1>
+        <p class="text-sm pd-billing-muted mb-6">{{ message }}</p>
+        {% if request.org_membership.org_role == "owner" or request.org_membership.org_role == "admin" %}
+        <a href="{{ upgrade_url }}" class="btn-brand">See plans</a>
+        {% else %}
+        <p class="text-sm pd-billing-faint">Ask an organization admin to upgrade the plan.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

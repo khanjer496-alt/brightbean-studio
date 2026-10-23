@@ -103,6 +103,7 @@ LOCAL_APPS = [
     "apps.mcp",
     "apps.oauth_server",
     "apps.analytics",
+    "apps.billing",
     "theme",
 ]
 
@@ -121,6 +122,7 @@ MIDDLEWARE = [
     "django_htmx.middleware.HtmxMiddleware",
     "apps.members.middleware.RBACMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
+    "apps.billing.middleware.BillingMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
     "csp.middleware.CSPMiddleware",
     "apps.api.usage.CountUncountedApiCallsMiddleware",
@@ -144,6 +146,7 @@ TEMPLATES = [
                 "apps.common.context_processors.sidebar_context",
                 "apps.onboarding.context_processors.onboarding_checklist",
                 "apps.intelligence.context_processors.intelligence_flag",
+                "apps.billing.context_processors.billing_flag",
             ],
         },
     },
@@ -756,6 +759,32 @@ OAUTH2_PROVIDER = {
 
 
 # ---------------------------------------------------------------------------
+# Plans & billing (apps.billing)
+# ---------------------------------------------------------------------------
+# Off by default: a self-hosted install has no plans, no limits and no billing
+# UI at all. The hosted deployment turns it on and supplies its Stripe account.
+# Plan limits and features live in apps/billing/plans.py; only the Stripe
+# identifiers are deployment-specific, so only they are read from the env.
+BILLING_ENABLED = env.bool("BILLING_ENABLED", default=False)
+STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")
+STRIPE_PUBLISHABLE_KEY = env("STRIPE_PUBLISHABLE_KEY", default="")
+STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="")
+# plan slug → billing interval → Stripe Price id. Print these lines for a
+# Stripe account with ``manage.py billing_create_stripe_prices``.
+STRIPE_PRICE_IDS = {
+    plan: {
+        "month": env(f"STRIPE_PRICE_{plan.upper()}_MONTHLY", default=""),
+        "year": env(f"STRIPE_PRICE_{plan.upper()}_ANNUAL", default=""),
+    }
+    for plan in ("creator", "team", "agency")
+}
+# New organizations get the trial plan's entitlements for this long, no card.
+BILLING_TRIAL_DAYS = env.int("BILLING_TRIAL_DAYS", default=14)
+# How long a subscription whose renewal failed keeps its paid plan while Stripe
+# retries the card, before the organization falls back to Free.
+BILLING_GRACE_PERIOD_DAYS = env.int("BILLING_GRACE_PERIOD_DAYS", default=7)
+
+# ---------------------------------------------------------------------------
 # Intelligence integration (optional hosted SaaS)
 # ---------------------------------------------------------------------------
 # All five env vars must be set for the integration to be active. Missing
@@ -777,6 +806,11 @@ INTELLIGENCE_ENABLED = all(
         STUDIO_BASE_URL.strip(),
     ]
 )
+# Intelligence sells its own subscription through BrightBean's Stripe account.
+# A deployment that bills for itself must never show a second, competing
+# checkout, so our own billing switches the whole Intelligence surface off.
+if BILLING_ENABLED:
+    INTELLIGENCE_ENABLED = False
 
 if INTELLIGENCE_ENABLED:
     # Security invariants — raised (not asserted) because ``python -O``
