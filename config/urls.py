@@ -45,6 +45,8 @@ urlpatterns = [
     path("workspace/<uuid:workspace_id>/bio/", include("apps.linkinbio.urls")),
     # AI writing assistant: composer actions, and the org's own provider key.
     path("workspace/<uuid:workspace_id>/ai/", include("apps.ai_writer.urls")),
+    # Autonomy: the agent activity trail, the "going out soon" tray and the dial.
+    path("workspace/<uuid:workspace_id>/activity/", include("apps.autonomy.urls")),
     # Outbound webhooks: endpoints and delivery log (workspace settings).
     path("workspace/<uuid:workspace_id>/webhooks/", include("apps.webhooks.urls")),
     # Shareable report links: signed token, no login.

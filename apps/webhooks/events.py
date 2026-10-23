@@ -172,3 +172,35 @@ def account_disconnected(account, reason: str = "", *, removed: bool = False) ->
             "reason": reason,
         },
     )
+
+
+@_never_raises
+def agent_action(action) -> None:
+    """Emit ``agent.action.executed``, ``.held`` or ``.blocked`` for an agent's or automation's action."""
+    event_type = {
+        "executed": EventType.AGENT_ACTION_EXECUTED,
+        "held": EventType.AGENT_ACTION_HELD,
+        "blocked": EventType.AGENT_ACTION_BLOCKED,
+    }[action.decision]
+    services.emit(
+        event_type,
+        action.workspace,
+        {
+            "action_id": str(action.id),
+            "actor_type": action.actor_type,
+            "actor_name": action.actor_name,
+            "action_type": action.action_type,
+            "operation": action.operation,
+            "decision": action.decision,
+            "level": action.level,
+            "summary": action.summary,
+            "reasons": [r["reason"] for r in action.guardrail_results if not r.get("passed")],
+            "risk_score": action.risk_score,
+            "social_account": _account_data(action.social_account) if action.social_account_id else None,
+            "post_id": str(action.post_id) if action.post_id else None,
+            "platform_post_id": str(action.platform_post_id) if action.platform_post_id else None,
+            "reply_id": str(action.reply_id) if action.reply_id else None,
+            "release_at": _iso(action.release_at),
+            "created_at": _iso(action.created_at),
+        },
+    )

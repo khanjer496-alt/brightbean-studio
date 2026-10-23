@@ -99,6 +99,17 @@ def _date_arg(args: dict, name: str, *, required: bool = False):
         raise JsonRpcError(INVALID_PARAMS, f"{name} must be a YYYY-MM-DD date") from exc
 
 
+def _datetime_arg(args: dict, name: str):
+    value = args.get(name)
+    if value is None:
+        return None
+    try:
+        parsed = dt.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except ValueError as exc:
+        raise JsonRpcError(INVALID_PARAMS, f"{name} must be an ISO 8601 time") from exc
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=dt.UTC)
+
+
 def _time_arg(args: dict, name: str):
     value = args.get(name)
     if value is None:
@@ -875,6 +886,75 @@ _tool(
         "words_to_avoid": _text_prop(max_length=1000),
         "examples": {"type": "array", "items": {"type": "string", "maxLength": 2000}, "maxItems": 3},
     },
+)
+
+_tool(
+    "get_autonomy_policy",
+    (
+        "Read how much this workspace lets you do on your own: a level per action (off, draft_only, auto_guardrails, "
+        "full_auto) for drafting, publishing, replying and recycling evergreen, per-account overrides, the guardrails "
+        "(blocked phrases, links, @mentions, prices, health/financial/legal claims, daily limits, quiet hours), the "
+        "undo window and whether crisis pause is on. Read it before scheduling or replying so you know what will be "
+        "held for a person. Any key can read it."
+    ),
+    ops.get_autonomy_policy,
+    lambda a: {},
+    read_only=True,
+)
+
+_tool(
+    "update_autonomy_policy",
+    (
+        "Make the autonomy policy stricter: lower a level, turn crisis_paused on or add blocked_phrases. You cannot "
+        "loosen it; a person does that in Settings. Needs manage_workspace_settings."
+    ),
+    ops.update_autonomy_policy,
+    lambda a: {
+        k: a[k]
+        for k in ("draft_level", "publish_level", "reply_level", "recycle_level", "blocked_phrases", "crisis_paused")
+        if k in a
+    },
+    properties={
+        "draft_level": {"type": "string", "enum": ["off", "draft_only", "auto_guardrails", "full_auto"]},
+        "publish_level": {"type": "string", "enum": ["off", "draft_only", "auto_guardrails", "full_auto"]},
+        "reply_level": {"type": "string", "enum": ["off", "draft_only", "auto_guardrails", "full_auto"]},
+        "recycle_level": {"type": "string", "enum": ["per_item", "off", "draft_only", "auto_guardrails", "full_auto"]},
+        "blocked_phrases": {"type": "array", "items": {"type": "string", "maxLength": 100}, "maxItems": 200},
+        "crisis_paused": {
+            "type": "boolean",
+            "description": "true stops every autonomous action and holds queued ones.",
+        },
+    },
+)
+
+_tool(
+    "list_agent_actions",
+    (
+        "List the audit trail, newest first: who acted (human, agent or system), what, the policy's decision "
+        "(executed, held for review, blocked) with the guardrail results and reasons, and links to the post or "
+        "reply. Filter by actor_type, action_type, decision, social_account_id or a since/until ISO time. Use it to "
+        "see why something was held. Needs create_posts or manage_workspace_settings. Paginated."
+    ),
+    ops.list_agent_actions,
+    lambda a: {
+        "actor_type": a.get("actor_type"),
+        "action_type": a.get("action_type"),
+        "decision": a.get("decision"),
+        "social_account_id": _uuid_arg(a, "social_account_id"),
+        "since": _datetime_arg(a, "since"),
+        "until": _datetime_arg(a, "until"),
+        **_page(a),
+    },
+    properties={
+        "actor_type": {"type": "string", "enum": ["human", "agent", "system"]},
+        "action_type": {"type": "string", "enum": ["draft_content", "publish_posts", "reply", "recycle_evergreen"]},
+        "decision": {"type": "string", "enum": ["executed", "held", "blocked"]},
+        "social_account_id": _uuid_prop(),
+        "since": _text_prop("ISO 8601 time."),
+        "until": _text_prop("ISO 8601 time."),
+        **_list_props(),
+    },
+    read_only=True,
 )
 
 _tool(

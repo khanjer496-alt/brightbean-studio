@@ -28,6 +28,9 @@ from apps.api_keys import services
 from apps.composer.models import PlatformPost, Post
 from apps.members.models import PERMISSION_KEYS, OrgMembership, WorkspaceMembership
 
+# These tests drive an agent the workspace trusts to publish and reply on its own.
+pytestmark = pytest.mark.usefixtures("autonomous_agents")
+
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------

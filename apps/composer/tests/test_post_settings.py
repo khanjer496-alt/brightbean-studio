@@ -250,6 +250,8 @@ def _mcp(client, tool, arguments):
 
 
 @pytest.mark.django_db
+# An agent the workspace trusts to publish on its own; these test what stops it anyway.
+@pytest.mark.usefixtures("autonomous_agents")
 class TestApiAndMcp:
     def test_accounts_describe_their_settings(self, api_client, reddit, mastodon):
         accounts = {a["id"]: a for a in api_client.get("/api/v1/accounts/").json()["accounts"]}

@@ -53,5 +53,23 @@
         </div>
         {% endfor %}
     </div>
+
+    {% if automated %}
+    <section class="mt-8" aria-labelledby="automated-title">
+        <h2 id="automated-title" class="text-base font-semibold tracking-tight text-stone-900">Automated activity</h2>
+        <p class="text-sm mt-0.5 mb-3 text-stone-500">Posts and replies sent by automation on your team's behalf.</p>
+        <ul class="rounded-xl border border-stone-200 bg-white overflow-hidden divide-y divide-stone-100">
+            {% for item in automated %}
+            <li class="px-5 py-3.5">
+                <div class="flex flex-wrap items-baseline justify-between gap-2">
+                    <p class="text-[0.8125rem] font-medium text-stone-900">{% if item.actor_type == "agent" %}AI assistant{% else %}Automation{% endif %} · {{ item.get_action_type_display }}{% if item.account_label %} · {{ item.account_label }}{% endif %}</p>
+                    <span class="text-[0.6875rem] text-stone-400">{{ item.created_at|timesince }} ago</span>
+                </div>
+                {% if item.final_text %}<p class="text-[0.75rem] mt-0.5 text-stone-500 break-words">{{ item.final_text|truncatechars:120 }}</p>{% endif %}
+            </li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
 </div>
 {% endblock %}

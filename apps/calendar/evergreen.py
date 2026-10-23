@@ -48,6 +48,9 @@ from django.db import transaction
 from django.utils import timezone
 from ninja.errors import HttpError
 
+from apps.autonomy import service as autonomy_service
+from apps.autonomy.actors import system as system_actor
+from apps.autonomy.models import ActionType, Decision
 from apps.billing.entitlements import PlanLimitError, check_can_schedule_posts
 
 from .models import EvergreenItem, EvergreenRepeat, Queue
@@ -506,6 +509,38 @@ def recycle(item, queue, slot_dt, *, now=None) -> EvergreenRepeat:
     account = item.social_account
     if account.caption_wire_length(text) > account.char_limit:
         raise SkipError(f"The text is longer than {account.get_platform_display()} allows ({account.char_limit}).")
+    # The workspace's autonomy dial: recycling can be switched off, forced through review,
+    # or checked against the guardrails. It never skips an approval the workspace requires.
+    who = system_actor("Evergreen recycling")
+    verdict = autonomy_service.evaluate(
+        workspace=item.workspace,
+        actor=who,
+        action_type=ActionType.RECYCLE_EVERGREEN,
+        account=account,
+        text=text,
+        when=slot_dt,
+        source="system",
+    )
+    target_key = str(item.pk)
+    base = item.platform_caption if item.platform_caption is not None else item.caption
+    if verdict.blocked:
+        if not autonomy_service.recently_recorded(item.workspace, target_key, verdict.decision):
+            autonomy_service.record(
+                workspace=item.workspace,
+                actor=who,
+                action_type=ActionType.RECYCLE_EVERGREEN,
+                operation="evergreen.recycle",
+                verdict=verdict,
+                account=account,
+                requested_at=slot_dt,
+                source_text=base,
+                final_text=text,
+                target_key=target_key,
+            )
+        raise SkipError(f"Autonomy policy: {verdict.reason_text}.")
+    if verdict.held and not needs_approval:
+        needs_approval = True
+        approval = EvergreenRepeat.Approval.REVIEW
     with transaction.atomic():
         locked = (
             EvergreenItem.objects.select_for_update(of=("self",))
@@ -531,6 +566,24 @@ def recycle(item, queue, slot_dt, *, now=None) -> EvergreenRepeat:
             wording=wording,
             text=text,
             approval=approval,
+        )
+        held_reasons = verdict.reasons or ["this item needs a person's approval first"]
+        autonomy_service.record(
+            workspace=item.workspace,
+            actor=who,
+            action_type=ActionType.RECYCLE_EVERGREEN,
+            operation="evergreen.recycle",
+            verdict=verdict,
+            decision=Decision.HELD if needs_approval else Decision.EXECUTED,
+            summary=f"Held for review because {'; '.join(held_reasons)}." if needs_approval else "",
+            account=account,
+            post=pp.post,
+            platform_post=pp,
+            requested_at=when,
+            source_text=base,
+            final_text=text,
+            ai_used=wording == EvergreenRepeat.Wording.AI,
+            target_key=target_key,
         )
     logger.info(
         "Evergreen %s: repeat %s %s for %s on account %s (%s, %s)",
@@ -559,6 +612,8 @@ def fill_account(account, *, now=None) -> FillResult:
     result = FillResult()
     queue = _active_queue(account)
     if queue is None:
+        return result
+    if autonomy_service.recycling_stopped(account.workspace, account):
         return result
     items = list(
         EvergreenItem.objects.filter(social_account=account)

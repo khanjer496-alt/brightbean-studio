@@ -27,6 +27,8 @@ from django.views.decorators.http import require_GET, require_POST
 from django_ratelimit.decorators import ratelimit
 
 from apps.ai_writer.views import composer_context as ai_composer_context
+from apps.autonomy.actors import human as human_actor
+from apps.autonomy.service import record_scheduled
 from apps.billing.entitlements import (
     COUNTED_POST_STATUSES,
     PlanLimitError,
@@ -1353,7 +1355,7 @@ def compose(request, workspace_id, post_id=None):
     return render(request, "composer/compose.html", context)
 
 
-def _transition_post_children(post, target, *, allow_via_draft=True, only=None):
+def _transition_post_children(post, target, *, allow_via_draft=True, only=None, audit_user=None):
     """Transition every (or selected) PlatformPost child of *post* to *target*.
 
     Returns ``(moved, skipped)`` lists of PlatformPost instances. Children
@@ -1362,12 +1364,15 @@ def _transition_post_children(post, target, *, allow_via_draft=True, only=None):
     ``draft`` is attempted when ``allow_via_draft`` is True.
 
     ``only`` may be an iterable of PlatformPost IDs to restrict the operation
-    to a subset of children.
+    to a subset of children. With ``audit_user``, the children a person just
+    scheduled are written to the workspace's activity trail.
     """
-    children = post.platform_posts.all()
+    children = post.platform_posts.select_related("social_account")
     if only is not None:
         only_ids = {str(x) for x in only}
         children = [pp for pp in children if str(pp.id) in only_ids]
+    children = list(children)
+    already = {pp.id for pp in children if pp.status == target}
     moved, skipped = [], []
     for pp in children:
         if pp.status == target:
@@ -1396,6 +1401,16 @@ def _transition_post_children(post, target, *, allow_via_draft=True, only=None):
             moved.append(pp)
         except ValueError:
             skipped.append(pp)
+    if audit_user is not None and target == "scheduled" and moved:
+        record_scheduled(
+            workspace=post.workspace,
+            actor=human_actor(audit_user),
+            operation="post.schedule",
+            post=post,
+            platform_posts=[pp for pp in moved if pp.id not in already and pp.status == "scheduled"],
+            text=post.caption,
+            summary="Scheduled in the composer.",
+        )
     return moved, skipped
 
 
@@ -1661,7 +1676,9 @@ def save_post(request, workspace_id, post_id=None):
                 for q in queues:
                     add_to_queue(post, q)
                 # Transition every child whose scheduled_at was filled in.
-                _transition_post_children(post, "scheduled", only=_scoped_platform_post_ids(request, post))
+                _transition_post_children(
+                    post, "scheduled", only=_scoped_platform_post_ids(request, post), audit_user=request.user
+                )
         except QueueFullError:
             return JsonResponse({"errors": {"queue": _QUEUE_FULL_MSG}}, status=400)
         _save_version(post, request.user)
@@ -1695,7 +1712,9 @@ def save_post(request, workspace_id, post_id=None):
             with transaction.atomic():
                 for q in queues:
                     add_to_queue(post, q, priority=True)
-                _transition_post_children(post, "scheduled", only=_scoped_platform_post_ids(request, post))
+                _transition_post_children(
+                    post, "scheduled", only=_scoped_platform_post_ids(request, post), audit_user=request.user
+                )
         except QueueFullError:
             return JsonResponse({"errors": {"queue": _QUEUE_FULL_MSG}}, status=400)
         _save_version(post, request.user)
@@ -1848,7 +1867,7 @@ def save_post(request, workspace_id, post_id=None):
             target_only = [pid for pid in candidates if str(pid) not in reverted_ids]
         else:
             target_only = scoped_ids
-        _transition_post_children(post, pending_target, only=target_only)
+        _transition_post_children(post, pending_target, only=target_only, audit_user=request.user)
 
     # The series is set up once the children have their final status, which
     # is what each generated copy inherits.

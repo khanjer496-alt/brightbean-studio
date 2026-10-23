@@ -67,9 +67,14 @@ def _migrate(target: str) -> None:
 
 @pytest.fixture
 def restore_migrations():
-    """Leave the database at the migration head however the test ends."""
+    """Leave the database at the migration head however the test ends.
+
+    Every app is brought back to its head, not just inbox: rewinding inbox also
+    unapplies the migrations of apps that depend on it (autonomy keeps replies).
+    """
     yield
-    _migrate(_head())
+    executor = MigrationExecutor(connection)
+    executor.migrate(executor.loader.graph.leaf_nodes())
 
 
 @pytest.mark.django_db(transaction=True)

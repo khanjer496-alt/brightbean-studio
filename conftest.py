@@ -51,3 +51,21 @@ def _fresh_cache():
     run — in whichever test happens to make it — gets a 429.
     """
     cache.clear()
+
+
+@pytest.fixture
+def autonomous_agents(settings):
+    """Agents publish and reply on their own, with no undo window.
+
+    The production defaults are conservative (agents draft, a person approves
+    what goes out) and every test runs on them unless it asks otherwise. Suites
+    that exercise what an agent does once trusted (scheduling over REST/MCP,
+    sending replies) opt in with ``pytestmark = pytest.mark.usefixtures("autonomous_agents")``.
+    """
+    settings.AUTONOMY_DEFAULT_LEVELS = {
+        "draft_level": "full_auto",
+        "publish_level": "full_auto",
+        "reply_level": "full_auto",
+        "recycle_level": "per_item",
+    }
+    settings.AUTONOMY_DEFAULT_UNDO_MINUTES = 0
