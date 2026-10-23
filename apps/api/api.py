@@ -21,12 +21,23 @@ from apps.api.auth import ApiKeyAuth, McpAuth
 from apps.api.routers.accounts import router as accounts_router
 from apps.api.routers.ai import router as ai_router
 from apps.api.routers.analytics import router as analytics_router
+from apps.api.routers.approvals import router as approvals_router
+from apps.api.routers.brand_voice import router as brand_voice_router
+from apps.api.routers.categories import router as categories_router
+from apps.api.routers.events import router as events_router
 from apps.api.routers.hashtag_sets import router as hashtag_sets_router
+from apps.api.routers.ideas import groups_router as idea_groups_router
+from apps.api.routers.ideas import router as ideas_router
 from apps.api.routers.inbox import router as inbox_router
 from apps.api.routers.me import router as me_router
 from apps.api.routers.media import router as media_router
 from apps.api.routers.posts import router as posts_router
+from apps.api.routers.queues import router as queues_router
 from apps.api.routers.signatures import router as signatures_router
+from apps.api.routers.slots import router as slots_router
+from apps.api.routers.tags import router as tags_router
+from apps.api.routers.templates import router as templates_router
+from apps.api.routers.usage import router as usage_router
 from apps.api.routers.webhooks import router as webhooks_router
 from apps.mcp.transport import router as mcp_router
 
@@ -99,10 +110,30 @@ api = NinjaAPI(
         "`GET /signatures/` list the workspace's saved hashtag groups and "
         "sign-offs. They are read-only; append the text to a caption before "
         "calling `POST /posts/`.\n\n"
-        "**Deleting posts.** Posts cannot be deleted via the API in v1. "
-        "Cancel a scheduled post with `POST /posts/{id}/cancel`; remove "
-        "drafts from the workspace's drafts list in the web UI. Published "
-        "posts are never deletable — they remain as audit records."
+        "**Listing and deleting posts.** `GET /posts/` lists posts newest first with "
+        "`status`, `social_account_id`, `date_from`/`date_to`, `tag` and `search` filters and "
+        "cursor pagination. `DELETE /posts/{id}` removes a draft or scheduled post "
+        "(`create_posts`, plus `edit_others_posts` for someone else's); a post that is "
+        "publishing or already published is an audit record and is refused with 409. "
+        "`POST /posts/{id}/duplicate` copies a post into a new draft.\n\n"
+        "**Review workflow.** `/approvals/` lists posts waiting for review and decides them "
+        "(`approve`, `request-changes`, `reject`, each as the key's issuer and needing "
+        "`approve_posts`); `/approvals/{post_id}/comments` reads and adds comments (clients only "
+        "see and write `external` ones).\n\n"
+        "**Queues and slots.** `/queues/` lists publishing queues and `POST /queues/{id}/entries` "
+        "schedules a post into the next free posting slot (`create_posts` + `publish_directly`). "
+        "`/slots/` manages an account's weekly posting slots (`manage_social_accounts`) and "
+        "`GET /slots/next-free` finds its next open times. Both honour the key's account allowlist.\n\n"
+        "**Planning content.** `/ideas/` and `/idea-groups/` (the kanban board), `/templates/`, "
+        "`/tags/`, `/categories/` and `/events/` (calendar events) are workspace content managed "
+        "with `create_posts`. `/brand-voice/` reads (`create_posts` or `manage_workspace_settings`) "
+        "and updates (`manage_workspace_settings`) the voice the AI assistant writes in, and "
+        "`GET /usage/` reports the plan, its limits and current usage.\n\n"
+        "**Pagination.** List endpoints take `limit` (default 50, max 100) and an opaque `cursor`; "
+        "a non-null `next_cursor` means more remain.\n\n"
+        "**Scopes.** A key's scope is its permission set plus its account allowlist. Reads that "
+        "involve an account (posts, queues, slots, templates) are filtered to the allowlist; "
+        "writes naming an account outside it are refused with 403."
     ),
     auth=ApiKeyAuth(),
     docs=NoncedSwagger(),
@@ -123,6 +154,17 @@ api.add_router("/ai", ai_router)
 api.add_router("/webhooks", webhooks_router)
 api.add_router("/hashtag-sets", hashtag_sets_router)
 api.add_router("/signatures", signatures_router)
+api.add_router("/approvals", approvals_router)
+api.add_router("/queues", queues_router)
+api.add_router("/slots", slots_router)
+api.add_router("/ideas", ideas_router)
+api.add_router("/idea-groups", idea_groups_router)
+api.add_router("/templates", templates_router)
+api.add_router("/tags", tags_router)
+api.add_router("/categories", categories_router)
+api.add_router("/events", events_router)
+api.add_router("/brand-voice", brand_voice_router)
+api.add_router("/usage", usage_router)
 # MCP Streamable HTTP transport. Same audit + rate limits as REST, but a
 # wider auth class: ``McpAuth`` accepts both bb_studio_ keys AND OAuth 2.1
 # access tokens (Claude Desktop's native connector flow). Mounted last so
@@ -287,6 +329,10 @@ def _action_for_path(method: str, path: str, *, status_code: int) -> str:
     if "/analytics/posts/" in path:
         return f"analytics.read.post.{status_code}"
     if "/posts/" in path:
+        if method == "DELETE":
+            return f"post.delete.{status_code}"
+        if path.endswith("/duplicate"):
+            return f"post.duplicate.{status_code}"
         if path.endswith("/schedule"):
             return f"post.schedule.{status_code}"
         if path.endswith("/cancel"):
@@ -316,11 +362,42 @@ def _action_for_path(method: str, path: str, *, status_code: int) -> str:
             return f"inbox.read.{status_code}"
     if "/mcp" in path:
         return f"mcp.error.{status_code}"
+    resource = _resource_for_path(path)
+    if resource is not None:
+        verb = {"GET": "read", "POST": "create", "PATCH": "update", "DELETE": "delete"}.get(method, method.lower())
+        return f"{resource}.{verb}.{status_code}"
     if "/accounts" in path:
         return f"accounts.list.{status_code}"
     if "/me" in path:
         return f"me.read.{status_code}"
     return f"unknown.{method.lower()}.{status_code}"
+
+
+# Resources added after the original surface; failures on them are labelled
+# ``<resource>.<read|create|update|delete>.<status>`` like their success rows.
+_RESOURCE_SEGMENTS = {
+    "approvals": "approvals",
+    "queues": "queues",
+    "slots": "slots",
+    "ideas": "ideas",
+    "idea-groups": "idea_groups",
+    "templates": "templates",
+    "tags": "tags",
+    "categories": "categories",
+    "events": "events",
+    "brand-voice": "brand_voice",
+    "usage": "usage",
+    "hashtag-sets": "hashtag_sets",
+    "signatures": "signatures",
+}
+
+
+def _resource_for_path(path: str) -> str | None:
+    parts = [p for p in path.split("/") if p]
+    # ``/api/v1/<resource>/...``
+    if len(parts) >= 3 and parts[:2] == ["api", "v1"]:
+        return _RESOURCE_SEGMENTS.get(parts[2])
+    return None
 
 
 def _slug_for(status: int) -> str:

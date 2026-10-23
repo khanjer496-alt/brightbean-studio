@@ -141,6 +141,19 @@ def _next_available_slot(social_account, *, exclude_pp_ids=(), after=None):
     return None
 
 
+def next_available_slots(social_account, count=1, *, after=None):
+    """The next ``count`` open PostingSlot datetimes on ``social_account``, soonest first.
+
+    Same occupancy rule queues use (see ``_next_available_slot``): a slot is
+    taken when a non-published post on the channel is scheduled at that
+    instant. Fewer than ``count`` come back when the 60-day lookahead runs out.
+    """
+    after = after or timezone.now()
+    occupied = _occupied_datetimes(social_account)
+    candidates = _next_slot_datetimes(social_account, after, count=len(occupied) + count)
+    return [slot_dt for slot_dt in candidates if slot_dt not in occupied][:count]
+
+
 def _platform_post_for(post, social_account):
     """The post's PlatformPost child on this channel (or ``None``)."""
     return post.platform_posts.filter(social_account=social_account).first()

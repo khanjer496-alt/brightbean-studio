@@ -1,4 +1,4 @@
-"""``/api/v1/posts/*`` — create, read, update, schedule, cancel, resume a thread.
+"""``/api/v1/posts/*`` — create, list, read, update, schedule, cancel, delete, duplicate, resume a thread.
 
 Every write path:
 
@@ -18,14 +18,16 @@ defence against spending DB cycles for unauthorized callers.
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 
 from django.db import transaction
 from django.http import HttpRequest
 from django.shortcuts import get_object_or_404
-from ninja import Router
+from ninja import Query, Router
 from ninja.errors import HttpError
 
+from apps.api import ops
 from apps.api.limits import check_platform_quota, enforce_http_rate_limits
 from apps.api.middleware import (
     claim_idempotency_slot,
@@ -34,9 +36,12 @@ from apps.api.middleware import (
     log_audit_entry,
     release_idempotent_claim,
 )
+from apps.api.routers.common import run_op
 from apps.api.schemas import (
     CreatePostRequest,
+    DeletedResponse,
     PostResponse,
+    PostsListResponse,
     RecurrenceSpec,
     ScheduleRequest,
     UpdatePostRequest,
@@ -163,6 +168,20 @@ def _get_workspace_post(request: HttpRequest, post_id: uuid.UUID) -> Post:
     return post
 
 
+def _check_taxonomy(request: HttpRequest, *, tags, category_id) -> None:
+    try:
+        ops.validate_post_taxonomy(ops.Actor.from_request(request), tags=tags, category_id=category_id)
+    except ops.OpError as exc:
+        raise HttpError(exc.status, exc.message) from exc
+
+
+def _apply_taxonomy(request: HttpRequest, post: Post, *, tags, category_id) -> None:
+    try:
+        ops.apply_post_taxonomy(ops.Actor.from_request(request), post, tags=tags, category_id=category_id)
+    except ops.OpError as exc:
+        raise HttpError(exc.status, exc.message) from exc
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -188,6 +207,7 @@ def create(request, payload: CreatePostRequest):
     # keeps the claim/release pair tight and confined to the post-claim
     # path (platform quota + create_post).
     social_account = _resolve_account(request, payload.social_account_id)
+    _check_taxonomy(request, tags=payload.tags, category_id=payload.category_id)
     if payload.action == "schedule" and payload.scheduled_at is None:
         raise HttpError(422, "scheduled_at is required when action='schedule'.")
     repeat = payload.recurrence if payload.recurrence and payload.recurrence.frequency != "never" else None
@@ -297,6 +317,7 @@ def create(request, payload: CreatePostRequest):
                 parts=[part.to_spec() for part in payload.parts],
                 post_settings=payload.post_settings,
             )
+            _apply_taxonomy(request, post, tags=payload.tags, category_id=payload.category_id)
             if repeat is not None:
                 save_recurrence(post, **repeat.rule_fields())
             body = _post_to_response(request, post)
@@ -330,6 +351,44 @@ def create(request, payload: CreatePostRequest):
     return status_code, body
 
 
+@router.get(
+    "/",
+    response=PostsListResponse,
+    summary="List posts",
+    description=(
+        "Newest first (by creation time). Only posts whose every platform target is on the key's account allowlist "
+        "are returned. `status` and `social_account_id` must hold on the same platform target. `date_from`/`date_to` "
+        "bound the post's date: when it goes out, or when it was created while it has no schedule. `tag` is an exact "
+        "tag name; `search` matches the caption or title. When `next_cursor` is non-null, pass it back as `cursor`."
+    ),
+)
+def list_posts(
+    request,
+    status: str | None = Query(None, description="Per-platform status; a post matches if any target has it."),
+    social_account_id: uuid.UUID | None = Query(None),
+    date_from: dt.datetime | None = Query(None, description="ISO 8601; a time without an offset is UTC."),
+    date_to: dt.datetime | None = Query(None, description="ISO 8601; a time without an offset is UTC."),
+    tag: str | None = Query(None),
+    search: str | None = Query(None),
+    limit: int = Query(ops.LIMIT_DEFAULT, ge=1, le=ops.LIMIT_MAX),
+    cursor: str | None = Query(None),
+):
+    return run_op(
+        request,
+        ops.list_posts,
+        status=status,
+        social_account_id=social_account_id,
+        date_from=date_from,
+        date_to=date_to,
+        tag=tag,
+        search=search,
+        limit=limit,
+        cursor=cursor,
+        action="post.list",
+        is_write=False,
+    )
+
+
 @router.get("/{post_id}", response=PostResponse, summary="Read a single post")
 def retrieve(request, post_id: uuid.UUID):
     enforce_http_rate_limits(request, is_write=False)
@@ -343,6 +402,7 @@ def update(request, post_id: uuid.UUID, payload: UpdatePostRequest):
     enforce_http_rate_limits(request, is_write=True)
     _require_perm(request, "create_posts")  # mirrors composer's create-or-edit perm
     post = _get_workspace_post(request, post_id)
+    _check_taxonomy(request, tags=payload.tags, category_id=payload.category_id)
 
     # Only allow updates while editable.
     if not post.is_editable:
@@ -502,6 +562,7 @@ def update(request, post_id: uuid.UUID, payload: UpdatePostRequest):
             post.save(update_fields=["updated_at"])
 
         sync_post_scheduled_at(post)
+        _apply_taxonomy(request, post, tags=payload.tags, category_id=payload.category_id)
 
         if repeat is not None:
             save_recurrence(post, **repeat.rule_fields(), refresh=payload.scheduled_at is not None)
@@ -628,6 +689,38 @@ def cancel(request, post_id: uuid.UUID):
     post.refresh_from_db()
     log_audit_entry(request, action="post.cancel", target_id=post.id, status_code=200)
     return _post_to_response(request, post)
+
+
+@router.delete(
+    "/{post_id}",
+    response=DeletedResponse,
+    summary="Delete a post",
+    description=(
+        "Needs `create_posts` (and `edit_others_posts` for someone else's post). A post that is publishing or "
+        "already published is an audit record and is refused with 409; cancel a scheduled post first or just delete it."
+    ),
+)
+def delete(request, post_id: uuid.UUID):
+    return run_op(request, ops.delete_post, post_id, action="post.delete", is_write=True, target_id=post_id)
+
+
+@router.post(
+    "/{post_id}/duplicate",
+    response={201: PostResponse},
+    summary="Duplicate a post as a new draft",
+    description="Copies content, media, thread parts and per-platform settings; the copy has no schedule. Needs `create_posts`.",
+)
+def duplicate(request, post_id: uuid.UUID):
+    post = run_op(
+        request,
+        ops.duplicate_post,
+        post_id,
+        action="post.duplicate",
+        is_write=True,
+        target_id=lambda p: p.id,
+        status_code=201,
+    )
+    return 201, post
 
 
 @router.post(
