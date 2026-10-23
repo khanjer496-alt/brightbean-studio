@@ -39,14 +39,16 @@ def _account_provider(account, **overrides):
             "missing_scopes": account.missing_scopes,
             "messaging_access": account.messaging_access,
         }
-    return _get_provider_for_platform(account.platform, account.workspace.organization_id, **(extra | overrides))
+    return _get_provider_for_platform(
+        account.platform, account.workspace.organization_id, workspace_id=account.workspace_id, **(extra | overrides)
+    )
 
 
 def _same_app(left, right):
     from apps.credentials.models import resolve_platform_credentials
 
-    left_creds = resolve_platform_credentials(left.platform, left.workspace.organization_id)
-    right_creds = resolve_platform_credentials(right.platform, right.workspace.organization_id)
+    left_creds = resolve_platform_credentials(left.platform, left.workspace.organization_id, left.workspace_id)
+    right_creds = resolve_platform_credentials(right.platform, right.workspace.organization_id, right.workspace_id)
     left_id = left_creds.get("client_id") or left_creds.get("app_id")
     right_id = right_creds.get("client_id") or right_creds.get("app_id")
     if left_id and right_id:
@@ -327,7 +329,9 @@ def record_missing_scopes(account) -> list[str]:
     as the flag migration 0021 put on every Pinterest account, is cleared.
     """
     try:
-        provider = _get_provider_for_platform(account.platform, account.workspace.organization_id)
+        provider = _get_provider_for_platform(
+            account.platform, account.workspace.organization_id, workspace_id=account.workspace_id
+        )
         # Match what OAuth actually asked for. Connect omits the analytics-only
         # scopes when the platform's analytics is switched off, so comparing
         # against the unconditional list would report a scope as missing that we

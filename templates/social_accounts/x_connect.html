@@ -32,6 +32,10 @@
         <li>Connect. X asks you to authorize the app with these permissions: read and write posts, read your profile, upload media, and stay connected (offline access).</li>
     </ol>
 
+    {% if uses_org_app %}
+    <p class="mb-5 text-sm text-stone-600">This workspace uses your organization's X app. Connect with it as it is, or enter another app's keys to use that app for this workspace only.</p>
+    {% endif %}
+
     <form method="post" action="{% url 'social_accounts:connect_x' workspace_id=workspace_id %}" class="space-y-5" autocomplete="off">
         {% csrf_token %}
 
@@ -46,7 +50,7 @@
             <input type="password" id="client_secret" name="client_secret" {% if not has_secret %}required{% endif %} spellcheck="false"
                    placeholder="{% if has_secret %}Saved. Leave blank to keep it.{% endif %}"
                    class="w-full px-4 py-2.5 text-sm border-2 border-stone-200 rounded-xl bg-white text-stone-900 placeholder-stone-400 focus:border-orange-500 focus:ring-0 focus:outline-none transition-colors">
-            <p class="text-xs text-stone-400 mt-1.5">Stored encrypted for your organization and never shown again. Use the Client ID and Secret from the OAuth 2.0 section, not the API Key and Secret.</p>
+            <p class="text-xs text-stone-400 mt-1.5">Stored encrypted for this workspace and never shown again. Use the Client ID and Secret from the OAuth 2.0 section, not the API Key and Secret.</p>
         </div>
 
         <div class="flex items-center gap-3 pt-2">

@@ -73,12 +73,13 @@ class TestStartOAuth:
     def start(self, client, workspace, **form):
         return client.post(form_url(workspace), {"client_id": "cid", "client_secret": "csecret", **form})
 
-    def test_saves_the_credentials_encrypted_per_organization_and_redirects_to_x_with_pkce(
+    def test_saves_the_credentials_encrypted_for_the_workspace_and_redirects_to_x_with_pkce(
         self, authenticated_client, workspace, organization
     ):
         response = self.start(authenticated_client, workspace)
         assert response.status_code == 302
         saved = PlatformCredential.objects.get(organization=organization, platform="x")
+        assert saved.workspace_id == workspace.id
         assert saved.credentials == {"client_id": "cid", "client_secret": "csecret"}
         assert saved.is_configured is True
         # Stored encrypted at rest, not as the plain JSON.
@@ -202,3 +203,104 @@ class TestCallback:
         ):
             self.callback(authenticated_client, workspace)
         assert seen == {"client_id": "cid", "client_secret": "csecret"}
+
+
+@pytest.mark.django_db
+class TestWorkspaceApps:
+    """Each workspace can bring its own X app (an agency's clients pay X themselves); the org's is the fallback."""
+
+    @pytest.fixture
+    def second_workspace(self, user, organization):
+        from apps.members.models import WorkspaceMembership
+        from apps.workspaces.models import Workspace
+
+        ws = Workspace.objects.create(name="Client B", organization=organization)
+        WorkspaceMembership.objects.create(user=user, workspace=ws, workspace_role="manager")
+        return ws
+
+    def authorize_client_id(self, response):
+        return parse_qs(urlparse(response.url).query)["client_id"][0]
+
+    def test_two_workspaces_keep_two_apps(self, authenticated_client, workspace, second_workspace, organization):
+        first = authenticated_client.post(form_url(workspace), {"client_id": "app-a", "client_secret": "sa"})
+        second = authenticated_client.post(form_url(second_workspace), {"client_id": "app-b", "client_secret": "sb"})
+        assert (self.authorize_client_id(first), self.authorize_client_id(second)) == ("app-a", "app-b")
+        assert resolve_platform_credentials("x", organization.id, workspace.id)["client_id"] == "app-a"
+        assert resolve_platform_credentials("x", organization.id, second_workspace.id)["client_id"] == "app-b"
+        # Neither is the organization's app.
+        assert resolve_platform_credentials("x", organization.id) == {}
+        body = authenticated_client.get(form_url(second_workspace)).content.decode()
+        assert 'value="app-b"' in body and "app-a" not in body
+
+    def test_accounts_elsewhere_do_not_lock_this_workspaces_app(
+        self, authenticated_client, workspace, second_workspace
+    ):
+        authenticated_client.post(form_url(workspace), {"client_id": "app-a", "client_secret": "sa"})
+        SocialAccount.objects.create(workspace=workspace, platform="x", account_platform_id="1", account_name="A")
+        response = authenticated_client.post(form_url(second_workspace), {"client_id": "app-b", "client_secret": "sb"})
+        assert response.status_code == 302
+
+    def test_the_organizations_app_is_used_until_the_workspace_brings_its_own(
+        self, authenticated_client, workspace, organization
+    ):
+        PlatformCredential.objects.create(
+            organization=organization, platform="x", credentials={"client_id": "org-app", "client_secret": "os"}
+        )
+        body = authenticated_client.get(form_url(workspace)).content.decode()
+        assert "uses your organization's X app" in body
+        assert 'value="org-app"' in body and 'value="os"' not in body
+        response = authenticated_client.post(form_url(workspace), {"client_id": "org-app", "client_secret": ""})
+        assert self.authorize_client_id(response) == "org-app"
+        assert not PlatformCredential.objects.filter(workspace=workspace).exists()
+
+        response = authenticated_client.post(form_url(workspace), {"client_id": "own-app", "client_secret": "own"})
+        assert self.authorize_client_id(response) == "own-app"
+        assert PlatformCredential.objects.get(workspace=workspace).credentials == {
+            "client_id": "own-app",
+            "client_secret": "own",
+        }
+        # The organization's row is untouched.
+        assert PlatformCredential.objects.get(workspace__isnull=True).credentials["client_id"] == "org-app"
+
+    def test_accounts_on_the_organizations_app_lock_it_for_their_workspace(
+        self, authenticated_client, workspace, organization
+    ):
+        PlatformCredential.objects.create(
+            organization=organization, platform="x", credentials={"client_id": "org-app", "client_secret": "os"}
+        )
+        SocialAccount.objects.create(workspace=workspace, platform="x", account_platform_id="1", account_name="A")
+        response = authenticated_client.post(form_url(workspace), {"client_id": "own-app", "client_secret": "own"})
+        assert response.status_code == 200
+        assert not PlatformCredential.objects.filter(workspace=workspace).exists()
+
+    def test_a_blank_secret_is_never_paired_with_another_apps_id(self, authenticated_client, workspace):
+        authenticated_client.post(form_url(workspace), {"client_id": "app-a", "client_secret": "sa"})
+        response = authenticated_client.post(form_url(workspace), {"client_id": "app-b", "client_secret": ""})
+        assert response.status_code == 200
+        assert "Enter the Client ID and Client Secret" in response.content.decode()
+        assert PlatformCredential.objects.get(workspace=workspace).credentials["client_id"] == "app-a"
+
+    def test_publishing_resolves_the_accounts_workspace_app(self, authenticated_client, workspace, second_workspace):
+        from apps.publisher.engine import _resolve_publish_credentials
+
+        authenticated_client.post(form_url(workspace), {"client_id": "app-a", "client_secret": "sa"})
+        authenticated_client.post(form_url(second_workspace), {"client_id": "app-b", "client_secret": "sb"})
+        account = SocialAccount.objects.create(
+            workspace=second_workspace, platform="x", account_platform_id="1", account_name="B"
+        )
+        assert _resolve_publish_credentials(account) == {"client_id": "app-b", "client_secret": "sb"}
+
+    def test_a_member_without_the_connect_permission_cannot_set_an_app(self, client, user, workspace, organization):
+        from django.utils import timezone
+
+        from apps.accounts.models import User
+        from apps.members.models import WorkspaceMembership
+
+        editor = User.objects.create_user(
+            email="editor@example.com", password="pw-123456789", name="E", tos_accepted_at=timezone.now()
+        )
+        WorkspaceMembership.objects.create(user=editor, workspace=workspace, workspace_role="editor")
+        client.force_login(editor)
+        response = client.post(form_url(workspace), {"client_id": "evil", "client_secret": "evil"})
+        assert response.status_code == 403
+        assert not PlatformCredential.objects.filter(platform="x").exists()
