@@ -1,0 +1,4 @@
+{# A run's state as a labelled badge: colour is never the only signal. #}
+{% if run.status == "succeeded" %}<span class="inline-flex items-center gap-1 rounded-full bg-good-soft px-2.5 py-0.5 text-xs font-semibold text-good"><span aria-hidden="true">&#10003;</span>Ready</span>
+{% elif run.status == "failed" %}<span class="inline-flex items-center gap-1 rounded-full bg-bad-soft px-2.5 py-0.5 text-xs font-semibold text-bad"><span aria-hidden="true">&#10007;</span>Failed</span>
+{% else %}<span class="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2.5 py-0.5 text-xs font-semibold text-ink-2"><span aria-hidden="true">&#8230;</span>{{ run.get_status_display }}</span>{% endif %}

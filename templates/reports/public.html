@@ -1,0 +1,21 @@
+{% load static %}<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="icon" href="data:,">
+    <meta name="referrer" content="no-referrer">
+    <title>{{ data.title }} — {{ data.branding.agency }}</title>
+    <link rel="stylesheet" href="{% static 'css/dist/styles.css' %}">
+</head>
+<body class="min-h-screen bg-gray-100 px-4 py-6 text-gray-900 sm:px-6">
+    <main>
+        <div class="mx-auto mb-4 flex max-w-4xl flex-wrap items-center justify-between gap-3">
+            <p class="m-0 text-sm text-gray-700">Shared by <bdi>{{ data.branding.agency }}</bdi></p>
+            <a href="{% url 'reports_public:pdf' token=token %}" class="inline-flex min-h-11 items-center rounded-full bg-gray-900 px-5 text-sm font-semibold text-white no-underline">Download PDF</a>
+        </div>
+        {% include "reports/_report.html" %}
+    </main>
+</body>
+</html>

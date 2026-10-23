@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ data.title }} — Reports — {{ brand_short_name }}{% endblock %}
+
+{% block content %}
+<div class="flex flex-1 flex-col">
+    {% include "analytics/_nav.html" %}
+    <a href="{% url 'reports:history' workspace_id=workspace.id report_id=run.definition_id %}" class="mb-3 inline-flex min-h-11 items-center text-[13px] text-ink-3 underline">&larr; History</a>
+    <div class="mb-4 flex flex-wrap items-center gap-2">
+        <a href="{% url 'reports:run_pdf' workspace_id=workspace.id run_id=run.id %}" class="btn-brand inline-flex min-h-11 w-auto items-center px-5 py-2">Download PDF</a>
+        {% if can_manage %}
+        <button type="button" class="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-line bg-surface-0 px-4 text-[13px] font-semibold text-ink-2 hover:text-ink"
+                hx-post="{% url 'reports:run_share' workspace_id=workspace.id run_id=run.id %}" hx-target="#share-{{ run.id }}" hx-swap="innerHTML">Get share link</button>
+        {% endif %}
+    </div>
+    <div id="share-{{ run.id }}" class="mb-4" aria-live="polite"></div>
+    {% include "reports/_report.html" %}
+</div>
+{% endblock %}

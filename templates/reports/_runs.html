@@ -1,0 +1,37 @@
+{% load tz %}{# Run history for one report; re-fetches itself while something is still building. #}
+<div id="report-runs" {% if polling %}hx-get="{% url 'reports:history' workspace_id=workspace.id report_id=definition.id %}" hx-trigger="every 4s" hx-swap="outerHTML"{% endif %}>
+    {% if runs %}
+    <ul class="m-0 flex list-none flex-col gap-3 p-0">
+        {% for run in runs %}
+        <li class="rounded-xl border border-line bg-surface-1 p-4">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                    <p class="m-0 text-[14px] font-semibold text-ink">{{ run.period_start|date:"M j" }} – {{ run.period_end|date:"M j, Y" }}</p>
+                    <p class="m-0 mt-0.5 text-xs text-ink-3">
+                        {{ run.get_trigger_display }} &middot; {{ run.created_at|timezone:timezone_name|date:"M j, H:i" }}
+                        {% if run.emailed_to %}&middot; emailed to {{ run.emailed_to|length }}{% endif %}
+                        {% if run.attempts > 1 and run.status != "succeeded" %}&middot; attempt {{ run.attempts }}{% endif %}
+                    </p>
+                </div>
+                {% include "reports/_status.html" %}
+            </div>
+            {% if run.error and run.status != "succeeded" %}<p class="m-0 mt-2 text-xs text-bad">{{ run.error }}</p>{% endif %}
+            {% if run.email_error %}<p class="m-0 mt-2 text-xs text-warn">{{ run.email_error }}</p>{% endif %}
+            {% if run.status == "succeeded" %}
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+                <a href="{% url 'reports:run_detail' workspace_id=workspace.id run_id=run.id %}" class="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-[13px] font-semibold text-ink-2 no-underline hover:text-ink">View</a>
+                <a href="{% url 'reports:run_pdf' workspace_id=workspace.id run_id=run.id %}" class="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-[13px] font-semibold text-ink-2 no-underline hover:text-ink">Download PDF</a>
+                {% if can_manage %}
+                <button type="button" class="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-line bg-surface-0 px-4 text-[13px] font-semibold text-ink-2 hover:text-ink"
+                        hx-post="{% url 'reports:run_share' workspace_id=workspace.id run_id=run.id %}" hx-target="#share-{{ run.id }}" hx-swap="innerHTML">Get share link</button>
+                {% endif %}
+            </div>
+            <div id="share-{{ run.id }}" class="mt-2" aria-live="polite"></div>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="rounded-xl border border-dashed border-line p-6 text-center text-[13px] text-ink-3">No reports built yet. Use Run now to make the first one.</p>
+    {% endif %}
+</div>

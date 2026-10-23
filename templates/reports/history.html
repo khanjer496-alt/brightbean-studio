@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block title %}{{ definition.name }} — Reports — {{ brand_short_name }}{% endblock %}
+
+{% block content %}
+<div class="flex flex-1 flex-col">
+    {% include "analytics/_nav.html" %}
+    <a href="{% url 'reports:list' workspace_id=workspace.id %}" class="mb-3 inline-flex min-h-11 items-center text-[13px] text-ink-3 underline">&larr; All reports</a>
+    <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+        <div>
+            <h2 class="m-0 text-xl font-semibold tracking-tight text-ink">{{ definition.name }}</h2>
+            <p class="m-0 mt-1 text-xs text-ink-3">{{ definition.get_range_type_display }}{% if definition.is_scheduled %} &middot; {{ definition.get_frequency_display }}{% endif %}{% if definition.recipients %} &middot; {{ definition.recipients|length }} recipient{{ definition.recipients|length|pluralize }}{% endif %}</p>
+        </div>
+        {% if can_manage %}
+        <div class="flex flex-wrap items-center gap-2">
+            <a href="{% url 'reports:edit' workspace_id=workspace.id report_id=definition.id %}" class="inline-flex min-h-11 items-center rounded-full border border-line px-4 text-[13px] font-semibold text-ink-2 no-underline hover:text-ink">Edit</a>
+            <form method="post" action="{% url 'reports:run' workspace_id=workspace.id report_id=definition.id %}" class="m-0 flex flex-wrap items-center gap-3">
+                {% csrf_token %}
+                {% if definition.recipients %}<label class="inline-flex min-h-11 cursor-pointer items-center gap-2 text-[13px] text-ink-2"><input type="checkbox" name="deliver" class="h-4 w-4">Also email recipients</label>{% endif %}
+                <button type="submit" class="btn-brand inline-flex min-h-11 w-auto items-center px-5 py-2">Run now</button>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+    <h3 class="m-0 mb-2 text-[15px] font-semibold text-ink">History</h3>
+    {% include "reports/_runs.html" %}
+    {% if can_manage and runs %}
+    <form method="post" action="{% url 'reports:revoke_links' workspace_id=workspace.id report_id=definition.id %}" class="m-0 mt-6 flex flex-wrap items-center gap-3 border-t border-line pt-4"
+          onsubmit="return confirm('Stop every shared link to this report, including links already emailed?');">
+        {% csrf_token %}
+        <p class="m-0 text-xs text-ink-3">Shared links work for {{ link_days }} days without sign-in.</p>
+        <button type="submit" class="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-line bg-surface-0 px-4 text-[13px] font-semibold text-bad hover:text-ink">Revoke all shared links</button>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}

@@ -115,6 +115,7 @@ LOCAL_APPS = [
     "apps.mcp",
     "apps.oauth_server",
     "apps.analytics",
+    "apps.reports",
     "apps.billing",
     "apps.ai_writer",
     "apps.webhooks",
@@ -909,3 +910,8 @@ if INTELLIGENCE_ENABLED:
                 f"localhost / 127.0.0.1 dev tunnels) — current value would "
                 f"leak Intelligence API keys in transit."
             )
+
+# Client reports (apps.reports). A shareable report link stops working this
+# many days after it was issued; the emailed link is issued when the report is
+# sent, so recipients get the full window.
+REPORT_LINK_MAX_AGE_DAYS = env.int("REPORT_LINK_MAX_AGE_DAYS", default=30)

@@ -60,6 +60,12 @@ stripe>=16.0,<17.0
 # called when ANTHROPIC_API_KEY or an organization's own key is set.
 anthropic>=2.1,<3.0
 
+# Client reports (apps.reports) — PDF output. fpdf2 is pure Python (Pillow +
+# fontTools); uharfbuzz is HarfBuzz's binary abi3 wheel (manylinux x86_64/aarch64,
+# macOS), used for Arabic joining and bidi. No cairo/pango, no compiler in the image.
+fpdf2>=2.8,<3.0
+uharfbuzz>=0.50,<1.0
+
 
 # Dev/Test
 ruff>=0.6,<1.0

@@ -1,0 +1,6 @@
+<div role="alert" class="rounded-xl border border-line bg-surface-1 p-4 text-sm text-ink-2">
+    <p class="m-0 font-semibold text-ink">The preview needs a few fixes</p>
+    <ul class="m-0 mt-2 list-disc pl-5 text-[13px]">
+        {% for field, errors in form.errors.items %}{% for e in errors %}<li>{{ e }}</li>{% endfor %}{% endfor %}
+    </ul>
+</div>
