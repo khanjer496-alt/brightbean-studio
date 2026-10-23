@@ -13,4 +13,4 @@ class McpConfig(AppConfig):
         # Force registration of all tools at app boot so `tools/list`
         # returns a complete catalog regardless of which router is hit
         # first. Import-side-effects only.
-        from apps.mcp import handlers  # noqa: F401
+        from apps.mcp import handlers, ops_tools  # noqa: F401

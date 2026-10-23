@@ -132,9 +132,14 @@ def get_comments_for_post(post, user):
         workspace=workspace,
     ).first()
 
+    is_client = bool(membership and membership.workspace_role == WorkspaceMembership.WorkspaceRole.CLIENT)
+
     active_replies = PostComment.objects.filter(
         deleted_at__isnull=True,
     ).select_related("author")
+    if is_client:
+        # A team member's internal reply under an external comment is still internal.
+        active_replies = active_replies.filter(visibility=PostComment.Visibility.EXTERNAL)
 
     qs = (
         PostComment.objects.filter(
@@ -150,7 +155,7 @@ def get_comments_for_post(post, user):
     )
 
     # Clients only see external comments
-    if membership and membership.workspace_role == WorkspaceMembership.WorkspaceRole.CLIENT:
+    if is_client:
         qs = qs.filter(visibility=PostComment.Visibility.EXTERNAL)
 
     return qs
