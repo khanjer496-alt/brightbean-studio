@@ -57,7 +57,8 @@ class PinterestProvider(SocialProvider):
     best_time_windows = (
         PeakWindow(days=(1, 2), hours=(10, 11, 12)),
         PeakWindow(days=(0, 3, 4), hours=(10, 11)),
-        PeakWindow(days=(0, 2, 3), hours=(14, 15)),
+        PeakWindow(days=(0, 3), hours=(14,)),
+        PeakWindow(days=(2, 3), hours=(15,)),
     )
 
     writing_style = (

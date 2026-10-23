@@ -131,8 +131,10 @@ class LinkedInProvider(SocialProvider):
     best_time_source = "Sprout Social study, Mar 2026"
     best_time_windows = (
         PeakWindow(days=(1, 2, 3), hours=(11, 13, 14)),
-        PeakWindow(days=(1, 2, 3), hours=(12, 15)),
-        PeakWindow(days=(0, 4), hours=(11, 13)),
+        PeakWindow(days=(1, 2, 3), hours=(15,)),
+        PeakWindow(days=(1, 2), hours=(12,)),
+        PeakWindow(days=(4,), hours=(11, 13)),
+        PeakWindow(days=(0,), hours=(13,)),
     )
 
     writing_style = "Professional and insightful: a hook line, short paragraphs with line breaks, a takeaway or question at the end, and three to five hashtags."

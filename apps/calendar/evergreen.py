@@ -488,8 +488,7 @@ def recycle(item, queue, slot_dt, *, now=None) -> EvergreenRepeat:
     problem, permanent = original_problem(item)
     if problem:
         if permanent:
-            EvergreenItem.objects.filter(pk=item.pk).update(is_paused=True)
-            item.is_paused = True
+            set_paused(item, True)
             problem += " Paused."
         raise SkipError(problem)
     problem = media_problem(item)
