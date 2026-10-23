@@ -52,6 +52,10 @@ mcp>=1.0,<2.0
 # key. Existing API keys keep working unchanged. See apps/oauth_server/.
 django-oauth-toolkit>=3.0,<4.0
 
+# Plans & billing (apps/billing) — Checkout, Customer Portal, webhooks.
+# Only called when BILLING_ENABLED is on.
+stripe>=16.0,<17.0
+
 
 # Dev/Test
 ruff>=0.6,<1.0
