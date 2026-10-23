@@ -13,7 +13,8 @@ Three orthogonal concerns live here:
 2. Per-key / per-workspace / per-IP HTTP throttles via ``django-ratelimit``,
    exposed as small wrapper helpers so each router stays declarative.
 
-3. Per-key hourly and daily call caps, counted from ``ApiKeyUsageHourly``.
+3. Per-key hourly and daily call caps, counted from ``ApiKeyUsageHourly``,
+   and (with ``BILLING_ENABLED``) the plan's per-organization daily cap.
    The per-minute tiers in (2) stop bursts but not a client polling just
    under them all day long, which is what one key did at ~113 calls a
    minute (165k a day). These caps are the backstop for that.
@@ -31,12 +32,14 @@ import logging
 from django.conf import settings
 from django.core.cache import cache as _cache
 from django.http import HttpRequest
+from django.urls import reverse
 from django.utils import timezone
 from django_ratelimit.core import is_ratelimited
 from ninja.errors import HttpError
 
-from apps.api.usage import actor_for, day_start, hour_start, usage_in_windows
+from apps.api.usage import actor_for, day_start, hour_start, org_usage_in_day, usage_in_windows
 from apps.api_keys.models import ApiKey
+from apps.billing.entitlements import get_entitlements
 from apps.composer.models import PlatformPost
 from apps.social_accounts.models import SocialAccount
 
@@ -173,13 +176,14 @@ def check_platform_quota(social_account: SocialAccount) -> None:
         )
 
 
-def _format_quota_message(*, tier: str, limit: int, remaining: int, retry_after: int) -> str:
+def _format_quota_message(*, tier: str, limit: int, remaining: int, retry_after: int, upgrade_url: str = "") -> str:
     """Plain-text body for the HttpError so Ninja's default 429 page renders.
 
     The router-level error handler in ``api.py`` rewraps this into the
     uniform JSON shape with a ``Retry-After`` header.
     """
-    return f"rate_limited tier={tier} limit={limit} remaining={remaining} retry_after={retry_after}"
+    msg = f"rate_limited tier={tier} limit={limit} remaining={remaining} retry_after={retry_after}"
+    return f"{msg} upgrade_url={upgrade_url}" if upgrade_url else msg
 
 
 # ---------------------------------------------------------------------------
@@ -280,6 +284,7 @@ def enforce_http_rate_limits(request: HttpRequest, *, is_write: bool) -> None:
             ),
         )
     enforce_usage_caps(request)
+    enforce_plan_daily_cap(request)
     # Global instance cap — optional, env-driven.
     global_cap = getattr(settings, "BB_API_LIMIT", None)
     if global_cap and is_ratelimited(
@@ -349,6 +354,35 @@ def enforce_usage_caps(request: HttpRequest) -> None:
                 retry_after=max(int((next_hour - now).total_seconds()), 1),
             ),
         )
+
+
+def enforce_plan_daily_cap(request: HttpRequest) -> None:
+    """Raise 429 once the organization has used its plan's daily calls.
+
+    Every plan includes the Agent API and MCP; plans differ in how many calls
+    a day they allow, counted across all of the organization's keys and OAuth
+    callers. A no-op (and no query) unless ``BILLING_ENABLED``. Not gated on
+    ``RATELIMIT_ENABLE``: this is a plan limit, not abuse protection.
+    """
+    api_key: ApiKey = request.auth  # type: ignore[attr-defined]
+    organization = api_key.workspace.organization
+    cap = get_entitlements(organization).max_api_calls_per_day
+    if cap is None:
+        return
+    now = timezone.now()
+    if org_usage_in_day(organization.pk, now) < cap:
+        return
+    next_day = day_start(now) + dt.timedelta(days=1)
+    raise HttpError(
+        429,
+        _format_quota_message(
+            tier="plan_daily",
+            limit=cap,
+            remaining=0,
+            retry_after=max(int((next_day - now).total_seconds()), 1),
+            upgrade_url=f"{settings.APP_URL.rstrip('/')}{reverse('billing:overview')}",
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------

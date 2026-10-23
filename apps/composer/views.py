@@ -24,6 +24,12 @@ from django.utils.html import strip_tags
 from django.utils.text import get_text_list
 from django.views.decorators.http import require_GET, require_POST
 
+from apps.billing.entitlements import (
+    COUNTED_POST_STATUSES,
+    PlanLimitError,
+    billing_enabled,
+    check_can_schedule_posts,
+)
 from apps.common.validators import (
     is_safe_url,
     parse_and_truncate_tag_string,
@@ -444,6 +450,36 @@ def _composer_media_types(request, post, workspace) -> set[str]:
         pending_ids = request.session.get(f"pending_media_{workspace.id}", [])
         media_types |= usable_media_types(MediaAsset.objects.filter(id__in=pending_ids, workspace=workspace))
     return media_types
+
+
+_SCHEDULING_ACTIONS = ("schedule", "publish_now", "add_to_queue", "add_to_queue_priority")
+
+
+def _scheduled_post_allowance_error(request, post, workspace, action, form):
+    """Refuse up front when scheduling would exceed the plan's monthly posts.
+
+    Checked before anything is saved so a refusal leaves the post exactly as
+    it was. Children already scheduled don't count twice; a queued post is
+    counted against this month, where the soonest slot almost always falls.
+    """
+    if action not in _SCHEDULING_ACTIONS or not billing_enabled():
+        return None
+    selected = set(_parse_selected_account_ids(request.POST.get("selected_accounts", "")))
+    if post.pk:
+        counted = PlatformPost.objects.filter(post=post, status__in=COUNTED_POST_STATUSES)
+        selected -= {str(acc_id) for acc_id in counted.values_list("social_account_id", flat=True)}
+    when = None
+    if action == "schedule":
+        when = _combine_schedule_dt(
+            workspace,
+            form.cleaned_data.get("scheduled_date"),
+            form.cleaned_data.get("scheduled_time"),
+        )
+    try:
+        check_can_schedule_posts(workspace.organization, count=len(selected), when=when)
+    except PlanLimitError as exc:
+        return JsonResponse({"errors": {"plan": exc.message}, "upgrade_url": exc.upgrade_url}, status=402)
+    return None
 
 
 def _validate_required_media(request, post, workspace, action):
@@ -1089,6 +1125,10 @@ def save_post(request, workspace_id, post_id=None):
     media_error = _validate_required_media(request, post, workspace, action)
     if media_error is not None:
         return media_error
+
+    allowance_error = _scheduled_post_allowance_error(request, post, workspace, action, form)
+    if allowance_error is not None:
+        return allowance_error
 
     # Handle action — note that Post itself no longer carries an editorial
     # status: every transition below operates on the PlatformPost children,

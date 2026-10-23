@@ -53,7 +53,9 @@ api = NinjaAPI(
         "with a 1000/min aggregate cap per workspace. Each key may also make "
         "at most 1,000 calls per UTC hour and 20,000 per UTC day, REST and "
         "MCP together (`tier` `per_key_hourly` / `per_key_daily`; "
-        "`retry_after` is the time until that window resets). Limits are "
+        "`retry_after` is the time until that window resets). On the hosted "
+        "service each organization's plan also sets a daily call allowance "
+        "across all its keys (`tier` `plan_daily`, with an `upgrade_url`). Limits are "
         "enforced as HTTP 429 with a JSON body that includes `tier`, `limit`, "
         "`remaining`, `retry_after`, and a `Retry-After` header. "
         "Headers `X-RateLimit-Limit` and `X-RateLimit-Remaining` are "
@@ -172,6 +174,26 @@ def _not_found_handler(request: HttpRequest, exc: Http404) -> HttpResponse:
     return JsonResponse({"error": "not_found", "detail": "Not found."}, status=404)
 
 
+# Plan limits (apps.billing) → 402 Payment Required with the upgrade message,
+# raised by a limit hit while creating or scheduling a post. (The plan's daily
+# API call cap is a 429 like the other usage caps; see apps.api.limits.)
+from apps.billing.entitlements import PlanLimitError  # noqa: E402
+
+
+@api.exception_handler(PlanLimitError)
+def _plan_limit_handler(request: HttpRequest, exc: PlanLimitError) -> HttpResponse:
+    _audit_failed_request(request, status_code=402)
+    return JsonResponse(
+        {
+            "error": "plan_limit_reached",
+            "code": exc.code,
+            "detail": exc.message,
+            "upgrade_url": f"{settings.APP_URL.rstrip('/')}{exc.upgrade_url}",
+        },
+        status=402,
+    )
+
+
 # Map storage-quota breaches to 413 with the documented body + headers
 # (Gap 1a). Routed here so both the API media router and any other surface
 # that imports ``create_asset`` produce a consistent error shape.
@@ -284,6 +306,7 @@ def _slug_for(status: int) -> str:
         404: "not_found",
         409: "conflict",
         413: "payload_too_large",
+        402: "payment_required",
         415: "unsupported_media_type",
         422: "unprocessable_entity",
         429: "rate_limited",

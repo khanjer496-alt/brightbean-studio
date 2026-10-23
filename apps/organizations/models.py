@@ -52,7 +52,7 @@ class Organization(models.Model):
         apps.intelligence layers a stricter check (must be exactly
         ``status='active'``) for tool-call endpoints.
         """
-        if not getattr(settings, "INTELLIGENCE_ENABLED", False):
+        if not getattr(settings, "INTELLIGENCE_ENABLED", False) or getattr(settings, "BILLING_ENABLED", False):
             return False
         sub = getattr(self, "intelligence_subscription", None)
         return bool(sub and sub.status == "active")

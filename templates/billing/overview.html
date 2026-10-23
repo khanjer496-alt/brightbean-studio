@@ -1,0 +1,187 @@
+{% extends "layouts/settings.html" %}
+{% block title %}Plan & billing - Settings - {{ brand_short_name }}{% endblock %}
+{% block content %}
+<div class="max-w-5xl" x-data="{ interval: '{{ current_interval }}' }">
+    <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
+        <div>
+            <h2 class="text-xl font-semibold pd-billing-heading">Plan &amp; billing</h2>
+            <p class="text-sm mt-1 max-w-xl pd-billing-faint">
+                Every plan is priced per organization and includes unlimited team members.
+            </p>
+        </div>
+        {% if subscription.stripe_customer_id and stripe_configured %}
+        <form method="POST" action="{% url 'billing:portal' %}" class="shrink-0">
+            {% csrf_token %}
+            <button type="submit" class="btn-outline pd-billing-action">Manage billing</button>
+        </form>
+        {% endif %}
+    </div>
+
+    {% if not stripe_configured %}
+    <div class="pd-billing-notice pd-billing-notice--warning text-sm mb-6" role="status">
+        Payments aren't set up on this server yet, so plans can't be changed. Please contact support.
+    </div>
+    {% endif %}
+
+    {% if subscription.in_grace_period %}
+    <div class="pd-billing-notice pd-billing-notice--error text-sm mb-6" role="alert">
+        <strong>Your last payment failed.</strong>
+        Update your card by {{ subscription.grace_until|date:"F j" }} to keep the {{ current_plan.name }} plan.
+        After that this organization moves to Free. Nothing is deleted.
+    </div>
+    {% elif subscription.is_trialing and not subscription.stripe_subscription_id %}
+    <div class="pd-billing-notice text-sm mb-6" role="status">
+        <strong>{{ subscription.trial_days_left }} day{{ subscription.trial_days_left|pluralize }} left in your {{ current_plan.name }} trial.</strong>
+        It ends on {{ subscription.trial_ends_at|date:"F j" }}. Choose a plan to keep its features — subscribing now doesn't cut the trial short.
+    </div>
+    {% elif subscription.cancel_at_period_end and subscription.current_period_end %}
+    <div class="pd-billing-notice pd-billing-notice--warning text-sm mb-6" role="status">
+        Your {{ current_plan.name }} plan ends on {{ subscription.current_period_end|date:"F j, Y" }}, then this organization moves to Free.
+    </div>
+    {% endif %}
+
+    {% if over_limit %}
+    <div class="pd-billing-notice pd-billing-notice--warning text-sm mb-6" role="status">
+        <strong>This organization is over its {{ current_plan.name }} plan's limits.</strong>
+        Everything you have keeps working, but you can't add more until you're back under the limit or upgrade.
+        See below for what to remove.
+    </div>
+    {% endif %}
+
+    <!-- Current plan + usage -->
+    <section class="pd-billing-card p-5 sm:p-6 mb-10" aria-labelledby="current-plan-heading">
+        <div class="flex flex-wrap items-center gap-3 mb-1">
+            <h3 id="current-plan-heading" class="text-base font-semibold pd-billing-heading">{{ current_plan.name }} plan</h3>
+            {% if subscription.in_grace_period %}
+            <span class="pd-billing-badge pd-billing-badge--error">Payment failed</span>
+            {% elif subscription.is_trialing %}
+            <span class="pd-billing-badge">Trial</span>
+            {% elif subscription.cancel_at_period_end %}
+            <span class="pd-billing-badge pd-billing-badge--warning">Ending</span>
+            {% endif %}
+        </div>
+        <p class="text-sm pd-billing-muted mb-6">
+            {% if subscription.has_paid_subscription and subscription.current_period_end %}
+            Billed {% if subscription.interval == "year" %}yearly{% else %}monthly{% endif %}.
+            {% if not subscription.cancel_at_period_end %}Renews on {{ subscription.current_period_end|date:"F j, Y" }}.{% endif %}
+            {% else %}
+            {{ current_plan.tagline }}
+            {% endif %}
+        </p>
+
+        <h4 class="text-sm font-semibold pd-billing-heading mb-4">Usage</h4>
+        <dl class="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {% for row in usage %}
+            <div>
+                <dt class="text-sm pd-billing-muted mb-1" id="usage-{{ row.key }}-label">{{ row.label }}</dt>
+                <dd>
+                    <p class="text-sm font-semibold pd-billing-heading mb-2">
+                        {{ row.used }}{% if row.limit is not None %} of {{ row.limit }}{% else %} <span class="font-normal pd-billing-faint">· Unlimited</span>{% endif %}
+                    </p>
+                    {% if row.limit is not None %}
+                    <meter class="pd-meter" min="0" max="{{ row.limit }}" low="{{ row.warn_at }}" high="{{ row.limit }}" optimum="0" value="{{ row.used }}"
+                           aria-labelledby="usage-{{ row.key }}-label">{{ row.used }} of {{ row.limit }}</meter>
+                    {% if row.over_by %}
+                    <p class="text-xs mt-2 pd-billing-over">Over by {{ row.over_by }}. {{ row.remedy }} to add more.</p>
+                    {% elif row.at_limit %}
+                    <p class="text-xs mt-2 pd-billing-faint">Limit reached.{% if not row.remedy %} Resets at midnight UTC.{% endif %}</p>
+                    {% endif %}
+                    {% endif %}
+                </dd>
+            </div>
+            {% endfor %}
+        </dl>
+    </section>
+
+    <!-- Plans -->
+    <section aria-labelledby="plans-heading">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
+            <h3 id="plans-heading" class="text-base font-semibold pd-billing-heading">Plans</h3>
+            <fieldset class="pd-billing-toggle">
+                <legend class="sr-only">Billing period</legend>
+                <label><input type="radio" class="sr-only" name="billing-interval" value="month" x-model="interval">Monthly</label>
+                <label><input type="radio" class="sr-only" name="billing-interval" value="year" x-model="interval">Yearly · 2 months free</label>
+            </fieldset>
+        </div>
+
+        <ul class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" role="list">
+            {% for entry in plans %}
+            {% with plan=entry.plan %}
+            <li class="pd-billing-card p-5 flex flex-col {% if entry.is_current %}pd-billing-card--current{% endif %}">
+                <div class="flex items-center justify-between gap-2 mb-1">
+                    <h4 class="text-base font-semibold pd-billing-heading">{{ plan.name }}</h4>
+                    {% if entry.is_current %}<span class="pd-billing-badge">Current</span>{% endif %}
+                </div>
+                <p class="text-xs pd-billing-faint mb-4">{{ plan.tagline }}</p>
+
+                <p class="mb-5">
+                    {% if plan.is_free %}
+                    <span class="pd-billing-price">$0</span>
+                    <span class="text-sm pd-billing-faint">forever</span>
+                    {% else %}
+                    <span x-show="interval === 'month'">
+                        <span class="pd-billing-price">${{ entry.monthly_price }}</span>
+                        <span class="text-sm pd-billing-faint">/ month</span>
+                    </span>
+                    <span x-show="interval === 'year'" x-cloak>
+                        <span class="pd-billing-price">${{ entry.annual_price }}</span>
+                        <span class="text-sm pd-billing-faint">/ year</span>
+                    </span>
+                    {% endif %}
+                </p>
+
+                <ul class="text-sm pd-billing-muted space-y-2 mb-6 flex-1" role="list">
+                    {% for line in entry.limits %}
+                    <li class="flex gap-2">
+                        <svg class="pd-billing-check mt-0.5" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                        <span>{{ line }}</span>
+                    </li>
+                    {% endfor %}
+                    {% for feature in entry.features %}
+                    <li class="flex gap-2">
+                        <svg class="pd-billing-check mt-0.5" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                        <span>{{ feature }}</span>
+                    </li>
+                    {% endfor %}
+                </ul>
+
+                {% if plan.is_free %}
+                    {% if entry.is_current %}
+                    <p class="text-xs text-center pd-billing-faint">You're on Free.</p>
+                    {% elif subscription.has_paid_subscription and stripe_configured %}
+                    <form method="POST" action="{% url 'billing:portal' %}">
+                        {% csrf_token %}
+                        <button type="submit" class="btn-outline">Cancel to Free</button>
+                    </form>
+                    {% else %}
+                    <p class="text-xs text-center pd-billing-faint">Where you land when a trial or plan ends.</p>
+                    {% endif %}
+                {% elif entry.is_current and subscription.has_paid_subscription %}
+                    <form method="POST" action="{% url 'billing:checkout' %}" x-show="interval !== '{{ subscription.interval }}'" x-cloak>
+                        {% csrf_token %}
+                        <input type="hidden" name="plan" value="{{ plan.slug }}">
+                        <input type="hidden" name="interval" :value="interval" value="{{ current_interval }}">
+                        <button type="submit" class="btn-outline" {% if not stripe_configured %}disabled{% endif %}>Switch billing period</button>
+                    </form>
+                    <p class="text-xs text-center pd-billing-faint" x-show="interval === '{{ subscription.interval }}'">Your current plan.</p>
+                {% else %}
+                    <form method="POST" action="{% url 'billing:checkout' %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="plan" value="{{ plan.slug }}">
+                        <input type="hidden" name="interval" :value="interval" value="{{ current_interval }}">
+                        <button type="submit" class="{% if entry.is_upgrade %}btn-brand{% else %}btn-outline{% endif %}" {% if not stripe_configured %}disabled{% endif %}>
+                            {% if subscription.has_paid_subscription %}{% if entry.is_upgrade %}Upgrade{% else %}Downgrade{% endif %} to {{ plan.name }}{% else %}Choose {{ plan.name }}{% endif %}
+                        </button>
+                    </form>
+                {% endif %}
+            </li>
+            {% endwith %}
+            {% endfor %}
+        </ul>
+        <p class="text-xs pd-billing-faint mt-4">
+            Prices in USD. Plan changes are prorated. Promotion codes can be entered at checkout.
+            Downgrading never deletes anything: if you're over the new plan's limits you just can't add more until you're under them.
+        </p>
+    </section>
+</div>
+{% endblock %}

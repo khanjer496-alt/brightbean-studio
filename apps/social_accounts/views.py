@@ -20,6 +20,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 from django_ratelimit.decorators import ratelimit
 
+from apps.billing.entitlements import PlanLimitError, billing_enabled, check_can_add_channel
 from apps.common.validators import is_safe_url as _is_safe_url
 from apps.credentials.models import PlatformCredential, derive_is_configured
 from apps.members.decorators import require_permission
@@ -234,6 +235,14 @@ def connect_platform(request, workspace_id):
         )
         return redirect("social_accounts:connect", workspace_id=workspace_id)
 
+    # Refuse before the platform round-trip rather than after it: a user at
+    # their plan's channel limit shouldn't authorize an app only to be told no.
+    try:
+        check_can_add_channel(request.org)
+    except PlanLimitError as exc:
+        messages.error(request, exc.message)
+        return redirect("social_accounts:connect", workspace_id=workspace_id)
+
     # Special auth flows
     if platform == PlatformCredential.Platform.BLUESKY:
         return redirect("social_accounts:connect_bluesky", workspace_id=workspace_id)
@@ -429,6 +438,8 @@ def oauth_callback(request, platform):
 
     except (signing.BadSignature, PermissionDenied):
         raise
+    except PlanLimitError as exc:
+        messages.error(request, exc.message)
     except QuotaExceededError as exc:
         # Before the blanket clause below, whose "Please try again" is the one
         # piece of advice that cannot work here: the grant is fine, the
@@ -520,22 +531,26 @@ def select_account(request):
                 avatar_url=page.get("picture", ""),
                 follower_count=page.get("followers_count", 0),
             )
-            _create_or_update_account(
-                workspace_id=workspace_id,
-                platform=platform,
-                profile=profile,
-                access_token=access_token,
-                refresh_token=user_tokens.get("refresh_token"),
-                expires_in=user_tokens.get("expires_in"),
-                facebook_user_access_token=user_tokens.get("access_token", "") if platform == "instagram" else None,
-                facebook_user_token_expires_at=user_tokens.get("user_expires_at"),
-                # Instagram-via-Facebook receives its webhooks through the
-                # linked Page, so remember which Page to subscribe.
-                webhook_target_id=page.get("page_id", ""),
-                messaging_access=False
-                if platform == "instagram" and not page.get("access_token")
-                else page.get("can_message"),
-            )
+            try:
+                _create_or_update_account(
+                    workspace_id=workspace_id,
+                    platform=platform,
+                    profile=profile,
+                    access_token=access_token,
+                    refresh_token=user_tokens.get("refresh_token"),
+                    expires_in=user_tokens.get("expires_in"),
+                    facebook_user_access_token=user_tokens.get("access_token", "") if platform == "instagram" else None,
+                    facebook_user_token_expires_at=user_tokens.get("user_expires_at"),
+                    # Instagram-via-Facebook receives its webhooks through the
+                    # linked Page, so remember which Page to subscribe.
+                    webhook_target_id=page.get("page_id", ""),
+                    messaging_access=False
+                    if platform == "instagram" and not page.get("access_token")
+                    else page.get("can_message"),
+                )
+            except PlanLimitError as exc:
+                messages.error(request, exc.message)
+                break
             connected.append(page["name"])
 
     request.session.pop("oauth_page_select", None)
@@ -590,6 +605,9 @@ def connect_bluesky(request, workspace_id):
         )
         messages.success(request, f"Connected {profile.name} on Bluesky.")
 
+    except PlanLimitError as exc:
+        messages.error(request, exc.message)
+        return redirect("social_accounts:list", workspace_id=workspace_id)
     except Exception:
         logger.exception("Bluesky connection failed")
         messages.error(
@@ -640,6 +658,9 @@ def connect_devto(request, workspace_id):
             access_token=api_key,
         )
         messages.success(request, f"Connected {profile.name} on DEV.to.")
+    except PlanLimitError as exc:
+        messages.error(request, exc.message)
+        return redirect("social_accounts:list", workspace_id=workspace_id)
     except Exception:
         logger.exception("DEV.to connection failed")
         messages.error(request, "Failed to connect DEV.to account. Check your API key.")
@@ -1039,6 +1060,17 @@ def _create_or_update_account(
             "facebook_user_token_expires_at": facebook_user_token_expires_at,
             "analytics_status": SocialAccount.AnalyticsStatus.CHECKING,
         }
+
+    # Reconnecting an account it already has never counts against the plan.
+    if (
+        billing_enabled()
+        and not SocialAccount.objects.filter(
+            workspace_id=workspace_id, platform=platform, account_platform_id=profile.platform_id
+        ).exists()
+    ):
+        from apps.workspaces.models import Workspace
+
+        check_can_add_channel(Workspace.objects.select_related("organization").get(pk=workspace_id).organization)
 
     account, created = SocialAccount.objects.update_or_create(
         workspace_id=workspace_id,

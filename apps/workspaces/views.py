@@ -5,6 +5,8 @@ from django.http import Http404
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
 
+from apps.billing.entitlements import PlanLimitError, check_can_add_workspace, require_feature
+from apps.billing.plans import Feature
 from apps.members.decorators import require_org_role
 from apps.members.models import OrgMembership, WorkspaceMembership
 
@@ -29,6 +31,12 @@ def workspace_create(request):
 
     if not request.org:
         return redirect("dashboard")
+
+    try:
+        check_can_add_workspace(request.org)
+    except PlanLimitError as exc:
+        messages.error(request, exc.message)
+        return redirect("organizations:workspaces")
 
     workspace = Workspace.objects.create(
         organization=request.org,
@@ -84,6 +92,11 @@ def workspace_settings(request, workspace_id):
             return redirect("organizations:workspaces")
 
         if action == "unarchive_workspace" and is_owner_or_manager:
+            try:
+                check_can_add_workspace(workspace.organization)
+            except PlanLimitError as exc:
+                messages.error(request, exc.message)
+                return redirect("workspaces:settings", workspace_id=workspace.id)
             workspace.is_archived = False
             workspace.save(update_fields=["is_archived"])
             messages.success(request, f'Workspace "{workspace.name}" has been restored.')
@@ -182,6 +195,23 @@ def approvals_settings(request, workspace_id):
         if mode not in valid_modes:
             messages.error(request, "Invalid approval workflow mode.")
             return redirect("workspaces:approvals_settings", workspace_id=workspace.id)
+
+        # Only switching a workflow on needs the plan. Keeping the current
+        # mode or turning approvals off always works, so a downgrade never
+        # traps a workspace in a workflow it can't leave. Client sign-off
+        # happens in the client portal, so that mode needs both features.
+        required = []
+        if mode != workspace.approval_workflow_mode and mode != Workspace.ApprovalWorkflowMode.NONE:
+            required.append(Feature.APPROVALS)
+            if mode == Workspace.ApprovalWorkflowMode.REQUIRED_INTERNAL_AND_CLIENT:
+                required.append(Feature.CLIENT_PORTAL)
+        if required:
+            try:
+                for feature in required:
+                    require_feature(workspace.organization, feature)
+            except PlanLimitError as exc:
+                messages.error(request, exc.message)
+                return redirect("workspaces:approvals_settings", workspace_id=workspace.id)
 
         workspace.approval_workflow_mode = mode
         workspace.save(update_fields=["approval_workflow_mode", "updated_at"])

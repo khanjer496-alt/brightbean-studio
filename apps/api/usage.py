@@ -3,7 +3,8 @@
 Every authenticated call increments one ``ApiKeyUsageHourly`` row, keyed by
 caller, UTC hour, action and status. The rows serve two readers:
 
-* the hourly and daily caps in ``apps.api.limits.enforce_usage_caps``, which
+* the hourly and daily caps in ``apps.api.limits.enforce_usage_caps`` (and
+  the plan's per-organization daily cap beside them), which
   need a count that survives deploys (the cache is per-process LocMem unless
   ``REDIS_URL`` is set, and is emptied by every restart);
 * anyone asking "who is calling how much", including brightbean-analytics,
@@ -66,6 +67,25 @@ def usage_in_windows(actor: str, now: dt.datetime) -> tuple[int, int]:
         .aggregate(hour=Sum("count", filter=Q(hour_start=this_hour)), day=Sum("count"))
     )
     return totals["hour"] or 0, totals["day"] or 0
+
+
+def org_usage_in_day(organization_id: Any, now: dt.datetime) -> int:
+    """Calls every caller in one organization made in ``now``'s UTC day.
+
+    Counted like ``usage_in_windows`` (429s left out), across all of the
+    organization's keys and OAuth callers, for the plan's daily cap.
+    """
+    start = day_start(now)
+    total = (
+        ApiKeyUsageHourly.objects.filter(
+            workspace__organization_id=organization_id,
+            hour_start__gte=start,
+            hour_start__lt=start + dt.timedelta(days=1),
+        )
+        .exclude(status_code=429)
+        .aggregate(day=Sum("count"))["day"]
+    )
+    return total or 0
 
 
 def record_usage(request: HttpRequest, *, action: str, status_code: int) -> None:
