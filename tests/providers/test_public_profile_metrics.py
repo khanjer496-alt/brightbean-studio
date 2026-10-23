@@ -12,7 +12,7 @@ import httpx
 import pytest
 
 from providers import PROVIDER_REGISTRY, get_provider
-from providers.exceptions import PublicProfileNotFoundError
+from providers.exceptions import PublicProfileNotFoundError, RateLimitError, TokenExpiredError
 
 NOW = datetime(2026, 10, 24, 12, tzinfo=UTC)
 
@@ -104,7 +104,7 @@ class TestMastodon:
         {"favourites_count": 2, "reblogs_count": 0, "replies_count": 0, "created_at": _iso(9)},
     ]
 
-    def test_local_account_uses_public_lookup(self):
+    def test_local_account_uses_lookup(self):
         routes = {
             "/accounts/lookup": (
                 200,
@@ -124,7 +124,8 @@ class TestMastodon:
             m = provider.public_profile_metrics("acme", ACCOUNT, "tok")
         assert (m.followers, m.posts_count, m.avg_engagement, m.sampled_posts) == (80, 12, 4.0, 2)
         assert calls[0][2] == {"acct": "acme"}
-        assert "Authorization" not in calls[0][3]
+        # Sent even for a local lookup: an instance in authorized-fetch mode refuses anonymous reads.
+        assert calls[0][3]["Authorization"] == "Bearer tok"
 
     def test_remote_account_resolves_through_own_instance(self):
         routes = {
@@ -206,9 +207,7 @@ class TestYouTube:
             provider.public_profile_metrics("nobody", ACCOUNT, "t")
 
 
-@pytest.mark.parametrize(
-    "platform,base", [("instagram", "graph.facebook.com"), ("instagram_login", "graph.instagram.com")]
-)
+@pytest.mark.parametrize("platform,base", [("instagram", "graph.facebook.com")])
 class TestInstagramBusinessDiscovery:
     def test_business_discovery_query(self, platform, base):
         body = {
@@ -242,6 +241,12 @@ class TestInstagramBusinessDiscovery:
         ):
             provider.public_profile_metrics("personal", ACCOUNT, "t")
 
+    @pytest.mark.parametrize("code,raised", [(4, RateLimitError), (80002, RateLimitError), (190, TokenExpiredError)])
+    def test_throttling_and_dead_tokens_are_not_reported_as_not_found(self, platform, base, code, raised):
+        provider = get_provider(platform, {"ig_user_id": "1784"})
+        with mock_http({"/1784": (400, {"error": {"code": code, "message": "x"}})}), pytest.raises(raised):
+            provider.public_profile_metrics("rival", ACCOUNT, "t")
+
     def test_falls_back_to_the_connected_accounts_id(self, platform, base):
         with mock_http(
             {f"/{ACCOUNT.account_platform_id}": (200, {"business_discovery": {"username": "x", "followers_count": 1}})}
@@ -251,7 +256,8 @@ class TestInstagramBusinessDiscovery:
 
 
 class TestNotAvailable:
-    SUPPORTED = {"bluesky", "mastodon", "youtube", "instagram", "instagram_login"}
+    # Instagram Login is left out: Meta documents Business Discovery only for the Facebook Login API.
+    SUPPORTED = {"bluesky", "mastodon", "youtube", "instagram"}
 
     @pytest.mark.parametrize("platform", sorted(set(PROVIDER_REGISTRY) - SUPPORTED))
     def test_other_networks_declare_no_support(self, platform):
@@ -269,9 +275,9 @@ class TestHandleNormalisation:
     @pytest.mark.parametrize(
         "platform,typed,expected",
         [
-            ("bluesky", "@Acme.bsky.social", "Acme.bsky.social"),
+            ("bluesky", "@Acme.bsky.social", "acme.bsky.social"),
             ("bluesky", "https://bsky.app/profile/acme.bsky.social", "acme.bsky.social"),
-            ("youtube", "https://www.youtube.com/@AcmeTV", "AcmeTV"),
+            ("youtube", "https://www.youtube.com/@AcmeTV", "acmetv"),
             ("instagram", "https://www.instagram.com/rival/", "rival"),
             ("mastodon", "@bob@other.example", "bob@other.example"),
             ("instagram", "not a handle!", ""),

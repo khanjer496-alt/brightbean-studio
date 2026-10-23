@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import uuid
 from datetime import timedelta
 
 import pytest
@@ -19,6 +20,9 @@ from .conftest import days_ago, metrics
 
 pytestmark = pytest.mark.django_db
 
+# Late enough in the UTC day that every competitor's read hour has come.
+LATE = timezone.now().replace(hour=23, minute=30)
+
 
 class TestAdd:
     def test_adds_and_stores_the_first_snapshot(self, workspace, bsky, read):
@@ -33,6 +37,37 @@ class TestAdd:
         make_account(workspace, "youtube", "YT")
         assert services.canonical_handle("youtube", "UC" + "aB" * 11) == "UC" + "aB" * 11
         assert services.canonical_handle("youtube", "AcmeTV") == "acmetv"
+
+    @pytest.mark.parametrize(
+        ("platform", "typed", "stored"),
+        [
+            ("bluesky", "https://bsky.app/profile/Rival.bsky.social/post/3k", "rival.bsky.social"),
+            ("bluesky", "did:plc:abc123", "did:plc:abc123"),
+            ("youtube", "https://www.youtube.com/@AcmeTV/videos", "acmetv"),
+            ("youtube", "youtube.com/channel/UC" + "aB" * 11, "UC" + "aB" * 11),
+            ("youtube", "@%D9%82%D9%87%D9%88%D8%A9", "قهوة"),
+            ("mastodon", "https://Mastodon.Social/@Rival", "rival@mastodon.social"),
+            ("mastodon", "@rival@fosstodon.org", "rival@fosstodon.org"),
+            ("instagram", "https://instagram.com/rival.co/", "rival.co"),
+            ("instagram", "not a handle!", ""),
+        ],
+    )
+    def test_pasted_links_and_handles_normalise(self, platform, typed, stored):
+        assert services.canonical_handle(platform, typed) == stored
+
+    def test_reads_stop_at_the_shared_quota(self, workspace, settings):
+        from django.core.cache import cache
+
+        settings.COMPETITOR_SHARED_QUOTA_UNITS_PER_DAY = 3
+        cache.delete(services._quota_key("youtube"))
+        assert services.shared_quota_left("youtube")
+        services._record_quota("youtube", 3)
+        assert not services.shared_quota_left("youtube")
+        account = make_account(workspace, "youtube", "YT")
+        with pytest.raises(CompetitorError) as exc:
+            services.fetch_profile("youtube", "acmetv", account)
+        assert exc.value.code == "competitor_quota"
+        cache.delete(services._quota_key("youtube"))
 
     def test_unsupported_network_is_refused_with_the_reason(self, workspace):
         make_account(workspace, "linkedin_personal", "Me")
@@ -95,6 +130,11 @@ class TestFetchProfileErrors:
     )
     def test_mapping(self, workspace, bsky, monkeypatch, error, code):
         class Provider:
+            last_call_quota_units = 0
+
+            def reset_quota_counter(self):
+                pass
+
             def public_profile_metrics(self, handle, account, token):
                 raise error
 
@@ -155,32 +195,32 @@ class TestSnapshots:
 
     def test_idempotent_within_a_day(self, workspace, bsky, read):
         self._tracked(workspace, read)
-        first = services.snapshot_all()
-        second = services.snapshot_all()
-        assert first == {"read": 1, "skipped": 0, "failed": 0}
-        assert second == {"read": 0, "skipped": 1, "failed": 0}
+        first = services.snapshot_all(now=LATE)
+        second = services.snapshot_all(now=LATE)
+        assert first == {"read": 1, "skipped": 0, "failed": 0, "waiting": 0}
+        assert second == {"read": 0, "skipped": 1, "failed": 0, "waiting": 0}
         assert read.calls == ["rival.bsky.social"]
         assert CompetitorSnapshot.objects.count() == 1
 
     def test_force_overwrites_todays_row_instead_of_adding(self, workspace, bsky, read):
         self._tracked(workspace, read)
-        services.snapshot_all()
+        services.snapshot_all(now=LATE)
         read.results["rival.bsky.social"] = metrics(followers=5100)
-        services.snapshot_all(force=True)
+        services.snapshot_all(now=LATE, force=True)
         assert CompetitorSnapshot.objects.get().followers == 5100
 
     def test_a_new_day_adds_a_row(self, workspace, bsky, read):
         self._tracked(workspace, read)
-        services.snapshot_all(today=days_ago(1))
-        services.snapshot_all()
+        services.snapshot_all(now=LATE - timedelta(days=1))
+        services.snapshot_all(now=LATE)
         assert CompetitorSnapshot.objects.count() == 2
 
     def test_failure_is_recorded_and_the_rest_continue(self, workspace, bsky, read):
         a = self._tracked(workspace, read, "gone.bsky.social")
         self._tracked(workspace, read, "fine.bsky.social")
         read.results["gone.bsky.social"] = CompetitorError("No Bluesky profile found.", code="competitor_not_found")
-        stats = services.snapshot_all()
-        assert stats == {"read": 1, "skipped": 0, "failed": 1}
+        stats = services.snapshot_all(now=LATE)
+        assert stats == {"read": 1, "skipped": 0, "failed": 1, "waiting": 0}
         a.refresh_from_db()
         assert a.last_error == "No Bluesky profile found."
         assert CompetitorSnapshot.objects.get().competitor.handle == "fine.bsky.social"
@@ -190,28 +230,42 @@ class TestSnapshots:
         self._tracked(workspace, read, "b.bsky.social")
         read.results["a.bsky.social"] = CompetitorError("busy", code="competitor_rate_limited", status=429)
         read.results["b.bsky.social"] = CompetitorError("busy", code="competitor_rate_limited", status=429)
-        stats = services.snapshot_all()
+        stats = services.snapshot_all(now=LATE)
         assert stats["read"] == 0 and len(read.calls) == 1
+
+    def test_reads_are_spread_over_the_day(self, workspace, bsky, read):
+        early = Competitor.objects.create(
+            id=uuid.UUID(int=24 * 7 + 2), workspace=workspace, platform="bluesky", handle="early.bsky.social"
+        )
+        Competitor.objects.create(
+            id=uuid.UUID(int=24 * 7 + 20), workspace=workspace, platform="bluesky", handle="late.bsky.social"
+        )
+        assert services.due_hour(early) == 2
+        stats = services.snapshot_all(now=LATE.replace(hour=5))
+        assert (stats["read"], stats["waiting"]) == (1, 1)
+        assert read.calls == ["early.bsky.social"]
+        assert services.snapshot_all(now=LATE)["read"] == 1
 
     def test_success_clears_a_previous_error(self, workspace, bsky, read):
         c = self._tracked(workspace, read)
         Competitor.objects.filter(pk=c.pk).update(last_error="old")
-        services.snapshot_all()
+        services.snapshot_all(now=LATE)
         c.refresh_from_db()
         assert c.last_error == "" and c.last_synced_at is not None
 
     def test_skips_a_workspace_without_an_account_or_entitlement(self, workspace, read):
         self._tracked(workspace, read)
-        assert services.snapshot_all()["skipped"] == 1  # no connected Bluesky account
+        assert services.snapshot_all(now=LATE)["skipped"] == 1  # no connected Bluesky account
         make_account(workspace, "bluesky", "Acme Bluesky")
         set_plan(workspace.organization, "free")
-        assert services.snapshot_all()["skipped"] == 1  # downgraded: kept, not read
+        assert services.snapshot_all(now=LATE)["skipped"] == 1  # downgraded: kept, not read
         assert read.calls == [] and Competitor.objects.count() == 1
 
     def test_task_runs_the_snapshot(self, workspace, bsky, read):
         from apps.competitors.tasks import snapshot_competitors
 
-        self._tracked(workspace, read)
+        competitor = self._tracked(workspace, read)
+        Competitor.objects.filter(pk=competitor.pk).update(id=uuid.UUID(int=24 * 1000))  # due from 00:00 UTC
         snapshot_competitors.now()
         assert CompetitorSnapshot.objects.count() == 1
 
@@ -221,7 +275,7 @@ class TestSnapshots:
         from apps.competitors.apps import CompetitorsConfig
 
         CompetitorsConfig._register_tasks(None)
-        assert Task.objects.filter(verbose_name="snapshot_competitors", repeat=86400).count() == 1
+        assert Task.objects.filter(verbose_name="snapshot_competitors", repeat=3600).count() == 1
         CompetitorsConfig._register_tasks(None)
         assert Task.objects.filter(verbose_name="snapshot_competitors").count() == 1
 

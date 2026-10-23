@@ -101,7 +101,15 @@ class BlueskyProvider(SocialProvider):
 
     supports_public_profile_metrics = True
     competitor_handle_hint = "name.bsky.social"
-    competitor_handle_pattern = r"[A-Za-z0-9][A-Za-z0-9.-]{0,252}"
+    # A domain handle, or the account's DID ("did:plc:…"), which never changes.
+    competitor_handle_pattern = r"[a-z0-9][a-z0-9.-]{0,252}|did:(plc|web):[a-z0-9.:%-]{1,200}"
+
+    @classmethod
+    def _competitor_handle_from_url(cls, host, segments):
+        # bsky.app/profile/<handle>[/post/<id>]
+        if "profile" in segments[:-1]:
+            return segments[segments.index("profile") + 1]
+        return super()._competitor_handle_from_url(host, segments)
 
     # Unverified: none of the Sprout Social, Hootsuite or Buffer studies covers Bluesky, so the generic
     # DEFAULT_BEST_TIME_WINDOWS apply (checked 2026-10-24).

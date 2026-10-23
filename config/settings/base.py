@@ -846,6 +846,10 @@ ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
 # Seconds per provider call. The composer waits on it, so keep it short; the
 # SDK retries once on a timeout or 5xx before the user sees an error.
 AI_REQUEST_TIMEOUT = env.int("AI_REQUEST_TIMEOUT", default=45)
+# Daily ceiling on the app-wide API quota competitor reads may spend per network that
+# meters one (YouTube: 3 units a read, out of the project's 10,000 a day shared with
+# publishing and the inbox). Reads past it wait for the next day.
+COMPETITOR_SHARED_QUOTA_UNITS_PER_DAY = env.int("COMPETITOR_SHARED_QUOTA_UNITS_PER_DAY", default=2000)
 # Which answer engines the "how AI describes your brand" report asks (see
 # apps.ai_visibility.engines). Names are registered engines; only "anthropic" exists today.
 AI_VISIBILITY_ENGINES = env.list("AI_VISIBILITY_ENGINES", default=["anthropic"])

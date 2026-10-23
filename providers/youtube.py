@@ -160,6 +160,9 @@ YOUTUBE_MEDIA_RULES = {
 }
 
 
+_CHANNEL_ID = re.compile(r"UC[A-Za-z0-9_-]{22}")
+
+
 def _int_or_none(value) -> int | None:
     try:
         return int(value)
@@ -176,7 +179,21 @@ class YouTubeProvider(SocialProvider):
 
     supports_public_profile_metrics = True
     competitor_handle_hint = "@channelhandle"
-    competitor_handle_pattern = r"UC[A-Za-z0-9_-]{22}|[A-Za-z0-9._-]{3,100}"
+    # A channel id, or a handle: 3-30 characters, letters in any script (Arabic handles are common).
+    competitor_handle_pattern = r"UC[A-Za-z0-9_-]{22}|[\w.·-]{3,30}"
+
+    @classmethod
+    def _competitor_handle_from_url(cls, host, segments):
+        # youtube.com/channel/<id>[/videos] or youtube.com/@<handle>[/videos]
+        if "channel" in segments[:-1]:
+            return segments[segments.index("channel") + 1]
+        return super()._competitor_handle_from_url(host, segments)
+
+    @classmethod
+    def _canonical_competitor_handle(cls, value):
+        # Channel ids are case-sensitive; handles are not.
+        return value if _CHANNEL_ID.fullmatch(value) else value.lower()
+
     # Top-level comments on the video carry up to 10,000 characters.
     thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=10000)
 
@@ -953,7 +970,7 @@ class YouTubeProvider(SocialProvider):
         rate. Three quota units in all, added to ``last_call_quota_units``.
         A channel that hides its subscriber count reports no followers.
         """
-        lookup = {"id": handle} if re.fullmatch(r"UC[A-Za-z0-9_-]{22}", handle) else {"forHandle": f"@{handle}"}
+        lookup = {"id": handle} if _CHANNEL_ID.fullmatch(handle) else {"forHandle": f"@{handle}"}
         self.last_call_quota_units += 1
         items = (
             self._request(

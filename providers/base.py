@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from typing import IO, ClassVar
+from urllib.parse import unquote, urlsplit
 
 import httpx
 
@@ -303,14 +304,30 @@ class SocialProvider(ABC):
 
     @classmethod
     def normalize_competitor_handle(cls, handle: str) -> str:
-        """The canonical form of a typed handle ("@name", a profile link) or "" when it is unusable."""
-        value = (handle or "").strip()
-        if cls.profile_url_template:
-            prefix = cls.profile_url_template.split("{handle}")[0]
-            if value.lower().startswith(prefix.lower()):
-                value = value[len(prefix) :].split("/")[0].split("?")[0]
-        value = value.lstrip("@")
-        return value if re.fullmatch(cls.competitor_handle_pattern, value) else ""
+        """The canonical form of a typed handle or "" when it is unusable.
+
+        Accepts "@name", "name" and a pasted profile link (with or without the
+        scheme or "www."). Lowercased, since every network here matches handles
+        without regard to case; a provider whose ids are case-sensitive overrides
+        ``_canonical_competitor_handle``.
+        """
+        value = unquote((handle or "").strip())
+        if "/" in value:
+            parts = urlsplit(value if "//" in value else f"//{value}")
+            host = (parts.hostname or "").lower().removeprefix("www.").removeprefix("m.")
+            segments = [s for s in parts.path.split("/") if s]
+            value = cls._competitor_handle_from_url(host, segments) if host and segments else ""
+        value = cls._canonical_competitor_handle(value.strip().lstrip("@"))
+        return value if value and re.fullmatch(cls.competitor_handle_pattern, value) else ""
+
+    @classmethod
+    def _competitor_handle_from_url(cls, host: str, segments: list[str]) -> str:
+        """The handle in a pasted profile link: the "@name" segment if there is one, else the last segment."""
+        return next((s for s in segments if s.startswith("@")), segments[-1])
+
+    @classmethod
+    def _canonical_competitor_handle(cls, value: str) -> str:
+        return value.lower()
 
     @property
     def rate_limits(self) -> RateLimitConfig:

@@ -21,7 +21,6 @@ from urllib.parse import urlencode
 from .base import SocialProvider
 from .exceptions import APIError, OAuthError, ProviderError, PublishError
 from .instagram import INSTAGRAM_MEDIA_RULES
-from .instagram_discovery import business_discovery_metrics
 from .meta_comments import (
     fetch_instagram_comments,
     find_own_instagram_comment,
@@ -46,7 +45,6 @@ from .types import (
     PeakWindow,
     PostMetrics,
     PostType,
-    PublicProfileMetrics,
     PublishContent,
     PublishResult,
     RateLimitConfig,
@@ -108,9 +106,12 @@ class InstagramLoginProvider(SocialProvider):
 
     media_rules = INSTAGRAM_MEDIA_RULES
 
-    supports_public_profile_metrics = True
-    competitor_handle_hint = "username (business or creator accounts only)"
-    competitor_handle_pattern = r"[A-Za-z0-9._]{1,30}"
+    # Business Discovery is documented only for the Facebook Login API, so an account
+    # connected this way cannot read other accounts (see ``providers.instagram_discovery``).
+    public_profile_unavailable_reason = (
+        "Instagram accounts connected with Instagram login can't read other accounts' public numbers. "
+        "Connect the account through Facebook (Instagram Business) to track Instagram competitors."
+    )
     # Instagram comments share the caption's 2,200-character limit.
     thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=2200)
 
@@ -543,16 +544,6 @@ class InstagramLoginProvider(SocialProvider):
                 "raw_insights": values,
                 "insight_errors": errors,
             },
-        )
-
-    def public_profile_metrics(self, handle: str, using_account, access_token: str = "") -> PublicProfileMetrics:
-        """Another professional account's public numbers through Business Discovery (see ``instagram_discovery``)."""
-        return business_discovery_metrics(
-            self,
-            base_url=API_BASE,
-            ig_user_id=str(self.credentials.get("ig_user_id") or getattr(using_account, "account_platform_id", "")),
-            access_token=access_token,
-            handle=handle,
         )
 
     def get_account_metrics(self, access_token: str, date_range: tuple[datetime, datetime]) -> AccountMetrics:

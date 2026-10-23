@@ -9,13 +9,14 @@ is listed as "not available" with the reason its provider gives.
 from __future__ import annotations
 
 import logging
-import re
 from collections import defaultdict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from django.conf import settings
+from django.core.cache import cache
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
@@ -38,7 +39,8 @@ logger = logging.getLogger(__name__)
 
 # The chart shows you plus this many competitors (the chart palette has four series).
 CHART_COMPETITORS = 3
-_YOUTUBE_CHANNEL_ID = re.compile(r"UC[A-Za-z0-9_-]{22}")
+# Errors that every other read through the same connected account would meet too.
+_ACCOUNT_WIDE_ERRORS = ("competitor_rate_limited", "competitor_reconnect", "competitor_quota")
 
 
 class CompetitorError(Exception):
@@ -91,12 +93,8 @@ def unsupported_networks(workspace) -> list[Network]:
 
 
 def canonical_handle(platform: str, handle: str) -> str:
-    """The handle as stored: lowercase, except a YouTube channel id, which is case-sensitive."""
-    cls = PROVIDER_REGISTRY[platform]
-    clean = cls.normalize_competitor_handle(handle)
-    if not clean or _YOUTUBE_CHANNEL_ID.fullmatch(clean):
-        return clean
-    return clean.lower()
+    """The handle as stored (see ``SocialProvider.normalize_competitor_handle``); "" when unusable."""
+    return PROVIDER_REGISTRY[platform].normalize_competitor_handle(handle)
 
 
 # ---------------------------------------------------------------------------
@@ -114,14 +112,47 @@ def using_account(workspace, platform: str, allowed_ids=None) -> SocialAccount |
     return accounts.filter(analytics_needs_reconnect=False).first() or accounts.first()
 
 
+def _quota_key(platform: str) -> str:
+    return f"competitors:quota:{platform}:{timezone.now().date().isoformat()}"
+
+
+def shared_quota_left(platform: str) -> bool:
+    """Whether today's competitor reads may still spend ``platform``'s app-wide API quota.
+
+    YouTube meters every call against one daily quota for the whole app, shared with
+    publishing and the inbox; competitor reads stop at ``COMPETITOR_SHARED_QUOTA_UNITS_PER_DAY``
+    so benchmarking can never starve them. Networks that do not meter leave the tally at zero.
+    """
+    return (cache.get(_quota_key(platform)) or 0) < settings.COMPETITOR_SHARED_QUOTA_UNITS_PER_DAY
+
+
+def _record_quota(platform: str, units: int) -> None:
+    if not units:
+        return
+    key = _quota_key(platform)
+    cache.add(key, 0, 60 * 60 * 26)
+    try:
+        cache.incr(key, units)
+    except ValueError:  # evicted between add and incr
+        cache.set(key, units, 60 * 60 * 26)
+
+
 def fetch_profile(platform: str, handle: str, account: SocialAccount) -> PublicProfileMetrics:
     """Read ``handle``'s public numbers as ``account``; failures become a ``CompetitorError``."""
     from apps.analytics.tasks import _analytics_provider_and_token
 
     network = network_for(platform)
     name = network.name if network else platform
+    if not shared_quota_left(platform):
+        raise CompetitorError(
+            f"Today's {name} reads for competitors are used up. Try again tomorrow.",
+            code="competitor_quota",
+            status=429,
+        )
+    provider = None
     try:
         provider, access_token = _analytics_provider_and_token(account)
+        provider.reset_quota_counter()
         return provider.public_profile_metrics(handle, account, access_token)
     except PublicProfileNotFoundError as exc:
         raise CompetitorError(str(exc), code="competitor_not_found", status=404) from exc
@@ -137,6 +168,9 @@ def fetch_profile(platform: str, handle: str, account: SocialAccount) -> PublicP
     except Exception as exc:
         logger.warning("competitors: %s profile read failed for %s: %s", platform, handle, exc)
         raise CompetitorError(f"Couldn't read that {name} profile right now. Try again later.") from exc
+    finally:
+        if provider is not None:
+            _record_quota(platform, provider.last_call_quota_units)
 
 
 # ---------------------------------------------------------------------------
@@ -223,28 +257,42 @@ def snapshot_competitor(competitor: Competitor, account: SocialAccount, *, today
         metrics = fetch_profile(competitor.platform, competitor.handle, account)
     except CompetitorError as exc:
         Competitor.objects.filter(pk=competitor.pk).update(last_error=exc.message[:300])
-        if exc.code in ("competitor_rate_limited",):
+        if exc.code in _ACCOUNT_WIDE_ERRORS:
             raise
         return False
     _store_snapshot(competitor, metrics, today or timezone.now().date())
     return True
 
 
-def snapshot_all(*, today: date | None = None, force: bool = False) -> dict[str, int]:
-    """One snapshot per competitor per day. Idempotent: a competitor already read today is skipped.
+def due_hour(competitor: Competitor) -> int:
+    """The UTC hour from which ``competitor`` is read each day, fixed per competitor.
 
-    Competitors on a plan that no longer includes benchmarking, or in a workspace with no
-    connected account on the network, are skipped, not deleted.
+    Spreads the day's reads over 24 hourly runs instead of one burst, so no
+    network, connected account or shared quota sees every competitor at once.
     """
-    today = today or timezone.now().date()
+    return competitor.id.int % 24
+
+
+def snapshot_all(*, now: datetime | None = None, force: bool = False) -> dict[str, int]:
+    """One snapshot per competitor per day, each read in its own hour (``due_hour``) or later.
+
+    Idempotent: a competitor already read today is skipped, and one whose hour has
+    not come yet waits. Competitors on a plan that no longer includes benchmarking,
+    or in a workspace with no connected account on the network, are skipped, not deleted.
+    """
+    now = now or timezone.now()
+    today = now.date()
     done = set(CompetitorSnapshot.objects.filter(date=today).values_list("competitor_id", flat=True))
-    stats = {"read": 0, "skipped": 0, "failed": 0}
+    stats = {"read": 0, "skipped": 0, "failed": 0, "waiting": 0}
     blocked_platforms: set[tuple[Any, str]] = set()
     accounts: dict[tuple[Any, str], SocialAccount | None] = {}
     entitled: dict[Any, bool] = {}
     for competitor in Competitor.objects.select_related("workspace__organization").order_by("created_at"):
         if competitor.id in done and not force:
             stats["skipped"] += 1
+            continue
+        if due_hour(competitor) > now.hour and not force:
+            stats["waiting"] += 1
             continue
         org = competitor.workspace.organization
         if org.pk not in entitled:

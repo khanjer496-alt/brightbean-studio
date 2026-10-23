@@ -124,7 +124,15 @@ class MastodonProvider(SocialProvider):
 
     supports_public_profile_metrics = True
     competitor_handle_hint = "name@mastodon.social"
-    competitor_handle_pattern = r"[A-Za-z0-9_]{1,100}(@[A-Za-z0-9.-]+\.[A-Za-z]{2,})?"
+    competitor_handle_pattern = r"[a-z0-9_]{1,100}(@[a-z0-9.-]+\.[a-z]{2,})?"
+
+    @classmethod
+    def _competitor_handle_from_url(cls, host, segments):
+        # https://mastodon.social/@name (a local account) or .../@name@other.host (a remote one seen there)
+        name = next((s[1:] for s in segments if s.startswith("@")), "")
+        if not name:
+            return ""
+        return name if "@" in name else f"{name}@{host}"
 
     # Unverified: none of the Sprout Social, Hootsuite or Buffer studies covers Mastodon, so the generic
     # DEFAULT_BEST_TIME_WINDOWS apply (checked 2026-10-24).
@@ -620,7 +628,9 @@ class MastodonProvider(SocialProvider):
     def public_profile_metrics(self, handle: str, using_account, access_token: str = "") -> PublicProfileMetrics:
         """Followers and status count from the instance's account lookup, engagement from the account's statuses.
 
-        A handle on the connected account's own instance is a public lookup. One
+        Every call carries the connected account's token: an instance in
+        authorized-fetch mode refuses anonymous lookups. A handle on the connected
+        account's own instance is a lookup (``/api/v1/accounts/lookup``). One
         on another instance is resolved through the connected instance's account
         search (``resolve=true``), which needs the connected account's token and
         leaves the federation fetch to the instance, not to this server.
@@ -638,7 +648,10 @@ class MastodonProvider(SocialProvider):
                 account = found[0] if found else None
             else:
                 account = self._request(
-                    "GET", f"{self.instance_url}/api/v1/accounts/lookup", params={"acct": user}
+                    "GET",
+                    f"{self.instance_url}/api/v1/accounts/lookup",
+                    access_token=access_token or None,
+                    params={"acct": user},
                 ).json()
         except APIError as exc:
             if exc.status_code in (404, 422):
@@ -653,6 +666,7 @@ class MastodonProvider(SocialProvider):
             statuses = self._request(
                 "GET",
                 f"{self.instance_url}/api/v1/accounts/{account['id']}/statuses",
+                access_token=access_token or None,
                 params={"limit": 30, "exclude_replies": "true", "exclude_reblogs": "true"},
             ).json()
         except APIError:
