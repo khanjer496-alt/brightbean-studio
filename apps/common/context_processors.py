@@ -21,6 +21,8 @@ def brand_context(request):
         "brand_favicon_ico_static": settings.BRAND_FAVICON_ICO_STATIC,
         "brand_apple_touch_icon_static": settings.BRAND_APPLE_TOUCH_ICON_STATIC,
         "brand_manifest_static": settings.BRAND_MANIFEST_STATIC,
+        "source_code_url": settings.SOURCE_CODE_URL,
+        "upstream_source_url": settings.UPSTREAM_SOURCE_URL,
         "google_auth_enabled": bool(
             getattr(settings, "GOOGLE_AUTH_CLIENT_ID", "") and getattr(settings, "GOOGLE_AUTH_CLIENT_SECRET", "")
         ),
@@ -139,14 +141,15 @@ def sidebar_context(request):
     if org_membership and org_membership.org_role in ("owner", "admin"):
         can_create_workspace = True
 
-    # Trustpilot review ask: only for users with at least one connected channel,
-    # in any of their workspaces, so pages without a workspace (settings,
-    # members) don't make it flicker in and out. Closing it lasts until the
-    # next login.
+    # Review ask: only when the deployment names a review page
+    # (REVIEW_BANNER_URL), and only for users with at least one connected
+    # channel, in any of their workspaces, so pages without a workspace
+    # (settings, members) don't make it flicker in and out. Closing it lasts
+    # until the next login.
     show_review_banner = False
     dismissed_at = request.user.review_banner_dismissed_at
     last_login = request.user.last_login
-    if dismissed_at is None or (last_login is not None and last_login > dismissed_at):
+    if settings.REVIEW_BANNER_URL and (dismissed_at is None or (last_login is not None and last_login > dismissed_at)):
         show_review_banner = bool(sidebar_channels) or (
             SocialAccount.objects.filter(
                 workspace_id__in=[ws.id for ws in sidebar_workspaces],
@@ -166,6 +169,7 @@ def sidebar_context(request):
         "sidebar_idea_tags": sidebar_idea_tags,
         "analytics_enabled_platforms": analytics_enabled_platforms,
         "show_review_banner": show_review_banner,
+        "review_banner_url": settings.REVIEW_BANNER_URL,
     }
 
 

@@ -14,7 +14,7 @@
 {% include "account/partials/_auth_theme.html" %}
 </head>
 <body>
-<main class="auth-bg min-h-screen flex items-center justify-center py-12 px-4" style="font-family: var(--font-body);">
+<main class="auth-bg relative min-h-screen flex items-center justify-center py-12 px-4" style="font-family: var(--font-body);">
     <div class="w-full max-w-md px-4">
         <!-- Logo & Header -->
         <div class="text-center mb-8">
@@ -73,6 +73,9 @@
             <a href="{% url 'accounts:logout' %}" class="font-semibold hover:underline" style="color: var(--primary);">Sign out</a>
         </p>
     </div>
+    <footer class="absolute bottom-3 inset-x-0 px-4 text-center">
+        {% include "partials/_source_credit.html" %}
+    </footer>
 </main>
 </body>
 </html>

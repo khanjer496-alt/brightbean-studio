@@ -1,8 +1,10 @@
-"""Sidebar Trustpilot card — who sees it, and how long a dismissal lasts.
+"""Sidebar review card — who sees it, and how long a dismissal lasts.
+
+The card only exists when the deployment configures ``REVIEW_BANNER_URL``.
 
 The card asks for a review only once the user has something worth reviewing (a
 connected channel in any of their workspaces), and closing it — or clicking
-through to Trustpilot — hides it for the rest of that login only: the dismissal
+through to the review page — hides it for the rest of that login only: the dismissal
 is a timestamp on the user, and the next login's ``last_login`` overtakes it.
 """
 
@@ -29,6 +31,7 @@ BANNER = "Enjoying BrightBean?"
 TRUSTPILOT_URL = "https://www.trustpilot.com/review/brightbean.xyz"
 
 
+@override_settings(REVIEW_BANNER_URL=TRUSTPILOT_URL, BRAND_NAME="BrightBean")
 class ReviewBannerTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(
@@ -103,6 +106,14 @@ class ReviewBannerTests(TestCase):
         self.client.get(reverse("accounts:logout"))
         self.client.force_login(self.user)
         self.assertContains(self._workspace_page(), BANNER)
+
+    def test_hidden_when_no_review_url_is_configured(self):
+        self._connect(self.ws)
+        with override_settings(REVIEW_BANNER_URL=""):
+            resp = self._workspace_page()
+        self.assertEqual(resp.status_code, 200)
+        self.assertNotContains(resp, BANNER)
+        self.assertNotContains(resp, "trustpilot")
 
     def test_dismiss_requires_post(self):
         resp = self.client.get(reverse("accounts:dismiss_review_banner"))

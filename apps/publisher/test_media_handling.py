@@ -398,3 +398,116 @@ class AsyncPublishHoldsThePublishingStatusTest(TransactionTestCase):
         log = PublishLog.objects.get(platform_post=self.pp)
         assert log.attempt_number == 4
         assert self.pp.retry_count == 0
+
+
+class ExtraAssetsAreScopedToTheWorkspaceTest(TransactionTestCase):
+    """Thumbnail/cover ids in ``platform_extra`` resolve only inside the tenant.
+
+    The lookup used to be ``MediaAsset.objects.get(id=...)``, so a saved id
+    from another organization published that organization's file.
+
+    A TransactionTestCase because ``_publish_post_group`` writes from worker
+    threads, which would block on the test transaction's row locks.
+    """
+
+    def setUp(self):
+        self.org = Organization.objects.create(name="Org")
+        self.workspace = Workspace.objects.create(organization=self.org, name="WS")
+        self.account = SocialAccount.objects.create(
+            workspace=self.workspace,
+            platform="pinterest",
+            account_platform_id="pin-1",
+            account_name="acct",
+            connection_status=SocialAccount.ConnectionStatus.CONNECTED,
+        )
+        past = timezone.now() - timedelta(minutes=5)
+        self.post = Post.objects.create(workspace=self.workspace, caption="hi", scheduled_at=past)
+        self.pp = PlatformPost.objects.create(
+            post=self.post,
+            social_account=self.account,
+            status=PlatformPost.Status.SCHEDULED,
+            scheduled_at=past,
+        )
+        other_org = Organization.objects.create(name="Other")
+        self.foreign = self._asset(other_org, Workspace.objects.create(organization=other_org, name="Other WS"))
+
+        self.provider = MagicMock()
+        self.provider.supported_post_types = [PostType.PIN, PostType.IMAGE]
+        self.provider.needs_local_media = True
+        self.provider.publish_is_async = False
+        self.provider.publish_post.return_value = PublishResult(platform_post_id="p1", url=None, extra={})
+
+    @staticmethod
+    def _asset(org, workspace):
+        from apps.media_library.models import MediaAsset
+
+        return MediaAsset.objects.create(
+            organization=org,
+            workspace=workspace,
+            filename="cover.jpg",
+            media_type=MediaAsset.MediaType.IMAGE,
+            file_size=1,
+        )
+
+    def _set_extra(self, **extra):
+        PlatformPost.objects.filter(pk=self.pp.pk).update(platform_extra={"board_id": "b1", **extra})
+        self.pp.refresh_from_db()
+
+    def _dispatch(self):
+        with (
+            patch("apps.publisher.engine.publish_blocker", return_value=None),
+            patch("apps.publisher.engine._provider_and_access_token", return_value=(self.provider, "tok")),
+        ):
+            return PublishEngine()._dispatch_to_provider(self.pp)
+
+    def test_foreign_cover_fails_permanently_without_publishing(self):
+        from providers.exceptions import PublishError
+
+        self._set_extra(cover_image_asset_id=str(self.foreign.id))
+
+        with self.assertRaises(PublishError) as ctx:
+            self._dispatch()
+
+        assert ctx.exception.retryable is False
+        self.provider.publish_post.assert_not_called()
+
+    def test_foreign_thumbnail_fails_permanently_without_publishing(self):
+        from providers.exceptions import PublishError
+
+        self._set_extra(thumbnail_asset_id=str(self.foreign.id))
+
+        with self.assertRaises(PublishError):
+            self._dispatch()
+
+        self.provider.publish_post.assert_not_called()
+
+    def test_foreign_asset_marks_the_platform_post_failed(self):
+        self._set_extra(thumbnail_asset_id=str(self.foreign.id))
+
+        with (
+            patch("apps.publisher.engine.publish_blocker", return_value=None),
+            patch("apps.publisher.engine._provider_and_access_token", return_value=(self.provider, "tok")),
+        ):
+            PublishEngine()._publish_post_group(self.post, [self.pp])
+        self.pp.refresh_from_db()
+
+        assert self.pp.status == PlatformPost.Status.FAILED
+        self.provider.publish_post.assert_not_called()
+
+    def test_own_and_shared_assets_still_publish(self):
+        own = self._asset(self.org, self.workspace)
+        shared = self._asset(self.org, None)
+        self._set_extra(thumbnail_asset_id=str(own.id), cover_image_asset_id=str(shared.id))
+
+        result = self._dispatch()
+
+        assert result["success"] is True
+
+    def test_a_deleted_or_malformed_asset_is_skipped_as_before(self):
+        import uuid
+
+        self._set_extra(thumbnail_asset_id=str(uuid.uuid4()), cover_image_asset_id="not-a-uuid")
+
+        result = self._dispatch()
+
+        assert result["success"] is True

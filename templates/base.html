@@ -864,6 +864,10 @@
                         </a>
                     </div>
 
+                    <div class="border-t border-stone-100 px-4 py-2.5">
+                        {% include "partials/_source_credit.html" %}
+                    </div>
+
                     <div class="border-t border-stone-100">
                         <!-- Log out -->
                         <a href="{% url 'accounts:logout' %}"
@@ -929,8 +933,11 @@
     {% include "onboarding/partials/_checklist.html" %}
 
     {% else %}
-    <main class="auth-bg min-h-screen flex items-center justify-center py-12 px-4" style="font-family: var(--font-body);">
+    <main class="auth-bg relative min-h-screen flex items-center justify-center py-12 px-4" style="font-family: var(--font-body);">
         {% block auth_content %}{% endblock %}
+        <footer class="absolute bottom-3 inset-x-0 px-4 text-center">
+            {% include "partials/_source_credit.html" %}
+        </footer>
     </main>
     {% endif %}
 

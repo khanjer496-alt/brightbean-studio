@@ -1,4 +1,4 @@
-<!-- Trustpilot review ask. Rendered only when sidebar_context sets
+<!-- Review ask (REVIEW_BANNER_URL). Rendered only when sidebar_context sets
      show_review_banner; closing it or clicking through hides it until the
      next login (User.review_banner_dismissed_at vs last_login). -->
 <div class="sidebar-review-banner px-3 pb-3"
@@ -26,9 +26,9 @@
             <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.5l2.94 5.96 6.56.95-4.75 4.63 1.12 6.54L12 17.49l-5.87 3.09 1.12-6.54L2.5 9.41l6.56-.95L12 2.5z"/></svg>
             {% endfor %}
         </div>
-        <p class="mt-2 text-sm font-semibold text-stone-900">Enjoying BrightBean?</p>
-        <p class="mt-1 text-xs leading-relaxed text-stone-500">It's free for everyone. A short review on Trustpilot helps other teams find us.</p>
-        <a href="https://www.trustpilot.com/review/brightbean.xyz" target="_blank" rel="noopener noreferrer"
+        <p class="mt-2 text-sm font-semibold text-stone-900">Enjoying {{ brand_name }}?</p>
+        <p class="mt-1 text-xs leading-relaxed text-stone-500">A short review helps other teams find us.</p>
+        <a href="{{ review_banner_url }}" target="_blank" rel="noopener noreferrer"
            @click="dismiss()"
            class="mt-3 w-full flex items-center justify-center gap-1.5 px-3 py-1.5 text-[0.8125rem] font-semibold text-stone-800 bg-white border border-stone-200 rounded-full hover:bg-black/[0.04] transition-colors">
             Leave a review
