@@ -190,35 +190,91 @@ def _handle_password_update(request, user):
 @ratelimit(key="user", rate="10/h", method="POST", block=True)
 @require_http_methods(["GET", "POST"])
 def delete_account(request):
-    """Delete the signed-in user's account after re-authentication."""
+    """Delete the signed-in user's account after re-authentication.
+
+    With a password, the password (and second factor) are the proof. Without
+    one, the request is confirmed through a link emailed to the account.
+    """
     user = request.user
     reasons = deletion.blockers(user)
     error = ""
+    email_sent = False
     if request.method == "POST" and not reasons:
         error = deletion.reauthentication_error(
             user,
             password=request.POST.get("password", ""),
             code=request.POST.get("code", ""),
-            email=request.POST.get("email", ""),
             phrase=request.POST.get("confirmation", ""),
         )
+        if not error and deletion.needs_password(user):
+            return _delete_and_sign_out(request) or _render_delete_account(request, error=_DELETE_FAILED)
         if not error:
-            deletion.delete_account(user)
-            logout(request)
-            messages.success(request, "Your account and data have been deleted.")
-            return redirect("account_login")
+            _send_deletion_link(request, user)
+            email_sent = True
+    return _render_delete_account(request, reasons=reasons, error=error, email_sent=email_sent)
 
+
+@login_required
+@ratelimit(key="user", rate="10/h", method="POST", block=True)
+@require_http_methods(["GET", "POST"])
+def confirm_delete_account(request, token):
+    """The emailed link: shows a final button (mail scanners follow links) and deletes on POST."""
+    user = request.user
+    if not deletion.email_link_is_valid(user, token):
+        messages.error(request, "That deletion link has expired or was issued to another account. Request a new one.")
+        return redirect("accounts:delete_account")
+    reasons = deletion.blockers(user)
+    if request.method == "POST" and not reasons:
+        return _delete_and_sign_out(request) or _render_delete_account(request, error=_DELETE_FAILED)
+    return _render_delete_account(request, reasons=reasons, confirm_token=token)
+
+
+_DELETE_FAILED = (
+    "We could not cancel a subscription with the payment provider, so nothing was deleted. "
+    "Try again, or cancel it under Plan & billing first."
+)
+
+
+def _delete_and_sign_out(request):
+    try:
+        deletion.delete_account(request.user)
+    except deletion.SubscriptionCancelError:
+        return None
+    logout(request)
+    messages.success(request, "Your account and data have been deleted.")
+    return redirect("account_login")
+
+
+def _send_deletion_link(request, user):
+    from allauth.account.adapter import get_adapter
+    from django.urls import reverse
+
+    url = request.build_absolute_uri(
+        reverse("accounts:confirm_delete_account", kwargs={"token": deletion.email_link_token(user)})
+    )
+    get_adapter(request).send_mail(
+        "account/email/delete_account",
+        user.email,
+        {"user": user, "delete_url": url, "expires_minutes": deletion.EMAIL_LINK_MAX_AGE_SECONDS // 60},
+    )
+
+
+def _render_delete_account(request, *, reasons=None, error="", email_sent=False, confirm_token=""):
+    user = request.user
     return render(
         request,
         "accounts/delete_account.html",
         {
             "settings_active": "profile",
-            "blockers": reasons,
+            "blockers": deletion.blockers(user) if reasons is None else reasons,
             "error": error,
+            "email_sent": email_sent,
+            "confirm_token": confirm_token,
             "phrase": deletion.CONFIRMATION_PHRASE,
             "needs_password": deletion.needs_password(user),
             "needs_code": deletion.needs_authenticator_code(user),
             "deleted_with_account": deletion.organizations_deleted_with_account(user),
+            "cancelled_with_account": deletion.subscriptions_cancelled_with_account(user),
         },
     )
 

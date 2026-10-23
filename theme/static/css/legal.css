@@ -1,32 +1,19 @@
-/* Public legal pages (apps.legal). Self-contained: readable without the app's Tailwind bundle. */
+/* Public legal pages (apps.legal): long-form prose, which the Tailwind bundle has
+   no typography plugin for. Colours come from the theme tokens in styles.css. */
 .legal-page {
-  --legal-bg: #ffffff;
-  --legal-surface: #f5f6f8;
-  --legal-text: #1c1f26;
-  --legal-muted: #4a5160;
-  --legal-border: #d5d9e0;
-  --legal-link: #4b30d6;
-  --legal-focus: #4b30d6;
-  --text-tertiary: var(--legal-muted);
+  --legal-bg: var(--surface-page);
+  --legal-surface: var(--surface-1);
+  --legal-text: var(--text-primary);
+  --legal-muted: var(--text-secondary);
+  --legal-border: var(--border);
+  --legal-link: var(--brand-300);
+  --legal-focus: var(--brand-green-500);
   margin: 0;
   background: var(--legal-bg);
   color: var(--legal-text);
-  font-family: Manrope, system-ui, -apple-system, sans-serif;
+  font-family: var(--brand-font-body);
   font-size: 1rem;
   line-height: 1.7;
-  color-scheme: light dark;
-}
-
-@media (prefers-color-scheme: dark) {
-  .legal-page {
-    --legal-bg: #0d0f16;
-    --legal-surface: #171a24;
-    --legal-text: #eceef4;
-    --legal-muted: #a9b0c0;
-    --legal-border: #2d3342;
-    --legal-link: #b9acff;
-    --legal-focus: #c8ff4d;
-  }
 }
 
 .legal-skip {
@@ -64,12 +51,15 @@
 .legal-nav { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; padding: 0; margin: 0; list-style: none; font-size: 0.9rem; }
 .legal-nav a[aria-current="page"] { color: var(--legal-text); font-weight: 700; text-decoration: none; }
 
-.legal-main { max-width: 48rem; margin: 0 auto; padding: 2rem 1rem 3rem; overflow-wrap: anywhere; }
+.legal-main { max-width: 48rem; margin: 0 auto; padding: 2rem 1rem 3rem; overflow-wrap: break-word; }
+.legal-main h1, .legal-main h2, .legal-main h3 { font-weight: 700; }
 .legal-main h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 0.25rem; letter-spacing: -0.02em; }
 .legal-main h2 { font-size: 1.35rem; line-height: 1.3; margin: 2.25rem 0 0.5rem; }
 .legal-main h3 { font-size: 1.1rem; margin: 1.5rem 0 0.25rem; }
 .legal-main p, .legal-main li { color: var(--legal-text); }
-.legal-main ul, .legal-main ol { padding-left: 1.4rem; }
+.legal-main p, .legal-main ul, .legal-main ol { margin: 0 0 1rem; }
+.legal-main ul { list-style: disc; padding-left: 1.4rem; }
+.legal-main ol { list-style: decimal; padding-left: 1.4rem; }
 .legal-meta { color: var(--legal-muted); margin: 0 0 1.5rem; }
 .legal-note {
   background: var(--legal-surface);
@@ -84,6 +74,7 @@
 .legal-table caption { text-align: left; padding: 0.75rem 1rem; font-weight: 700; }
 .legal-table th, .legal-table td { text-align: left; vertical-align: top; padding: 0.6rem 1rem; border-top: 1px solid var(--legal-border); }
 .legal-table th { background: var(--legal-surface); }
+.legal-table th[scope="row"] { min-width: 7.5rem; }
 .legal-table td { min-width: 9rem; }
 
 .legal-footer { border-top: 1px solid var(--legal-border); color: var(--legal-muted); font-size: 0.875rem; }

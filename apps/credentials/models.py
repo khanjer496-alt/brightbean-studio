@@ -217,3 +217,25 @@ def resolve_app_secrets(*platforms):
         if secret and secret not in secrets:
             secrets.append(secret)
     return secrets
+
+
+def app_secret_owners(*platforms):
+    """``(secret, organization_id)`` for every app secret of ``platforms``; ``None`` marks the deployment's own app.
+
+    For inbound requests that name a user rather than an account (Meta's data
+    deletion callback): an organization's own app secret may only authorize
+    changes inside that organization, since the organization knows the secret.
+    """
+    from django.conf import settings
+
+    env_map = getattr(settings, "PLATFORM_CREDENTIALS_FROM_ENV", {})
+    owners = []
+    for platform in platforms:
+        env_secret = _extract_secret(env_map.get(platform, {}))
+        if env_secret and (env_secret, None) not in owners:
+            owners.append((env_secret, None))
+    for cred in PlatformCredential.objects.filter(platform__in=platforms, is_configured=True):
+        secret = _extract_secret(cred.credentials)
+        if secret and (secret, cred.organization_id) not in owners:
+            owners.append((secret, cred.organization_id))
+    return owners

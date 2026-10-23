@@ -1,10 +1,18 @@
 """Meta's data deletion callback: parse and verify the signed request, then delete.
 
-Format: https://developers.facebook.com/docs/development/create-an-app/app-dashboard/data-deletion-callback
-A POST with a ``signed_request`` field of ``<base64url signature>.<base64url payload>``;
-the signature is HMAC-SHA256 of the encoded payload under the app secret, and the
-payload is JSON with ``algorithm``, ``issued_at`` and ``user_id``. The response is
-JSON with a ``url`` to check status and a ``confirmation_code``.
+Format (checked 2026-10-23):
+https://developers.facebook.com/docs/development/create-an-app/app-dashboard/data-deletion-callback
+A POST with a ``signed_request`` field of ``<base64url signature>.<base64url payload>``
+(unpadded); the signature is HMAC-SHA256 of the still-encoded payload under the
+app secret, and the payload is JSON with ``algorithm``, ``issued_at``,
+``expires`` and an app-scoped ``user_id``. The response is JSON with a ``url``
+to check status and a ``confirmation_code``.
+
+The deployment can run several Meta apps (Facebook Login, Instagram Login,
+Threads) and organizations can bring their own, so every configured secret is
+tried. A request signed with an organization's own secret only reaches that
+organization's accounts: the organization knows that secret and could
+otherwise forge deletions for anyone.
 """
 
 import base64
@@ -18,7 +26,7 @@ import time
 from django.db import IntegrityError, transaction
 from django.db.models import Q
 
-from apps.credentials.models import resolve_app_secrets
+from apps.credentials.models import app_secret_owners
 from apps.social_accounts.models import SocialAccount
 from apps.social_accounts.removal import remove_account
 
@@ -40,19 +48,27 @@ def _b64url_decode(value: str) -> bytes:
         raise InvalidSignedRequestError("Malformed encoding.") from exc
 
 
-def parse_signed_request(signed_request: str, secrets_to_try=None) -> dict:
+class VerifiedRequest(dict):
+    """The verified payload; ``organization_id`` is set when an organization's own app signed it."""
+
+    organization_id = None
+
+
+def parse_signed_request(signed_request: str, secret_owners=None) -> VerifiedRequest:
     """Return the verified payload, or raise InvalidSignedRequestError."""
     if not signed_request or "." not in signed_request:
         raise InvalidSignedRequestError("Malformed signed_request.")
     encoded_signature, encoded_payload = signed_request.split(".", 1)
     signature = _b64url_decode(encoded_signature)
-    candidates = resolve_app_secrets(*META_PLATFORMS) if secrets_to_try is None else secrets_to_try
-    verified = any(
-        hmac.compare_digest(hmac.new(secret.encode(), encoded_payload.encode(), hashlib.sha256).digest(), signature)
-        for secret in candidates
+    owners = app_secret_owners(*META_PLATFORMS) if secret_owners is None else secret_owners
+    # Every candidate is compared, so timing does not reveal which one matched.
+    matches = [
+        organization_id
+        for secret, organization_id in owners
         if secret
-    )
-    if not verified:
+        and hmac.compare_digest(hmac.new(secret.encode(), encoded_payload.encode(), hashlib.sha256).digest(), signature)
+    ]
+    if not matches:
         raise InvalidSignedRequestError("Signature does not match.")
     try:
         payload = json.loads(_b64url_decode(encoded_payload))
@@ -60,30 +76,39 @@ def parse_signed_request(signed_request: str, secrets_to_try=None) -> dict:
         raise InvalidSignedRequestError("Payload is not JSON.") from exc
     if not isinstance(payload, dict) or str(payload.get("algorithm", "")).upper() != "HMAC-SHA256":
         raise InvalidSignedRequestError("Unsupported algorithm.")
-    if not payload.get("user_id"):
+    if not payload.get("user_id") or not isinstance(payload["user_id"], str | int):
         raise InvalidSignedRequestError("No user_id.")
     issued_at = payload.get("issued_at")
     if isinstance(issued_at, int) and time.time() - issued_at > MAX_REQUEST_AGE_SECONDS:
         raise InvalidSignedRequestError("Request is too old.")
-    return payload
+    verified = VerifiedRequest(payload)
+    # The deployment's own app (None) is unscoped; otherwise the first owner.
+    verified.organization_id = None if None in matches else matches[0]
+    return verified
 
 
-def accounts_for_meta_user(user_id: str):
-    return SocialAccount.objects.filter(
+def accounts_for_meta_user(user_id: str, organization_id=None):
+    accounts = SocialAccount.objects.filter(
         Q(meta_user_id=user_id) | Q(platform__in=META_PLATFORMS, account_platform_id=user_id)
-    ).select_related("workspace")
+    )
+    if organization_id is not None:
+        accounts = accounts.filter(workspace__organization_id=organization_id)
+    return accounts.select_related("workspace")
 
 
-def delete_for_meta_user(payload: dict) -> DataDeletionRequest:
+def delete_for_meta_user(payload: VerifiedRequest) -> DataDeletionRequest:
     """Delete the data of the user in a verified payload; idempotent per signed request."""
     user_id = str(payload["user_id"])
-    request_key = hashlib.sha256(f"meta:{user_id}:{payload.get('issued_at', '')}".encode()).hexdigest()
+    organization_id = getattr(payload, "organization_id", None)
+    request_key = hashlib.sha256(
+        f"meta:{organization_id or ''}:{user_id}:{payload.get('issued_at', '')}".encode()
+    ).hexdigest()
     existing = DataDeletionRequest.objects.filter(request_key=request_key).first()
     if existing:
         return existing
 
     removed = 0
-    for account in list(accounts_for_meta_user(user_id)):
+    for account in list(accounts_for_meta_user(user_id, organization_id)):
         remove_account(account)
         removed += 1
     try:

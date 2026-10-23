@@ -10,16 +10,15 @@
 <ol>
     <li>Sign in and open <strong>Settings</strong> from the profile menu.</li>
     <li>Choose <strong>Delete account</strong> at the bottom of the Profile page{% if user.is_authenticated %} (<a href="{% url 'accounts:delete_account' %}">go there now</a>){% endif %}.</li>
-    <li>Confirm with your password (and your authenticator or recovery code if you use two-factor sign-in), then type the confirmation phrase.</li>
+    <li>Type the confirmation phrase and, if you use two-factor sign-in, your authenticator or recovery code. Confirm with your password, or, if you sign in with Google and have no password, through a link we email to your account address.</li>
 </ol>
 <p>What happens:</p>
 <ul>
     <li>We ask each connected platform to revoke the access you granted, where the platform supports revocation. YouTube data is deleted immediately.</li>
     <li>Your profile, sign-in methods, sessions and notifications are deleted right away.</li>
-    <li>Organizations in which you are the only member are deleted with everything in them: workspaces, connected channels, posts, media, inbox messages and analytics.</li>
+    <li>Organizations in which you are the only member are deleted with everything in them: workspaces, connected channels, scheduled and published posts, uploaded media files, inbox messages and analytics. Their paid subscription is cancelled first, with no refund for the rest of the period.</li>
     <li>In organizations with other members, channels and content stay with the organization and are no longer attributed to you. If you are the only owner of an organization that has other members, make someone else an owner first.</li>
-    <li>An active paid subscription must be cancelled first under Plan &amp; billing, so you are not charged after deletion.</li>
-    <li>You are signed out. Backups are overwritten on their normal rotation, and billing records we must keep by law are retained.</li>
+    <li>You are signed out on every device, and apps you authorized through our API lose access. Billing records we must keep by law are retained.</li>
 </ul>
 
 <h2>Disconnect a single channel</h2>

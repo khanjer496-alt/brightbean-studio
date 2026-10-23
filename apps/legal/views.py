@@ -40,21 +40,21 @@ THIRD_PARTY_ASSETS = [
         "version": "4.4.6",
         "license": "MIT",
         "url": "https://www.chartjs.org",
-        "delivery": "Loaded from cdn.jsdelivr.net",
+        "delivery": "Bundled (static/js/vendor), including @kurkle/color (MIT)",
     },
     {
         "name": "flatpickr",
         "version": "4.6.13",
         "license": "MIT",
         "url": "https://flatpickr.js.org",
-        "delivery": "Loaded from cdn.jsdelivr.net",
+        "delivery": "Bundled (static/js/vendor)",
     },
     {
         "name": "SortableJS",
         "version": "1.15.6",
         "license": "MIT",
         "url": "https://sortablejs.github.io/Sortable/",
-        "delivery": "Loaded from cdn.jsdelivr.net",
+        "delivery": "Bundled (static/js/vendor)",
     },
     {
         "name": "Tailwind CSS",
@@ -104,7 +104,7 @@ def _context(page, **extra):
         "legal_governing_law": settings.LEGAL_GOVERNING_LAW,
         "legal_email_provider": settings.LEGAL_EMAIL_PROVIDER,
         "sentry_enabled": bool(settings.SENTRY_DSN),
-        "ai_enabled": True,
+        "youtube_retention_enforced": settings.YOUTUBE_COMPLIANCE_ENFORCEMENT,
         **extra,
     }
 

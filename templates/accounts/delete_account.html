@@ -21,14 +21,32 @@
         {% for org in deleted_with_account %}
         <li><strong>{{ org.name }}</strong> has no other members, so the whole organization is deleted: its workspaces, posts, media, inbox and analytics.</li>
         {% endfor %}
+        {% for subscription in cancelled_with_account %}
+        <li>The paid subscription of <strong>{{ subscription.organization.name }}</strong> is cancelled immediately, with no refund for the rest of the period.</li>
+        {% endfor %}
         <li>In organizations with other members, their channels and content stay with the organization and are no longer attributed to you.</li>
     </ul>
 
+    {% if error %}
+    <p id="delete-error" class="rounded-lg border border-red-300 bg-red-50 p-3 mb-4 text-sm text-red-900" role="alert">{{ error }}</p>
+    {% endif %}
+
+    {% if email_sent %}
+    <div class="rounded-lg border border-(--border) bg-(--surface-1) p-4 text-sm text-(--text-primary)" role="status">
+        We sent a confirmation link to <strong>{{ user.email }}</strong>. Open it while signed in to finish deleting your account. Nothing is deleted until you do.
+    </div>
+    {% elif confirm_token %}
+    <form method="post" action="{% url 'accounts:confirm_delete_account' token=confirm_token %}">
+        {% csrf_token %}
+        <p class="text-sm mb-4 text-(--text-primary)">Your email is confirmed. This is the last step.</p>
+        <div class="flex flex-wrap gap-3">
+            <button type="submit" class="px-5 py-2 text-sm font-semibold rounded-full bg-red-600 text-white hover:bg-red-700">Permanently delete my account</button>
+            <a href="{% url 'accounts:settings' %}" class="px-5 py-2 text-sm font-medium rounded-full border border-(--border) text-(--text-primary)">Cancel</a>
+        </div>
+    </form>
+    {% else %}
     <form method="post" novalidate>
         {% csrf_token %}
-        {% if error %}
-        <p id="delete-error" class="rounded-lg border border-red-300 bg-red-50 p-3 mb-4 text-sm text-red-900" role="alert">{{ error }}</p>
-        {% endif %}
 
         {% if needs_password %}
         <div class="mb-4">
@@ -37,10 +55,7 @@
                    class="form-input-styled w-full">
         </div>
         {% else %}
-        <div class="mb-4">
-            <label for="id_email" class="block text-sm font-semibold mb-1 text-(--text-primary)">Your account email</label>
-            <input type="email" name="email" id="id_email" autocomplete="email" required class="form-input-styled w-full">
-        </div>
+        <p class="text-sm mb-4 text-(--text-secondary)">Your account has no password, so we will email a confirmation link to <strong>{{ user.email }}</strong>.</p>
         {% endif %}
 
         {% if needs_code %}
@@ -59,10 +74,11 @@
         </div>
 
         <div class="flex flex-wrap gap-3">
-            <button type="submit" class="px-5 py-2 text-sm font-semibold rounded-full bg-red-600 text-white hover:bg-red-700">Permanently delete my account</button>
+            <button type="submit" class="px-5 py-2 text-sm font-semibold rounded-full bg-red-600 text-white hover:bg-red-700">{% if needs_password %}Permanently delete my account{% else %}Email me a confirmation link{% endif %}</button>
             <a href="{% url 'accounts:settings' %}" class="px-5 py-2 text-sm font-medium rounded-full border border-(--border) text-(--text-primary)">Cancel</a>
         </div>
     </form>
+    {% endif %}
     {% endif %}
 </div>
 {% endblock %}

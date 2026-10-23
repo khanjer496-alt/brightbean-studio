@@ -144,18 +144,66 @@ def test_sole_owner_of_org_with_members_is_blocked(client):
     assert User.objects.filter(pk=owner.pk).exists()
 
 
-@pytest.mark.django_db
-def test_active_paid_subscription_blocks_deletion(client):
-    user = make_user()
-    org = own_org(user)
+def _paid(org):
     Subscription.objects.update_or_create(
         organization=org,
         defaults={"status": Subscription.Status.ACTIVE, "stripe_subscription_id": "sub_1", "plan": "team"},
     )
+
+
+@pytest.mark.django_db
+def test_paid_subscription_is_cancelled_then_the_account_deleted(client, revoked, monkeypatch):
+    user = make_user()
+    org = own_org(user)
+    _paid(org)
+    cancelled = []
+    monkeypatch.setattr("apps.billing.services.cancel_subscription_now", lambda o: cancelled.append(o.pk))
     client.force_login(user)
-    post_delete(client)
+    assert "cancelled immediately" in client.get(reverse(URL)).content.decode()
+    assert post_delete(client).status_code == 302
+    assert cancelled == [org.pk]
+    assert not User.objects.filter(pk=user.pk).exists()
+
+
+@pytest.mark.django_db
+def test_failed_cancellation_deletes_nothing(client, revoked, monkeypatch):
+    user = make_user()
+    org = own_org(user)
+    _paid(org)
+
+    def stripe_down(o):
+        raise RuntimeError("stripe down")
+
+    monkeypatch.setattr("apps.billing.services.cancel_subscription_now", stripe_down)
+    client.force_login(user)
+    response = post_delete(client)
+    assert response.status_code == 200
+    assert "nothing was deleted" in response.content.decode()
     assert User.objects.filter(pk=user.pk).exists()
-    assert "paid subscription" in client.get(reverse(URL)).content.decode()
+    assert Organization.objects.filter(pk=org.pk).exists()
+
+
+@pytest.mark.django_db
+def test_uploaded_files_and_avatar_are_removed_from_storage(
+    client, revoked, tmp_path, settings, django_capture_on_commit_callbacks
+):
+    from django.core.files.base import ContentFile
+
+    from apps.media_library.models import MediaAsset
+
+    settings.MEDIA_ROOT = str(tmp_path)
+    user = make_user()
+    org = own_org(user)
+    user.avatar.save("me.png", ContentFile(b"png"), save=True)
+    asset = MediaAsset(organization=org, filename="a.jpg", media_type="image", file_size=3, mime_type="image/jpeg")
+    asset.file.save("a.jpg", ContentFile(b"jpg"), save=False)
+    asset.save()
+    files = [tmp_path / user.avatar.name, tmp_path / asset.file.name]
+    assert all(f.exists() for f in files)
+    client.force_login(user)
+    with django_capture_on_commit_callbacks(execute=True):
+        assert post_delete(client).status_code == 302
+    assert not any(f.exists() for f in files)
 
 
 @pytest.mark.django_db
@@ -173,16 +221,43 @@ def test_two_factor_code_is_required_when_enabled(client, revoked):
 
 
 @pytest.mark.django_db
-def test_user_without_password_must_type_their_email(client):
+def test_user_without_password_confirms_through_an_emailed_link(client, mailoutbox):
     user = User.objects.create_user(email="social@example.com", tos_accepted_at=timezone.now())
     user.set_unusable_password()
     user.save()
     client.force_login(user)
-    data = {"confirmation": deletion.CONFIRMATION_PHRASE}
-    assert client.post(reverse(URL), {**data, "email": "other@example.com"}).status_code == 200
+    response = client.post(reverse(URL), {"confirmation": deletion.CONFIRMATION_PHRASE, "email": user.email})
+    assert response.status_code == 200
+    assert "sent a confirmation link" in response.content.decode()
     assert User.objects.filter(pk=user.pk).exists()
-    assert client.post(reverse(URL), {**data, "email": "SOCIAL@example.com"}).status_code == 302
+    assert len(mailoutbox) == 1 and mailoutbox[0].to == [user.email]
+    link = next(line for line in mailoutbox[0].body.splitlines() if "/settings/delete/confirm/" in line).strip()
+    path = link[link.index("/accounts/") :]
+
+    # Opening the link (or a mail scanner prefetching it) deletes nothing.
+    assert client.get(path).status_code == 200
+    assert User.objects.filter(pk=user.pk).exists()
+    assert client.post(path).status_code == 302
     assert not User.objects.filter(pk=user.pk).exists()
+
+
+@pytest.mark.django_db
+def test_emailed_link_only_works_for_its_own_account(client):
+    owner = User.objects.create_user(email="social@example.com", tos_accepted_at=timezone.now())
+    other = make_user("other@example.com")
+    path = reverse("accounts:confirm_delete_account", kwargs={"token": deletion.email_link_token(owner)})
+    client.force_login(other)
+    assert client.post(path).status_code == 302
+    assert User.objects.filter(pk=other.pk).exists()
+    assert not deletion.email_link_is_valid(owner, "tampered")
+
+
+@pytest.mark.django_db
+def test_emailed_link_expires(client, monkeypatch):
+    user = User.objects.create_user(email="social@example.com", tos_accepted_at=timezone.now())
+    token = deletion.email_link_token(user)
+    monkeypatch.setattr(deletion, "EMAIL_LINK_MAX_AGE_SECONDS", -1)
+    assert not deletion.email_link_is_valid(user, token)
 
 
 @pytest.mark.django_db

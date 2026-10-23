@@ -156,3 +156,52 @@ def test_status_page_shows_the_outcome_and_unknown_codes_404(client, workspace):
     assert code in page.content.decode()
     assert "Completed" in page.content.decode()
     assert client.get(reverse("legal:data_deletion_status", kwargs={"code": "nope"})).status_code == 404
+
+
+@pytest.mark.django_db
+def test_an_organizations_own_app_secret_only_reaches_that_organization(client, workspace):
+    from apps.credentials.models import PlatformCredential
+    from apps.organizations.models import Organization
+
+    victim = make_account(workspace, platform="instagram_login", account_platform_id="victim")
+    tenant = Organization.objects.create(name="Tenant")
+    tenant_workspace = Workspace.objects.create(name="T", organization=tenant)
+    own = make_account(tenant_workspace, platform="instagram_login", account_platform_id="victim")
+    PlatformCredential.objects.create(
+        organization=tenant,
+        platform="instagram_login",
+        credentials={"client_id": "tenant-app", "client_secret": "tenant-secret"},
+    )
+    response = call(client, signed_request(payload(user_id="victim"), secret="tenant-secret"))
+    assert response.status_code == 200
+    assert SocialAccount.objects.filter(pk=victim.pk).exists()
+    assert not SocialAccount.objects.filter(pk=own.pk).exists()
+
+
+@pytest.mark.django_db
+def test_every_configured_meta_app_secret_is_accepted(client, workspace):
+    account = make_account(workspace, platform="threads", account_platform_id="threads-user")
+    env = {**PLATFORM_ENV, "threads": {"client_id": "t", "client_secret": "threads-secret"}}
+    with override_settings(PLATFORM_CREDENTIALS_FROM_ENV=env):
+        response = call(client, signed_request(payload(user_id="threads-user"), secret="threads-secret"))
+    assert response.status_code == 200
+    assert not SocialAccount.objects.filter(pk=account.pk).exists()
+
+
+@pytest.mark.django_db
+def test_backfill_records_the_user_behind_older_connections(workspace, monkeypatch):
+    from django.core.management import call_command
+
+    page = make_account(workspace, account_platform_id="page-9")
+
+    class Provider:
+        def debug_token(self, token):
+            return {"user_id": "person-9"}
+
+    monkeypatch.setattr("providers.get_provider", lambda platform, credentials: Provider())
+    call_command("backfill_meta_user_ids")
+    page.refresh_from_db()
+    assert page.meta_user_id == ""
+    call_command("backfill_meta_user_ids", "--apply")
+    page.refresh_from_db()
+    assert page.meta_user_id == "person-9"

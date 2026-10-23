@@ -135,6 +135,19 @@ def change_plan(org, plan: Plan, interval: str) -> Subscription:
     return sub
 
 
+def cancel_subscription_now(org) -> None:
+    """End the organization's subscription today, without a refund, because the organization is being deleted.
+
+    Stripe's own cancel at period end would keep a subscription billing for an
+    organization that no longer exists, so this cancels immediately.
+    """
+    sub = get_subscription(org)
+    if not sub.stripe_subscription_id:
+        return
+    canceled = stripe.Subscription.cancel(sub.stripe_subscription_id, api_key=_api_key())
+    sync_subscription(_as_dict(canceled))
+
+
 def create_portal_session(org) -> str:
     sub = get_subscription(org)
     if not sub.stripe_customer_id:

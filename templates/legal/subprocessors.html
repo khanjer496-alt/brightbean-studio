@@ -15,7 +15,7 @@
         <tr><th scope="row">{{ item.name }}</th><td>{{ item.purpose }}</td><td>{{ item.data }}</td><td>{{ item.location }}</td></tr>
     {% endfor %}
     {% if sentry_enabled %}
-        <tr><th scope="row">Sentry (Functional Software, Inc.)</th><td>Error monitoring and performance tracing.</td><td>Error details, request metadata, IP address</td><td>United States or EU, per the project's configuration</td></tr>
+        <tr><th scope="row">Sentry (Functional Software, Inc.)</th><td>Error monitoring and performance tracing.</td><td>Error details and request metadata (user IP addresses and cookies are not sent)</td><td>United States or EU, per the project's configuration</td></tr>
     {% endif %}
     </tbody>
 </table>
