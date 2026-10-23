@@ -83,3 +83,16 @@ class CalendarThreadBadgeTests(TestCase):
             HTTP_HX_REQUEST="true",
         )
         self.assertIn("Thread of 4 parts", response.content.decode())
+
+    def test_a_partial_thread_reads_partially_published(self):
+        post = self._post(3, status="published")
+        PlatformPost.objects.filter(post=post).update(thread_status=PlatformPost.ThreadStatus.PARTIAL)
+        chip = self._month().content.decode()
+        self.assertIn("status-partially_published", chip)
+        self.assertIn("Partial", chip)
+        sent = self.client.get(
+            reverse("calendar:publish_tab_sent", kwargs={"workspace_id": self.ws.id}), HTTP_HX_REQUEST="true"
+        ).content.decode()
+        self.assertIn("Partially published", sent)
+        # The row itself is still published: only its display changes.
+        self.assertEqual(PlatformPost.objects.get(post=post).status, "published")

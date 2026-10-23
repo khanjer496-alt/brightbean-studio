@@ -132,7 +132,9 @@ class BlueskyReplyChainTest(ThreadTestMixin, TestCase):
     def test_replies_name_the_root_and_the_parent(self):
         self._add_parts("Part two", "Part three")
         self.platform_post.platform_post_id = "at://did:plc:me/app.bsky.feed.post/root"
-        self.platform_post.platform_extra = {"cid": "cid-root"}
+        # ``platform_extra`` is author input; a ``cid`` there must not be trusted
+        # as the root's — the root is looked up on the PDS.
+        self.platform_post.platform_extra = {"cid": "forged"}
         self.platform_post.save()
         provider = BlueskyProvider()
         created = iter(
@@ -146,6 +148,8 @@ class BlueskyReplyChainTest(ThreadTestMixin, TestCase):
         def fake_request(method, url, **kwargs):
             if url.endswith("getSession"):
                 return _response({"did": "did:plc:me", "handle": "me.bsky.social"})
+            if url.endswith("getRecord"):
+                return _response({"uri": "at://did:plc:me/app.bsky.feed.post/root", "cid": "cid-root"})
             assert url.endswith("createRecord")
             records.append(kwargs["json"]["record"])
             return _response(next(created))
@@ -401,6 +405,19 @@ class ThreadEngineTest(ThreadTestMixin, TestCase):
         self.assertEqual(state.status, PartStatus.UNCONFIRMED)
         self.platform_post.refresh_from_db()
         self.assertEqual(self.platform_post.thread_status, ThreadStatus.PARTIAL)
+
+    def test_resume_of_an_unconfirmed_part_needs_confirmation(self):
+        (part,) = self._add_parts("Part two")
+        PlatformPost.objects.filter(pk=self.platform_post.pk).update(thread_status=ThreadStatus.PARTIAL)
+        self.platform_post.refresh_from_db()
+        PlatformPostPart.objects.create(platform_post=self.platform_post, part=part, status=PartStatus.UNCONFIRMED)
+        with patch("apps.publisher.engine._publish_thread_part_task") as task:
+            with self.assertRaisesMessage(ValueError, "may already be live"):
+                resume_thread(self.platform_post)
+            task.assert_not_called()
+            resume_thread(self.platform_post, confirm_unconfirmed=True)
+        task.assert_called_once_with(str(self.platform_post.id), str(part.id), schedule=0)
+        self.assertEqual(self._states()[0].status, PartStatus.PENDING)
 
     def test_resume_refuses_a_thread_that_is_not_stopped(self):
         self._add_parts("two")

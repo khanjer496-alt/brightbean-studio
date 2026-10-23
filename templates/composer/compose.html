@@ -419,12 +419,27 @@
                             {{ pp.thread_error|default:"The thread stopped before every part was published." }}
                         </p>
                         {% if can_publish %}
-                        <button type="button"
-                                class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-stone-800 text-white hover:bg-stone-900 flex-shrink-0 cursor-pointer"
-                                hx-post="{% url 'composer:resume_thread' workspace_id=workspace.id post_id=post.id platform_post_id=pp.id %}"
-                                hx-confirm="Resume the thread from the part where it stopped? If that part's outcome was unconfirmed, check {{ pp.social_account.get_platform_display }} first — it will be sent again.">
-                            Resume thread
-                        </button>
+                        {# Not a <form>: the banner sits inside #composer-form. #}
+                        <div class="flex flex-wrap items-center gap-2 flex-shrink-0"
+                             x-data="{ checked: {% if pp.thread_stopped_unconfirmed %}false{% else %}true{% endif %} }">
+                            {% if pp.thread_stopped_unconfirmed %}
+                            {# The stopped part may already be live and Resume re-sends it, so the author confirms they checked. #}
+                            <label class="flex items-center gap-1.5 text-xs text-amber-800 cursor-pointer">
+                                <input type="checkbox" id="resume-confirm-{{ pp.id }}" name="confirm_unconfirmed" value="1"
+                                       x-model="checked"
+                                       class="w-4 h-4 rounded border-amber-300 text-stone-800 focus:ring-2 focus:ring-amber-300">
+                                I checked it isn't on {{ pp.social_account.get_platform_display }}
+                            </label>
+                            {% endif %}
+                            <button type="button"
+                                    class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-stone-800 text-white hover:bg-stone-900 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                                    :disabled="!checked"
+                                    hx-post="{% url 'composer:resume_thread' workspace_id=workspace.id post_id=post.id platform_post_id=pp.id %}"
+                                    {% if pp.thread_stopped_unconfirmed %}hx-include="#resume-confirm-{{ pp.id }}"{% endif %}
+                                    hx-confirm="Resume the thread from the part where it stopped?">
+                                Resume thread
+                            </button>
+                        </div>
                         {% endif %}
                     </div>
                     {% endfor %}
@@ -443,7 +458,7 @@
                 <div class="border border-stone-200 bg-stone-50 rounded-xl p-3 flex items-start justify-between gap-3">
                     <div class="flex items-start gap-2">
                         <svg class="w-4 h-4 text-stone-400 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg>
-                        <p class="text-xs text-stone-600">This post is <span class="font-semibold">{{ post.get_status_display|default:post.status }}</span> and read-only. Use <span class="font-semibold">Clone</span> to repost an editable copy.</p>
+                        <p class="text-xs text-stone-600">This post is <span class="font-semibold">{{ post.display_status_label|default:post.status }}</span> and read-only. Use <span class="font-semibold">Clone</span> to repost an editable copy.</p>
                     </div>
                     <button type="button"
                             class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-stone-800 text-white hover:bg-stone-900 flex-shrink-0 cursor-pointer"

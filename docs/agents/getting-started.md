@@ -37,7 +37,9 @@ An uncertain social-platform publication is distinct from a retriable API call: 
 
 `create_draft`, `schedule_post`, and REST `POST`/`PATCH /posts` accept an optional `parts` list: the later parts of a thread, in order (the caption is part 1). Each part takes `caption`, `media_asset_ids`, `delay_seconds` (wait after the previous part, up to 24 hours), and `is_finisher` (a closing part, always last). Check each account's `thread_mode` in `list_accounts` first: `reply_chain` publishes each part as a reply to the one before, `comments` publishes later parts as comments on the first post (text only), and `none` cannot take a thread, so scheduling one there is refused. `thread_max_parts` and `thread_part_max_length` are enforced when scheduling.
 
-If a thread stops part-way, `get_post` shows the platform post's `thread_status` as `partial` and each part's status. The parts already live are never re-sent. `resume_thread` restarts at the stopped part. If that part is `unconfirmed`, check the platform first, because resuming sends it again.
+If a thread stops part-way, `get_post` shows the platform post's `thread_status` as `partial` and each part's status. The parts already live are never re-sent. `resume_thread` (REST `POST /posts/{id}/resume-thread`) restarts at the stopped part. If that part is `unconfirmed` the platform may already have published it: check the platform first, then pass `confirm_unconfirmed=true` (a query parameter on REST), because resuming sends it again. Without it the resume is refused.
+
+On a `comments` account a thread can't also carry a `first_comment` — both are comments on the first post and could interleave — so scheduling one is refused; make the first comment a part instead.
 
 ## Current limits
 

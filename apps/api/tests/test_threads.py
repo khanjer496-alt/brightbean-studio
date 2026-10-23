@@ -245,6 +245,26 @@ class TestRestParts:
         # Nothing left stopped: a second resume is a conflict, not a re-send.
         assert client.post(f"/api/v1/posts/{post_id}/resume-thread").status_code == 409
 
+    def test_resume_of_an_unconfirmed_part_needs_confirm_unconfirmed(self, client, bluesky):
+        post_id = _create(
+            client, {"social_account_id": str(bluesky.id), "caption": "one", "parts": [{"caption": "two"}]}
+        ).json()["id"]
+        pp = PlatformPost.objects.get(post_id=post_id)
+        part = PostPart.objects.get()
+        PlatformPost.objects.filter(pk=pp.pk).update(
+            status="published", platform_post_id="at://root", thread_status=PlatformPost.ThreadStatus.PARTIAL
+        )
+        PlatformPostPart.objects.create(platform_post=pp, part=part, status=PlatformPostPart.Status.UNCONFIRMED)
+
+        with patch("apps.publisher.engine._publish_thread_part_task") as task:
+            refused = client.post(f"/api/v1/posts/{post_id}/resume-thread")
+            assert refused.status_code == 409
+            assert "may already be live" in refused.json()["detail"]
+            task.assert_not_called()
+            r = client.post(f"/api/v1/posts/{post_id}/resume-thread?confirm_unconfirmed=true")
+        assert r.status_code == 200, r.content
+        task.assert_called_once_with(str(pp.id), str(part.id), schedule=0)
+
 
 @pytest.mark.django_db
 class TestMcpParts:
@@ -300,5 +320,26 @@ class TestMcpParts:
         )
         with patch("apps.publisher.engine._publish_thread_part_task") as task:
             envelope = _mcp(client, "resume_thread", {"post_id": post_id})
+        assert "error" not in envelope, envelope
+        task.assert_called_once()
+
+    def test_resume_thread_tool_needs_confirm_unconfirmed_for_an_unconfirmed_part(self, client, bluesky):
+        envelope = _mcp(
+            client,
+            "create_draft",
+            {"social_account_id": str(bluesky.id), "caption": "one", "parts": [{"caption": "two"}]},
+        )
+        post_id = json.loads(envelope["result"]["content"][0]["text"])["id"]
+        pp = PlatformPost.objects.get(post_id=post_id)
+        PlatformPost.objects.filter(pk=pp.pk).update(
+            status="published", platform_post_id="at://root", thread_status=PlatformPost.ThreadStatus.PARTIAL
+        )
+        PlatformPostPart.objects.create(
+            platform_post=pp, part=PostPart.objects.get(), status=PlatformPostPart.Status.UNCONFIRMED
+        )
+        with patch("apps.publisher.engine._publish_thread_part_task") as task:
+            assert "may already be live" in json.dumps(_mcp(client, "resume_thread", {"post_id": post_id}))
+            task.assert_not_called()
+            envelope = _mcp(client, "resume_thread", {"post_id": post_id, "confirm_unconfirmed": True})
         assert "error" not in envelope, envelope
         task.assert_called_once()

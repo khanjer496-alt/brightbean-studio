@@ -21,9 +21,11 @@ from apps.composer.services import (
     clone_post,
     create_post,
     parse_thread_parts,
+    platform_post_thread_blocker,
     set_post_parts,
     spec_thread_parts,
     thread_blocker,
+    thread_change_blocker,
     transition_platform_post,
 )
 from apps.media_library.models import MediaAsset
@@ -128,6 +130,35 @@ class ThreadModelTest(_ThreadMixin, ComposerTestCase):
         with self.assertRaises(ValueError):
             set_post_parts(post, [ThreadPartSpec(caption="changed")])
 
+    def test_a_thread_whose_first_post_is_live_cannot_be_replaced_during_the_first_delay(self):
+        # The first post is live and part 2 is queued an hour out, so no part
+        # row exists yet: replacing the parts would orphan that queued task.
+        post = Post.objects.create(workspace=self.workspace, caption="one")
+        PlatformPost.objects.create(
+            post=post,
+            social_account=self._account("bluesky"),
+            status="published",
+            thread_status=PlatformPost.ThreadStatus.PENDING,
+        )
+        with self.assertRaisesMessage(ValueError, "already started publishing"):
+            set_post_parts(post, [ThreadPartSpec(caption="changed")])
+
+    def test_a_partial_thread_reads_partially_published_without_changing_status(self):
+        post = Post.objects.create(workspace=self.workspace, caption="one")
+        pp = PlatformPost.objects.create(
+            post=post,
+            social_account=self._account("bluesky"),
+            status="published",
+            thread_status=PlatformPost.ThreadStatus.PARTIAL,
+        )
+        self.assertEqual(pp.status, "published")
+        self.assertEqual(pp.display_status, "partially_published")
+        self.assertEqual(pp.display_status_label, "Partially published")
+        self.assertEqual(post.status, "published")
+        self.assertEqual(post.display_status_label, "Partially published")
+        pp.thread_status = PlatformPost.ThreadStatus.COMPLETE
+        self.assertEqual(pp.display_status, "published")
+
     def test_clone_copies_parts_media_and_overrides(self):
         post = Post.objects.create(workspace=self.workspace, caption="one")
         bluesky = self._account("bluesky")
@@ -194,6 +225,16 @@ class ThreadBlockerTest(_ThreadMixin, ComposerTestCase):
         with patch.object(SocialAccount, "supports_first_comment", return_value=False):
             self.assertIn("can't post comments", self._blocker("linkedin_personal", ("two", [])))
 
+    def test_a_comments_thread_refuses_a_first_comment(self):
+        # Both would be comments on the first post, queued on different
+        # delays, so the first comment could land mid-thread.
+        account = SocialAccount(platform="facebook")
+        reason = thread_blocker(account, [("two", [])], first_comment="Link in bio")
+        self.assertIn("can't also post a first comment", reason)
+        self.assertEqual(thread_blocker(account, [("two", [])], first_comment="  "), "")
+        # A reply chain keeps its first comment.
+        self.assertEqual(thread_blocker(SocialAccount(platform="bluesky"), [("two", [])], first_comment="hi"), "")
+
     def test_spec_parts_use_the_accounts_override(self):
         account = self._account("bluesky")
         specs = [ThreadPartSpec(caption="x" * 400, caption_overrides={str(account.id): "short"})]
@@ -216,6 +257,35 @@ class ThreadSchedulingTest(_ThreadMixin, ComposerTestCase):
                 parts=[ThreadPartSpec(caption="two")],
             )
         self.assertFalse(Post.objects.exists())
+
+    def test_create_post_refuses_a_scheduled_comments_thread_with_a_first_comment(self):
+        with self.assertRaisesMessage(ValueError, "first comment"):
+            create_post(
+                workspace=self.workspace,
+                social_account=self._account("facebook"),
+                caption="x",
+                first_comment="Link below",
+                scheduled_at=self.when,
+                status="scheduled",
+                parts=[ThreadPartSpec(caption="two")],
+            )
+
+    def test_adding_a_first_comment_to_a_scheduled_comments_thread_is_refused(self):
+        post = create_post(
+            workspace=self.workspace,
+            social_account=self._account("facebook"),
+            caption="x",
+            scheduled_at=self.when,
+            status="scheduled",
+            parts=[ThreadPartSpec(caption="two")],
+        )
+        self.assertEqual(thread_change_blocker(post), "")
+        self.assertIn("first comment", thread_change_blocker(post, first_comment="Link below"))
+        # The publisher refuses it too, before the first post goes out.
+        pp = post.platform_posts.get()
+        Post.objects.filter(pk=post.pk).update(first_comment="Link below")
+        pp.refresh_from_db()
+        self.assertIn("first comment", platform_post_thread_blocker(pp))
 
     def test_create_post_keeps_a_draft_thread_for_later(self):
         post = create_post(
@@ -377,6 +447,34 @@ class ComposerThreadTest(_ThreadMixin, ComposerTestCase):
         task.assert_called_once_with(str(pp.id), str(part.id), schedule=0)
         pp.refresh_from_db()
         self.assertEqual(pp.thread_status, PlatformPost.ThreadStatus.PENDING)
+
+    def test_resuming_an_unconfirmed_part_needs_the_authors_check(self):
+        post = Post.objects.create(workspace=self.workspace, author=self.user, caption="Part one")
+        pp = PlatformPost.objects.create(
+            post=post,
+            social_account=self.bluesky,
+            status="published",
+            platform_post_id="at://x",
+            thread_status=PlatformPost.ThreadStatus.PARTIAL,
+        )
+        part = PostPart.objects.create(post=post, position=1, caption="two")
+        PlatformPostPart.objects.create(platform_post=pp, part=part, status=PlatformPostPart.Status.UNCONFIRMED)
+        html = self.client.get(
+            reverse("composer:compose_edit", kwargs={"workspace_id": self.workspace.id, "post_id": post.id})
+        ).content.decode()
+        self.assertIn("I checked it isn't on Bluesky", html)
+
+        url = reverse(
+            "composer:resume_thread",
+            kwargs={"workspace_id": self.workspace.id, "post_id": post.id, "platform_post_id": pp.id},
+        )
+        with patch("apps.publisher.engine._publish_thread_part_task") as task:
+            refused = self.client.post(url, HTTP_HX_REQUEST="true")
+            self.assertEqual(refused.status_code, 400)
+            task.assert_not_called()
+            confirmed = self.client.post(url, {"confirm_unconfirmed": "1"}, HTTP_HX_REQUEST="true")
+        self.assertEqual(confirmed.status_code, 204)
+        task.assert_called_once_with(str(pp.id), str(part.id), schedule=0)
 
     def test_thread_media_picker_lists_images_and_videos(self):
         self._asset("image")

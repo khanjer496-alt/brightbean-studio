@@ -73,6 +73,8 @@ from .services import (
     set_post_parts,
     spec_thread_parts,
     thread_blocker,
+    thread_started,
+    thread_stopped_state,
     usable_media_types,
 )
 from .status import READONLY_STATUSES, derive_post_status
@@ -716,11 +718,25 @@ def _validate_thread_parts(request, workspace, action, specs, asset_map):
     errors = [
         reason
         for account in accounts
-        if (reason := thread_blocker(account, spec_thread_parts(account, specs, asset_map)))
+        if (
+            reason := thread_blocker(
+                account,
+                spec_thread_parts(account, specs, asset_map),
+                first_comment=_composer_first_comment(request, account),
+            )
+        )
     ]
     if not errors:
         return None
     return JsonResponse({"errors": {"thread": " ".join(dict.fromkeys(errors))}}, status=400)
+
+
+def _composer_first_comment(request, account) -> str:
+    """The first comment the composer form would post on ``account``, as ``_sync_platform_posts`` stores it."""
+    if not account.supports_first_comment():
+        return ""
+    override = request.POST.get(f"override_comment_{account.id}", "").strip()
+    return override or request.POST.get("first_comment", "")
 
 
 def _thread_parts_changed(post, specs) -> bool:
@@ -1144,6 +1160,11 @@ def compose(request, workspace_id, post_id=None):
     # in neither banner above. Shown with a Resume action that restarts at the
     # stopped part and never re-sends the parts already live.
     partial_threads = [pp for pp in platform_post_list if pp.is_thread_partial]
+    for pp in partial_threads:
+        # An unconfirmed stopped part may be live already; the banner asks the
+        # author to check before Resume re-sends it.
+        stopped = thread_stopped_state(pp)
+        pp.thread_stopped_unconfirmed = stopped is not None and stopped.status == PlatformPostPart.Status.UNCONFIRMED
 
     # Build media_items for the initial preview render
     media_items = []
@@ -1463,14 +1484,7 @@ def save_post(request, workspace_id, post_id=None):
         return thread_error
     # Refused before anything is written: once a part is out on any channel,
     # the parts are that channel's record and can't be replaced.
-    if (
-        thread_specs is not None
-        and post.pk
-        and _thread_parts_changed(post, thread_specs)
-        and PlatformPostPart.objects.filter(platform_post__post=post)
-        .exclude(status=PlatformPostPart.Status.PENDING)
-        .exists()
-    ):
+    if thread_specs is not None and post.pk and _thread_parts_changed(post, thread_specs) and thread_started(post):
         return JsonResponse(
             {"errors": {"thread": "This thread has already started publishing, so its parts can't be changed."}},
             status=400,
@@ -2028,7 +2042,9 @@ def preview(request, workspace_id):
     except ValueError:
         thread_specs, thread_assets = None, {}
     for p in previews:
-        p["thread"] = _thread_preview(p["account"], thread_specs or [], thread_assets)
+        p["thread"] = _thread_preview(
+            p["account"], thread_specs or [], thread_assets, _composer_first_comment(request, p["account"])
+        )
 
     # Each selected platform's media rules, re-checked on every round-trip so
     # the composer shows errors and warnings as media and accounts change.
@@ -2054,7 +2070,7 @@ def preview(request, workspace_id):
     )
 
 
-def _thread_preview(account, specs, asset_map) -> dict | None:
+def _thread_preview(account, specs, asset_map, first_comment="") -> dict | None:
     """What the preview panel shows of the thread for one account, or None for a single post."""
     if not specs:
         return None
@@ -2063,7 +2079,7 @@ def _thread_preview(account, specs, asset_map) -> dict | None:
     parts = spec_thread_parts(account, specs, asset_map)
     return {
         "mode": capability.mode.value,
-        "blocker": thread_blocker(account, parts),
+        "blocker": thread_blocker(account, parts, first_comment=first_comment),
         "parts": [
             {
                 "number": number,
@@ -2169,7 +2185,7 @@ def resume_thread(request, workspace_id, post_id, platform_post_id):
         post__workspace=workspace,
     )
     try:
-        resume(platform_post)
+        resume(platform_post, confirm_unconfirmed=request.POST.get("confirm_unconfirmed") == "1")
     except ValueError as exc:
         return JsonResponse({"errors": {"thread": str(exc)}}, status=400)
     if request.htmx:

@@ -555,7 +555,17 @@ register_tool(
         ),
         input_schema={
             "type": "object",
-            "properties": {"post_id": {"type": "string", "format": "uuid"}},
+            "properties": {
+                "post_id": {"type": "string", "format": "uuid"},
+                "confirm_unconfirmed": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Required true when the stopped part is 'unconfirmed': you checked the platform and "
+                        "it isn't posted. Without it, resuming an unconfirmed part is refused."
+                    ),
+                },
+            },
             "required": ["post_id"],
             "additionalProperties": False,
         },
@@ -700,7 +710,17 @@ register_tool(
         ),
         input_schema={
             "type": "object",
-            "properties": {"post_id": {"type": "string", "format": "uuid"}},
+            "properties": {
+                "post_id": {"type": "string", "format": "uuid"},
+                "confirm_unconfirmed": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Required true when the stopped part is 'unconfirmed': you checked the platform and "
+                        "it isn't posted. Without it, resuming an unconfirmed part is refused."
+                    ),
+                },
+            },
             "required": ["post_id"],
             "additionalProperties": False,
         },
@@ -829,7 +849,7 @@ def _resume_thread(args: dict, context: dict[str, Any]) -> dict:
         raise JsonRpcError(INVALID_PARAMS, "No thread on this post is stopped part-way")
     for pp in stopped:
         try:
-            resume_thread(pp)
+            resume_thread(pp, confirm_unconfirmed=args.get("confirm_unconfirmed") is True)
         except ValueError as exc:
             raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
     return _wrap_text(_serialize_post(_get_post_for_key(api_key, args["post_id"]), context))
@@ -841,12 +861,23 @@ register_tool(
         description=(
             "Resume a thread that stopped part-way (a platform post whose thread_status is 'partial'). "
             "Parts already published are left alone; publishing restarts at the part that failed. "
-            "If that part's status is 'unconfirmed', check the platform first: resuming sends it again. "
+            "If that part's status is 'unconfirmed' the platform may already have published it: check the "
+            "platform first, then pass confirm_unconfirmed=true to send it again. "
             "Requires both create_posts and publish_directly."
         ),
         input_schema={
             "type": "object",
-            "properties": {"post_id": {"type": "string", "format": "uuid"}},
+            "properties": {
+                "post_id": {"type": "string", "format": "uuid"},
+                "confirm_unconfirmed": {
+                    "type": "boolean",
+                    "default": False,
+                    "description": (
+                        "Required true when the stopped part is 'unconfirmed': you checked the platform and "
+                        "it isn't posted. Without it, resuming an unconfirmed part is refused."
+                    ),
+                },
+            },
             "required": ["post_id"],
             "additionalProperties": False,
         },

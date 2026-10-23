@@ -423,9 +423,11 @@ def update(request, post_id: uuid.UUID, payload: UpdatePostRequest):
             part_assets = resolve_thread_part_assets(post.workspace, part_specs)
         except ValueError as exc:
             raise HttpError(422, str(exc)) from exc
+    if payload.parts is not None or payload.first_comment is not None:
         # As with media: a scheduled post may be edited, but not into a thread
-        # its platform would publish only the first part of.
-        reason = thread_change_blocker(post, part_specs, part_assets)
+        # its platform would publish only the first part of — nor into a
+        # comments-mode thread that also carries a first comment.
+        reason = thread_change_blocker(post, part_specs, part_assets, first_comment=payload.first_comment)
         if reason:
             raise HttpError(422, reason)
 
@@ -587,7 +589,13 @@ def cancel(request, post_id: uuid.UUID):
     response=PostResponse,
     summary="Resume a partially published thread from the part where it stopped",
 )
-def resume_thread_route(request, post_id: uuid.UUID):
+def resume_thread_route(request, post_id: uuid.UUID, confirm_unconfirmed: bool = False):
+    """Restart each stopped thread on the post at the part where it stopped.
+
+    ``?confirm_unconfirmed=true`` is required when that part is
+    ``unconfirmed``: the platform may already have published it, and resuming
+    sends it again, so the caller confirms they checked the platform first.
+    """
     enforce_http_rate_limits(request, is_write=True)
     # Resuming publishes the rest of the thread, so it takes the same
     # permission as scheduling it did.
@@ -602,7 +610,7 @@ def resume_thread_route(request, post_id: uuid.UUID):
         raise HttpError(409, "No thread on this post is stopped part-way.")
     for pp in stopped:
         try:
-            resume_thread(pp)
+            resume_thread(pp, confirm_unconfirmed=confirm_unconfirmed)
         except ValueError as exc:
             raise HttpError(409, str(exc)) from exc
 

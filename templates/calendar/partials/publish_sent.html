@@ -58,9 +58,9 @@ Shows all published/partially_published platform posts. Loaded via HTMX into #ta
                     {% endwith %}
                 </td>
                 <td class="px-4 py-3">
-                    <span class="post-chip status-{{ pp.status }} inline-flex">
+                    <span class="post-chip status-{{ pp.display_status }} inline-flex">
                         <span class="chip-dot"></span>
-                        {{ pp.get_status_display }}
+                        {{ pp.display_status_label }}
                     </span>
                     {% if pp.status == "failed" and pp.publish_error %}
                     <p class="text-[11px] text-red-500 mt-1 max-w-[220px] truncate" title="{{ pp.publish_error }}">{{ pp.publish_error }}</p>

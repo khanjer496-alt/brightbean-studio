@@ -189,14 +189,19 @@ def create_post(
         if reason:
             raise ValueError(reason)
 
+    override = (platform_overrides or {}).get(social_account.id) or {}
+
     part_specs = list(parts or [])
     part_assets = resolve_thread_part_assets(workspace, part_specs)
     if status == "scheduled":
-        reason = thread_blocker(social_account, spec_thread_parts(social_account, part_specs, part_assets))
+        override_comment = override.get("first_comment")
+        reason = thread_blocker(
+            social_account,
+            spec_thread_parts(social_account, part_specs, part_assets),
+            first_comment=first_comment if override_comment is None else override_comment,
+        )
         if reason:
             raise ValueError(reason)
-
-    override = (platform_overrides or {}).get(social_account.id) or {}
 
     with transaction.atomic():
         post = Post.objects.create(
@@ -917,8 +922,7 @@ def set_post_parts(post, specs, *, asset_map=None) -> None:
     specs = _ordered_specs(specs)
     if asset_map is None:
         asset_map = resolve_thread_part_assets(post.workspace, specs)
-    started = PlatformPostPart.objects.filter(platform_post__post=post).exclude(status=PlatformPostPart.Status.PENDING)
-    if started.exists():
+    if thread_started(post):
         raise ValueError("This thread has already started publishing, so its parts can't be changed.")
 
     children = {str(pp.social_account_id): pp for pp in post.platform_posts.all()}
@@ -973,7 +977,7 @@ def thread_parts_for(platform_post, parts=None) -> list[tuple]:
     return result
 
 
-def thread_blocker(social_account, parts) -> str:
+def thread_blocker(social_account, parts, *, first_comment: str = "") -> str:
     """Why ``social_account`` can't publish these later thread parts, or "".
 
     ``parts`` is ``(caption, assets)`` per part after the first post. The
@@ -981,6 +985,11 @@ def thread_blocker(social_account, parts) -> str:
     thread at all, how many parts, how long each may be, and whether a part
     can carry media — which then has to pass the platform's media rules like
     the first post's does.
+
+    ``first_comment`` is the comment this account would post on the first
+    post. A ``COMMENTS`` thread refuses one: both are comments on the same
+    post, queued on different delays, so the first comment could land in the
+    middle of the thread. The author moves it into the thread instead.
     """
     from providers import thread_capability_for
     from providers.types import ThreadMode
@@ -995,6 +1004,11 @@ def thread_blocker(social_account, parts) -> str:
         return (
             f"{name} adds a thread's later parts as comments, and this account can't post comments. "
             "Remove the extra parts for it."
+        )
+    if capability.mode is ThreadMode.COMMENTS and (first_comment or "").strip():
+        return (
+            f"{name} adds a thread's later parts as comments, so it can't also post a first comment. "
+            "Move the first comment into the thread as part 2, or remove it."
         )
     if 1 + len(parts) > capability.max_parts:
         return f"{name} takes at most {capability.max_parts} parts in a thread; this one has {1 + len(parts)}."
@@ -1021,20 +1035,71 @@ def platform_post_thread_blocker(platform_post, parts=None) -> str:
     return thread_blocker(
         platform_post.social_account,
         [(caption, assets) for _part, caption, assets in thread_parts_for(platform_post, parts)],
+        first_comment=_account_first_comment(platform_post, platform_post.effective_first_comment),
     )
 
 
-def thread_change_blocker(post, specs, asset_map) -> str:
-    """Why replacing the thread with ``specs`` would strand a scheduled row, or "".
+def _account_first_comment(platform_post, first_comment) -> str:
+    """The first comment ``platform_post`` would actually post: none where the account can't comment."""
+    return first_comment if platform_post.social_account.supports_first_comment() else ""
+
+
+def thread_change_blocker(post, specs=None, asset_map=None, *, first_comment=None) -> str:
+    """Why changing the thread or first comment would strand a scheduled row, or "".
 
     The thread counterpart of ``media_change_blocker``: only rows already
     ``scheduled`` count, the rest are checked when they are scheduled.
+    ``specs`` (with ``asset_map``) replaces the parts and ``first_comment``
+    the post's first comment; ``None`` keeps what is stored.
     """
     from apps.composer.models import PlatformPost
 
     children = post.platform_posts.filter(status=PlatformPost.Status.SCHEDULED).select_related("social_account")
     for child in children:
-        reason = thread_blocker(child.social_account, spec_thread_parts(child.social_account, specs, asset_map))
+        if specs is None:
+            parts = [(caption, assets) for _part, caption, assets in thread_parts_for(child)]
+        else:
+            parts = spec_thread_parts(child.social_account, specs, asset_map or {})
+        comment = child.effective_first_comment
+        if first_comment is not None and child.platform_specific_first_comment is None:
+            comment = first_comment
+        reason = thread_blocker(child.social_account, parts, first_comment=_account_first_comment(child, comment))
         if reason:
             return reason
     return ""
+
+
+def thread_started(post) -> bool:
+    """Whether any account has begun publishing ``post``'s thread.
+
+    True once a first post with parts is live (its ``thread_status`` leaves
+    ``none`` the moment the second part is queued, possibly hours before that
+    part's row exists) or any part has left ``pending``. From then on the
+    parts are the record of what is live and can't be replaced.
+    """
+    from apps.composer.models import PlatformPost, PlatformPostPart
+
+    if post.platform_posts.exclude(thread_status=PlatformPost.ThreadStatus.NONE).exists():
+        return True
+    return (
+        PlatformPostPart.objects.filter(platform_post__post=post)
+        .exclude(status=PlatformPostPart.Status.PENDING)
+        .exists()
+    )
+
+
+def thread_stopped_state(platform_post):
+    """The ``PlatformPostPart`` a partial thread stopped at, or None.
+
+    The first part in order that isn't live — the one a resume re-sends.
+    """
+    from apps.composer.models import PlatformPostPart
+
+    if not platform_post.is_thread_partial:
+        return None
+    return (
+        PlatformPostPart.objects.filter(platform_post=platform_post)
+        .exclude(status=PlatformPostPart.Status.PUBLISHED)
+        .order_by("part__position", "part__created_at")
+        .first()
+    )

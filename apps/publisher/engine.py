@@ -659,15 +659,19 @@ class PublishEngine:
         first = platform_post.post.thread_parts.order_by("position", "created_at").first()
         if first is None:
             return
-        # Enqueue before marking, as the first comment does: a crash between
-        # the two leaves a task that runs (and claims its part, so a second
-        # copy is a no-op) rather than a thread marked as posting with nothing
-        # behind it.
-        _publish_thread_part_task(str(platform_post.id), str(first.id), schedule=first.delay_seconds)
-        PlatformPost.objects.filter(pk=platform_post.pk, thread_status=PlatformPost.ThreadStatus.NONE).update(
-            thread_status=PlatformPost.ThreadStatus.PENDING,
-            thread_error="",
-        )
+        # Mark and enqueue in one transaction, as ``resume_thread`` does: the
+        # task row lives in the same database, so either the thread is marked
+        # posting with its task queued or neither happened. The conditional
+        # update makes a second caller (the retry and confirmation paths can
+        # both get here) queue nothing.
+        with transaction.atomic():
+            started = PlatformPost.objects.filter(
+                pk=platform_post.pk, thread_status=PlatformPost.ThreadStatus.NONE
+            ).update(thread_status=PlatformPost.ThreadStatus.PENDING, thread_error="")
+            if started:
+                _publish_thread_part_task(str(platform_post.id), str(first.id), schedule=first.delay_seconds)
+        if started:
+            platform_post.thread_status = PlatformPost.ThreadStatus.PENDING
 
     def reap_stalled_thread_parts(self):
         """Settle thread parts whose worker died while posting them.
@@ -2176,7 +2180,10 @@ def _publish_thread_part_task(platform_post_id, part_id):
         logger.info("Thread part %s is already %s; skipping.", state.pk, state.status)
         return
 
-    root = PublishResult(platform_post_id=platform_post.platform_post_id, extra=platform_post.platform_extra or {})
+    # No ``extra`` for the root: ``platform_extra`` is the author's input, not
+    # the platform's response, so a reply chain that needs more than the id
+    # (Bluesky's cid) looks the root up itself.
+    root = PublishResult(platform_post_id=platform_post.platform_post_id)
     parent = _published_ref(states[parts[index - 1].id]) if index else root
 
     try:
@@ -2234,19 +2241,27 @@ def _publish_thread_part_task(platform_post_id, part_id):
     _continue_thread(platform_post, parts, index)
 
 
-def resume_thread(platform_post) -> None:
+def resume_thread(platform_post, *, confirm_unconfirmed: bool = False) -> None:
     """Pick a partially published thread back up from the first part that isn't live.
 
     The parts already live are never touched. The stopped part is put back to
-    ``pending`` with a fresh retry budget — including an ``unconfirmed`` one,
-    because resuming is the author saying they checked and it isn't there.
-    Raises ``ValueError`` when the thread isn't stopped part-way.
+    ``pending`` with a fresh retry budget. An ``unconfirmed`` part may already
+    be live, so re-sending it needs ``confirm_unconfirmed`` — the author
+    saying they checked the platform and it isn't there.
+    Raises ``ValueError`` when the thread isn't stopped part-way, or the
+    stopped part is unconfirmed and that wasn't confirmed.
     """
     if platform_post.thread_status != ThreadStatus.PARTIAL:
         raise ValueError("This thread isn't stopped part-way, so there is nothing to resume.")
     parts = [part for part, _caption, _assets in thread_parts_for(platform_post)]
     states = _thread_part_states(platform_post, parts)
     stopped = next((part for part in parts if states[part.id].status != PartStatus.PUBLISHED), None)
+    if stopped is not None and states[stopped.id].status == PartStatus.UNCONFIRMED and not confirm_unconfirmed:
+        raise ValueError(
+            f"Part {stopped.position + 1} may already be live on "
+            f"{platform_post.social_account.get_platform_display()}. Check the thread there, then confirm "
+            "it isn't posted before resuming — otherwise it would be published twice."
+        )
     if stopped is None:
         PlatformPost.objects.filter(pk=platform_post.pk).update(thread_status=ThreadStatus.COMPLETE, thread_error="")
         return

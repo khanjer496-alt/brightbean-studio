@@ -311,6 +311,25 @@ class Post(models.Model):
         return dict(PlatformPost.Status.choices).get(self.status, self.status)
 
     @property
+    def display_status(self):
+        """``status`` as a status pill shows it: a published post whose thread stopped reads partial.
+
+        Display only — ``status`` keeps its meaning for everything that
+        filters or branches on it. Iterates ``platform_posts.all()`` like
+        ``status``, so a prefetch covers it.
+        """
+        status = self.status
+        if status == PlatformPost.Status.PUBLISHED and any(pp.is_thread_partial for pp in self.platform_posts.all()):
+            return PlatformPost.PARTIALLY_PUBLISHED
+        return status
+
+    @property
+    def display_status_label(self):
+        if self.display_status == PlatformPost.PARTIALLY_PUBLISHED:
+            return PlatformPost.PARTIALLY_PUBLISHED_LABEL
+        return self.get_status_display()
+
+    @property
     def status_color(self):
         return PlatformPost.STATUS_COLORS.get(self.status, "gray")
 
@@ -470,6 +489,11 @@ class PlatformPost(models.Model):
         # stays ``published`` — the first post is history — and this is what
         # says the thread behind it is unfinished and can be resumed.
         PARTIAL = "partial", "Partially published"
+
+    # The display-only status of a published row whose thread stopped part-way
+    # (``display_status``); it reuses the post-level aggregate's styling.
+    PARTIALLY_PUBLISHED = "partially_published"
+    PARTIALLY_PUBLISHED_LABEL = "Partially published"
 
     STATUS_COLORS = {
         "draft": "gray",
@@ -701,6 +725,23 @@ class PlatformPost(models.Model):
     def is_thread_partial(self):
         """The first post is live but the thread behind it stopped part-way."""
         return self.thread_status == self.ThreadStatus.PARTIAL
+
+    @property
+    def display_status(self):
+        """``status`` as a chip or pill shows it: ``partially_published`` for a stopped thread.
+
+        Display only. ``status`` stays ``published`` — the first post is live,
+        and the publisher, filters and sweeps all depend on that.
+        """
+        if self.status == self.Status.PUBLISHED and self.is_thread_partial:
+            return self.PARTIALLY_PUBLISHED
+        return self.status
+
+    @property
+    def display_status_label(self):
+        if self.display_status == self.PARTIALLY_PUBLISHED:
+            return self.PARTIALLY_PUBLISHED_LABEL
+        return self.get_status_display()
 
     @property
     def platform(self):
