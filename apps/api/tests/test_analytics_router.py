@@ -508,3 +508,55 @@ class TestPlatformConfigGating:
         assert child["unavailable_reason"]
         assert child["metric_tiles"] == []
         assert child["next_sync_eta"] is None
+
+
+@pytest.mark.django_db
+class TestWorkspaceOverview:
+    def test_sums_allowlisted_accounts_and_marks_missing_metrics_null(
+        self, client_with_token, instagram_account, linkedin_personal_account
+    ):
+        _seed_account_snapshots(instagram_account, days=30)
+        r = client_with_token.get("/api/v1/analytics/overview?days=7")
+        assert r.status_code == 200, r.content
+        body = r.json()
+
+        assert body["compare"] is True and body["previous_start"] and len(body["daily"]) == 7
+        metrics = {m["key"]: m for m in body["metrics"]}
+        assert metrics["exposure"]["value"] is not None
+        assert metrics["exposure"]["accounts_reporting"] == 1 and metrics["exposure"]["accounts_total"] == 2
+        accounts = {a["account_id"]: a for a in body["accounts"]}
+        assert accounts[str(instagram_account.id)]["analytics_available"] is True
+        li = accounts[str(linkedin_personal_account.id)]
+        assert li["analytics_available"] is False and li["unavailable_reason"]
+        assert li["metrics"]["exposure"] is None  # not available, not 0
+
+    def test_foreign_and_disconnected_accounts_are_never_included(
+        self, client_with_token, instagram_account, foreign_account, disconnected_instagram_account
+    ):
+        r = client_with_token.get("/api/v1/analytics/overview")
+        ids = {a["account_id"] for a in r.json()["accounts"]}
+        assert str(foreign_account.id) not in ids and str(disconnected_instagram_account.id) not in ids
+
+    def test_custom_range_and_no_comparison(self, client_with_token, instagram_account):
+        end = timezone.now().date()
+        start = end - timedelta(days=3)
+        r = client_with_token.get(f"/api/v1/analytics/overview?start={start}&end={end}&compare=false")
+        body = r.json()
+        assert (body["start"], body["end"]) == (str(start), str(end))
+        assert body["compare"] is False and body["previous_start"] is None
+
+    def test_requires_view_analytics(self, client_without_view_analytics):
+        assert client_without_view_analytics.get("/api/v1/analytics/overview").status_code == 403
+
+    def test_half_a_custom_range_is_rejected(self, client_with_token, instagram_account):
+        r = client_with_token.get(f"/api/v1/analytics/overview?start={timezone.now().date()}")
+        assert r.status_code == 422
+
+    def test_plan_without_analytics_gets_402(self, settings, client_with_token, organization):
+        from apps.billing.tests.support import set_plan
+
+        settings.BILLING_ENABLED = True
+        set_plan(organization, "creator")
+        r = client_with_token.get("/api/v1/analytics/overview")
+        assert r.status_code == 402
+        assert "upgrade_url" in r.json()

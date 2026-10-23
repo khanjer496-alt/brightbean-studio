@@ -280,6 +280,8 @@ def _action_for_path(method: str, path: str, *, status_code: int) -> str:
     ``WHERE action LIKE 'post.%'`` catches both successes and 4xx.
     """
     # Order matters: longer prefixes first.
+    if path.endswith("/analytics/overview"):
+        return f"analytics.read.overview.{status_code}"
     if "/analytics/accounts/" in path:
         return f"analytics.read.account.{status_code}"
     if "/analytics/posts/" in path:

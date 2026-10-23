@@ -897,7 +897,7 @@ class TestAnalyticsTools:
     def test_tools_list_includes_analytics_tools(self, analytics_client):
         status, body = _post(analytics_client, _rpc("tools/list"))
         names = {t["name"] for t in body["result"]["tools"]}
-        assert {"get_account_analytics", "get_post_analytics"} <= names
+        assert {"get_account_analytics", "get_post_analytics", "get_workspace_analytics"} <= names
 
     def test_get_account_analytics_happy_path(self, analytics_client, instagram_account):
         _seed_ig_account_snapshots(instagram_account)
@@ -920,6 +920,33 @@ class TestAnalyticsTools:
         assert inner["analytics_available"] is True
         assert inner["hero_metrics"]
         assert inner["captured_at"] is not None
+
+    def test_get_workspace_analytics_matches_rest_and_respects_the_allowlist(
+        self, analytics_client, instagram_account, second_account
+    ):
+        _seed_ig_account_snapshots(instagram_account)
+        status, body = _post(
+            analytics_client,
+            _rpc("tools/call", {"name": "get_workspace_analytics", "arguments": {"days": 7}}),
+        )
+        assert status == 200 and "error" not in body, body
+        inner = json.loads(body["result"]["content"][0]["text"])
+        ids = {a["account_id"] for a in inner["accounts"]}
+        assert str(instagram_account.id) in ids and str(second_account.id) not in ids
+        assert {m["key"] for m in inner["metrics"]} >= {"exposure", "engagements", "engagement_rate", "posts"}
+        assert len(inner["daily"]) == 7
+
+    def test_get_workspace_analytics_validates_arguments(self, analytics_client):
+        for arguments in (
+            {"days": 0},
+            {"start": "2026-01-01"},
+            {"start": "bad", "end": "2026-01-02"},
+            {"compare": "yes"},
+        ):
+            status, body = _post(
+                analytics_client, _rpc("tools/call", {"name": "get_workspace_analytics", "arguments": arguments})
+            )
+            assert body["error"]["code"] == INVALID_PARAMS, arguments
 
     def test_get_account_analytics_unavailable_platform(self, analytics_client, social_account):
         status, body = _post(

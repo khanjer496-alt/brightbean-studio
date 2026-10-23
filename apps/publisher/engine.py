@@ -85,7 +85,7 @@ def _resolve_publish_credentials(account):
     platform = account.platform
 
     # .env is dominant; admin-entered org credentials are the fallback.
-    credentials = resolve_platform_credentials(platform, account.workspace.organization_id)
+    credentials = resolve_platform_credentials(platform, account.workspace.organization_id, account.workspace_id)
 
     if platform == "mastodon" and account.instance_url:
         from apps.common.validators import is_safe_url

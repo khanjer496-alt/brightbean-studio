@@ -1124,6 +1124,8 @@ def compose(request, workspace_id, post_id=None):
             # Each of these costs two characters once the provider escapes it,
             # so the live counter can charge for them as the user types.
             "escaped_chars": acc.escaped_chars,
+            # "weighted": count as twitter-text does (URLs 23, CJK and emoji 2).
+            "caption_counting": acc.caption_counting,
             # Whether typing "@" can suggest accounts to mention on this platform.
             "mention_lookup": mention_lookup_for(acc.platform),
             "name": acc.account_name or acc.account_handle,

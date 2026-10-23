@@ -1,0 +1,2 @@
+{# Legend key for chart series n (1-4); muted is the dashed previous-period line. #}
+{% if muted %}<span class="inline-block w-4 border-t-2 border-dashed border-ink-3" aria-hidden="true"></span>{% else %}<span class="inline-block h-0.5 w-4 rounded-full {% if n == 1 %}bg-series-1{% elif n == 2 %}bg-series-2{% elif n == 3 %}bg-series-3{% else %}bg-series-4{% endif %}" aria-hidden="true"></span>{% endif %}

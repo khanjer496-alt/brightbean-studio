@@ -11,7 +11,7 @@ from __future__ import annotations
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import date as dt_date
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any, NamedTuple
 
 from django.conf import settings
@@ -26,6 +26,7 @@ from .constants import NO_ANALYTICS_PLATFORMS
 from .derive import DerivedMetric, derive, engagement_rate, kind_of
 from .metrics import (
     ACCOUNT_ONLY,
+    GROWTH_METRICS,
     METRICS,
     PLATFORM_METRICS,
     PLATFORM_PRIMARY,
@@ -116,7 +117,7 @@ def unavailable_reason(platform: str, enabled_platforms: list[str] | None = None
     return verdict.message if verdict else None
 
 
-def _supports_post_fallback(metric_key: str) -> bool:
+def supports_post_fallback(metric_key: str) -> bool:
     """Which metric keys can be derived by summing per-post deltas.
 
     Counts and minutes sum linearly. Account-only growth (subscribers,
@@ -198,6 +199,24 @@ def _post_summed_series_for_metric(
             "captured_at",
         )
     )
+    return sum_post_deltas(rows, start, end)
+
+
+def sum_post_deltas(
+    rows: Iterable[tuple[Any, Any, dt_date, float, Any]],
+    start: dt_date,
+    end: dt_date,
+) -> tuple[dict[dt_date, float], Any, set[dt_date]]:
+    """The per-post delta walk behind :func:`_post_summed_series_for_metric`.
+
+    ``rows`` are ``(post_id, published_at, date, value, captured_at)`` for ONE
+    account and ONE metric, ordered by ``(post_id, date)``. Split out so the
+    workspace rollup can fetch every account's rows in a single query and feed
+    each (account, metric) group through the same rules. ``published_at`` may
+    also be the publish date (UTC), which is all the walk reads from it, and
+    ``captured_at`` may be ``None`` when the caller aggregates freshness itself:
+    both save decoding a timestamp per row on large scans.
+    """
     out: dict[dt_date, float] = defaultdict(float)
     observed: set[dt_date] = set()
     max_captured: Any = None
@@ -214,7 +233,7 @@ def _post_summed_series_for_metric(
             max_captured = captured_at
         if first_obs_for_post:
             first_obs_for_post = False
-            pub_day = published_at.date() if published_at is not None else None
+            pub_day = published_at.date() if isinstance(published_at, datetime) else published_at
             if pub_day is None or pub_day > day:
                 # No publish date or it's after the snapshot (data oddity);
                 # credit the snapshot day if in window — least-bad guess.
@@ -247,7 +266,19 @@ def _post_summed_series_for_metric(
     return dict(out), max_captured, observed
 
 
-def account_analytics_bundle(account: SocialAccount, days: int) -> dict[str, Any]:
+def prefers_post_series(account_captured: Any, fallback_captured: Any, has_account_rows: bool) -> bool:
+    """Whether the per-post estimate replaces a metric's account-level series.
+
+    Used when no account-level rows exist, and when the per-post snapshots are
+    newer than the account rows (Facebook account insights sync daily while
+    per-post metrics can refresh hourly).
+    """
+    return not has_account_rows or (
+        fallback_captured is not None and account_captured is not None and fallback_captured > account_captured
+    )
+
+
+def account_analytics_bundle(account: SocialAccount, days: int, end: dt_date | None = None) -> dict[str, Any]:
     """Single-pass snapshot fetch for one account over a ``2 * days`` window.
 
     Returns a dict with:
@@ -263,12 +294,15 @@ def account_analytics_bundle(account: SocialAccount, days: int) -> dict[str, Any
     Replaces the previous "1 query per metric" pattern (8 SELECTs for IG)
     with a single bulk SELECT, and exposes the freshness max so callers
     don't need a separate ``Max("captured_at")`` aggregate.
+
+    ``end`` is the last day of the current window (default: today, UTC). YouTube
+    ignores it: its native reports are anchored to YouTube's own reporting window.
     """
     if account.platform == "youtube":
         from .youtube_reports import account_bundle
 
         return account_bundle(account, days)
-    end = timezone.now().date()
+    end = end or timezone.now().date()
     start = end - timedelta(days=2 * days - 1)
     platform_metrics = PLATFORM_METRICS.get(account.platform, [])
 
@@ -309,16 +343,13 @@ def account_analytics_bundle(account: SocialAccount, days: int) -> dict[str, Any
     # already stored.
     estimated_metrics: set[str] = set()
     for m in platform_metrics:
-        if not _supports_post_fallback(m):
+        if not supports_post_fallback(m):
             continue
         daily, fallback_captured, observed = _post_summed_series_for_metric(account, m, start, end)
         if not observed:
             continue
         account_captured = captured_by_metric.get(m)
-        should_use_fallback = m not in metrics_with_account_data or (
-            fallback_captured is not None and account_captured is not None and fallback_captured > account_captured
-        )
-        if should_use_fallback:
+        if prefers_post_series(account_captured, fallback_captured, m in metrics_with_account_data):
             by_metric[m].update(daily)
             present_days[m].update(observed)
             estimated_metrics.add(m)
@@ -475,6 +506,7 @@ def hero_chart_data(
     metric: str | None = None,
     *,
     bundle: dict[str, Any] | None = None,
+    end: dt_date | None = None,
 ) -> dict[str, Any]:
     """Payload for the hero area chart: selected metric, date labels, values.
 
@@ -484,13 +516,13 @@ def hero_chart_data(
     """
     chips = hero_chart_metrics(account)
     selected = metric if metric in chips else (PLATFORM_PRIMARY.get(account.platform) or (chips[0] if chips else ""))
-    end = timezone.now().date()
+    end = end or timezone.now().date()
     if account.platform == "youtube":
         from .youtube_reports import reporting_window
 
         _, end = reporting_window(days)
     if bundle is None:
-        bundle = account_analytics_bundle(account, days)
+        bundle = account_analytics_bundle(account, days, end)
     derived = _derive_metric(bundle, selected, days)
     # Date labels for the X axis (current window only).
     labels = [(end - timedelta(days=days - 1 - i)).isoformat() for i in range(days)]
@@ -508,6 +540,7 @@ def follower_growth(
     days: int,
     *,
     bundle: dict[str, Any] | None = None,
+    end: dt_date | None = None,
 ) -> DerivedMetric | None:
     """Account-level follower growth (new followers/subscribers) for the header.
 
@@ -516,7 +549,7 @@ def follower_growth(
     schema) should use :func:`follower_growth_metric` instead so they
     don't have to re-derive the key from ``PLATFORM_METRICS``.
     """
-    pair = follower_growth_metric(account, days, bundle=bundle)
+    pair = follower_growth_metric(account, days, bundle=bundle, end=end)
     return pair[1] if pair else None
 
 
@@ -525,6 +558,7 @@ def follower_growth_metric(
     days: int,
     *,
     bundle: dict[str, Any] | None = None,
+    end: dt_date | None = None,
 ) -> tuple[str, DerivedMetric] | None:
     """Same as :func:`follower_growth` but also returns the metric key.
 
@@ -544,13 +578,13 @@ def follower_growth_metric(
     # both delta-style (``follows``/``subscribers``) and total-style
     # (``followers``) series correctly because both are catalog kind="count".
     growth_metric = next(
-        (m for m in ("subscribers", "follows", "followers") if m in PLATFORM_METRICS.get(account.platform, [])),
+        (m for m in GROWTH_METRICS if m in PLATFORM_METRICS.get(account.platform, [])),
         None,
     )
     if not growth_metric:
         return None
     if growth_metric == "followers":
-        end = timezone.now().date()
+        end = end or timezone.now().date()
         current_start = end - timedelta(days=days - 1)
         previous_start = end - timedelta(days=(2 * days) - 1)
         rows = list(
@@ -595,7 +629,7 @@ def follower_growth_metric(
             estimated=True,
         )
     if bundle is None:
-        bundle = account_analytics_bundle(account, days)
+        bundle = account_analytics_bundle(account, days, end)
     metric = _derive_metric(bundle, growth_metric, days)
     return (growth_metric, metric) if metric.available else None
 
@@ -609,10 +643,12 @@ def all_posts_for(
     type_filter: str = "all",
     page: int = 1,
     page_size: int = 10,
+    bounds: tuple[Any, Any] | None = None,
 ) -> dict[str, Any]:
     """Page of posts + per-post stats, sortable + filterable.
 
-    ``days_filter=None`` means "all time". ``sort_key=None`` falls back to the
+    ``days_filter=None`` means "all time"; ``bounds`` (a half-open pair of
+    datetimes, e.g. :meth:`AnalyticsRange.bounds`) takes precedence over it. ``sort_key=None`` falls back to the
     platform's primary metric.
     """
     qs = (
@@ -625,7 +661,9 @@ def all_posts_for(
         .prefetch_related("post__media_attachments__media_asset")
         .order_by("-published_at")
     )
-    if days_filter is not None:
+    if bounds is not None:
+        qs = qs.filter(published_at__gte=bounds[0], published_at__lt=bounds[1])
+    elif days_filter is not None:
         cutoff = timezone.now() - timedelta(days=days_filter)
         qs = qs.filter(published_at__gte=cutoff)
 

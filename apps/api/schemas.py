@@ -64,6 +64,14 @@ class AccountSummary(Schema):
             "Empty for platforms that publish the caption verbatim."
         ),
     )
+    caption_counting: str = Field(
+        "characters",
+        description=(
+            "How the platform counts a caption against ``char_limit``. ``characters``: one per "
+            "character (plus ``escaped_chars``). ``weighted``: the twitter-text v3 weighted count "
+            "X uses, where each URL counts as 23 and CJK characters and emoji as 2."
+        ),
+    )
     needs_title: bool = Field(
         False,
         description="True when the platform requires a title (YouTube, Pinterest). When false, the title field is ignored.",
@@ -128,6 +136,7 @@ class AccountSummary(Schema):
             connection_status=sa.connection_status,
             char_limit=sa.char_limit,
             escaped_chars=sa.escaped_chars,
+            caption_counting=sa.caption_counting,
             needs_title=bool(sa.field_config.get("needs_title", False)),
             supports_first_comment=sa.supports_first_comment(),
             requires_video=is_video_only(sa.platform),
@@ -944,6 +953,92 @@ class PostAnalyticsResponse(Schema):
     title: str
     caption: str
     platform_posts: list[PlatformPostAnalyticsResponse]
+
+
+class OverviewMetricResponse(Schema):
+    """One headline figure summed across the workspace's accounts."""
+
+    key: str = Field(
+        ...,
+        description=(
+            "``followers`` | ``new_followers`` | ``exposure`` (views or impressions) | ``engagements`` | "
+            "``engagement_rate`` | ``posts``."
+        ),
+    )
+    label: str
+    kind: str = Field(..., description="Format hint: ``count`` | ``percent``.")
+    value: float | None = Field(
+        None, description="``null`` when no account reports this metric. Never ``0`` for missing data."
+    )
+    previous: float | None = Field(None, description="The same figure for the previous equal-length period.")
+    delta: float | None = Field(
+        None,
+        description=(
+            f"Percent change vs. the previous period, calculated by {settings.BRAND_NAME} over the accounts "
+            "that reported in both periods. ``null`` when there is nothing to compare."
+        ),
+    )
+    accounts_reporting: int
+    accounts_total: int
+
+
+class OverviewAccountResponse(Schema):
+    account_id: uuid.UUID
+    platform: str
+    account_name: str
+    analytics_available: bool
+    unavailable_reason: str | None = None
+    metrics: dict[str, float | None] = Field(
+        ..., description="Same keys as the headline metrics; ``null`` means not available for this account."
+    )
+
+
+class OverviewNetworkResponse(Schema):
+    platform: str
+    name: str
+    accounts: int
+    metrics: dict[str, float | None]
+
+
+class OverviewDayResponse(Schema):
+    date: dt.date
+    exposure: float | None = None
+    engagements: float | None = None
+    new_followers: float | None = None
+
+
+class OverviewPostResponse(Schema):
+    post_id: uuid.UUID
+    platform_post_id: uuid.UUID
+    social_account_id: uuid.UUID
+    platform: str
+    caption: str
+    published_at: dt.datetime
+    format: str = Field(..., description="``Text`` | ``Image`` | ``Video`` | ``Carousel``.")
+    exposure: float | None = None
+    engagements: float | None = None
+    engagement_rate: float | None = None
+
+    @field_serializer("published_at")
+    def _serialize_dt(self, value: dt.datetime) -> str | None:
+        return _serialize_utc_z(value)
+
+
+class WorkspaceOverviewResponse(Schema):
+    """Workspace-wide analytics over a date range, with the previous period for comparison."""
+
+    workspace_id: uuid.UUID
+    start: dt.date
+    end: dt.date
+    timezone: str = Field(..., description="Workspace timezone the range's days are counted in.")
+    compare: bool
+    previous_start: dt.date | None = None
+    previous_end: dt.date | None = None
+    metrics: list[OverviewMetricResponse]
+    networks: list[OverviewNetworkResponse]
+    accounts: list[OverviewAccountResponse]
+    daily: list[OverviewDayResponse]
+    top_posts: list[OverviewPostResponse]
 
 
 # ---------------------------------------------------------------------------

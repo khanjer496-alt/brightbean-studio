@@ -137,6 +137,7 @@ BACKFILL_DAYS_PER_PLATFORM: dict[str, int] = {
     "discord": 0,
     "slack": 0,
     "reddit": 0,
+    "x": 0,
 }
 DEFAULT_BACKFILL_DAYS = 90
 
@@ -1569,3 +1570,13 @@ def sync_all_account_analytics() -> None:
         blocked,
         " (run truncated)" if truncated else "",
     )
+
+
+@background(schedule=0)
+def check_engagement_alerts() -> None:
+    """Hourly cron: notify the team about posts beating their account's norm."""
+    from .engagement_alerts import send_engagement_alerts
+
+    alerted = send_engagement_alerts()
+    if alerted:
+        logger.info("engagement alerts: %s post(s) flagged", alerted)

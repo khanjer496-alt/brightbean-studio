@@ -114,7 +114,9 @@ def reply_eligibility(message, *, origin=PROGRAMMATIC, actor=None, credentials=N
             "The 24-hour reply window has closed. A person must review and send this reply from the web inbox."
         )
     if credentials is None:
-        credentials = resolve_platform_credentials(account.platform, account.workspace.organization_id)
+        credentials = resolve_platform_credentials(
+            account.platform, account.workspace.organization_id, account.workspace_id
+        )
     if not enabled(credentials.get("human_agent_enabled")):
         return blocked(
             "Human Agent access is not enabled for this Meta app. An administrator must enable it after Meta approval."

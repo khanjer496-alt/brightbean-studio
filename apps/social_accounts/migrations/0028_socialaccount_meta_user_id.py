@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('social_accounts', '0026_add_chat_and_reddit_platforms'),
+        ('social_accounts', '0027_add_x_platform'),
     ]
 
     operations = [

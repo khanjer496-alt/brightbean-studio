@@ -27,6 +27,7 @@ from .telegram import TelegramProvider
 from .threads import ThreadsProvider
 from .tiktok import TikTokProvider
 from .types import MediaRules, PostSetting, PostType, ThreadCapability
+from .x import XProvider
 from .youtube import YouTubeProvider
 
 if TYPE_CHECKING:
@@ -50,6 +51,7 @@ PROVIDER_REGISTRY: dict[str, type[SocialProvider]] = {
     "discord": DiscordProvider,
     "slack": SlackProvider,
     "reddit": RedditProvider,
+    "x": XProvider,
 }
 
 # Characters a platform escapes in the caption it publishes. Each one costs two
@@ -70,11 +72,15 @@ def caption_wire_length(platform: str, text: str) -> int:
     rejected, even though the user was shown a green counter.
     ``providers.linkedin.escape_commentary`` is the transform this mirrors;
     ``tests/providers/test_caption_wire_length.py`` holds the two together.
+    A platform that counts some characters as more than one says so through its
+    provider's ``caption_length`` (``caption_counting`` tells the composer).
     """
     escaped = CAPTION_ESCAPED_CHARS.get(platform)
-    if not escaped:
-        return len(text)
-    return len(text) + sum(text.count(ch) for ch in escaped)
+    if escaped:
+        return len(text) + sum(text.count(ch) for ch in escaped)
+    # A platform that weighs characters (X) counts with its own ``caption_length``.
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    return provider_cls.caption_length(text) if provider_cls else len(text)
 
 
 VIDEO_POST_TYPES = frozenset({PostType.VIDEO, PostType.SHORT})

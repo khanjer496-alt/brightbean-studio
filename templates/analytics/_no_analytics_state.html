@@ -1,15 +1,13 @@
 {% load analytics_extras %}
-<div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px;">
-    <div style="text-align: center; max-width: 460px;">
-        <div style="position: relative; width: 72px; height: 72px; margin: 0 auto 20px;">
-            <div style="width: 72px; height: 72px; border-radius: var(--radius-2xl); background: var(--surface-2); display: flex; align-items: center; justify-content: center;">
-                {% include "partials/_platform_icon.html" with platform=active_account.platform size="lg" %}
-            </div>
+<div class="flex flex-1 items-center justify-center p-10">
+    <div class="max-w-[460px] text-center">
+        <div class="mx-auto mb-5 flex h-[72px] w-[72px] items-center justify-center rounded-2xl bg-surface-2">
+            {% include "partials/_platform_icon.html" with platform=active_account.platform size="lg" %}
         </div>
-        <h2 style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary); margin-bottom: 8px; letter-spacing: -0.01em;">
+        <h2 class="mb-2 text-2xl font-bold tracking-tight text-ink">
             Analytics aren't available for {{ active_account.get_platform_display }}
         </h2>
-        <p style="font-size: 0.9375rem; color: var(--text-secondary); line-height: 1.6;">
+        <p class="text-[15px] leading-relaxed text-ink-2">
             {{ analytics_unavailable_notice }}
         </p>
         {% if analytics_disabled_by_admin %}
@@ -27,14 +25,14 @@
         anchors on, so this copy can be reworded freely. ({# #} is single-line
         only in Django — a multi-line one renders as visible page text.)
         {% endcomment %}
-        <p id="analytics-disabled-admin-note" style="font-size: 0.875rem; color: var(--text-tertiary); line-height: 1.6; margin-top: 12px;">
+        <p id="analytics-disabled-admin-note" class="mt-3 text-sm leading-relaxed text-ink-3">
             An administrator can switch it on under <strong>Analytics platforms</strong> in the
             Django admin. If this account connected while it was off, it may also need
             reconnecting before insights can be read.
         </p>
         {% endif %}
-        <div style="margin-top: 28px; display: flex; gap: 10px; justify-content: center;">
-            <a href="{% url 'composer:create_landing' workspace_id=workspace.id %}" class="btn-brand" style="width: auto; padding: 9px 20px;">Create a post</a>
+        <div class="mt-7 flex justify-center gap-2.5">
+            <a href="{% url 'composer:create_landing' workspace_id=workspace.id %}" class="btn-brand w-auto px-5 py-2.5">Create a post</a>
         </div>
     </div>
 </div>

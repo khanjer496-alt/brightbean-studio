@@ -83,6 +83,7 @@ A free hosted version is available at [brightbean.xyz/studio](https://brightbean
 | <img src="https://cdn.simpleicons.org/discord" width="16" height="16"> Discord | ✓ | — | — | — |
 | <img src="https://cdn.simpleicons.org/slack" width="16" height="16"> Slack | ✓ | — | — | — |
 | <img src="https://cdn.simpleicons.org/reddit" width="16" height="16"> Reddit | ✓ | — | — | — |
+| <img src="https://cdn.simpleicons.org/x" width="16" height="16"> X (Twitter) | ✓ | — | — | — |
 
 ---
 
@@ -786,6 +787,12 @@ Users click **Connect**, approve the app for their workspace and tick the channe
 
 An account is a Reddit user. Each post sets its own subreddit (and optionally a flair, loaded from the subreddit), whether it is a text or link post, and NSFW/spoiler marks; the post title is required. Reddit's image and video upload is not supported, so posts are text or links, and extra thread parts are comments on the post.
 
+### X (Twitter)
+
+No environment variables: since March 2026 X bills API use to the owner of the developer app, so every customer connects through their own app. The in-app guide (Connect, then X) walks them through it: create an app in the [X Developer Console](https://console.x.com), add credits, enable OAuth 2.0 (Web App, read and write), register the callback URL the page shows (`https://<your-domain>/social-accounts/callback/x/`), and paste the app's OAuth 2.0 Client ID and Client Secret. They are stored encrypted as the organization's credentials, and OAuth 2.0 Authorization Code with PKCE runs against that app (scopes `tweet.read tweet.write users.read media.write offline.access`; tokens refresh with a rotating refresh token).
+
+Posts are 280 characters (25,000 for a Premium account, detected when it connects), with up to 4 images or one GIF or video (chunked upload), threads as reply chains of up to 25 posts, a who-can-reply setting, and an optional poll (2-4 options) on posts without media. Quote posts need an Enterprise plan and are not offered. Analytics are not synced because X bills each read. A lost response after a post is never retried automatically; an exhausted API credit balance fails the post with a message to top up. Pricing as documented: [docs.x.com pricing](https://docs.x.com/x-api/getting-started/pricing).
+
 ## Inbox: Backfill Historical Messages
 
 See the [Supported Platforms](#supported-platforms) matrix above for per-platform inbox capabilities.
@@ -897,6 +904,7 @@ The MCP server lives at `POST {APP_URL}/api/v1/mcp` and speaks JSON-RPC 2.0 over
 | `upload_media` | Upload a small base64-encoded file (≤ 1 MB raw). For larger files, use REST `POST /media`. | `upload_media` |
 | `get_account_analytics` | Channel analytics over a rolling 7–90 day window | `view_analytics` |
 | `get_post_analytics` | Per-platform metrics for a single post (safe for polling drafts) | `view_analytics` |
+| `get_workspace_analytics` | Workspace-wide totals, per-network and per-account breakdown, daily series and top posts for a date range (`GET /api/v1/analytics/overview`) | `view_analytics` |
 | `list_inbox_messages` | List inbox items (comments, mentions, DMs, reviews) with their reply threads | `use_inbox` |
 | `get_inbox_message` | Retrieve one inbox message and its reply thread | `use_inbox` |
 | `create_reply_draft` | Draft a reply to an inbox message (saved, not sent) | `use_inbox` |

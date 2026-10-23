@@ -83,6 +83,8 @@ PLATFORM_DAILY_POST_LIMIT: dict[str, int] = {
     "slack": 200,
     # Reddit throttles new accounts and each subreddit hard; keep well under it.
     "reddit": 25,
+    # POST /2/tweets allows 100 per 15 minutes, but each post is billed to the customer's own app.
+    "x": 100,
 }
 
 _DEFAULT_FALLBACK = 50
