@@ -18,7 +18,7 @@ def set_site(apps, schema_editor):
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("accounts", "0005_add_review_banner_dismissed_at"),
+        ("accounts", "0006_verify_emails_of_existing_logins"),
         ("sites", "0002_alter_domain_unique"),
     ]
     operations = [migrations.RunPython(set_site, migrations.RunPython.noop)]

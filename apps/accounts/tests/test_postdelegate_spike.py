@@ -169,7 +169,7 @@ def test_site_identity_migration_replaces_the_upstream_site():
     from django.contrib.sites.models import Site
 
     Site.objects.update_or_create(id=1, defaults={"domain": "studio.brightbean.xyz", "name": "Brightbean"})
-    migration = importlib.import_module("apps.accounts.migrations.0006_sync_site_identity")
+    migration = importlib.import_module("apps.accounts.migrations.0007_sync_site_identity")
 
     migration.set_site(apps, None)
 
