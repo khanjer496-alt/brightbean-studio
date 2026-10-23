@@ -548,6 +548,10 @@ class TestWorkspaceOverview:
     def test_requires_view_analytics(self, client_without_view_analytics):
         assert client_without_view_analytics.get("/api/v1/analytics/overview").status_code == 403
 
+    def test_half_a_custom_range_is_rejected(self, client_with_token, instagram_account):
+        r = client_with_token.get(f"/api/v1/analytics/overview?start={timezone.now().date()}")
+        assert r.status_code == 422
+
     def test_plan_without_analytics_gets_402(self, settings, client_with_token, organization):
         from apps.billing.tests.support import set_plan
 

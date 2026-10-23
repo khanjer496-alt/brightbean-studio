@@ -28,6 +28,7 @@ import datetime as dt
 import uuid
 
 from ninja import Query, Router
+from ninja.errors import HttpError
 
 from apps.analytics.api_builders import (
     build_account_analytics,
@@ -67,6 +68,8 @@ def workspace_overview(
 ):
     enforce_http_rate_limits(request, is_write=False)
     _require_perm(request, "view_analytics")
+    if (start is None) != (end is None):
+        raise HttpError(422, "start and end must be given together.")
     workspace = request.workspace
     require_feature(workspace.organization, Feature.ANALYTICS)
     accounts = connected_accounts(request.api_key)

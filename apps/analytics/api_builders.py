@@ -221,7 +221,11 @@ def connected_accounts(api_key) -> list[SocialAccount]:
     only offers that.
     """
     connected = [
-        a for a in api_key.social_accounts.all() if a.connection_status == SocialAccount.ConnectionStatus.CONNECTED
+        a
+        for a in api_key.social_accounts.all()
+        # The allowlist is validated at issuance; re-checking the workspace keeps
+        # an account later moved elsewhere out of this workspace's totals.
+        if a.connection_status == SocialAccount.ConnectionStatus.CONNECTED and a.workspace_id == api_key.workspace_id
     ]
     return sorted(connected, key=lambda a: (a.platform, a.account_name))
 

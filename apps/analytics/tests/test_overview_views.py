@@ -176,6 +176,21 @@ def test_export_requires_membership_and_view_analytics(client, workspace, seeded
 
 
 @pytest.mark.django_db
+def test_sidebar_hides_analytics_from_roles_without_view_analytics(client, workspace, seeded):
+    contributor = make_member(workspace, "contrib@example.com", WorkspaceMembership.WorkspaceRole.CONTRIBUTOR)
+    client.force_login(contributor)
+    sidebar_link = f'href="{url("index", workspace)}"'
+    assert (
+        sidebar_link
+        not in client.get(reverse("calendar:calendar", kwargs={"workspace_id": workspace.id})).content.decode()
+    )
+
+    viewer = make_member(workspace, "viewer@example.com", WorkspaceMembership.WorkspaceRole.VIEWER)
+    client.force_login(viewer)
+    assert sidebar_link in client.get(url("index", workspace)).content.decode()
+
+
+@pytest.mark.django_db
 def test_anonymous_users_are_sent_to_login(client, workspace):
     assert client.get(url("export", workspace, kind="overview")).status_code == 302
 
@@ -200,4 +215,4 @@ def test_analytics_templates_carry_no_inline_styles():
 def test_pages_do_not_load_chart_js_from_a_cdn(owner_client, workspace, seeded):
     body = owner_client.get(url("index", workspace)).content.decode()
     assert "js/vendor/chart.umd.min.js" in body
-    assert "cdn.jsdelivr.net/npm/chart.js" not in body
+    assert "cdn.jsdelivr.net" not in body  # flatpickr and Sortable are self-hosted too
