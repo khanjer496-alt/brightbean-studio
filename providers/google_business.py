@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta
 from urllib.parse import urlencode
 
 from .base import SocialProvider
@@ -17,7 +18,10 @@ from .types import (
     PostType,
     PublishContent,
     PublishResult,
+    ReplyResult,
+    ReviewPage,
 )
+from .types import InboxMessage as ProviderInboxMessage
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +31,35 @@ REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 ACCOUNTS_API = "https://mybusinessaccountmanagement.googleapis.com/v1"
 BUSINESS_INFO_API = "https://mybusinessbusinessinformation.googleapis.com/v1"
 POSTS_API = "https://mybusiness.googleapis.com/v4"
+# Reviews still live only on the v4 surface (``accounts.locations.reviews``);
+# the newer Business Information / Account Management APIs have no reviews
+# resource. Verified against
+# https://developers.google.com/my-business/reference/rest/v4/accounts.locations.reviews
+#   list:        GET    {parent=accounts/*/locations/*}/reviews  (pageSize <= 50, orderBy "updateTime desc")
+#   updateReply: PUT    {name=accounts/*/locations/*/reviews/*}/reply   (body: ReviewReply{comment})
+#   deleteReply: DELETE {name=accounts/*/locations/*/reviews/*}/reply
+REVIEWS_API = POSTS_API
+REVIEWS_PAGE_SIZE = 50
+# A first import walks this many pages (1,000 reviews) so the history analytics
+# reads is complete for nearly every location; later polls stop at ``since``.
+REVIEWS_FIRST_IMPORT_PAGES = 20
+# Accounts searched for the connected location when a login manages several.
+REVIEWS_OWNER_ACCOUNTS_MAX = 20
+# A reply or edit made on Google can move updateTime a little after we last
+# looked, and clocks differ; walk this far back past ``since`` to catch them.
+REVIEWS_LOOKBACK = timedelta(days=1)
+# ReviewReply.comment is capped at 4096 bytes.
+REVIEW_REPLY_MAX_BYTES = 4096
+STAR_RATINGS = {"ONE": 1, "TWO": 2, "THREE": 3, "FOUR": 4, "FIVE": 5}
+
+
+def _parse_rfc3339(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
 
 
 # What a Business Profile post's photo may be: 10 KB to 5 MB, at least 250x250.
@@ -55,6 +88,7 @@ class GoogleBusinessProvider(SocialProvider):
     """
 
     media_rules = GOOGLE_BUSINESS_MEDIA_RULES
+    supports_reviews = True
 
     # Publishes from hosted URLs only — the platform fetches the media
     # itself, so ``PublishContent.media_files`` is never read and the engine
@@ -223,6 +257,13 @@ class GoogleBusinessProvider(SocialProvider):
             )
         return locations[0]["name"]
 
+    @classmethod
+    def credentials_for_account(cls, account) -> dict:
+        # The connected location ("locations/123"), which the reviews endpoints
+        # address under the owning account. Kept apart from ``location_id`` so
+        # publishing keeps resolving exactly as before.
+        return {"review_location": account.account_platform_id}
+
     # ------------------------------------------------------------------
     # Profile
     # ------------------------------------------------------------------
@@ -335,3 +376,129 @@ class GoogleBusinessProvider(SocialProvider):
                 "raw": data,
             },
         )
+
+    # ------------------------------------------------------------------
+    # Reviews
+    # ------------------------------------------------------------------
+
+    def _review_parent(self, access_token: str) -> str:
+        """``accounts/{a}/locations/{l}`` for the connected location."""
+        location = (self.credentials.get("review_location") or "").strip("/")
+        if not location:
+            raise PublishError("No Google Business location is connected", platform=self.platform_name)
+        if location.startswith("accounts/"):
+            return location
+        location = location if location.startswith("locations/") else f"locations/{location}"
+        account = self._location_owner(access_token, location)
+        account = account if account.startswith("accounts/") else f"accounts/{account}"
+        return f"{account}/{location}"
+
+    def _location_owner(self, access_token: str, location: str) -> str:
+        """The account (``accounts/1``) the connected location belongs to.
+
+        A login can manage several Business Profile accounts (an agency's own
+        plus each client's), so "the first account" is only safe when there is
+        exactly one; otherwise each account's locations are listed until the
+        connected one turns up.
+        """
+        if self.credentials.get("account_id"):
+            return self.credentials["account_id"]
+        accounts = (
+            self._request("GET", f"{ACCOUNTS_API}/accounts", access_token=access_token).json().get("accounts", [])
+        )
+        names = [a["name"] for a in accounts if a.get("name")]
+        if len(names) == 1:
+            return names[0]
+        for account in names[:REVIEWS_OWNER_ACCOUNTS_MAX]:
+            data = self._request(
+                "GET",
+                f"{BUSINESS_INFO_API}/{account}/locations",
+                access_token=access_token,
+                params={"readMask": "name", "pageSize": 100},
+            ).json()
+            if any(loc.get("name") == location for loc in data.get("locations", [])):
+                return account
+        raise PublishError(
+            "The connected Google Business location is no longer in any account this login manages",
+            platform=self.platform_name,
+            retryable=False,
+        )
+
+    def _review_message(self, review: dict) -> ProviderInboxMessage:
+        reviewer = review.get("reviewer") or {}
+        created = _parse_rfc3339(review.get("createTime"))
+        updated = _parse_rfc3339(review.get("updateTime")) or created
+        reply = review.get("reviewReply") or {}
+        extra: dict = {
+            "rating": STAR_RATINGS.get(review.get("starRating", ""), 0) or None,
+            "sender_avatar_url": reviewer.get("profilePhotoUrl", "") if not reviewer.get("isAnonymous") else "",
+            "create_time": review.get("createTime", ""),
+            "update_time": review.get("updateTime", ""),
+        }
+        if reply.get("comment"):
+            extra["review_reply"] = {
+                "comment": reply["comment"],
+                "update_time": reply.get("updateTime", ""),
+                "state": reply.get("reviewReplyState", ""),
+            }
+        return ProviderInboxMessage(
+            platform_message_id=review["name"],
+            sender_id=review.get("reviewId", review["name"]),
+            sender_name=reviewer.get("displayName") or "A Google user",
+            text=review.get("comment", "") or "",
+            timestamp=updated,
+            message_type="review",
+            extra=extra,
+        )
+
+    def list_reviews(
+        self, access_token: str, *, since: datetime | None = None, max_pages: int = 5, page_token: str | None = None
+    ) -> ReviewPage:
+        parent = self._review_parent(access_token)
+        cutoff = since - REVIEWS_LOOKBACK if since else None
+        messages: list = []
+        average = total = None
+        for _ in range(max(1, max_pages)):
+            params: dict = {"pageSize": REVIEWS_PAGE_SIZE, "orderBy": "updateTime desc"}
+            if page_token:
+                params["pageToken"] = page_token
+            data = self._request(
+                "GET", f"{REVIEWS_API}/{parent}/reviews", access_token=access_token, params=params
+            ).json()
+            average = data.get("averageRating", average)
+            total = data.get("totalReviewCount", total)
+            reached_old = False
+            for review in data.get("reviews", []):
+                if "name" not in review:
+                    continue
+                msg = self._review_message(review)
+                # Newest activity first, so the first old row ends the walk.
+                if cutoff is not None and msg.timestamp is not None and msg.timestamp < cutoff:
+                    reached_old = True
+                    break
+                messages.append(msg)
+            page_token = data.get("nextPageToken")
+            if reached_old or not page_token:
+                page_token = None if reached_old else page_token
+                break
+        return ReviewPage(messages=messages, average_rating=average, total_count=total, next_page_token=page_token)
+
+    def get_messages(self, access_token: str, since: datetime | None = None) -> list[ProviderInboxMessage]:
+        pages = 5 if since else REVIEWS_FIRST_IMPORT_PAGES
+        return self.list_reviews(access_token, since=since, max_pages=pages).messages
+
+    def reply_to_review(self, access_token: str, review_id: str, text: str) -> ReplyResult:
+        if len(text.encode()) > REVIEW_REPLY_MAX_BYTES:
+            raise PublishError(
+                f"A review reply can be at most {REVIEW_REPLY_MAX_BYTES} bytes",
+                platform=self.platform_name,
+                retryable=False,
+            )
+        data = self._request(
+            "PUT", f"{REVIEWS_API}/{review_id}/reply", access_token=access_token, json={"comment": text}
+        ).json()
+        return ReplyResult(platform_message_id=review_id, extra=data)
+
+    def delete_review_reply(self, access_token: str, review_id: str) -> bool:
+        self._request("DELETE", f"{REVIEWS_API}/{review_id}/reply", access_token=access_token)
+        return True

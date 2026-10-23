@@ -22,7 +22,7 @@
     <link rel="apple-touch-icon" href="{{ avatar_url }}">{% else %}<link rel="icon" href="data:,">{% endif %}
     <title>{{ page.title }}</title>
     <link rel="stylesheet" href="{% static 'css/linkinbio.css' %}">
-    {% if page.accent_color %}<link rel="stylesheet" href="{% url 'linkinbio_public:theme' slug=page.slug %}">{% endif %}
+    {% if accent_color %}<link rel="stylesheet" href="{% url 'linkinbio_public:theme' slug=page.slug %}">{% endif %}
 </head>
 <body class="bio bio-theme-{{ page.theme }}" data-click-url="{% url 'linkinbio_public:click' slug=page.slug %}">
     <main class="bio-main">

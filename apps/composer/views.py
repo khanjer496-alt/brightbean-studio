@@ -45,6 +45,7 @@ from apps.media_library.models import MediaAsset
 from apps.members.decorators import require_permission
 from apps.members.models import WorkspaceMembership
 from apps.social_accounts.models import SocialAccount
+from apps.workspaces import brand_kit
 from apps.workspaces.models import Workspace
 from providers import (
     accepts_media_for,
@@ -4604,9 +4605,15 @@ def hashtag_picker(request, workspace_id):
     """JSON for the composer's hashtag menu: saved sets and recently used tags."""
     workspace = _get_workspace(request, workspace_id)
     sets = HashtagSet.objects.for_workspace(workspace.id)
+    sets_json = [{"id": str(s.id), "name": s.name, "text": s.text, "count": len(s.hashtags)} for s in sets]
+    brand_tags = brand_kit.resolve(workspace).default_hashtags
+    if brand_tags:
+        sets_json.insert(
+            0, {"id": "brand-kit", "name": "Brand kit hashtags", "text": " ".join(brand_tags), "count": len(brand_tags)}
+        )
     return JsonResponse(
         {
-            "sets": [{"id": str(s.id), "name": s.name, "text": s.text, "count": len(s.hashtags)} for s in sets],
+            "sets": sets_json,
             "recent": recent_hashtags(workspace.id),
         }
     )
@@ -4630,6 +4637,17 @@ def signature_picker(request, workspace_id):
                     "is_default": s.is_default,
                 }
                 for s in signatures
+            ]
+            # The brand kit's legal disclaimers and boilerplate, inserted like any signature.
+            + [
+                {
+                    "id": f"brand-kit-{index}",
+                    "name": item["name"],
+                    "body": item["text"],
+                    "scope": "brand",
+                    "is_default": False,
+                }
+                for index, item in enumerate(brand_kit.resolve(workspace).disclaimers)
             ]
         }
     )

@@ -24,6 +24,7 @@ class EventType(models.TextChoices):
     POST_CHANGES_REQUESTED = "post.changes_requested", "Post changes requested"
     COMMENT_CREATED = "comment.created", "Approval comment created"
     INBOX_MESSAGE_RECEIVED = "inbox.message.received", "Inbox message received"
+    REVIEW_RECEIVED = "review.received", "Review received"
     ACCOUNT_DISCONNECTED = "account.disconnected", "Social account disconnected"
     AGENT_ACTION_EXECUTED = "agent.action.executed", "Agent action executed"
     AGENT_ACTION_HELD = "agent.action.held", "Agent action held for review"

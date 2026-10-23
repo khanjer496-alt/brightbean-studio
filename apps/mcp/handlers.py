@@ -56,7 +56,7 @@ from apps.autonomy.gate import (
 from apps.calendar.services import clean_recurrence, save_recurrence
 from apps.composer.models import PlatformPost, Post
 from apps.composer.services import create_post, transition_platform_post
-from apps.inbox.models import InboxMessage, InboxReply
+from apps.inbox.models import InboxMessage, InboxReply, needs_reply_q
 from apps.inbox.services import (
     ReplyStateError,
     create_reply_draft,
@@ -1855,6 +1855,13 @@ def _list_inbox_messages(args: dict, context: dict[str, Any]) -> dict:
         if sa_uuid not in set(_inbox_allowed_account_ids(api_key)):
             raise JsonRpcError(INVALID_PARAMS, "social_account_id is not in this API key's allowlist")
         qs = qs.filter(social_account_id=sa_uuid)
+    rating = args.get("rating")
+    if rating is not None:
+        if isinstance(rating, bool) or not isinstance(rating, int) or not 1 <= rating <= 5:
+            raise JsonRpcError(INVALID_PARAMS, "rating must be an integer from 1 to 5")
+        qs = qs.filter(rating=rating)
+    if args.get("needs_reply"):
+        qs = qs.filter(needs_reply_q())
     qs = qs.order_by("-received_at", "id")
 
     rows = list(qs[offset : offset + limit + 1])
@@ -1876,7 +1883,8 @@ register_tool(
             "List inbound inbox items (comments, mentions, DMs, reviews) for the accounts this "
             "API key is allowed to act on, newest first. Each item carries its reply thread "
             "(including any draft replies). Optional `status` (unread/open/resolved/archived), "
-            "`message_type` (comment/mention/dm/review) and `social_account_id` filters, plus "
+            "`message_type` (comment/mention/dm/review) and `social_account_id` filters; for reviews, `rating` "
+            "(1-5 stars) and `needs_reply` (no public reply yet, or one the platform rejected); plus "
             "`limit` (default 50, max 100). When more remain, `next_cursor` is non-null — pass it "
             "back as `cursor`. Requires the use_inbox permission."
         ),
@@ -1886,6 +1894,8 @@ register_tool(
                 "status": {"type": "string", "enum": list(InboxMessage.Status.values)},
                 "message_type": {"type": "string", "enum": list(InboxMessage.MessageType.values)},
                 "social_account_id": {"type": "string", "format": "uuid"},
+                "rating": {"type": "integer", "minimum": 1, "maximum": 5},
+                "needs_reply": {"type": "boolean"},
                 "limit": {
                     "type": "integer",
                     "minimum": 1,

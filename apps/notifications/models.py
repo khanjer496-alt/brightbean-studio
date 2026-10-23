@@ -13,6 +13,7 @@ class EventType(models.TextChoices):
     POST_FAILED = "post_failed", "Post failed"
     NEW_INBOX_MESSAGE = "new_inbox_message", "New inbox message"
     INBOX_SLA_OVERDUE = "inbox_sla_overdue", "Inbox SLA overdue"
+    NEW_LOW_RATING_REVIEW = "new_low_rating_review", "New 1-2 star review"
     CLIENT_APPROVAL_REQUESTED = "client_approval_requested", "Client approval requested"
     TEAM_MEMBER_INVITED = "team_member_invited", "Team member invited"
     SOCIAL_ACCOUNT_DISCONNECTED = "social_account_disconnected", "Social account disconnected"

@@ -21,6 +21,7 @@ them.
 | `post.changes_requested` | A reviewer asked for changes |
 | `comment.created` | Someone commented on a post (internal and client comments; see `visibility`) |
 | `inbox.message.received` | A new comment, mention, DM or review reached the inbox |
+| `review.received` | A new customer review (e.g. Google Business Profile) reached the inbox: `rating` (1-5), `reviewer_name`, `body`, `has_reply`. Sent in addition to `inbox.message.received` |
 | `account.disconnected` | A social account lost its connection, or a member removed it (`removed: true`). Sent once per break: removing an account that had already lost its connection sends nothing more |
 | `agent.action.executed` | The autonomy policy let an agent or automation act (publish, reply, recycle). `release_at` is when it can first go out |
 | `agent.action.held` | The policy held an agent's or automation's action as a draft for review; `reasons` says why |

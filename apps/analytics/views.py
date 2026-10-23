@@ -21,6 +21,7 @@ from django.urls import reverse
 from django.views.decorators.http import require_GET
 
 from apps.composer.models import PlatformPost
+from apps.inbox.review_stats import review_overview
 from apps.members.models import WorkspaceMembership
 from apps.social_accounts.models import AnalyticsPlatformConfig, SocialAccount
 from apps.workspaces.models import Workspace
@@ -228,6 +229,13 @@ def analytics_index(request: HttpRequest, workspace_id) -> HttpResponse:
         ],
         "trend_summary": summarize_trend(data["trend"]),
         "excluded": _excluded_by_reason(data["accounts"]),
+        # Reviews are inbox data, so they don't depend on the platform's analytics being switched on.
+        "reviews": review_overview(
+            SocialAccount.objects.filter(
+                workspace=workspace, connection_status=SocialAccount.ConnectionStatus.CONNECTED
+            ),
+            rng,
+        ),
         **data,
     }
     return render(request, "analytics/overview.html", context)

@@ -13,7 +13,8 @@ from apps.composer.services import MAX_HASHTAGS_PER_SET, parse_hashtags
 from apps.members.decorators import require_org_role
 from apps.members.models import OrgMembership, WorkspaceMembership
 
-from .models import Workspace
+from . import brand_kit, brand_kit_forms
+from .models import BrandKit, Workspace
 
 
 @login_required
@@ -241,9 +242,13 @@ BRAND_VOICE_EXAMPLE_MAX = 2000
 BRAND_VOICE_MAX_EXAMPLES = 3
 
 
+REVIEW_POLICY_MAX = 1000
+
+
 @login_required
 @require_http_methods(["GET", "POST"])
 def brand_voice_settings(request, workspace_id):
+    """The workspace's Brand kit page: brand voice, logos, colours, fonts, copy rules and the review reply policy."""
     try:
         workspace = Workspace.objects.get(id=workspace_id)
     except Workspace.DoesNotExist:
@@ -261,31 +266,31 @@ def brand_voice_settings(request, workspace_id):
     if request.method == "POST":
         if not is_owner_or_manager:
             raise Http404
-
-        fields = {
-            "brand_voice_tone": request.POST.get("brand_voice_tone", "").strip(),
-            "brand_voice_words_to_use": request.POST.get("brand_voice_words_to_use", "").strip(),
-            "brand_voice_words_to_avoid": request.POST.get("brand_voice_words_to_avoid", "").strip(),
-        }
-        examples = [e.strip() for e in request.POST.getlist("brand_voice_examples") if e.strip()]
-        if any(len(value) > BRAND_VOICE_FIELD_MAX for value in fields.values()):
-            messages.error(request, f"Keep each brand voice field under {BRAND_VOICE_FIELD_MAX:,} characters.")
+        # A form without a section is the brand voice form, as it was before the kit.
+        section = request.POST.get("section", "voice")
+        if section == "voice":
+            return _save_brand_voice(request, workspace)
+        if section == "review":
+            policy = request.POST.get("review_reply_policy", "").strip()
+            if len(policy) > REVIEW_POLICY_MAX:
+                messages.error(request, f"Keep the review reply policy under {REVIEW_POLICY_MAX:,} characters.")
+            else:
+                workspace.review_reply_policy = policy
+                workspace.save(update_fields=["review_reply_policy", "updated_at"])
+                messages.success(request, "Review reply policy updated.")
             return redirect("workspaces:brand_voice_settings", workspace_id=workspace.id)
-        if len(examples) > BRAND_VOICE_MAX_EXAMPLES or any(len(e) > BRAND_VOICE_EXAMPLE_MAX for e in examples):
-            messages.error(
-                request,
-                f"Add up to {BRAND_VOICE_MAX_EXAMPLES} example posts of at most {BRAND_VOICE_EXAMPLE_MAX:,} characters each.",
-            )
-            return redirect("workspaces:brand_voice_settings", workspace_id=workspace.id)
-
-        for name, value in fields.items():
-            setattr(workspace, name, value)
-        workspace.brand_voice_examples = examples
-        workspace.save(update_fields=[*fields, "brand_voice_examples", "updated_at"])
-        messages.success(request, "Brand voice updated.")
+        try:
+            kit = brand_kit.kit_for(workspace=workspace)
+            brand_kit.update(kit, brand_kit_forms.kit_data_from_post(request.POST, section))
+        except brand_kit.BrandKitError as exc:
+            messages.error(request, str(exc))
+        else:
+            messages.success(request, "Brand kit updated.")
         return redirect("workspaces:brand_voice_settings", workspace_id=workspace.id)
 
     examples = list(workspace.brand_voice_examples or [])
+    # Not created until something is saved, so just looking at the page writes nothing.
+    kit = BrandKit.objects.filter(workspace=workspace).first() or BrandKit(workspace=workspace)
     return render(
         request,
         "workspaces/brand_voice_settings.html",
@@ -297,8 +302,37 @@ def brand_voice_settings(request, workspace_id):
             "example_slots": (examples + [""] * BRAND_VOICE_MAX_EXAMPLES)[:BRAND_VOICE_MAX_EXAMPLES],
             "field_max": BRAND_VOICE_FIELD_MAX,
             "example_max": BRAND_VOICE_EXAMPLE_MAX,
+            "rules_max": brand_kit.RULES_MAX,
+            "review_policy_max": REVIEW_POLICY_MAX,
+            "inherited_from_org": BrandKit.objects.filter(organization_id=workspace.organization_id).exists(),
+            **brand_kit_forms.page_context(kit),
         },
     )
+
+
+def _save_brand_voice(request, workspace):
+    fields = {
+        "brand_voice_tone": request.POST.get("brand_voice_tone", "").strip(),
+        "brand_voice_words_to_use": request.POST.get("brand_voice_words_to_use", "").strip(),
+        "brand_voice_words_to_avoid": request.POST.get("brand_voice_words_to_avoid", "").strip(),
+    }
+    examples = [e.strip() for e in request.POST.getlist("brand_voice_examples") if e.strip()]
+    if any(len(value) > BRAND_VOICE_FIELD_MAX for value in fields.values()):
+        messages.error(request, f"Keep each brand voice field under {BRAND_VOICE_FIELD_MAX:,} characters.")
+        return redirect("workspaces:brand_voice_settings", workspace_id=workspace.id)
+    if len(examples) > BRAND_VOICE_MAX_EXAMPLES or any(len(e) > BRAND_VOICE_EXAMPLE_MAX for e in examples):
+        messages.error(
+            request,
+            f"Add up to {BRAND_VOICE_MAX_EXAMPLES} example posts of at most {BRAND_VOICE_EXAMPLE_MAX:,} characters each.",
+        )
+        return redirect("workspaces:brand_voice_settings", workspace_id=workspace.id)
+
+    for name, value in fields.items():
+        setattr(workspace, name, value)
+    workspace.brand_voice_examples = examples
+    workspace.save(update_fields=[*fields, "brand_voice_examples", "updated_at"])
+    messages.success(request, "Brand voice updated.")
+    return redirect("workspaces:brand_voice_settings", workspace_id=workspace.id)
 
 
 HASHTAG_SET_NAME_MAX = 100

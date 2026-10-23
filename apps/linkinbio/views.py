@@ -189,6 +189,7 @@ def page_edit(request, workspace_id, page_id):
         for account in SocialAccount.objects.filter(workspace=workspace).order_by("account_name")
     ]
     public_path = reverse("linkinbio_public:page", kwargs={"slug": page.slug})
+    kit = services._brand_kit(page)
     return render(
         request,
         "linkinbio/edit.html",
@@ -198,6 +199,8 @@ def page_edit(request, workspace_id, page_id):
             "links": links,
             "can_manage": can_manage,
             "themes": BioPage.Theme.choices,
+            "brand_logo": None if page.avatar_id else services.effective_avatar(page, kit),
+            "brand_accent": kit.primary_color,
             "icons": BioLink.Icon.choices,
             "media_choices": _media_choices(workspace) if can_manage else [],
             "accounts": accounts,

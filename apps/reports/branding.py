@@ -101,13 +101,37 @@ def _download_logo(url: str) -> str:
         return ""
 
 
+def logo_from_asset(asset) -> str:
+    """A media library image as a small PNG data URI (see :func:`fetch_logo`), or ``""``."""
+    try:
+        from PIL import Image
+
+        with asset.file.open("rb") as handle:
+            image = Image.open(io.BytesIO(handle.read(LOGO_MAX_BYTES * 8)))
+        if image.width * image.height > LOGO_MAX_PIXELS:
+            return ""
+        image.thumbnail(LOGO_BOX)
+        out = io.BytesIO()
+        image.convert("RGBA").save(out, format="PNG", optimize=True)
+        return "data:image/png;base64," + base64.b64encode(out.getvalue()).decode()
+    except Exception:
+        logger.info("Could not read the brand kit logo", exc_info=True)
+        return ""
+
+
 def branding_for(definition) -> dict:
+    from apps.workspaces import brand_kit
+
     workspace = definition.workspace
     org = workspace.organization
-    accent = readable_accent(definition.accent_color or workspace.primary_color or DEFAULT_ACCENT)
+    kit = brand_kit.resolve(workspace)
+    # Reports sit on white paper: the logo meant for light backgrounds, else the primary one.
+    asset = kit.logo("on_light", "primary")
+    logo = logo_from_asset(asset) if asset else ""
+    accent = readable_accent(definition.accent_color or kit.primary_color or workspace.primary_color or DEFAULT_ACCENT)
     return {
         "agency": org.name,
-        "logo": fetch_logo(org.logo_url),
+        "logo": logo or fetch_logo(org.logo_url),
         "accent": accent,
         "accent_text": text_on(accent),
         "white_label": definition.white_label,

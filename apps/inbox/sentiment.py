@@ -79,3 +79,10 @@ def analyze_sentiment(text: str) -> str:
     elif pos_count > neg_count:
         return "positive"
     return "neutral"
+
+
+def sentiment_for_rating(rating: int) -> str:
+    """The sentiment a review's star rating stands for: 4-5 positive, 3 neutral, 1-2 negative."""
+    if rating >= 4:
+        return "positive"
+    return "neutral" if rating == 3 else "negative"

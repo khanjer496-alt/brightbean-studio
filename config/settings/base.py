@@ -743,7 +743,11 @@ PUBLISHER_MAX_CONCURRENT_PLATFORM_PUBLISHES = env.int("PUBLISHER_MAX_CONCURRENT_
 # sidesteps apps.common.background.register_recurring_task, which SKIPS an
 # already-registered task, so editing an interval constant would change nothing
 # on a deployment that has run before.)
-INBOX_PLATFORM_MIN_POLL_SECONDS = {"youtube": env.int("INBOX_YOUTUBE_MIN_POLL_SECONDS", default=1800)}
+INBOX_PLATFORM_MIN_POLL_SECONDS = {
+    "youtube": env.int("INBOX_YOUTUBE_MIN_POLL_SECONDS", default=1800),
+    # Reviews change slowly and the Business Profile APIs are quota-limited per project.
+    "google_business": env.int("INBOX_GOOGLE_BUSINESS_MIN_POLL_SECONDS", default=900),
+}
 
 # How often an account's entire comment history is walked. The routine poll
 # stops early to protect the budget, which means a reply to a thread older than
