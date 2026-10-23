@@ -1580,3 +1580,11 @@ def check_engagement_alerts() -> None:
     alerted = send_engagement_alerts()
     if alerted:
         logger.info("engagement alerts: %s post(s) flagged", alerted)
+
+
+@background(schedule=0)
+def refresh_best_times() -> None:
+    """Daily cron: recompute every connected account's best-time-to-post grid."""
+    from .best_times import refresh_all
+
+    logger.info("best times: %s account(s) refreshed", refresh_all())

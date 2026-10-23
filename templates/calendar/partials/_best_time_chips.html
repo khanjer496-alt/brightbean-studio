@@ -1,0 +1,27 @@
+{% comment %}
+"Best times" chips for the composer's schedule picker.
+Context: groups (account, best, chips), multiple. A chip fills the date and time fields.
+{% endcomment %}
+{% if groups %}
+<div class="mt-1">
+    <p class="text-xs font-medium text-stone-500 mb-1.5">Best times</p>
+    <div class="space-y-2">
+        {% for group in groups %}
+        <div>
+            {% if multiple %}<p class="text-[11px] text-stone-500 mb-1">{{ group.account.account_name|default:group.account.account_handle }}</p>{% endif %}
+            <div class="flex flex-wrap gap-1.5">
+                {% for chip in group.chips %}
+                <button type="button" data-best-time-chip data-date="{{ chip.date }}" data-time="{{ chip.time }}"
+                        class="inline-flex items-center gap-1 rounded-full border border-stone-200 px-2.5 py-1.5 text-xs font-medium text-stone-700 hover:border-orange-300 hover:bg-orange-50 transition-colors cursor-pointer">
+                    {{ chip.label }}<span class="text-stone-400">{{ chip.day }}</span>
+                </button>
+                {% empty %}
+                <span class="text-xs text-stone-400">No upcoming best times this week.</span>
+                {% endfor %}
+            </div>
+            <p class="mt-1 text-[11px] text-stone-400">{{ group.best.basis_label }}</p>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}

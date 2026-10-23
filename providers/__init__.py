@@ -26,7 +26,7 @@ from .slack import SlackProvider
 from .telegram import TelegramProvider
 from .threads import ThreadsProvider
 from .tiktok import TikTokProvider
-from .types import MediaRules, PostSetting, PostType, ThreadCapability
+from .types import MediaRules, PeakWindow, PostSetting, PostType, ThreadCapability
 from .x import XProvider
 from .youtube import YouTubeProvider
 
@@ -141,6 +141,28 @@ def writing_style_for(platform: str) -> str:
     if provider_cls is None:
         return ""
     return provider_cls.writing_style
+
+
+# Used for a network that declares no windows of its own: weekday late mornings,
+# the most consistent finding across the published "best time to post" studies
+# (Sprout Social annual study; Hootsuite best-time-to-post guides). An average
+# across networks, not a measurement of any audience.
+DEFAULT_BEST_TIME_WINDOWS: tuple[PeakWindow, ...] = (
+    PeakWindow(days=(1, 2, 3), hours=(9, 10, 11)),
+    PeakWindow(days=(0, 4), hours=(9, 10, 11)),
+)
+
+
+def best_time_windows_for(platform: str) -> tuple[PeakWindow, ...]:
+    """When ``platform``'s audience is most active, best first (industry averages).
+
+    Read off the provider class (``SocialProvider.best_time_windows``) like
+    ``writing_style_for``; a network that declares none gets
+    ``DEFAULT_BEST_TIME_WINDOWS``.
+    """
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    windows = provider_cls.best_time_windows if provider_cls is not None else ()
+    return windows or DEFAULT_BEST_TIME_WINDOWS
 
 
 def thread_capability_for(platform: str) -> ThreadCapability:

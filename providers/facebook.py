@@ -28,6 +28,7 @@ from .types import (
     MediaRules,
     MediaType,
     OAuthTokens,
+    PeakWindow,
     PostMetrics,
     PostType,
     PublishContent,
@@ -134,6 +135,14 @@ class FacebookProvider(SocialProvider):
     media_rules = FACEBOOK_MEDIA_RULES
     # Comments on the Page post carry up to 8,000 characters.
     thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=8000)
+
+    # Source: Sprout Social, "Best times to post on social media" (annual study); Hootsuite, "Best time to post on Facebook".
+    # Approximate industry averages in the audience's local time, not your audience.
+    best_time_windows = (
+        PeakWindow(days=(1, 2, 3), hours=(9, 10, 11)),
+        PeakWindow(days=(0, 4), hours=(9, 10, 11)),
+        PeakWindow(days=(5, 6), hours=(9, 10)),
+    )
 
     writing_style = "Warm and conversational, inviting comments. A question or call to action works well; hashtags are optional and sparing."
 

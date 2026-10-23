@@ -19,6 +19,7 @@ from .types import (
     MediaRules,
     MediaType,
     OAuthTokens,
+    PeakWindow,
     PostMetrics,
     PostType,
     PublishContent,
@@ -138,6 +139,14 @@ class TikTokProvider(SocialProvider):
     """TikTok Content Posting API provider using OAuth 2.0."""
 
     media_rules = TIKTOK_MEDIA_RULES
+
+    # Source: Sprout Social, "Best times to post on social media" (annual study); Hootsuite, "Best time to post on TikTok".
+    # Approximate industry averages in the audience's local time, not your audience.
+    best_time_windows = (
+        PeakWindow(days=(1, 2, 3), hours=(18, 19, 20, 21)),
+        PeakWindow(days=(4,), hours=(17, 18, 19)),
+        PeakWindow(days=(5, 6), hours=(10, 11, 19, 20)),
+    )
 
     writing_style = "Casual, energetic and trend-aware: a punchy hook and a few relevant hashtags. Emojis welcome."
 

@@ -19,6 +19,7 @@ from .types import (
     MediaType,
     MentionSuggestion,
     OAuthTokens,
+    PeakWindow,
     PostType,
     PublishContent,
     PublishResult,
@@ -83,6 +84,13 @@ class BlueskyProvider(SocialProvider):
     thread = ThreadCapability(mode=ThreadMode.REPLY_CHAIN, max_parts=25, media_per_part=True)
 
     mention_lookup = True
+
+    # Source: No Bluesky-specific study is published; modelled on X, the closest text-first audience (Sprout Social annual study).
+    # Approximate industry averages in the audience's local time, not your audience.
+    best_time_windows = (
+        PeakWindow(days=(0, 1, 2, 3, 4), hours=(8, 9, 10)),
+        PeakWindow(days=(0, 1, 2, 3, 4), hours=(12, 13)),
+    )
 
     writing_style = (
         "Conversational and concise, like a thought shared with peers. One or two hashtags at most, few emojis."

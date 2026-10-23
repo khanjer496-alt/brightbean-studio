@@ -81,6 +81,7 @@ from .types import (
     MediaType,
     MentionSuggestion,
     OAuthTokens,
+    PeakWindow,
     PostSetting,
     PostType,
     PublishContent,
@@ -261,6 +262,13 @@ class XProvider(SocialProvider):
     caption_counting = "weighted"
 
     media_rules = {PostType.IMAGE: _IMAGE_RULES, PostType.VIDEO: _VIDEO_RULES}
+
+    # Source: Sprout Social, "Best times to post on social media" (annual study); Hootsuite, "Best time to post on Twitter/X".
+    # Approximate industry averages in the audience's local time, not your audience.
+    best_time_windows = (
+        PeakWindow(days=(0, 1, 2, 3, 4), hours=(8, 9, 10)),
+        PeakWindow(days=(0, 1, 2, 3, 4), hours=(12, 13)),
+    )
 
     writing_style = (
         "Short and punchy: lead with the point, plain words, at most one or two hashtags. "

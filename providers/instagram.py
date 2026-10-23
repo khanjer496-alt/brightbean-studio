@@ -41,6 +41,7 @@ from .types import (
     MediaRules,
     MediaType,
     OAuthTokens,
+    PeakWindow,
     PostMetrics,
     PostType,
     PublishContent,
@@ -158,6 +159,14 @@ class InstagramProvider(SocialProvider):
     media_rules = INSTAGRAM_MEDIA_RULES
     # Instagram comments share the caption's 2,200-character limit.
     thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=2200)
+
+    # Source: Sprout Social, "Best times to post on social media" (annual study); Hootsuite, "Best time to post on Instagram".
+    # Approximate industry averages in the audience's local time, not your audience.
+    best_time_windows = (
+        PeakWindow(days=(1, 2, 3), hours=(10, 11, 12)),
+        PeakWindow(days=(0, 4), hours=(11, 12, 13)),
+        PeakWindow(days=(5, 6), hours=(9, 10, 11)),
+    )
 
     writing_style = "Visual storytelling: a strong first line, short paragraphs, emojis welcome, and a block of relevant hashtags at the end."
 

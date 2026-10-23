@@ -15,6 +15,7 @@ from .types import (
     MediaRules,
     MediaType,
     OAuthTokens,
+    PeakWindow,
     PostMetrics,
     PostType,
     PublishContent,
@@ -49,6 +50,13 @@ class PinterestProvider(SocialProvider):
     """Pinterest API v5 provider using OAuth 2.0."""
 
     media_rules = PINTEREST_MEDIA_RULES
+
+    # Source: Hootsuite, "Best time to post on Pinterest"; Sprout Social, "Best times to post on social media" (annual study).
+    # Approximate industry averages in the audience's local time, not your audience.
+    best_time_windows = (
+        PeakWindow(days=(4, 5, 6), hours=(20, 21, 22)),
+        PeakWindow(days=(0, 1, 2, 3), hours=(14, 15, 16)),
+    )
 
     writing_style = (
         "A keyword-rich, inspiring description of what the pin shows and why to save it. Few or no hashtags."

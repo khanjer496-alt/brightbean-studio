@@ -16,6 +16,7 @@ from .types import (
     MediaRules,
     MediaType,
     OAuthTokens,
+    PeakWindow,
     PostMetrics,
     PostType,
     PublishContent,
@@ -65,6 +66,13 @@ class ThreadsProvider(SocialProvider):
     media_rules = THREADS_MEDIA_RULES
     # Each part is a reply to the one before it (``reply_to_id``).
     thread = ThreadCapability(mode=ThreadMode.REPLY_CHAIN, max_parts=25, media_per_part=True)
+
+    # Source: No Threads-specific study is published; modelled on Instagram's weekday pattern (Sprout Social annual study).
+    # Approximate industry averages in the audience's local time, not your audience.
+    best_time_windows = (
+        PeakWindow(days=(1, 2, 3), hours=(9, 10, 11, 12)),
+        PeakWindow(days=(0, 4), hours=(9, 10, 11)),
+    )
 
     writing_style = "Casual and conversational, like talking to followers. At most one hashtag; emojis welcome."
 

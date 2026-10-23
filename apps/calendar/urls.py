@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import views, views_best_times
 
 app_name = "calendar"
 
@@ -18,6 +18,11 @@ urlpatterns = [
     path("posting-slots/toggle-day/", views.toggle_posting_slot_day, name="toggle_posting_slot_day"),
     path("posting-slots/<uuid:slot_id>/delete/", views.delete_posting_slot, name="delete_posting_slot"),
     path("posting-slots/<uuid:slot_id>/update/", views.update_posting_slot, name="update_posting_slot"),
+    # Best time to post
+    path("posting-slots/best-times/", views_best_times.best_times_panel, name="best_times_panel"),
+    path("posting-slots/suggest/", views_best_times.suggest_slots_preview, name="suggest_slots_preview"),
+    path("posting-slots/suggest/apply/", views_best_times.suggest_slots_apply, name="suggest_slots_apply"),
+    path("best-times/chips/", views_best_times.best_time_chips, name="best_time_chips"),
     # Queues
     path("queues/", views.queue_list, name="queue_list"),
     path("queues/create/", views.queue_create, name="queue_create"),
