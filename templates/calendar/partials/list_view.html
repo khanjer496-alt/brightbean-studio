@@ -34,7 +34,10 @@ Context: posts, workspace.
                     {% endif %}
                 </td>
                 <td class="px-4 py-3 text-sm text-stone-600 max-w-xs truncate">
-                    {{ post.caption_snippet|default:"(no caption)" }}
+                    <span class="inline-flex items-center gap-1.5 max-w-full">
+                        <span class="truncate">{{ post.caption_snippet|default:"(no caption)" }}</span>
+                        {% include "calendar/partials/_thread_badge.html" with post=post %}
+                    </span>
                 </td>
                 <td class="px-4 py-3">
                     <div class="flex gap-1">

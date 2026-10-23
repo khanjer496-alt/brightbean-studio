@@ -125,7 +125,7 @@ def _get_filtered_posts(workspace, request):
     qs = (
         Post.objects.for_workspace(workspace.id)
         .select_related("author")
-        .prefetch_related("platform_posts__social_account", "media_attachments__media_asset")
+        .prefetch_related("platform_posts__social_account", "media_attachments__media_asset", "thread_parts")
     )
 
     # Status filter — editorial status now lives on PlatformPost, so match
@@ -194,7 +194,7 @@ def _get_filtered_platform_posts(workspace, request):
         # Chips render the post's first media thumbnail; without this each chip
         # would fire its own media_attachments + media_asset queries (N+1) on
         # every month/week/day render.
-        .prefetch_related("post__media_attachments__media_asset")
+        .prefetch_related("post__media_attachments__media_asset", "post__thread_parts")
         .annotate(effective_at=Coalesce("scheduled_at", "post__scheduled_at"))
     )
 
@@ -514,7 +514,7 @@ def _get_tab_context(request, workspace, tab: str) -> dict:
         platform_posts = (
             PlatformPost.objects.filter(post__workspace_id=workspace.id, status="scheduled")
             .select_related("post__author", "social_account")
-            .prefetch_related("post__media_attachments__media_asset")
+            .prefetch_related("post__media_attachments__media_asset", "post__thread_parts")
             .annotate(effective_at=Coalesce("scheduled_at", "post__scheduled_at"))
             .order_by("effective_at", "-post__created_at")
         )
@@ -525,7 +525,7 @@ def _get_tab_context(request, workspace, tab: str) -> dict:
         platform_posts = (
             PlatformPost.objects.filter(post__workspace_id=workspace.id, status="draft")
             .select_related("post__author", "social_account")
-            .prefetch_related("post__media_attachments__media_asset")
+            .prefetch_related("post__media_attachments__media_asset", "post__thread_parts")
             .order_by("-post__updated_at")
         )
         platform_posts = _apply_pp_publish_filters(platform_posts, request)
@@ -538,7 +538,7 @@ def _get_tab_context(request, workspace, tab: str) -> dict:
                 status__in=["published", "failed"],
             )
             .select_related("post__author", "social_account")
-            .prefetch_related("post__media_attachments__media_asset")
+            .prefetch_related("post__media_attachments__media_asset", "post__thread_parts")
             .order_by("-post__scheduled_at", "-post__created_at")
         )
         platform_posts = _apply_pp_publish_filters(platform_posts, request)
@@ -576,7 +576,9 @@ def _get_tab_context(request, workspace, tab: str) -> dict:
         Post.objects.for_workspace(workspace.id)
         .filter(Exists(pp_match))
         .select_related("author")
-        .prefetch_related("platform_posts__social_account", "media_attachments__media_asset", "versions")
+        .prefetch_related(
+            "platform_posts__social_account", "media_attachments__media_asset", "versions", "thread_parts"
+        )
         .order_by("scheduled_at", "-created_at")
     )
     # Tag is a Post-level attribute (can't cross child rows) — apply it directly.

@@ -74,6 +74,7 @@ Enhanced with: holidays, custom events, category colors, recurring badges.
                 {% endwith %}
                 <span class="truncate">{{ pp.post.title|default:pp.post.caption_snippet|truncatechars:28 }}</span>
                 {% include "calendar/partials/_recurrence_badge.html" with post=pp.post %}
+                {% include "calendar/partials/_thread_badge.html" with post=pp.post pp=pp %}
             </a>
             {% endfor %}
 
