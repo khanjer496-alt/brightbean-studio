@@ -17,13 +17,14 @@ import secrets
 import time
 import uuid
 from datetime import timedelta
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 from django.db import transaction
+from django.db.models import F
 from django.utils import timezone
 
-from apps.common.validators import is_safe_url
+from apps.common.validators import is_safe_url, resolve_public_ip
 
 from .models import SUBSCRIBABLE_EVENT_TYPES, DeliveryStatus, EventType, WebhookDelivery, WebhookEndpoint
 
@@ -32,6 +33,16 @@ logger = logging.getLogger(__name__)
 SIGNATURE_HEADER = "PostDelegate-Signature"
 EVENT_HEADER = "PostDelegate-Event"
 DELIVERY_HEADER = "PostDelegate-Delivery"
+
+# Version of the envelope and ``data`` shapes, sent as ``api_version`` in every
+# payload. Bump it (and keep the old shape for existing endpoints) on any
+# breaking change; adding a field is not one.
+API_VERSION = "2026-10-01"
+
+# Either of these lets a member manage the workspace's webhooks: owners hold
+# both, managers hold the second (they already connect the workspace's
+# integrations), and a custom role can grant either.
+MANAGE_PERMISSIONS = ("manage_workspace_settings", "manage_social_accounts")
 
 SECRET_PREFIX = "whsec_"
 REQUEST_TIMEOUT_SECONDS = 10.0
@@ -52,6 +63,23 @@ DEFAULT_TOLERANCE_SECONDS = 5 * 60
 
 class WebhookError(ValueError):
     """A request to create or change an endpoint that cannot be honoured."""
+
+
+def can_manage(effective_permissions) -> bool:
+    return any(effective_permissions.get(key, False) for key in MANAGE_PERMISSIONS)
+
+
+def key_covers_workspace(api_key) -> bool:
+    """Whether an API key may manage webhooks: its account allowlist must cover the whole workspace.
+
+    Events are workspace-wide (every account's posts and inbox messages), so a
+    key scoped to some accounts could otherwise use a webhook to read the rest.
+    """
+    from apps.social_accounts.models import SocialAccount
+
+    allowed = {account.id for account in api_key.social_accounts.all()}
+    workspace_accounts = SocialAccount.objects.for_workspace(api_key.workspace_id).values_list("id", flat=True)
+    return all(account_id in allowed for account_id in workspace_accounts)
 
 
 # ---------------------------------------------------------------------------
@@ -81,14 +109,15 @@ def verify_signature(
     a captured request cannot be replayed later; pass ``tolerance=None`` to skip.
     """
     try:
-        parts = dict(item.split("=", 1) for item in header.split(","))
+        parts = dict(item.strip().split("=", 1) for item in (header or "").split(","))
         timestamp = int(parts["t"])
     except (KeyError, ValueError):
         return False
     if tolerance is not None and abs((time.time() if now is None else now) - timestamp) > tolerance:
         return False
     expected = sign_payload(secret, timestamp, body).split("v1=", 1)[1]
-    return hmac.compare_digest(expected, parts.get("v1", ""))
+    # Bytes, so a non-ASCII header is a mismatch rather than a TypeError.
+    return hmac.compare_digest(expected.encode(), parts.get("v1", "").encode("utf-8", errors="replace"))
 
 
 def generate_secret() -> str:
@@ -187,6 +216,7 @@ def build_envelope(event_type: str, workspace, data: dict, *, event_id: uuid.UUI
     return {
         "id": str(event_id),
         "type": event_type,
+        "api_version": API_VERSION,
         "created_at": (created_at or timezone.now()).isoformat(),
         "workspace": {"id": str(workspace.id), "name": workspace.name},
         "data": data,
@@ -254,11 +284,25 @@ def send_test_event(endpoint, *, requested_by=None) -> WebhookDelivery:
 
 
 def resend(delivery) -> WebhookDelivery:
-    """Send a delivery again, as the same delivery id with the same payload, starting a fresh retry schedule."""
-    delivery.status = DeliveryStatus.PENDING
-    delivery.attempts = 0
-    delivery.next_attempt_at = timezone.now()
-    delivery.save(update_fields=["status", "attempts", "next_attempt_at"])
+    """Send a delivery again, as the same delivery id with the same payload, starting a fresh retry schedule.
+
+    Refused (``WebhookError``) while an attempt may be in flight: a claimed row
+    has ``next_attempt_at`` at most one lease ahead, so only a row that is
+    settled, or waiting longer than that for its next retry, is safe to reset
+    without the two sends overlapping.
+    """
+    now = timezone.now()
+    reset = (
+        WebhookDelivery.objects.filter(pk=delivery.pk)
+        .exclude(
+            status=DeliveryStatus.PENDING,
+            next_attempt_at__lte=now + timedelta(seconds=CLAIM_LEASE_SECONDS),
+        )
+        .update(status=DeliveryStatus.PENDING, attempts=0, next_attempt_at=now)
+    )
+    if not reset:
+        raise WebhookError("This delivery is being sent or retried within the next few minutes already.")
+    delivery.refresh_from_db()
     _enqueue_first_attempt(delivery)
     return delivery
 
@@ -268,14 +312,32 @@ def resend(delivery) -> WebhookDelivery:
 # ---------------------------------------------------------------------------
 
 
-def _send_request(url: str, body: bytes, headers: dict, *, transport=None) -> tuple[int, str]:
+def _pinned(url: str, ip: str) -> tuple[str, dict, dict]:
+    """``url`` rewritten to connect to ``ip``, plus the Host header and TLS name that keep it addressed to the host."""
+    parts = urlsplit(url)
+    host = f"[{ip}]" if ":" in ip else ip
+    netloc = f"{host}:{parts.port}" if parts.port else host
+    host_header = f"{parts.hostname}:{parts.port}" if parts.port else parts.hostname
+    extensions = {"sni_hostname": parts.hostname} if parts.scheme == "https" else {}
+    return urlunsplit(parts._replace(netloc=netloc)), {"Host": host_header}, extensions
+
+
+def _send_request(url: str, body: bytes, headers: dict, *, pinned_ip: str | None = None, transport=None):
     """POST ``body`` and return ``(status_code, truncated response text)``.
 
-    Redirects are never followed: a 302 to a private address is the classic
-    way around URL validation, so any redirect is reported as a failure.
+    With ``pinned_ip`` the connection goes to that address (the one that was
+    just checked to be public) rather than resolving the name again, so a DNS
+    answer that changes between the check and the connect cannot point the
+    request at an internal host. The certificate is still checked against the
+    hostname. Redirects are never followed: a 302 to a private address is the
+    classic way around URL validation, so any redirect is reported as a failure.
     """
+    extensions = {}
+    if pinned_ip:
+        url, host_header, extensions = _pinned(url, pinned_ip)
+        headers = {**headers, **host_header}
     client = httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS, follow_redirects=False, transport=transport)
-    with client, client.stream("POST", url, content=body, headers=headers) as response:
+    with client, client.stream("POST", url, content=body, headers=headers, extensions=extensions) as response:
         received = bytearray()
         for chunk in response.iter_bytes():
             received += chunk
@@ -322,8 +384,9 @@ def attempt_delivery(delivery_id) -> bool:
         return False
 
     # Checked again now, not just when the endpoint was saved: DNS can change
-    # between the two.
-    if not is_safe_url(endpoint.url):
+    # between the two. The request then goes to the address checked here.
+    pinned_ip = resolve_public_ip(endpoint.url)
+    if pinned_ip is None:
         _settle_failure(
             delivery,
             status_code=None,
@@ -337,7 +400,9 @@ def attempt_delivery(delivery_id) -> bool:
     started = time.monotonic()
     status_code, response_text, error = None, "", ""
     try:
-        status_code, response_text = _send_request(endpoint.url, body, request_headers(delivery, body))
+        status_code, response_text = _send_request(
+            endpoint.url, body, request_headers(delivery, body), pinned_ip=pinned_ip
+        )
     except httpx.TimeoutException:
         error = f"No response within {int(REQUEST_TIMEOUT_SECONDS)} seconds."
     except httpx.HTTPError as exc:
@@ -359,7 +424,9 @@ def attempt_delivery(delivery_id) -> bool:
 
 def _settle_success(delivery, status_code, duration_ms, response_text) -> None:
     now = timezone.now()
-    WebhookDelivery.objects.filter(pk=delivery.pk).update(
+    # Only a row still pending is settled: an attempt that outlived its lease
+    # must not overwrite the outcome of the attempt that replaced it.
+    WebhookDelivery.objects.filter(pk=delivery.pk, status=DeliveryStatus.PENDING).update(
         status=DeliveryStatus.DELIVERED,
         attempts=delivery.attempts + 1,
         last_attempt_at=now,
@@ -379,7 +446,7 @@ def _settle_failure(delivery, *, status_code, duration_ms, error, response_text=
     attempts = delivery.attempts + 1
     exhausted = final or attempts >= MAX_ATTEMPTS
     now = timezone.now()
-    WebhookDelivery.objects.filter(pk=delivery.pk).update(
+    WebhookDelivery.objects.filter(pk=delivery.pk, status=DeliveryStatus.PENDING).update(
         status=DeliveryStatus.FAILED if exhausted else DeliveryStatus.PENDING,
         attempts=attempts,
         last_attempt_at=now,
@@ -396,8 +463,6 @@ def _settle_failure(delivery, *, status_code, duration_ms, error, response_text=
 
 
 def _count_failure(endpoint_id) -> None:
-    from django.db.models import F
-
     WebhookEndpoint.objects.filter(pk=endpoint_id).update(consecutive_failures=F("consecutive_failures") + 1)
     endpoint = WebhookEndpoint.objects.select_related("workspace").get(pk=endpoint_id)
     if endpoint.is_enabled and endpoint.consecutive_failures >= AUTO_DISABLE_THRESHOLD:

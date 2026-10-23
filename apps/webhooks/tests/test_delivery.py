@@ -126,7 +126,7 @@ def test_send_request_does_not_follow_redirects_and_truncates_the_response(endpo
 def test_url_is_checked_again_at_send_time(endpoint):
     delivery = _queue(endpoint)
     with (
-        patch.object(services, "is_safe_url", return_value=False),
+        patch.object(services, "resolve_public_ip", return_value=None),
         patch.object(services, "_send_request") as send,
     ):
         services.attempt_delivery(delivery.id)
@@ -324,3 +324,65 @@ def test_prune_removes_old_finished_rows_but_keeps_pending_and_recent(endpoint):
         rows[name] = row.pk
     prune_webhook_deliveries.now()
     assert set(WebhookDelivery.objects.values_list("pk", flat=True)) == {rows["old_pending"], rows["recent"]}
+
+
+def test_the_request_goes_to_the_address_that_was_checked(endpoint):
+    seen = {}
+
+    def handler(request):
+        seen.update(url=str(request.url), host=request.headers["host"], sni=request.extensions.get("sni_hostname"))
+        return httpx.Response(204)
+
+    status, _ = services._send_request(
+        "https://hooks.example.com:8443/in?x=1",
+        b"{}",
+        {},
+        pinned_ip="93.184.216.34",
+        transport=httpx.MockTransport(handler),
+    )
+    assert status == 204
+    assert seen == {
+        "url": "https://93.184.216.34:8443/in?x=1",
+        "host": "hooks.example.com:8443",
+        "sni": "hooks.example.com",
+    }
+
+    services._send_request(
+        "http://hooks.example.com/in", b"{}", {}, pinned_ip="2001:db8::1", transport=httpx.MockTransport(handler)
+    )
+    assert seen["url"] == "http://[2001:db8::1]/in" and seen["host"] == "hooks.example.com" and seen["sni"] is None
+
+
+def test_attempt_delivery_pins_the_resolved_address(endpoint):
+    delivery = _queue(endpoint)
+    with patch.object(services, "_send_request", return_value=(200, "")) as send:
+        services.attempt_delivery(delivery.id)
+    assert send.call_args.kwargs["pinned_ip"] == "93.184.216.34"
+
+
+def test_a_resend_waits_for_an_attempt_in_flight(endpoint):
+    delivery = _queue(endpoint)
+    assert services._claim(delivery.id) is not None  # an attempt is under way
+    with pytest.raises(services.WebhookError):
+        services.resend(delivery)
+
+    # Waiting hours for its next retry: nothing is in flight, so it can go now.
+    WebhookDelivery.objects.filter(pk=delivery.pk).update(next_attempt_at=timezone.now() + dt.timedelta(hours=2))
+    services.resend(delivery)
+    delivery.refresh_from_db()
+    assert delivery.status == DeliveryStatus.PENDING and delivery.attempts == 0
+    assert delivery.next_attempt_at <= timezone.now()
+
+
+def test_an_attempt_that_outlived_its_lease_does_not_overwrite_the_outcome(endpoint):
+    delivery = _queue(endpoint)
+    stale = services._claim(delivery.id)
+    WebhookDelivery.objects.filter(pk=delivery.pk).update(status=DeliveryStatus.DELIVERED, next_attempt_at=None)
+    services._settle_failure(stale, status_code=500, duration_ms=5, error="HTTP 500")
+    delivery.refresh_from_db()
+    assert delivery.status == DeliveryStatus.DELIVERED and delivery.last_error == ""
+
+
+def test_every_payload_names_its_api_version(endpoint):
+    delivery = services.send_test_event(endpoint)
+    assert delivery.payload["api_version"] == services.API_VERSION
