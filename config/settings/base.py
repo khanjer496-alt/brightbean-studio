@@ -281,9 +281,9 @@ ACCOUNT_SIGNUP_FIELDS = ["email*", "password1*"]
 # A password signup must prove it owns the address before it can sign in.
 # Without this anyone could register someone else's email first and keep the
 # password when the real owner later arrives through Google (pre-account
-# hijack). Invitees are already verified: the invite link reached their inbox
-# (``AccountAdapter.is_email_verified``). Accounts that had signed in before
-# this was switched on were marked verified by accounts/0006.
+# hijack). That includes invitees: an invite link can be forwarded. Accounts
+# that had signed in before this was switched on were marked verified by
+# accounts/0006.
 ACCOUNT_EMAIL_VERIFICATION = "mandatory"
 ACCOUNT_EMAIL_SUBJECT_PREFIX = ""
 ACCOUNT_USER_MODEL_USERNAME_FIELD = None

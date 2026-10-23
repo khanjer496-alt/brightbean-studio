@@ -8,7 +8,7 @@ from django.db import transaction
 from django.shortcuts import redirect, render
 
 from apps.accounts.models import OAuthConnection
-from apps.accounts.signup_links import custom_signup_url, mark_invite_lapsed, pending_invite_email, signup_allowed
+from apps.accounts.signup_links import custom_signup_url, mark_invite_lapsed, signup_allowed
 from apps.common.mail import transactional
 
 
@@ -91,16 +91,11 @@ class AccountAdapter(DefaultAccountAdapter):
     ``save_user`` makes the invite that allowed an invite-mode signup single-use
     (``create_account_under_invitation``).
 
-    ``is_email_verified`` treats the invited address as verified: the invite
-    link only reaches the session by being opened from that inbox, so an
-    invitee is not sent a second email to prove the same thing.
+    An invitee who signs up with a password confirms the address like anyone
+    else. Holding the invite link does not prove it: links get forwarded, and
+    whoever registered the invited address with their own password would keep
+    it once the real owner signed in with Google.
     """
-
-    def is_email_verified(self, request, email):
-        invited = pending_invite_email(request)
-        if invited and invited.lower() == email.lower():
-            return True
-        return super().is_email_verified(request, email)
 
     def is_open_for_signup(self, request):
         if signup_allowed(request):

@@ -8,7 +8,7 @@ address before it can sign in, a Google login only connects to an account
 whose address is verified, and auto-signup only trusts emails the provider
 itself vouches for.
 
-Invitees are the exception: the invite link was delivered to that inbox.
+Invitees are no exception: an invite link can be forwarded.
 """
 
 import copy
@@ -104,15 +104,16 @@ class TestPasswordSignup:
         assert response.status_code == 302
         assert response.wsgi_request.user == user
 
-    def test_invitee_is_verified_by_the_invite_link(self, client, invitation):
+    def test_invite_link_does_not_verify_the_address(self, client, invitation):
+        """A forwarded link must not let its holder claim the invited address with their own password."""
         client.get(reverse("members:accept_invite", args=[invitation.token]))
 
         response = client.post(reverse("account_signup"), {"email": "invitee@example.com", "password1": PASSWORD})
 
         assert response.status_code == 302
-        assert response.wsgi_request.user.is_authenticated
-        assert EmailAddress.objects.get(email="invitee@example.com").verified
-        assert mail.outbox == []
+        assert not response.wsgi_request.user.is_authenticated
+        assert not EmailAddress.objects.get(email="invitee@example.com").verified
+        assert len(mail.outbox) == 1
 
 
 @pytest.mark.django_db
