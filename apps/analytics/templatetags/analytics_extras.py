@@ -8,6 +8,8 @@ Three jobs:
 
 from __future__ import annotations
 
+from urllib.parse import urlencode
+
 from django import template
 from django.utils.safestring import mark_safe
 
@@ -88,7 +90,7 @@ def sparkline(values, color: str = "var(--primary)", width: int = 160, height: i
     fill_d = " ".join(fills)
     svg = (
         f'<svg viewBox="0 0 {width} {height}" width="{width}" height="{height}" '
-        f'preserveAspectRatio="none" style="display:block">'
+        f'preserveAspectRatio="none" class="block">'
         f'<path d="{fill_d}" fill="{color}" fill-opacity="0.12" stroke="none"/>'
         f'<path d="{path_d}" fill="none" stroke="{color}" stroke-width="1.8" '
         f'stroke-linecap="round" stroke-linejoin="round"/>'
@@ -140,3 +142,24 @@ def strip_leading_at(value) -> str:
         return ""
     s = str(value)
     return s[1:] if s.startswith("@") else s
+
+
+@register.filter
+def chart_rows(chart):
+    """``[(label, [value per dataset])]`` per day, for a chart's data table."""
+    return list(zip(chart["labels"], zip(*(d["values"] for d in chart["datasets"]), strict=True), strict=True))
+
+
+@register.simple_tag
+def table_url(range_qs, partial=False, **params):
+    """``?<page range>&k=v…`` for the All-posts table; empty values are dropped."""
+    query = urlencode({k: v for k, v in params.items() if v not in (None, "")})
+    url = f"?{range_qs}" + (f"&{query}" if query else "")
+    return f"{url}&partial=table" if partial else url
+
+
+@register.simple_tag
+def sort_url(range_qs, table, key, table_scope, partial=False):
+    """Link that sorts the All-posts table by ``key``; re-clicking the sorted column flips it."""
+    direction = table["toggled_dir"] if table["sort_key"] == key else "desc"
+    return table_url(range_qs, partial, sort=key, dir=direction, type=table["type_filter"], table_range=table_scope)

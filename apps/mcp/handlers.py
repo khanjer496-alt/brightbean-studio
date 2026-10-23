@@ -23,7 +23,12 @@ from django.conf import settings
 from django.db.models import Exists, OuterRef
 from ninja.errors import HttpError
 
-from apps.analytics.api_builders import build_account_analytics, build_post_analytics
+from apps.analytics.api_builders import (
+    build_account_analytics,
+    build_post_analytics,
+    build_workspace_overview,
+    connected_accounts,
+)
 from apps.api.limits import check_platform_quota
 from apps.api.pagination import decode_offset_cursor, encode_offset_cursor
 from apps.api.schemas import (
@@ -1488,6 +1493,97 @@ register_tool(
             "additionalProperties": False,
         },
         handler=_get_post_analytics,
+        read_only=True,
+    )
+)
+
+
+# ---------------------------------------------------------------------------
+# Tool: get_workspace_analytics
+# ---------------------------------------------------------------------------
+
+
+def _parse_iso_date(value: Any, field_name: str):
+    from datetime import date
+
+    if not isinstance(value, str):
+        raise JsonRpcError(INVALID_PARAMS, f"{field_name} must be an ISO date (YYYY-MM-DD)")
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise JsonRpcError(INVALID_PARAMS, f"{field_name} must be an ISO date (YYYY-MM-DD)") from None
+
+
+def _get_workspace_analytics(args: dict, context: dict[str, Any]) -> dict:
+    """Workspace-wide rollup; body is byte-equal to ``GET /api/v1/analytics/overview``."""
+    from apps.analytics.ranges import api_range
+    from apps.billing.entitlements import require_feature
+    from apps.billing.plans import Feature
+
+    _require_perm(context, "view_analytics")
+    api_key = context["api_key"]
+    workspace = api_key.workspace
+    require_feature(workspace.organization, Feature.ANALYTICS)
+    days = args.get("days")
+    if days is not None and (not isinstance(days, int) or isinstance(days, bool) or days < 1 or days > 90):
+        raise JsonRpcError(INVALID_PARAMS, "days must be an integer between 1 and 90")
+    start = _parse_iso_date(args["start"], "start") if "start" in args else None
+    end = _parse_iso_date(args["end"], "end") if "end" in args else None
+    if (start is None) != (end is None):
+        raise JsonRpcError(INVALID_PARAMS, "start and end must be given together")
+    compare = args.get("compare", True)
+    if not isinstance(compare, bool):
+        raise JsonRpcError(INVALID_PARAMS, "compare must be a boolean")
+    accounts = connected_accounts(api_key)
+    rng = api_range(workspace, days=days, start=start, end=end, compare=compare)
+    return _wrap_text(
+        build_workspace_overview(workspace, accounts, rng, args.get("top", "exposure")).model_dump(mode="json")
+    )
+
+
+register_tool(
+    Tool(
+        name="get_workspace_analytics",
+        description=(
+            "Read analytics across every channel this API key can see, over a date range: headline totals "
+            "(followers, new followers, views/impressions, engagements, engagement rate, posts published), a "
+            "per-network and per-account breakdown, daily totals, and the top posts. Metrics an account does "
+            "not report are ``null`` (never 0), and each total says how many accounts reported it. With "
+            f"``compare`` (default) the previous equal-length period is included and ``delta`` is {settings.BRAND_NAME}'s "
+            "percent change over accounts that reported in both periods. Days are counted in the workspace "
+            "timezone. Requires the view_analytics permission and a plan that includes analytics."
+        ),
+        input_schema={
+            "type": "object",
+            "properties": {
+                "days": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 90,
+                    "default": 30,
+                    "description": "Rolling window ending today.",
+                },
+                "start": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Custom range start (inclusive); pair with end.",
+                },
+                "end": {
+                    "type": "string",
+                    "format": "date",
+                    "description": "Custom range end (inclusive); pair with start.",
+                },
+                "compare": {"type": "boolean", "default": True, "description": "Include the previous period."},
+                "top": {
+                    "type": "string",
+                    "enum": ["exposure", "engagements"],
+                    "default": "exposure",
+                    "description": "Rank top posts by views/impressions or by engagements.",
+                },
+            },
+            "additionalProperties": False,
+        },
+        handler=_get_workspace_analytics,
         read_only=True,
     )
 )

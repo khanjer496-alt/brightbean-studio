@@ -77,6 +77,28 @@
   --font-mono:    var(--brand-font-mono);
 }
 
+/* Chart series: categorical slots 1-4 for the dark surface, validated with the
+   dataviz palette checker (adjacent CVD dE >= 8, contrast >= 3:1). Fixed order,
+   never cycled; chart code reads these by name. */
+:root {
+  --chart-1: #3987e5; --chart-2: #d95926; --chart-3: #199e70; --chart-4: #c98500;
+}
+
+/* Theme tokens as Tailwind colours (bg-surface-1, text-ink-2, border-line, ...). */
+@theme inline {
+  --color-surface-0: var(--surface-0); --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2); --color-surface-3: var(--surface-3);
+  --color-line: var(--border); --color-line-strong: var(--border-hover);
+  --color-ink: var(--text-primary); --color-ink-2: var(--text-secondary);
+  --color-ink-3: var(--text-tertiary); --color-ink-4: var(--text-ghost);
+  --color-accent: var(--primary); --color-accent-soft: var(--primary-soft);
+  --color-good: var(--success-700); --color-good-soft: var(--success-50);
+  --color-bad: var(--error-700); --color-bad-soft: var(--error-50);
+  --color-warn: var(--warning-700); --color-warn-soft: var(--warning-50);
+  --color-series-1: var(--chart-1); --color-series-2: var(--chart-2);
+  --color-series-3: var(--chart-3); --color-series-4: var(--chart-4);
+}
+
 /* Base */
 body {
   font-family: var(--font-body);

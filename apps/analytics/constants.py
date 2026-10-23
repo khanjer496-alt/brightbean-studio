@@ -26,3 +26,11 @@ NO_ANALYTICS_PLATFORMS: dict[str, str] = {
     "slack": ("Slack doesn't expose post analytics for channel messages."),
     "reddit": ("Reddit analytics aren't wired up yet; publishing is supported."),
 }
+
+# Platforms whose terms limit us to showing the figures they report. Their
+# counts are shown as reported (and may be summed across accounts), but nothing
+# is derived from them: no engagement totals, no engagement rate, no per-post
+# estimates. The account page already behaves this way for YouTube
+# (``has_engagement_card``); the workspace rollups reuse this list so they cannot
+# quietly fold such an account into a calculated metric.
+NATIVE_ONLY_PLATFORMS: frozenset[str] = frozenset({"youtube"})

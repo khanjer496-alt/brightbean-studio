@@ -1,0 +1,25 @@
+{# Post-detail slide-over, filled by openPost(url). Include inside an element with x-data and class analytics-shell. #}
+<div class="fixed inset-0 z-[120] bg-black/40 transition-opacity duration-200" :class="drawerOpen ? 'opacity-100' : 'pointer-events-none opacity-0'" @click="drawerOpen = false"></div>
+<div class="fixed inset-y-0 right-0 z-[121] flex w-[min(460px,92vw)] flex-col bg-surface-0 shadow-xl transition-transform duration-200" :class="drawerOpen ? 'translate-x-0' : 'translate-x-full'" role="dialog" aria-label="Post details" @keydown.escape.window="drawerOpen = false">
+    <div x-html="drawerContent" id="drawer-host" class="flex h-full flex-col"></div>
+</div>
+<script nonce="{{ request.csp_nonce }}">
+    (function () {
+        var shell = document.querySelector('.analytics-shell');
+        function openPost(url) {
+            var drawer = window.Alpine ? window.Alpine.$data(shell) : null;
+            if (!drawer) return;
+            fetch(url, { headers: { 'HX-Request': 'true' } })
+                .then(function (r) { return r.text(); })
+                .then(function (html) { drawer.drawerContent = html; drawer.drawerOpen = true; });
+        }
+        window.openPost = openPost;
+        shell.addEventListener('click', function (e) {
+            var row = e.target.closest('tr[data-post-url]');
+            if (row) { e.preventDefault(); openPost(row.dataset.postUrl); return; }
+            if (e.target.closest('[data-action="close-drawer"]') && window.Alpine) {
+                window.Alpine.$data(shell).drawerOpen = false;
+            }
+        });
+    })();
+</script>

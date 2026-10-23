@@ -120,6 +120,15 @@ ENGAGEMENT_PARTS: list[str] = [
 ENGAGEMENT_DENOMINATORS: list[str] = ["views", "reach", "impressions", "plays"]
 
 
+# What a post or account was "seen" as, in priority order. Unique-user ``reach``
+# is left out on purpose: it cannot be added across accounts or days.
+EXPOSURE_METRICS: tuple[str, ...] = ("views", "impressions", "plays")
+
+# Account-level follower metrics, in the order growth is read from them: a
+# platform exposes at most one (daily gains, or only a lifetime total).
+GROWTH_METRICS: tuple[str, ...] = ("subscribers", "follows", "followers")
+
+
 def post_metrics_for(platform: str) -> list[str]:
     """Metrics that show up in per-post views (table columns, detail drawer).
 

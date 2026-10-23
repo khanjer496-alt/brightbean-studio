@@ -24,20 +24,18 @@ class AnalyticsConfig(AppConfig):
 
     @staticmethod
     def _register_sync_task(sender, **kwargs):
-        """Idempotently register the hourly analytics sync cron."""
+        """Idempotently register the hourly analytics crons (sync, engagement alerts)."""
         try:
             from background_task.models import Task
 
-            from apps.analytics.tasks import sync_all_account_analytics
+            from apps.analytics.tasks import check_engagement_alerts, sync_all_account_analytics
 
-            if not Task.objects.filter(verbose_name="sync_all_account_analytics").exists():
-                sync_all_account_analytics(
-                    repeat=SYNC_INTERVAL_SECONDS,
-                    verbose_name="sync_all_account_analytics",
-                )
-                logger.info(
-                    "Registered recurring analytics sync (every %ss)",
-                    SYNC_INTERVAL_SECONDS,
-                )
+            for name, task in (
+                ("sync_all_account_analytics", sync_all_account_analytics),
+                ("check_engagement_alerts", check_engagement_alerts),
+            ):
+                if not Task.objects.filter(verbose_name=name).exists():
+                    task(repeat=SYNC_INTERVAL_SECONDS, verbose_name=name)
+                    logger.info("Registered recurring %s (every %ss)", name, SYNC_INTERVAL_SECONDS)
         except Exception:
-            logger.debug("Skipping analytics sync registration (database not ready)")
+            logger.debug("Skipping analytics cron registration (database not ready)")

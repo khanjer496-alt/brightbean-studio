@@ -18,14 +18,23 @@ from apps.api.schemas import (
     AccountAnalyticsResponse,
     DerivedMetricResponse,
     EngagementCardResponse,
+    OverviewAccountResponse,
+    OverviewDayResponse,
+    OverviewMetricResponse,
+    OverviewNetworkResponse,
+    OverviewPostResponse,
     PlatformPostAnalyticsResponse,
     PostAnalyticsResponse,
     PostMetricTileResponse,
+    WorkspaceOverviewResponse,
 )
 from apps.composer.models import Post
 from apps.social_accounts.models import AnalyticsPlatformConfig, SocialAccount
+from apps.workspaces.models import Workspace
 
+from . import rollup
 from .freshness import account_freshness, post_freshness
+from .ranges import AnalyticsRange
 from .services import (
     _label,
     account_analytics_bundle,
@@ -202,4 +211,101 @@ def _build_platform_post_analytics(platform_post, enabled_platforms: list[str]) 
         metric_tiles=tiles,
         captured_at=captured_at,
         next_sync_eta=next_sync_eta,
+    )
+
+
+def connected_accounts(api_key) -> list[SocialAccount]:
+    """The key's allowlisted accounts that are connected, in display order.
+
+    Goes through ``.all()`` because the OAuth actor's allowlist is a shim that
+    only offers that.
+    """
+    connected = [
+        a
+        for a in api_key.social_accounts.all()
+        # The allowlist is validated at issuance; re-checking the workspace keeps
+        # an account later moved elsewhere out of this workspace's totals.
+        if a.connection_status == SocialAccount.ConnectionStatus.CONNECTED and a.workspace_id == api_key.workspace_id
+    ]
+    return sorted(connected, key=lambda a: (a.platform, a.account_name))
+
+
+_NETWORK_KEYS = ("followers", "new_followers", "exposure", "engagements", "engagement_rate", "posts")
+
+
+def build_workspace_overview(
+    workspace: Workspace, accounts: list[SocialAccount], rng: AnalyticsRange, top_sort: str = "exposure"
+) -> WorkspaceOverviewResponse:
+    """Assemble the workspace rollup for the agent API and MCP.
+
+    ``accounts`` is whatever the caller is allowed to see (an API key's
+    allowlist), so totals never include an account the key can't read.
+    """
+    data = rollup.overview(accounts, rng, top_sort=top_sort)
+    trends = {key: rollup.trend(data["accounts"], rng, key)["datasets"][0]["values"] for key in rollup.SERIES_LABELS}
+    return WorkspaceOverviewResponse(
+        workspace_id=workspace.id,
+        start=rng.start,
+        end=rng.end,
+        timezone=str(rng.tz),
+        compare=rng.compare,
+        previous_start=rng.previous_start if rng.compare else None,
+        previous_end=rng.previous_end if rng.compare else None,
+        metrics=[
+            OverviewMetricResponse(
+                key=k["key"],
+                label=k["label"],
+                kind=k["kind"],
+                value=k["value"],
+                previous=k["previous"],
+                delta=k["delta"],
+                accounts_reporting=k["reporting"],
+                accounts_total=k["total"],
+            )
+            for k in data["kpis"]
+        ],
+        networks=[
+            OverviewNetworkResponse(
+                platform=n["platform"],
+                name=n["name"],
+                accounts=n["accounts"],
+                metrics={key: n[key] for key in _NETWORK_KEYS},
+            )
+            for n in data["networks"]
+        ],
+        accounts=[
+            OverviewAccountResponse(
+                account_id=row.account.id,
+                platform=row.account.platform,
+                account_name=row.account.account_name,
+                analytics_available=row.unavailable is None,
+                unavailable_reason=row.unavailable,
+                metrics={cell["key"]: cell["value"] for cell in rollup.account_cells(row, False)},
+            )
+            for row in data["accounts"]
+        ],
+        daily=[
+            OverviewDayResponse(
+                date=day,
+                exposure=trends["exposure"][i],
+                engagements=trends["engagements"][i],
+                new_followers=trends["new_followers"][i],
+            )
+            for i, day in enumerate(rng.day_list())
+        ],
+        top_posts=[
+            OverviewPostResponse(
+                post_id=r["post"].post_id,
+                platform_post_id=r["post"].id,
+                social_account_id=r["account"].id,
+                platform=r["account"].platform,
+                caption=r["caption"],
+                published_at=r["post"].published_at,
+                format=r["format"],
+                exposure=r["exposure"],
+                engagements=r["engagements"],
+                engagement_rate=r["rate"],
+            )
+            for r in data["top_posts"]
+        ],
     )

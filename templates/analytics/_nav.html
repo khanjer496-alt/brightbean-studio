@@ -1,0 +1,25 @@
+{# Title row, section tabs and exports. Needs nav; exports is optional. #}
+<div class="mb-5 flex flex-wrap items-end justify-between gap-3">
+    <div>
+        <h1 class="text-2xl font-semibold tracking-tight text-ink">Analytics</h1>
+        <p class="mt-0.5 text-[13px] text-ink-3">Performance across your connected channels.</p>
+    </div>
+    {% if exports %}
+    <details class="relative">
+        <summary class="inline-flex min-h-9 cursor-pointer list-none items-center gap-1.5 rounded-full border border-line bg-surface-1 px-3.5 text-[13px] font-semibold text-ink-2 hover:text-ink">
+            <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 17v3h16v-3"/></svg>
+            Export
+        </summary>
+        <ul class="absolute right-0 z-30 mt-1.5 w-52 rounded-xl border border-line bg-surface-0 p-1.5 shadow-lg">
+            {% for item in exports %}
+            <li><a href="{{ item.url }}" class="block rounded-lg px-3 py-2 text-[13px] text-ink-2 no-underline hover:bg-surface-2 hover:text-ink">{{ item.label }}</a></li>
+            {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
+</div>
+<nav aria-label="Analytics sections" class="mb-4 flex gap-1 overflow-x-auto border-b border-line">
+    <a href="{{ nav.overview }}" {% if nav.active == "overview" %}aria-current="page"{% endif %} class="whitespace-nowrap border-b-2 px-3 py-2 text-[13px] font-semibold no-underline {% if nav.active == 'overview' %}border-accent text-ink{% else %}border-transparent text-ink-3 hover:text-ink{% endif %}">Overview</a>
+    <a href="{{ nav.accounts }}" {% if nav.active == "accounts" %}aria-current="page"{% endif %} class="whitespace-nowrap border-b-2 px-3 py-2 text-[13px] font-semibold no-underline {% if nav.active == 'accounts' %}border-accent text-ink{% else %}border-transparent text-ink-3 hover:text-ink{% endif %}">Accounts</a>
+    <a href="{{ nav.compare }}" {% if nav.active == "compare" %}aria-current="page"{% endif %} class="whitespace-nowrap border-b-2 px-3 py-2 text-[13px] font-semibold no-underline {% if nav.active == 'compare' %}border-accent text-ink{% else %}border-transparent text-ink-3 hover:text-ink{% endif %}">Compare</a>
+</nav>

@@ -1,0 +1,29 @@
+{# Date range: presets, custom range, compare toggle. One row above the content it scopes. Needs controls. #}
+<div class="flex flex-wrap items-center gap-3" role="group" aria-label="Date range">
+    <div class="inline-flex items-center gap-0.5 rounded-full border border-line bg-surface-1 p-[3px]">
+        {% for preset in controls.presets %}
+            {% include "analytics/_pill.html" with url=preset.url label=preset.label title=preset.title active=preset.active %}
+        {% endfor %}
+        <details class="relative">
+            <summary class="inline-flex min-h-8 cursor-pointer list-none items-center rounded-full px-3.5 py-1 text-[13px] font-semibold {% if controls.custom_active %}bg-surface-3 text-ink{% else %}text-ink-3 hover:text-ink{% endif %}">Custom</summary>
+            <form method="get" class="absolute left-0 z-30 mt-2 flex w-72 max-w-[calc(100vw-2rem)] flex-col gap-3 rounded-xl border border-line bg-surface-0 p-4 shadow-lg">
+                <input type="hidden" name="range" value="custom">
+                {% for name, value in controls.hidden %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+                <label class="flex flex-col gap-1 text-xs font-semibold text-ink-3">From
+                    <input type="date" name="start" value="{{ controls.start }}" max="{{ controls.max }}" required data-range-date class="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm font-normal text-ink">
+                </label>
+                <label class="flex flex-col gap-1 text-xs font-semibold text-ink-3">To
+                    <input type="date" name="end" value="{{ controls.end }}" max="{{ controls.max }}" required data-range-date class="rounded-lg border border-line bg-surface-1 px-3 py-2 text-sm font-normal text-ink">
+                </label>
+                <button type="submit" class="btn-brand">Apply range</button>
+            </form>
+        </details>
+    </div>
+    <span class="text-[13px] text-ink-3">{{ range.start|date:"M j, Y" }} – {{ range.end|date:"M j, Y" }}</span>
+    {% if controls.show_compare %}
+    <div class="inline-flex items-center gap-0.5 rounded-full border border-line bg-surface-1 p-[3px]" role="group" aria-label="Comparison">
+        {% include "analytics/_pill.html" with url=controls.compare_on_url label="vs previous period" active=controls.compare %}
+        {% include "analytics/_pill.html" with url=controls.compare_off_url label="No comparison" active=controls.no_compare %}
+    </div>
+    {% endif %}
+</div>

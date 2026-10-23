@@ -1,54 +1,27 @@
 {% load analytics_extras humanize %}
-<div style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 22px;">
-    {# Title #}
-    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;">
-        <div>
-            <h1 style="font-size: 1.5rem; font-weight: 600; color: var(--neutral-900); letter-spacing: -0.01em;">Analytics</h1>
-            <p style="font-size: 0.8125rem; color: var(--text-tertiary); margin-top: 2px;">Performance across your connected channels.</p>
-        </div>
-    </div>
+{% include "analytics/_nav.html" %}
 
-    {# Control row #}
-    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-bottom: 16px; border-bottom: 1px solid var(--neutral-100);">
-        <div style="display: flex; align-items: center; gap: 14px; flex-wrap: wrap;">
+<div class="mb-5 flex flex-col gap-4 border-b border-line pb-4">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="flex flex-wrap items-center gap-3.5">
             {# Account switcher #}
-            <div x-data="{ open: false }" style="position: relative;">
-                <button type="button" @click="open = !open" style="display: flex; align-items: center; gap: 10px; padding: 6px 10px 6px 8px; background: #fff; border: 1px solid var(--border); border-radius: var(--radius-full); cursor: pointer;">
-                    <div class="relative flex-shrink-0">
-                        {% if active_account.avatar_url %}
-                            <img src="{{ active_account.avatar_url }}" alt="" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">
-                        {% else %}
-                            <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--neutral-200); display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--text-secondary);">{{ active_account.account_name|make_list|first|upper }}</div>
-                        {% endif %}
-                        {% if active_account.platform != "youtube" %}<div class="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center">
-                            {% include "partials/_platform_icon.html" with platform=active_account.platform size="sm" %}
-                        </div>{% endif %}
-                    </div>
-                    <span style="text-align: left;">
-                        <span style="display: block; font-size: 0.875rem; font-weight: 600; color: var(--neutral-900); line-height: 1.1;">{{ active_account.account_name }}{% if active_account.platform == "youtube" %} <small>YouTube</small>{% endif %}</span>
-                        <span style="display: block; font-size: 0.6875rem; color: var(--text-tertiary);">@{{ active_account.account_handle|strip_leading_at }}</span>
+            <div x-data="{ open: false }" class="relative">
+                <button type="button" @click="open = !open" :aria-expanded="open" aria-haspopup="true" class="flex cursor-pointer items-center gap-2.5 rounded-full border border-line bg-surface-1 py-1.5 pl-2 pr-2.5 text-left">
+                    {% include "analytics/_avatar.html" with account=active_account size="md" %}
+                    <span>
+                        <span class="block text-sm font-semibold leading-tight text-ink">{{ active_account.account_name }}{% if active_account.platform == "youtube" %} <small>YouTube</small>{% endif %}</span>
+                        <span class="block text-[11px] text-ink-3">@{{ active_account.account_handle|strip_leading_at }}</span>
                     </span>
-                    <svg width="16" height="16" fill="none" stroke="var(--neutral-400)" viewBox="0 0 24 24" stroke-width="2" style="margin-left: 2px;"><path d="M19 9l-7 7-7-7"/></svg>
+                    <svg class="ml-0.5 h-4 w-4 text-ink-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path d="M19 9l-7 7-7-7"/></svg>
                 </button>
-                <div x-show="open" @click.away="open = false" x-cloak
-                     style="position: absolute; top: calc(100% + 6px); left: 0; z-index: 40; width: 280px; background: #fff; border-radius: var(--radius-xl); box-shadow: var(--shadow-lg); border: 1px solid var(--border); padding: 6px;">
-                    <div style="font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-ghost); padding: 6px 10px 4px;">Connected accounts</div>
+                <div x-show="open" @click.away="open = false" x-cloak class="absolute left-0 top-[calc(100%+6px)] z-40 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-line bg-surface-0 p-1.5 shadow-lg">
+                    <div class="px-2.5 pb-1 pt-1.5 text-[10px] font-bold uppercase tracking-widest text-ink-4">Connected accounts</div>
                     {% for acc in accounts %}
-                        <a href="{% url 'analytics:account' workspace_id=workspace.id account_id=acc.id %}"
-                           style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: {% if acc.id == active_account.id %}var(--surface-1){% else %}none{% endif %}; border-radius: var(--radius-md); text-decoration: none; color: inherit;">
-                            <div class="relative flex-shrink-0">
-                                {% if acc.avatar_url %}
-                                    <img src="{{ acc.avatar_url }}" alt="" style="width: 30px; height: 30px; border-radius: 50%; object-fit: cover;">
-                                {% else %}
-                                    <div style="width: 30px; height: 30px; border-radius: 50%; background: var(--neutral-200); display: flex; align-items: center; justify-content: center; font-weight: 700; color: var(--text-secondary);">{{ acc.account_name|make_list|first|upper }}</div>
-                                {% endif %}
-                                {% if acc.platform != "youtube" %}<div class="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center">
-                                    {% include "partials/_platform_icon.html" with platform=acc.platform size="sm" %}
-                                </div>{% endif %}
-                            </div>
-                            <span style="flex: 1; min-width: 0;">
-                                <span style="display: block; font-size: 0.8125rem; font-weight: 600; color: var(--neutral-900); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{{ acc.account_name }}{% if acc.platform == "youtube" %} <small>YouTube</small>{% endif %}</span>
-                                <span style="display: block; font-size: 0.6875rem; color: var(--text-tertiary);">{{ acc.follower_count|intcomma }} {% if acc.platform == "youtube" %}subscribers{% else %}followers{% endif %}</span>
+                        <a href="{% url 'analytics:account' workspace_id=workspace.id account_id=acc.id %}?{{ range_qs }}" class="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-inherit no-underline {% if acc.id == active_account.id %}bg-surface-1{% endif %}">
+                            {% include "analytics/_avatar.html" with account=acc size="sm" %}
+                            <span class="min-w-0 flex-1">
+                                <span class="block truncate text-[13px] font-semibold text-ink">{{ acc.account_name }}{% if acc.platform == "youtube" %} <small>YouTube</small>{% endif %}</span>
+                                <span class="block text-[11px] text-ink-3">{{ acc.follower_count|intcomma }} {% if acc.platform == "youtube" %}subscribers{% else %}followers{% endif %}</span>
                             </span>
                             {% if acc.analytics_unavailable_reason %}
                                 {% comment %}
@@ -56,11 +29,10 @@
                                 dead end as dropping it from the switcher entirely — select it
                                 and the page body says which of the two reasons applies.
                                 {% endcomment %}
-                                <span title="{{ acc.analytics_unavailable_reason }}"
-                                      style="flex-shrink: 0; font-size: 0.625rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-tertiary); background: var(--surface-2); border-radius: var(--radius-full); padding: 2px 7px;">No data</span>
+                                <span title="{{ acc.analytics_unavailable_reason }}" class="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-3">No data</span>
                             {% endif %}
                             {% if acc.id == active_account.id %}
-                                <svg width="16" height="16" fill="none" stroke="var(--primary)" viewBox="0 0 24 24" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                                <svg class="h-4 w-4 text-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" aria-label="Selected"><polyline points="20 6 9 17 4 12"/></svg>
                             {% endif %}
                         </a>
                     {% endfor %}
@@ -68,21 +40,21 @@
             </div>
 
             {% if not is_fresh %}
-            <div style="display: flex; align-items: center; gap: 18px;">
+            <div class="flex items-center gap-4">
                 {% if active_account.platform != "youtube" %}
                 <div>
-                    <div style="font-size: 0.6875rem; color: var(--text-ghost); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">Followers</div>
-                    <div class="a-mono" style="font-size: 0.9375rem; font-weight: 700; color: var(--text-primary);">{{ active_account.follower_count|intcomma }}</div>
+                    <div class="text-[11px] font-semibold uppercase tracking-wider text-ink-4">Followers</div>
+                    <div class="font-mono text-[15px] font-bold text-ink">{{ active_account.follower_count|intcomma }}</div>
                 </div>
                 {% endif %}
                 {% if follower_growth %}
-                {% if active_account.platform != "youtube" %}<div style="width: 1px; height: 28px; background: var(--neutral-200);"></div>{% endif %}
+                {% if active_account.platform != "youtube" %}<div class="h-7 w-px bg-line"></div>{% endif %}
                 <div>
-                    <div style="font-size: 0.6875rem; color: var(--text-ghost); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em;">
+                    <div class="text-[11px] font-semibold uppercase tracking-wider text-ink-4">
                         {% if active_account.platform == "youtube" %}New subscribers{% else %}New followers{% endif %}
                     </div>
-                    <div style="display: flex; align-items: center; gap: 7px;">
-                        <span class="a-mono" style="font-size: 0.9375rem; font-weight: 700; color: var(--text-primary);"{% if follower_growth.estimated %} title="Calculated by {{ brand_name }} from the change in follower totals"{% endif %}>+{{ follower_growth.value|floatformat:0 }}</span>
+                    <div class="flex items-center gap-2">
+                        <span class="font-mono text-[15px] font-bold text-ink"{% if follower_growth.estimated %} title="Calculated by {{ brand_name }} from the change in follower totals"{% endif %}>+{{ follower_growth.value|floatformat:0 }}</span>
                         {% if follower_growth.comparison_available %}{% include "analytics/_delta_chip.html" with delta=follower_growth.delta %}{% endif %}
                     </div>
                 </div>
@@ -90,14 +62,8 @@
             </div>
             {% endif %}
         </div>
-
-        {% if not is_fresh or active_account.platform == "youtube" %}
-        {# Range toggle #}
-        <div class="a-pill-group">
-            {% for n in range_choices %}
-                <a href="?range={{ n }}" class="{% if n == days %}active{% endif %}">{{ n }}D</a>
-            {% endfor %}
-        </div>
-        {% endif %}
     </div>
+    {% if not is_fresh or active_account.platform == "youtube" %}
+        {% include "analytics/_range_controls.html" %}
+    {% endif %}
 </div>

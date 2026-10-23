@@ -3,26 +3,26 @@
 {% block title %}Analytics — {{ workspace.name }} — {{ brand_short_name }}{% endblock %}
 
 {% block content %}
-<div style="padding: 22px 24px 40px; display: flex; flex-direction: column; flex: 1;">
-    <div style="display: flex; flex-direction: column; gap: 16px; margin-bottom: 22px; padding-bottom: 16px; border-bottom: 1px solid var(--neutral-100);">
+<div class="flex flex-1 flex-col px-6 pb-10 pt-5">
+    <div class="mb-5 flex flex-col gap-4 border-b border-line pb-4">
         <div>
-            <h1 style="font-size: 1.5rem; font-weight: 600; color: var(--neutral-900); letter-spacing: -0.01em;">Analytics</h1>
-            <p style="font-size: 0.8125rem; color: var(--text-tertiary); margin-top: 2px;">Performance across your connected channels.</p>
+            <h1 class="text-2xl font-semibold tracking-tight text-ink">Analytics</h1>
+            <p class="mt-0.5 text-[13px] text-ink-3">Performance across your connected channels.</p>
         </div>
     </div>
 
-    <div style="flex: 1; display: flex; align-items: center; justify-content: center; padding: 40px;">
-        <div style="text-align: center; max-width: 420px;">
-            <div style="width: 72px; height: 72px; border-radius: var(--radius-2xl); background: var(--primary-soft); margin: 0 auto 20px; display: flex; align-items: center; justify-content: center;">
-                <svg width="32" height="32" fill="none" stroke="var(--primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M7 12l4-4 4 4 6-6"/></svg>
+    <div class="flex flex-1 items-center justify-center p-10">
+        <div class="max-w-[420px] text-center">
+            <div class="mx-auto mb-5 flex h-[72px] w-[72px] items-center justify-center rounded-2xl bg-accent-soft">
+                <svg class="h-8 w-8 text-accent" width="32" height="32" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18"/><path d="M7 12l4-4 4 4 6-6"/></svg>
             </div>
-            <h2 style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">Connect an account to see analytics</h2>
-            <p style="font-size: 0.9375rem; color: var(--text-secondary); line-height: 1.6; margin-bottom: 20px;">
+            <h2 class="mb-2 font-display text-2xl font-bold text-ink">Connect an account to see analytics</h2>
+            <p class="mb-5 text-[15px] leading-relaxed text-ink-2">
                 This workspace has no connected accounts. Connect one to start tracking per-post
                 performance — and if you have connected an account before, check the Channels page:
                 one that needs reconnecting doesn't show up here.
             </p>
-            <a href="{% url 'social_accounts:connect' workspace_id=workspace.id %}" class="btn-brand" style="width: auto; padding: 9px 20px;">Connect a channel</a>
+            <a href="{% url 'social_accounts:connect' workspace_id=workspace.id %}" class="btn-brand w-auto px-5 py-2.5">Connect a channel</a>
         </div>
     </div>
 </div>

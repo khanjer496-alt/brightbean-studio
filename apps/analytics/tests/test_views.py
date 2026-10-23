@@ -107,7 +107,7 @@ def test_index_lands_on_the_only_account_even_when_disabled(owner_client, worksp
     account = _account(workspace, "instagram_login", "Direct IG")
     _disable_analytics("instagram_login")
 
-    response = owner_client.get(reverse("analytics:index", kwargs={"workspace_id": workspace.id}), follow=True)
+    response = owner_client.get(reverse("analytics:accounts", kwargs={"workspace_id": workspace.id}), follow=True)
 
     assert response.status_code == 200
     assert response.context["active_account"].id == account.id
@@ -120,7 +120,7 @@ def test_index_prefers_an_account_with_analytics_available(owner_client, workspa
     available = _account(workspace, "instagram_login", "ZZZ Available")
     _disable_analytics("facebook")
 
-    response = owner_client.get(reverse("analytics:index", kwargs={"workspace_id": workspace.id}), follow=True)
+    response = owner_client.get(reverse("analytics:accounts", kwargs={"workspace_id": workspace.id}), follow=True)
 
     # "facebook" sorts first and would have been the redirect target on
     # ordering alone; availability wins.
@@ -263,4 +263,4 @@ def test_youtube_daily_counts_are_not_reconstructed_from_lifetime_snapshots(owne
     assert response.context["chart"]["derived"].estimated is False
     assert response.context["chart"]["derived"].available is False
     # Today has no snapshot yet: a gap in the chart, not a drop to zero views.
-    assert response.context["chart_series_json"].endswith("null]")
+    assert response.context["chart_data"]["datasets"][0]["values"][-1] is None

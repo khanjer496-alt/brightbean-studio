@@ -1,0 +1,2 @@
+{# One option in a pill group. Pass url, label and either active, or current + value (active when equal). Optional title; hx_url + hx_target make it an HTMX swap. #}
+{% if active or value and current == value %}{% include "analytics/_pill_link.html" with on=True %}{% else %}{% include "analytics/_pill_link.html" with on=False %}{% endif %}

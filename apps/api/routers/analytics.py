@@ -24,17 +24,59 @@ centralised handler in ``apps/api/api.py``.
 
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 
 from ninja import Query, Router
+from ninja.errors import HttpError
 
-from apps.analytics.api_builders import build_account_analytics, build_post_analytics
+from apps.analytics.api_builders import (
+    build_account_analytics,
+    build_post_analytics,
+    build_workspace_overview,
+    connected_accounts,
+)
+from apps.analytics.ranges import api_range
+from apps.analytics.rollup import TOP_POST_SORTS
 from apps.api.limits import enforce_http_rate_limits
 from apps.api.middleware import log_audit_entry
 from apps.api.routers.posts import _get_workspace_post, _require_perm, _resolve_account
-from apps.api.schemas import AccountAnalyticsResponse, PostAnalyticsResponse
+from apps.api.schemas import AccountAnalyticsResponse, PostAnalyticsResponse, WorkspaceOverviewResponse
+from apps.billing.entitlements import require_feature
+from apps.billing.plans import Feature
 
 router = Router(tags=["analytics"])
+
+
+@router.get(
+    "/overview",
+    response=WorkspaceOverviewResponse,
+    summary="Read workspace-wide analytics over a date range",
+)
+def workspace_overview(
+    request,
+    days: int | None = Query(
+        None,
+        ge=1,
+        le=90,
+        description="Rolling window ending today in the workspace timezone (default 30). Ignored when start and end are set.",
+    ),
+    start: dt.date | None = Query(None, description="First day of a custom range (inclusive)."),
+    end: dt.date | None = Query(None, description="Last day of a custom range (inclusive, not after today)."),
+    compare: bool = Query(True, description="Include the previous equal-length period."),
+    top: str = Query("exposure", description=f"Rank top posts by one of: {', '.join(TOP_POST_SORTS)}."),
+):
+    enforce_http_rate_limits(request, is_write=False)
+    _require_perm(request, "view_analytics")
+    if (start is None) != (end is None):
+        raise HttpError(422, "start and end must be given together.")
+    workspace = request.workspace
+    require_feature(workspace.organization, Feature.ANALYTICS)
+    accounts = connected_accounts(request.api_key)
+    log_audit_entry(request, action="analytics.read.overview", target_id=workspace.id, status_code=200)
+    return build_workspace_overview(
+        workspace, accounts, api_range(workspace, days=days, start=start, end=end, compare=compare), top
+    )
 
 
 @router.get(

@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% load analytics_extras %}
+
+{% block title %}Compare accounts — {{ workspace.name }} — {{ brand_short_name }}{% endblock %}
+
+{% block content %}
+<div class="analytics-shell flex flex-1 flex-col">
+    {% include "analytics/_nav.html" %}
+    <div class="mb-5 border-b border-line pb-4">{% include "analytics/_range_controls.html" %}</div>
+
+    <form method="get" class="mb-5 rounded-xl border border-line bg-surface-1 p-4" x-data="{ count: {{ picked|length }}, max: {{ max_accounts }} }">
+        {# Once a comparison is showing, the (possibly long) picker folds away behind its summary. #}
+        <details {% if not ready %}open{% endif %} class="group">
+        <summary class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-[13px] text-ink-2 {% if not ready %}hidden{% endif %}">
+            <span class="min-w-0 truncate">Comparing {% for acc in picked %}<span class="font-semibold text-ink">{{ acc.account_name }}</span>{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+            <span class="shrink-0 font-semibold text-accent group-open:hidden">Change accounts</span>
+        </summary>
+        <fieldset class="m-0 border-0 p-0">
+            <legend class="mb-2 text-[13px] font-semibold text-ink">Pick {{ min_accounts }} to {{ max_accounts }} accounts</legend>
+            <div class="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                {% for acc in accounts %}
+                <label class="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-lg border border-line bg-surface-0 px-3 py-2 text-[13px] text-ink-2 has-[:checked]:border-accent has-[:disabled]:opacity-50">
+                    <input type="checkbox" name="accounts" value="{{ acc.id }}" {% if acc.id in picked_ids %}checked{% endif %}
+                           @change="count += $event.target.checked ? 1 : -1"
+                           :disabled="count >= max && !$el.checked" class="h-4 w-4 accent-accent">
+                    <span class="min-w-0 flex-1 truncate">{{ acc.account_name }} <span class="text-xs text-ink-3">{{ acc.get_platform_display }}</span></span>
+                    {% if acc.analytics_unavailable_reason %}<span class="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-semibold uppercase text-ink-3" title="{{ acc.analytics_unavailable_reason }}">No data</span>{% endif %}
+                </label>
+                {% endfor %}
+            </div>
+        </fieldset>
+        <input type="hidden" name="range" value="{{ range.preset }}">
+        {% if range.is_custom %}<input type="hidden" name="start" value="{{ range.start|date:'Y-m-d' }}"><input type="hidden" name="end" value="{{ range.end|date:'Y-m-d' }}">{% endif %}
+        {% if not range.compare %}<input type="hidden" name="compare" value="none">{% endif %}
+        <button type="submit" class="btn-brand mt-3 w-auto px-5 py-2">Compare</button>
+        </details>
+    </form>
+
+    {% if not ready %}
+        <p class="rounded-xl border border-line bg-surface-1 p-6 text-center text-[13px] text-ink-3">Select at least {{ min_accounts }} accounts to see them side by side.</p>
+    {% else %}
+    <div class="flex flex-col gap-5">
+        <section class="rounded-xl border border-line bg-surface-1" aria-labelledby="matrix-heading">
+            <h2 id="matrix-heading" class="m-0 border-b border-line px-5 py-4 text-[15px] font-semibold text-ink">Side by side</h2>
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse text-[13px]">
+                    <thead>
+                        <tr>
+                            <th scope="col" class="sticky left-0 z-10 bg-surface-1 px-4 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wider text-ink-3">Metric</th>
+                            {% for row in rows %}
+                            <th scope="col" class="min-w-32 px-4 py-2.5 text-right font-semibold text-ink">
+                                <span class="inline-flex items-center justify-end gap-1.5">{% include "analytics/_swatch.html" with n=forloop.counter %}{{ row.account.account_name }}</span>
+                                {% if row.unavailable %}<span class="block text-[11px] font-normal text-ink-3">{{ row.unavailable }}</span>{% endif %}
+                            </th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for metric in matrix %}
+                        <tr class="border-t border-line">
+                            <th scope="row" class="sticky left-0 z-10 whitespace-nowrap bg-surface-1 px-4 py-2.5 text-left font-medium text-ink-2">{{ metric.label }}</th>
+                            {% for cell in metric.cells %}
+                            <td class="px-4 py-2.5 text-right">
+                                {% if cell.value is None %}<span class="text-ink-3">Not available</span>
+                                {% else %}<span class="font-mono font-semibold text-ink">{{ cell.value|fmt_metric:cell.kind }}</span>{% if cell.delta is not None %} {% include "analytics/_delta_chip.html" with delta=cell.delta %}{% endif %}{% endif %}
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="rounded-xl border border-line bg-surface-1 p-5" aria-labelledby="overlay-heading">
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <h2 id="overlay-heading" class="m-0 text-[15px] font-semibold text-ink">{{ trend.label }} per day</h2>
+                <div class="inline-flex flex-wrap items-center gap-0.5 rounded-full border border-line bg-surface-2 p-[3px]">
+                    {% for option in series_options %}{% include "analytics/_pill.html" with url=option.url label=option.label active=option.active %}{% endfor %}
+                </div>
+            </div>
+            {% include "analytics/_chart.html" with chart_id="compare-trend" chart=trend summary=trend_summary %}
+        </section>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% load static %}
+<script src="{% static 'js/vendor/chart.umd.min.js' %}"></script>
+<script src="{% static 'js/analytics-charts.js' %}"></script>
+<script src="{% static 'js/analytics-range.js' %}"></script>
+{% endblock %}
