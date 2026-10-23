@@ -26,7 +26,7 @@ def list_reports(
     limit: int = Query(ops.LIMIT_DEFAULT, ge=1, le=ops.LIMIT_MAX),
     cursor: str | None = Query(None),
 ):
-    return run_op(request, ops.list_reports, limit=limit, cursor=cursor, action="reports.read.list", is_write=False)
+    return run_op(request, ops.list_reports, limit=limit, cursor=cursor, action="reports.list", is_write=False)
 
 
 @router.post("/{report_id}/run", response={202: ReportRunResponse}, summary="Build a report now")
@@ -50,7 +50,7 @@ def latest_run(request, report_id: uuid.UUID):
         request,
         ops.get_latest_report_run,
         report_id,
-        action="reports.read.latest",
+        action="reports.read_latest_run",
         is_write=False,
         target_id=report_id,
     )
