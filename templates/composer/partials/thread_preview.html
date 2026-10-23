@@ -1,0 +1,45 @@
+{% comment %}
+The thread's later parts under one network's preview card.
+Context: thread - from composer.views._thread_preview: mode ("reply_chain" / "comments" / "none"),
+blocker (why this network can't publish the thread, or ""), and parts
+(number, caption, char_count, char_limit, is_over_limit, media).
+{% endcomment %}
+{% if thread %}
+<div class="border-t px-3.5 py-2.5 space-y-2 bg-stone-50" data-thread-preview>
+    <div class="flex items-center gap-1.5 text-[11px] font-semibold text-stone-500">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8.625 12a.375.375 0 11-.75 0 .375.375 0 01.75 0zm4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm4.125 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM2.25 12c0 4.556 4.03 8.25 9 8.25a9.764 9.764 0 002.555-.337A5.972 5.972 0 0018 21a5.969 5.969 0 01-.474-2.06A8.236 8.236 0 0021.75 12c0-4.556-4.03-8.25-9-8.25s-9 3.694-9 8.25z"/></svg>
+        {% if thread.mode == "comments" %}Then {{ thread.parts|length }} comment{{ thread.parts|length|pluralize }} on the post{% elif thread.mode == "reply_chain" %}Thread of {{ thread.parts|length|add:1 }} posts{% else %}Thread not supported{% endif %}
+    </div>
+    {% if thread.blocker %}
+    <p class="text-[11px] font-medium text-red-600">{{ thread.blocker }}</p>
+    {% endif %}
+    {% if thread.mode != "none" %}
+    <ol class="space-y-2 {% if thread.mode == 'reply_chain' %}border-l-2 border-stone-200 ml-1.5 pl-3{% endif %}">
+        {% for part in thread.parts %}
+        <li class="text-[12px] text-stone-700">
+            <div class="flex items-center justify-between gap-2 mb-0.5">
+                <span class="text-[10px] font-semibold uppercase tracking-wider text-stone-400">{% if thread.mode == "comments" %}Comment{% else %}Part{% endif %} {{ part.number }}</span>
+                <span class="text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded-full {% if part.is_over_limit %}bg-red-50 text-red-600{% else %}bg-stone-100 text-stone-500{% endif %}">{{ part.char_count }}/{{ part.char_limit }}</span>
+            </div>
+            {% if part.caption %}
+            <p class="whitespace-pre-wrap break-words leading-relaxed">{{ part.caption|truncatechars:200 }}</p>
+            {% else %}
+            <p class="text-stone-300 italic">Empty part…</p>
+            {% endif %}
+            {% if part.media %}
+            <div class="flex gap-1 mt-1">
+                {% for m in part.media %}
+                {% if m.is_video %}
+                <video src="{{ m.url }}#t=0.5" class="w-10 h-10 rounded object-cover" muted preload="metadata"></video>
+                {% else %}
+                <img src="{{ m.url }}" class="w-10 h-10 rounded object-cover" alt="">
+                {% endif %}
+                {% endfor %}
+            </div>
+            {% endif %}
+        </li>
+        {% endfor %}
+    </ol>
+    {% endif %}
+</div>
+{% endif %}

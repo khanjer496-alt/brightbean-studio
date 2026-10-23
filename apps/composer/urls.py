@@ -31,6 +31,12 @@ urlpatterns = [
         views.transition_platform_post,
         name="transition_platform_post",
     ),
+    # Resume a thread that stopped part-way
+    path(
+        "compose/<uuid:post_id>/platform-posts/<uuid:platform_post_id>/resume-thread/",
+        views.resume_thread,
+        name="resume_thread",
+    ),
     # Auto-save
     path("compose/autosave/", views.autosave, name="autosave"),
     path("compose/<uuid:post_id>/autosave/", views.autosave, name="autosave_edit"),
@@ -40,6 +46,7 @@ urlpatterns = [
     path("compose/media-picker/", views.media_picker, name="media_picker"),
     path("compose/thumbnail-picker/", views.thumbnail_picker, name="thumbnail_picker"),
     path("compose/thumbnail-upload/", views.thumbnail_upload, name="thumbnail_upload"),
+    path("compose/thread-media-picker/", views.thread_media_picker, name="thread_media_picker"),
     path("compose/media-stream/<uuid:asset_id>/", views.media_stream, name="media_stream"),
     path("compose/media-filmstrip/<uuid:asset_id>/", views.media_filmstrip, name="media_filmstrip"),
     path("compose/unsplash-search/", views.unsplash_search, name="unsplash_search"),

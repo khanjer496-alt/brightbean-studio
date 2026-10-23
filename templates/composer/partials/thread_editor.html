@@ -1,0 +1,151 @@
+{% comment %}
+Thread editor - the post's later parts, below the caption (the caption is part 1).
+Rendered inside composerApp(), which owns ``threadParts`` and the thread methods.
+Each part is counted against the tightest selected account's per-part limit
+(``charLimits[id].thread_part_limit``); the preview shows the thread per network.
+Reorder by dragging the handle or with the up/down buttons; the finisher stays last.
+{% endcomment %}
+<section class="space-y-3" aria-labelledby="thread-editor-heading">
+    <input type="hidden" name="thread_parts" :value="threadPayload">
+
+    <div class="flex items-center justify-between gap-2" x-show="threadParts.length > 0" x-cloak>
+        <h2 id="thread-editor-heading" class="text-sm font-semibold text-stone-500 uppercase tracking-wider">
+            Thread
+            <span class="ml-1 text-[11px] font-semibold normal-case tracking-normal text-stone-400 tabular-nums"
+                  x-text="(threadParts.length + 1) + ' parts'"></span>
+        </h2>
+    </div>
+
+    <!-- Which networks take the thread, and how -->
+    <template x-if="threadParts.length > 0 && threadNotes.length > 0">
+        <ul class="space-y-1" aria-label="How each network publishes this thread">
+            <template x-for="note in threadNotes" :key="note.id">
+                <li class="flex items-start gap-1.5 text-[11px]"
+                    :class="note.blocking ? 'text-red-600' : 'text-stone-500'">
+                    <svg class="w-3.5 h-3.5 flex-shrink-0 mt-px" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z"/></svg>
+                    <span x-text="note.text"></span>
+                </li>
+            </template>
+        </ul>
+    </template>
+
+    <p class="sr-only" aria-live="polite" x-text="threadAnnouncement"></p>
+
+    <ol class="space-y-3" aria-label="Thread parts after the first post">
+        <template x-for="(part, index) in threadParts" :key="part.key">
+            <li class="thread-part border border-stone-200 rounded-xl bg-white"
+                :class="{ 'thread-part-dragging': threadDragIndex === index, 'thread-part-drop': threadDropIndex === index && threadDragIndex !== index }"
+                @dragover.prevent="threadDragOver(index)"
+                @drop.prevent="threadDrop(index)">
+                <fieldset class="p-3 space-y-2">
+                    <legend class="sr-only" x-text="(part.is_finisher ? 'Thread finisher, part ' : 'Part ') + (index + 2)"></legend>
+                    <div class="flex items-center gap-2">
+                        <span class="thread-drag-handle w-6 h-8 flex items-center justify-center text-stone-300"
+                              :draggable="!part.is_finisher"
+                              :class="part.is_finisher ? 'opacity-40' : 'cursor-grab hover:text-stone-500'"
+                              @dragstart="threadDragStart(index, $event)"
+                              @dragend="threadDragEnd()"
+                              aria-hidden="true">
+                            <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M7 4a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm0 6a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm-1.5 7.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM16 4a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0zm-1.5 7.5a1.5 1.5 0 100-3 1.5 1.5 0 000 3zM16 16a1.5 1.5 0 11-3 0 1.5 1.5 0 013 0z"/></svg>
+                        </span>
+                        <span class="text-xs font-semibold text-stone-600"
+                              x-text="part.is_finisher ? 'Finisher · part ' + (index + 2) : 'Part ' + (index + 2)"></span>
+                        <div class="ml-auto flex items-center gap-1">
+                            <button type="button"
+                                    class="w-8 h-8 rounded-lg border border-stone-200 text-stone-400 hover:text-stone-700 hover:border-stone-300 flex items-center justify-center transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                                    :disabled="!canMoveThreadPart(index, -1)"
+                                    :aria-label="'Move part ' + (index + 2) + ' up'"
+                                    @click="moveThreadPart(index, -1)">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/></svg>
+                            </button>
+                            <button type="button"
+                                    class="w-8 h-8 rounded-lg border border-stone-200 text-stone-400 hover:text-stone-700 hover:border-stone-300 flex items-center justify-center transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                                    :disabled="!canMoveThreadPart(index, 1)"
+                                    :aria-label="'Move part ' + (index + 2) + ' down'"
+                                    @click="moveThreadPart(index, 1)">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                            </button>
+                            <button type="button"
+                                    class="w-8 h-8 rounded-lg border border-stone-200 text-stone-400 hover:text-red-500 hover:border-red-200 flex items-center justify-center transition-colors cursor-pointer"
+                                    :aria-label="'Remove part ' + (index + 2)"
+                                    @click="removeThreadPart(index)">
+                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                            </button>
+                        </div>
+                    </div>
+
+                    <textarea class="comment-editor w-full"
+                              rows="3"
+                              :id="'thread-part-' + part.key"
+                              :aria-label="'Text of part ' + (index + 2)"
+                              :aria-describedby="'thread-part-count-' + part.key"
+                              :placeholder="part.is_finisher ? 'Follow for more…' : 'Continue the thread…'"
+                              x-model="part.caption"
+                              @input="debouncedPreviewUpdate()"></textarea>
+
+                    <!-- Part media -->
+                    <div class="flex flex-wrap items-center gap-2" x-show="part.media.length > 0 || threadMediaAllowed">
+                        <template x-for="(m, mIndex) in part.media" :key="m.id">
+                            <div class="relative w-14 h-14 rounded-lg overflow-hidden border border-stone-200 bg-stone-100">
+                                <template x-if="m.is_video">
+                                    <video :src="m.url + '#t=0.5'" class="w-full h-full object-cover" muted preload="metadata"></video>
+                                </template>
+                                <template x-if="!m.is_video">
+                                    <img :src="m.url" :alt="m.filename" class="w-full h-full object-cover">
+                                </template>
+                                <button type="button"
+                                        class="absolute top-0.5 right-0.5 w-5 h-5 rounded-full bg-black/60 text-white flex items-center justify-center cursor-pointer"
+                                        :aria-label="'Remove ' + m.filename + ' from part ' + (index + 2)"
+                                        @click="part.media.splice(mIndex, 1); debouncedPreviewUpdate()">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                </button>
+                            </div>
+                        </template>
+                        <button type="button" x-show="threadMediaAllowed"
+                                class="text-xs font-medium text-stone-400 hover:text-orange-600 transition-colors flex items-center gap-1.5 cursor-pointer"
+                                @click="openThreadMediaPicker(index)">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                            <span x-text="'Add media to part ' + (index + 2)"></span>
+                        </button>
+                    </div>
+
+                    <div class="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-stone-100">
+                        <label class="flex items-center gap-2 text-[11px] text-stone-500">
+                            <span x-text="index === 0 ? 'After the post' : 'After part ' + (index + 1)"></span>
+                            <select class="text-xs px-2 py-1 rounded-lg border border-stone-200 bg-white text-stone-700 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
+                                    :aria-label="'Delay before part ' + (index + 2)"
+                                    x-model.number="part.delay_seconds"
+                                    @change="debouncedPreviewUpdate()">
+                                <template x-for="choice in threadDelayChoices(part.delay_seconds)" :key="choice.value">
+                                    <option :value="choice.value" x-text="choice.label" :selected="choice.value === part.delay_seconds"></option>
+                                </template>
+                            </select>
+                        </label>
+                        <span class="text-[11px] tabular-nums font-medium"
+                              :id="'thread-part-count-' + part.key"
+                              :class="threadPartOverLimit(part) ? 'text-red-500' : 'text-stone-400'"
+                              x-text="threadPartLimit(part) ? threadPartCount(part) + ' / ' + threadPartLimit(part) : threadPartCount(part)"></span>
+                    </div>
+                </fieldset>
+            </li>
+        </template>
+    </ol>
+
+    <div class="flex flex-wrap items-center gap-2">
+        <button type="button"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border border-stone-200 text-stone-600 hover:border-stone-300 hover:text-stone-800 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                :disabled="!canAddThreadPart"
+                @click="addThreadPart(false)">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+            Add to thread
+        </button>
+        <button type="button" x-show="!threadHasFinisher"
+                class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-full border border-stone-200 text-stone-500 hover:border-stone-300 hover:text-stone-700 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                :disabled="!canAddThreadPart"
+                @click="addThreadPart(true)">
+            Add thread finisher
+        </button>
+        <span class="text-[11px] text-stone-400" x-show="!canAddThreadPart && threadParts.length > 0" x-cloak
+              x-text="'A thread on these networks takes at most ' + threadMaxParts + ' parts.'"></span>
+    </div>
+</section>

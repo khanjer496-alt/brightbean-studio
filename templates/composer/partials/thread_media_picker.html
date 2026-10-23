@@ -1,0 +1,35 @@
+{% comment %}
+Thread part media picker modal content - loaded via HTMX.
+Context: assets (images and videos), workspace.
+Clicking an asset dispatches a 'thread-media-selected' event with the asset's
+id, URL and kind. The composer's Alpine root adds it to the part that opened
+the picker; nothing is attached server-side until the post is saved.
+{% endcomment %}
+
+{% if assets %}
+<div class="grid grid-cols-3 sm:grid-cols-4 gap-3">
+    {% for asset in assets %}
+    <button type="button"
+            class="group relative rounded-xl overflow-hidden border border-stone-200 aspect-square cursor-pointer hover:border-orange-400 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-orange-300 transition-all duration-150"
+            aria-label="Add {{ asset.filename }}"
+            @click="$dispatch('thread-media-selected', { assetId: '{{ asset.id }}', url: '{% if asset.file %}{{ asset.file.url|escapejs }}{% endif %}', isVideo: {% if asset.is_video %}true{% else %}false{% endif %}, filename: '{{ asset.filename|escapejs }}' })">
+        {% if asset.thumbnail %}
+        <img src="{{ asset.thumbnail.url }}" class="w-full h-full object-cover" alt="">
+        {% elif asset.file and not asset.is_video %}
+        <img src="{{ asset.file.url }}" class="w-full h-full object-cover" alt="">
+        {% elif asset.file %}
+        <video src="{{ asset.file.url }}#t=0.5" class="w-full h-full object-cover" muted preload="metadata"></video>
+        {% endif %}
+        {% if asset.is_video %}
+        <span class="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-black/60 text-[10px] font-semibold text-white">Video</span>
+        {% endif %}
+        <span class="absolute bottom-0 left-0 right-0 p-1.5 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150 text-[10px] text-white font-medium truncate text-left">{{ asset.filename }}</span>
+    </button>
+    {% endfor %}
+</div>
+{% else %}
+<div class="text-center py-12">
+    <p class="text-sm font-medium text-stone-500 mb-1">No media available</p>
+    <p class="text-xs text-stone-400">Upload images or videos to your media library to add them to a thread part</p>
+</div>
+{% endif %}

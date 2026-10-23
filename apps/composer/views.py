@@ -41,7 +41,7 @@ from apps.members.decorators import require_permission
 from apps.members.models import WorkspaceMembership
 from apps.social_accounts.models import SocialAccount
 from apps.workspaces.models import Workspace
-from providers import is_video_only, requires_media
+from providers import is_video_only, requires_media, thread_capability_for
 from providers.tiktok import VALID_PRIVACY_LEVELS as TIKTOK_PRIVACY_LEVELS
 
 from .forms import ContentCategoryForm, PostForm
@@ -52,6 +52,7 @@ from .models import (
     IdeaGroup,
     IdeaMedia,
     PlatformPost,
+    PlatformPostPart,
     Post,
     PostMedia,
     PostTemplate,
@@ -62,10 +63,16 @@ from .services import (
     media_blocker,
     media_change_blocker,
     media_rule_issues,
+    parse_thread_parts,
     post_media_assets,
     post_media_types,
+    post_thread_parts,
     publish_blocker,
     require_publishable,
+    resolve_thread_part_assets,
+    set_post_parts,
+    spec_thread_parts,
+    thread_blocker,
     usable_media_types,
 )
 from .status import READONLY_STATUSES, derive_post_status
@@ -678,6 +685,118 @@ def _validate_platform_media_rules(request, post, workspace, action):
     return JsonResponse({"errors": {"media": " ".join(dict.fromkeys(errors))}}, status=400)
 
 
+def _composer_thread_parts(request, workspace):
+    """The thread's later parts from the composer form, with their media.
+
+    Returns ``(specs, asset_map)``, or ``(None, {})`` when the form carried no
+    thread editor — a save from anywhere else must leave the parts alone.
+    Raises ``ValueError`` on a payload the composer never sends.
+    """
+    if "thread_parts" not in request.POST:
+        return None, {}
+    try:
+        raw = json.loads(request.POST.get("thread_parts") or "[]")
+    except ValueError as exc:
+        raise ValueError("The thread couldn't be read. Reload the page and try again.") from exc
+    specs = parse_thread_parts(raw)
+    return specs, resolve_thread_part_assets(workspace, specs)
+
+
+def _validate_thread_parts(request, workspace, action, specs, asset_map):
+    """Refuse to schedule a thread a selected platform can't publish.
+
+    Each account is held to its platform's ``ThreadCapability``: whether it
+    takes a thread at all, how many parts and how long, and the media rules for
+    a part's own media. Drafts are never blocked, like media.
+    """
+    if action not in _PUBLISH_COMMITTING_ACTIONS or not specs:
+        return None
+    selected_ids = _parse_selected_account_ids(request.POST.get("selected_accounts", ""))
+    accounts = SocialAccount.objects.filter(id__in=selected_ids, workspace=workspace)
+    errors = [
+        reason
+        for account in accounts
+        if (reason := thread_blocker(account, spec_thread_parts(account, specs, asset_map)))
+    ]
+    if not errors:
+        return None
+    return JsonResponse({"errors": {"thread": " ".join(dict.fromkeys(errors))}}, status=400)
+
+
+def _thread_parts_changed(post, specs) -> bool:
+    """Whether saving ``specs`` would change ``post``'s stored thread."""
+    if post.pk is None:
+        return bool(specs)
+    current = [
+        (
+            part["caption"],
+            part["delay_seconds"],
+            part["is_finisher"],
+            [m["id"] for m in part["media"]],
+            {acc: text for acc, text in part["caption_overrides"].items()},
+        )
+        for part in _thread_parts_payload(post)
+    ]
+    wanted = [
+        (
+            spec.caption,
+            spec.delay_seconds,
+            spec.is_finisher,
+            [str(mid) for mid in spec.media_asset_ids],
+            {acc: text for acc, text in spec.caption_overrides.items() if text is not None},
+        )
+        for spec in sorted(specs, key=lambda spec: spec.is_finisher)
+    ]
+    return current != wanted
+
+
+def _save_thread_parts(post, specs, asset_map):
+    """Store the composer's thread on ``post``, or a 400 when it can't be changed.
+
+    A no-op when the form carried no thread editor or the thread is unchanged,
+    so saving a sibling of an already-threaded channel never touches the
+    parts that channel published.
+    """
+    if specs is None or not _thread_parts_changed(post, specs):
+        return None
+    try:
+        set_post_parts(post, specs, asset_map=asset_map)
+    except ValueError as exc:
+        return JsonResponse({"errors": {"thread": str(exc)}}, status=400)
+    return None
+
+
+def _thread_parts_payload(post) -> list[dict]:
+    """The composer's thread editor state for an existing post's parts."""
+    if post is None:
+        return []
+    overrides: dict = {}
+    for state in PlatformPostPart.objects.filter(
+        platform_post__post=post, platform_specific_caption__isnull=False
+    ).select_related("platform_post"):
+        overrides.setdefault(state.part_id, {})[str(state.platform_post.social_account_id)] = (
+            state.platform_specific_caption
+        )
+    return [
+        {
+            "caption": part.caption,
+            "delay_seconds": part.delay_seconds,
+            "is_finisher": part.is_finisher,
+            "caption_overrides": overrides.get(part.id, {}),
+            "media": [
+                {
+                    "id": str(pm.media_asset_id),
+                    "url": pm.media_asset.file.url if pm.media_asset.file else "",
+                    "is_video": pm.media_asset.is_video,
+                    "filename": pm.media_asset.filename,
+                }
+                for pm in part.media_attachments.all()
+            ],
+        }
+        for part in post_thread_parts(post)
+    ]
+
+
 def _save_version(post, user):
     """Create a PostVersion snapshot."""
     from apps.social_accounts.youtube_compliance import authored_youtube_settings
@@ -711,6 +830,15 @@ def _save_version(post, user):
                 "alt_text": pm.alt_text,
             }
             for pm in post.media_attachments.all()
+        ],
+        "parts": [
+            {
+                "caption": part.caption,
+                "delay_seconds": part.delay_seconds,
+                "is_finisher": part.is_finisher,
+                "media_asset_ids": [str(pm.media_asset_id) for pm in part.media_attachments.all()],
+            }
+            for part in post_thread_parts(post)
         ],
     }
     PostVersion.objects.create(
@@ -897,9 +1025,15 @@ def compose(request, workspace_id, post_id=None):
     for acc in social_accounts:
         cfg = dict(acc.field_config)
         cfg["supports_first_comment"] = acc.supports_first_comment()
+        thread = thread_capability_for(acc.platform)
         char_limits[str(acc.id)] = {
             "platform": acc.platform,
             "limit": acc.char_limit,
+            # The thread editor counts and checks each part against these.
+            "thread_mode": thread.mode.value,
+            "thread_max_parts": thread.max_parts,
+            "thread_part_limit": thread.part_max_length or acc.char_limit,
+            "thread_media_per_part": thread.media_per_part,
             # Each of these costs two characters once the provider escapes it,
             # so the live counter can charge for them as the user types.
             "escaped_chars": acc.escaped_chars,
@@ -1006,6 +1140,11 @@ def compose(request, workspace_id, post_id=None):
         pp for pp in platform_post_list if pp.first_comment_status == PlatformPost.FirstCommentStatus.FAILED
     ]
 
+    # A thread that stopped part-way leaves its first post published, so it is
+    # in neither banner above. Shown with a Resume action that restarts at the
+    # stopped part and never re-sends the parts already live.
+    partial_threads = [pp for pp in platform_post_list if pp.is_thread_partial]
+
     # Build media_items for the initial preview render
     media_items = []
     for att in media_attachments:
@@ -1106,6 +1245,8 @@ def compose(request, workspace_id, post_id=None):
         "account_scope": account_filter if (post_id and account_filter) else "",
         "failed_platform_posts": failed_platform_posts,
         "failed_first_comments": failed_first_comments,
+        "partial_threads": partial_threads,
+        "thread_parts": _thread_parts_payload(post),
         "unsplash_enabled": bool(settings.UNSPLASH_ACCESS_KEY),
     }
     return render(request, "composer/compose.html", context)
@@ -1158,8 +1299,25 @@ def _transition_post_children(post, target, *, allow_via_draft=True, only=None):
 
 
 def _base_content_snapshot(post):
-    """Reviewable base content used to detect edits to an approved post."""
-    return (post.title, post.caption, post.first_comment, tuple(post.tags or []))
+    """Reviewable base content used to detect edits to an approved post.
+
+    Includes the thread's later parts: they publish too, so editing one has to
+    send an approved post back for review like editing the caption does.
+    """
+    parts = (
+        tuple(
+            (
+                part.caption,
+                part.delay_seconds,
+                part.is_finisher,
+                tuple(pm.media_asset_id for pm in part.media_attachments.all()),
+            )
+            for part in post_thread_parts(post)
+        )
+        if post.pk
+        else ()
+    )
+    return (post.title, post.caption, post.first_comment, tuple(post.tags or []), parts)
 
 
 def _revert_approved_to_review(post):
@@ -1296,6 +1454,28 @@ def save_post(request, workspace_id, post_id=None):
     if media_rules_error is not None:
         return media_rules_error
 
+    try:
+        thread_specs, thread_assets = _composer_thread_parts(request, workspace)
+    except ValueError as exc:
+        return JsonResponse({"errors": {"thread": str(exc)}}, status=400)
+    thread_error = _validate_thread_parts(request, workspace, action, thread_specs, thread_assets)
+    if thread_error is not None:
+        return thread_error
+    # Refused before anything is written: once a part is out on any channel,
+    # the parts are that channel's record and can't be replaced.
+    if (
+        thread_specs is not None
+        and post.pk
+        and _thread_parts_changed(post, thread_specs)
+        and PlatformPostPart.objects.filter(platform_post__post=post)
+        .exclude(status=PlatformPostPart.Status.PENDING)
+        .exists()
+    ):
+        return JsonResponse(
+            {"errors": {"thread": "This thread has already started publishing, so its parts can't be changed."}},
+            status=400,
+        )
+
     allowance_error = _scheduled_post_allowance_error(request, post, workspace, action, form)
     if allowance_error is not None:
         return allowance_error
@@ -1360,6 +1540,9 @@ def save_post(request, workspace_id, post_id=None):
         # Ensure PlatformPost rows exist for every selected account before the
         # queue service writes per-platform scheduled_at values.
         _sync_platform_posts(request, post, workspace, initial_status="draft")
+        thread_save_error = _save_thread_parts(post, thread_specs, thread_assets)
+        if thread_save_error is not None:
+            return thread_save_error
         # "Next Available" always places the post in the queue's soonest open
         # slot. It deliberately ignores the Schedule-panel date/time: those
         # inputs are prefilled from the post's own scheduled_at/proposed time
@@ -1399,6 +1582,9 @@ def save_post(request, workspace_id, post_id=None):
         post.proposed_publish_at = None
         post.save()
         _sync_platform_posts(request, post, workspace, initial_status="draft")
+        thread_save_error = _save_thread_parts(post, thread_specs, thread_assets)
+        if thread_save_error is not None:
+            return thread_save_error
         try:
             # One transaction across every queue (see add_to_queue above).
             with transaction.atomic():
@@ -1427,6 +1613,9 @@ def save_post(request, workspace_id, post_id=None):
         post.save()
         # Sync platform posts before submitting
         _sync_platform_posts(request, post, workspace, initial_status="draft")
+        thread_save_error = _save_thread_parts(post, thread_specs, thread_assets)
+        if thread_save_error is not None:
+            return thread_save_error
         _save_version(post, request.user)
         from apps.approvals.services import submit_for_review
 
@@ -1450,6 +1639,9 @@ def save_post(request, workspace_id, post_id=None):
                 return recurrence_error
         post.save()
         _sync_platform_posts(request, post, workspace, initial_status="draft")
+        thread_save_error = _save_thread_parts(post, thread_specs, thread_assets)
+        if thread_save_error is not None:
+            return thread_save_error
         _save_version(post, request.user)
         from apps.approvals.services import resubmit_post
 
@@ -1517,6 +1709,9 @@ def save_post(request, workspace_id, post_id=None):
     # this action — e.g. "scheduled" for schedule/publish_now, "draft" for
     # save_draft).
     _sync_platform_posts(request, post, workspace, initial_status=initial_status)
+    thread_save_error = _save_thread_parts(post, thread_specs, thread_assets)
+    if thread_save_error is not None:
+        return thread_save_error
 
     # Propagate manually-chosen schedule/publish_now datetimes to every
     # PlatformPost now that they exist — except published/publishing rows
@@ -1721,6 +1916,15 @@ def autosave(request, workspace_id, post_id=None):
             social_account_id=acc_id,
         )
 
+    # The thread editor's parts ride along like the caption does. A payload
+    # that can't be stored is skipped rather than failing the tick: the
+    # explicit save reports it.
+    try:
+        thread_specs, thread_assets = _composer_thread_parts(request, workspace)
+    except ValueError:
+        thread_specs, thread_assets = None, {}
+    _save_thread_parts(post, thread_specs, thread_assets)
+
     # Option A: an autosave that changed an approved post's content reverts it to
     # pending_review so edited content can't publish without a fresh review.
     if orig_content is not None and _base_content_snapshot(post) != orig_content:
@@ -1816,6 +2020,16 @@ def preview(request, workspace_id):
                     }
                 )
 
+    # The thread as each network will publish it: every part's caption after
+    # the account's override, counted against the platform's per-part limit,
+    # with the reason a platform would refuse the thread, if any.
+    try:
+        thread_specs, thread_assets = _composer_thread_parts(request, workspace)
+    except ValueError:
+        thread_specs, thread_assets = None, {}
+    for p in previews:
+        p["thread"] = _thread_preview(p["account"], thread_specs or [], thread_assets)
+
     # Each selected platform's media rules, re-checked on every round-trip so
     # the composer shows errors and warnings as media and accounts change.
     issues_by_account = _composer_media_issues(request, rules_post, workspace, [p["account"] for p in previews])
@@ -1838,6 +2052,30 @@ def preview(request, workspace_id):
             "media_issues_oob": True,
         },
     )
+
+
+def _thread_preview(account, specs, asset_map) -> dict | None:
+    """What the preview panel shows of the thread for one account, or None for a single post."""
+    if not specs:
+        return None
+    capability = thread_capability_for(account.platform)
+    limit = capability.part_max_length or account.char_limit
+    parts = spec_thread_parts(account, specs, asset_map)
+    return {
+        "mode": capability.mode.value,
+        "blocker": thread_blocker(account, parts),
+        "parts": [
+            {
+                "number": number,
+                "caption": caption,
+                "char_count": account.caption_wire_length(caption),
+                "char_limit": limit,
+                "is_over_limit": account.caption_wire_length(caption) > limit,
+                "media": [{"url": a.file.url if a.file else "", "is_video": a.is_video} for a in assets],
+            }
+            for number, (caption, assets) in enumerate(parts, start=2)
+        ],
+    }
 
 
 @login_required
@@ -1886,6 +2124,57 @@ def thumbnail_picker(request, workspace_id):
         "composer/partials/thumbnail_picker.html",
         {"assets": assets, "workspace": workspace},
     )
+
+
+@login_required
+@require_GET
+def thread_media_picker(request, workspace_id):
+    """Modal picker for a thread part's media.
+
+    Like ``thumbnail_picker``, selection dispatches a client-side event and
+    attaches nothing server-side: the part's media are saved with the thread.
+    """
+    workspace = _get_workspace(request, workspace_id)
+    assets = (
+        MediaAsset.objects.for_workspace(workspace.id)
+        .filter(media_type__in=[MediaAsset.MediaType.IMAGE, MediaAsset.MediaType.VIDEO])
+        .order_by("-created_at")[:50]
+    )
+    return render(
+        request,
+        "composer/partials/thread_media_picker.html",
+        {"assets": assets, "workspace": workspace},
+    )
+
+
+@login_required
+@require_POST
+def resume_thread(request, workspace_id, post_id, platform_post_id):
+    """Resume a thread that stopped part-way, from the part where it stopped.
+
+    Publishes the rest of the thread, so it takes the same ``publish_directly``
+    permission as publishing now. The parts already live are never re-sent.
+    """
+    from apps.publisher.engine import resume_thread as resume
+
+    workspace = _get_workspace(request, workspace_id)
+    membership = request.workspace_membership
+    perms = membership.effective_permissions if membership else {}
+    if not perms.get("publish_directly", False):
+        raise PermissionDenied("You do not have permission to publish directly.")
+    platform_post = get_object_or_404(
+        PlatformPost.objects.select_related("social_account", "post"),
+        id=platform_post_id,
+        post_id=post_id,
+        post__workspace=workspace,
+    )
+    try:
+        resume(platform_post)
+    except ValueError as exc:
+        return JsonResponse({"errors": {"thread": str(exc)}}, status=400)
+    if request.htmx:
+        return HttpResponse(status=204, headers={"HX-Refresh": "true"})
+    return redirect("composer:compose_edit", workspace_id=workspace.id, post_id=post_id)
 
 
 @login_required

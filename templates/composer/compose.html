@@ -222,6 +222,12 @@
     }
     .media-thumb .retry-btn:hover { background: rgba(0,0,0,0.65); }
 
+    /* Thread editor: the part being dragged, and the slot it would drop into */
+    .thread-part { transition: border-color 150ms ease, opacity 150ms ease; }
+    .thread-part-dragging { opacity: 0.5; }
+    .thread-part-drop { border-color: var(--primary); }
+    .thread-drag-handle { touch-action: none; }
+
     /* Preview panel cards */
     .preview-card {
         background: var(--surface-1);
@@ -398,6 +404,34 @@
                 </div>
                 {% endif %}
 
+                {% if partial_threads %}
+                <!-- The first post published but the thread behind it stopped. Resume
+                     restarts at the stopped part; the parts already live are never re-sent. -->
+                <div class="border border-amber-200 bg-amber-50 rounded-xl p-3 space-y-2" role="status">
+                    <div class="flex items-center gap-1.5 text-xs font-semibold text-amber-800">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+                        Thread partially published
+                    </div>
+                    {% for pp in partial_threads %}
+                    <div class="flex flex-wrap items-start justify-between gap-2 pl-5.5">
+                        <p class="text-xs text-amber-700 flex-1 min-w-0">
+                            <span class="font-semibold">{{ pp.social_account.account_name|default:pp.social_account.account_handle }}:</span>
+                            {{ pp.thread_error|default:"The thread stopped before every part was published." }}
+                        </p>
+                        {% if can_publish %}
+                        <button type="button"
+                                class="text-xs font-semibold px-3 py-1.5 rounded-lg bg-stone-800 text-white hover:bg-stone-900 flex-shrink-0 cursor-pointer"
+                                hx-post="{% url 'composer:resume_thread' workspace_id=workspace.id post_id=post.id platform_post_id=pp.id %}"
+                                hx-confirm="Resume the thread from the part where it stopped? If that part's outcome was unconfirmed, check {{ pp.social_account.get_platform_display }} first — it will be sent again.">
+                            Resume thread
+                        </button>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                    <p class="text-[11px] text-amber-600 pl-5.5">The parts already published stay as they are.</p>
+                </div>
+                {% endif %}
+
                 {% if post and post.status == 'scheduled' %}
                 <!-- Scheduled: editable, but warn that edits affect a live schedule -->
                 <div class="border border-amber-200 bg-amber-50 rounded-xl p-3 flex items-start gap-2">
@@ -565,6 +599,9 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Thread: later parts after the caption above -->
+                {% include "composer/partials/thread_editor.html" %}
 
                 <!-- Facebook video destination (regular Page video by default) -->
                 <template x-for="accId in selectedAccounts" :key="'facebook-video-settings-' + accId">
@@ -1194,6 +1231,20 @@
                                   style="font-family: system-ui, -apple-system, sans-serif;"
                                   :placeholder="'Custom ' + (charLimits[accId]?.caption_label || 'caption') + ' for this platform...'"
                                   rows="3"></textarea>
+                        <!-- Per-part overrides for this account's thread -->
+                        <template x-for="(part, index) in threadParts" :key="'override-' + accId + '-' + part.key">
+                            <div class="mt-2">
+                                <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1"
+                                       :for="'override-part-' + accId + '-' + part.key"
+                                       x-text="'Part ' + (index + 2) + ' override'"></label>
+                                <textarea :id="'override-part-' + accId + '-' + part.key"
+                                          class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all resize-none"
+                                          :placeholder="'Custom text for part ' + (index + 2) + ' on this platform…'"
+                                          rows="2"
+                                          x-model="part.caption_overrides[accId]"
+                                          @input="debouncedPreviewUpdate()"></textarea>
+                            </div>
+                        </template>
 
                     </div>
                 </template>
@@ -1774,6 +1825,38 @@
     </div>
 
     <!-- ════════════════════════════════════════════════════════════
+         THREAD PART MEDIA PICKER MODAL
+         ════════════════════════════════════════════════════════════ -->
+    <div x-show="showThreadMediaPicker" x-cloak
+         class="fixed inset-0 z-[60] flex items-center justify-center"
+         role="dialog" aria-modal="true" aria-labelledby="thread-media-picker-title"
+         @keydown.escape.window="showThreadMediaPicker = false"
+         x-transition:enter="transition ease-out duration-200"
+         x-transition:enter-start="opacity-0"
+         x-transition:enter-end="opacity-100"
+         x-transition:leave="transition ease-in duration-150"
+         x-transition:leave-start="opacity-100"
+         x-transition:leave-end="opacity-0">
+        <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="showThreadMediaPicker = false"></div>
+        <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[640px] mx-2 sm:mx-0 max-h-[85vh] sm:max-h-[70vh] overflow-hidden">
+            <div class="px-4 sm:px-6 py-4 border-b border-stone-100 flex items-center justify-between">
+                <h2 id="thread-media-picker-title" class="text-base font-semibold text-stone-900"
+                    x-text="threadPickerIndex === null ? 'Add media' : 'Add media to part ' + (threadPickerIndex + 2)">Add media</h2>
+                <button type="button" @click="showThreadMediaPicker = false" aria-label="Close"
+                        class="w-8 h-8 rounded-lg border border-stone-200 text-stone-400 hover:text-stone-600 hover:border-stone-300 flex items-center justify-center transition-all duration-150 cursor-pointer">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+            <div class="p-4 sm:p-6 overflow-y-auto max-h-[calc(85vh-72px)] sm:max-h-[calc(70vh-72px)]"
+                 x-init="$watch('showThreadMediaPicker', v => { if (v) htmx.ajax('GET', '{% url "composer:thread_media_picker" workspace_id=workspace.id %}', { target: $el, swap: 'innerHTML' }) })">
+                <div class="flex items-center justify-center py-12 text-stone-400">
+                    <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ════════════════════════════════════════════════════════════
          UNSPLASH SEARCH MODAL (only rendered when an API key is configured)
          ════════════════════════════════════════════════════════════ -->
     {% if unsplash_enabled %}
@@ -2049,6 +2132,7 @@
 {{ char_limits|json_script:"composer-char-limits" }}
 {{ platform_extras|json_script:"composer-platform-extras" }}
 {{ media_items|json_script:"composer-media-items" }}
+{{ thread_parts|json_script:"composer-thread-parts" }}
 <script nonce="{{ request.csp_nonce }}">
 function composerApp() {
     return {
@@ -2071,6 +2155,17 @@ function composerApp() {
         previewTimer: null,
         autosavedPostId: '{{ post.id|default:"" }}',
         mediaItems: JSON.parse(document.getElementById('composer-media-items').textContent),
+
+        // Thread: the post's later parts (the caption is part 1). ``key`` is
+        // client-only, so Alpine keeps each part's DOM through a reorder.
+        threadParts: JSON.parse(document.getElementById('composer-thread-parts').textContent)
+            .map((p, i) => ({ ...p, caption_overrides: p.caption_overrides || {}, media: p.media || [], key: 'p' + i })),
+        _threadKeySeq: 0,
+        threadAnnouncement: '',
+        threadDragIndex: null,
+        threadDropIndex: null,
+        showThreadMediaPicker: false,
+        threadPickerIndex: null,
 
         // Unsplash search modal
         showUnsplashModal: false,
@@ -2146,6 +2241,163 @@ function composerApp() {
             return binding !== null && binding.count > binding.limit;
         },
 
+        // ── Thread ──────────────────────────────────────────────────────
+        // What the hidden ``thread_parts`` input submits: the parts in order,
+        // with their media as asset ids and blank overrides dropped.
+        get threadPayload() {
+            return JSON.stringify(this.threadParts.map(p => ({
+                caption: p.caption,
+                delay_seconds: Number(p.delay_seconds) || 0,
+                is_finisher: !!p.is_finisher,
+                media_asset_ids: p.media.map(m => m.id),
+                caption_overrides: Object.fromEntries(
+                    Object.entries(p.caption_overrides || {}).filter(([, text]) => text && text.trim())
+                ),
+            })));
+        },
+        get threadHasFinisher() {
+            return this.threadParts.some(p => p.is_finisher);
+        },
+        // The tightest cap among the selected networks that take a thread.
+        get threadMaxParts() {
+            const caps = this.selectedAccounts
+                .map(id => this.charLimits[id])
+                .filter(c => c && c.thread_mode !== 'none')
+                .map(c => c.thread_max_parts);
+            return caps.length ? Math.min(...caps) : 25;
+        },
+        get canAddThreadPart() {
+            return this.threadParts.length + 1 < this.threadMaxParts;
+        },
+        // Part media is offered only when some selected network can carry it.
+        get threadMediaAllowed() {
+            return this.selectedAccounts.some(id => this.charLimits[id]?.thread_media_per_part);
+        },
+        // One line per selected network that publishes the thread differently
+        // from a plain reply chain, or can't publish it at all.
+        get threadNotes() {
+            const notes = [];
+            for (const id of this.selectedAccounts) {
+                const c = this.charLimits[id];
+                if (!c) continue;
+                if (c.thread_mode === 'none') {
+                    notes.push({ id, blocking: true, text: `${c.name} can't publish a thread — schedule it as a single post or unselect it.` });
+                } else if (c.thread_mode === 'comments') {
+                    const media = this.threadParts.some(p => p.media.length) ? ' Comments are text only.' : '';
+                    notes.push({ id, blocking: false, text: `${c.name} posts the later parts as comments on the first post.${media}` });
+                }
+            }
+            return notes;
+        },
+        threadPartCaption(part, accId) {
+            const override = part.caption_overrides?.[accId];
+            return override && override.trim() ? override : part.caption;
+        },
+        // Like captionBinding: the account with the least headroom decides.
+        threadPartBinding(part) {
+            let binding = null;
+            for (const id of this.selectedAccounts) {
+                const c = this.charLimits[id];
+                if (!c || c.thread_mode === 'none' || !c.thread_part_limit) continue;
+                const count = this.wireLength(this.threadPartCaption(part, id), id);
+                if (binding === null || c.thread_part_limit - count < binding.limit - binding.count) {
+                    binding = { count, limit: c.thread_part_limit };
+                }
+            }
+            return binding;
+        },
+        threadPartCount(part) {
+            return this.threadPartBinding(part)?.count ?? part.caption.length;
+        },
+        threadPartLimit(part) {
+            return this.threadPartBinding(part)?.limit ?? null;
+        },
+        threadPartOverLimit(part) {
+            const binding = this.threadPartBinding(part);
+            return binding !== null && binding.count > binding.limit;
+        },
+        threadDelayChoices(current) {
+            const choices = [
+                { value: 0, label: 'Right away' },
+                { value: 30, label: '30 seconds later' },
+                { value: 60, label: '1 minute later' },
+                { value: 300, label: '5 minutes later' },
+                { value: 900, label: '15 minutes later' },
+                { value: 1800, label: '30 minutes later' },
+                { value: 3600, label: '1 hour later' },
+                { value: 21600, label: '6 hours later' },
+                { value: 86400, label: '24 hours later' },
+            ];
+            // Keep a delay set through the API visible even when it isn't a preset.
+            if (!choices.some(c => c.value === current)) {
+                choices.push({ value: current, label: `${current} seconds later` });
+            }
+            return choices;
+        },
+        addThreadPart(finisher) {
+            if (!this.canAddThreadPart) return;
+            const part = {
+                caption: '', delay_seconds: 0, is_finisher: !!finisher,
+                caption_overrides: {}, media: [], key: 'n' + (++this._threadKeySeq),
+            };
+            // The finisher always closes the thread.
+            const finisherIndex = this.threadParts.findIndex(p => p.is_finisher);
+            const at = finisher || finisherIndex === -1 ? this.threadParts.length : finisherIndex;
+            this.threadParts.splice(at, 0, part);
+            this.threadAnnouncement = `Part ${at + 2} added.`;
+            this.$nextTick(() => document.getElementById('thread-part-' + part.key)?.focus());
+            this.debouncedPreviewUpdate();
+        },
+        removeThreadPart(index) {
+            this.threadParts.splice(index, 1);
+            this.threadAnnouncement = `Part ${index + 2} removed.`;
+            this.debouncedPreviewUpdate();
+        },
+        canMoveThreadPart(index, step) {
+            const target = index + step;
+            if (target < 0 || target >= this.threadParts.length) return false;
+            return !this.threadParts[index].is_finisher && !this.threadParts[target].is_finisher;
+        },
+        _reorderThread(from, to) {
+            const [part] = this.threadParts.splice(from, 1);
+            this.threadParts.splice(to, 0, part);
+            this.threadAnnouncement = `Moved to part ${to + 2} of ${this.threadParts.length + 1}.`;
+            this.debouncedPreviewUpdate();
+        },
+        moveThreadPart(index, step) {
+            if (!this.canMoveThreadPart(index, step)) return;
+            const part = this.threadParts[index];
+            this._reorderThread(index, index + step);
+            // Keep focus on the moved part's button so repeated presses keep moving it.
+            this.$nextTick(() => {
+                const li = document.getElementById('thread-part-' + part.key)?.closest('li');
+                li?.querySelectorAll('button')[step < 0 ? 0 : 1]?.focus();
+            });
+        },
+        threadDragStart(index, event) {
+            if (this.threadParts[index].is_finisher) { event.preventDefault(); return; }
+            this.threadDragIndex = index;
+            event.dataTransfer.effectAllowed = 'move';
+            event.dataTransfer.setData('text/plain', String(index));
+        },
+        threadDragOver(index) {
+            if (this.threadDragIndex !== null) this.threadDropIndex = index;
+        },
+        threadDrop(index) {
+            const from = this.threadDragIndex;
+            this.threadDragEnd();
+            if (from === null || from === index || this.threadParts[index]?.is_finisher) return;
+            this._reorderThread(from, index);
+        },
+        threadDragEnd() {
+            this.threadDragIndex = null;
+            this.threadDropIndex = null;
+        },
+        openThreadMediaPicker(index) {
+            this.threadPickerIndex = index;
+            this.showThreadMediaPicker = true;
+        },
+
         // Computed-like getters for title field visibility
         get anyPlatformNeedsTitle() {
             return this.selectedAccounts.some(id => this.charLimits[id]?.needs_title);
@@ -2216,6 +2468,17 @@ function composerApp() {
                 this.platformExtras[accId].thumbnail_url = e.detail.url;
                 this.showThumbnailPicker = false;
                 this.thumbnailPickerAccId = null;
+            });
+
+            // A thread part's media, picked from the library.
+            this.$root.addEventListener('thread-media-selected', (e) => {
+                const part = this.threadParts[this.threadPickerIndex];
+                if (part && !part.media.some(m => m.id === e.detail.assetId)) {
+                    part.media.push({ id: e.detail.assetId, url: e.detail.url, is_video: e.detail.isVideo, filename: e.detail.filename });
+                    this.debouncedPreviewUpdate();
+                }
+                this.showThreadMediaPicker = false;
+                this.threadPickerIndex = null;
             });
 
             // Trigger preview on page load for existing posts
