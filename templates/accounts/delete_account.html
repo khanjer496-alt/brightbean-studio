@@ -1,0 +1,68 @@
+{% extends "layouts/settings.html" %}
+{% block title %}Delete account - Settings - {{ brand_short_name }}{% endblock %}
+{% block content %}
+<div class="max-w-xl">
+    <h2 class="text-xl font-semibold mb-2 text-(--text-primary)">Delete your account</h2>
+    <p class="text-sm mb-6 text-(--text-secondary)">
+        This is permanent. See <a href="{% url 'legal:data_deletion' %}" class="underline">how deletion works</a> for exactly what is removed and what stays.
+    </p>
+
+    {% if blockers %}
+    <div class="rounded-lg border border-red-300 bg-red-50 p-4 mb-6 text-red-900" role="alert">
+        <p class="text-sm font-semibold mb-2">You cannot delete this account yet</p>
+        <ul class="list-disc pl-5 text-sm space-y-1">
+            {% for reason in blockers %}<li>{{ reason }}</li>{% endfor %}
+        </ul>
+    </div>
+    {% else %}
+    <ul class="list-disc pl-5 text-sm mb-6 space-y-1 text-(--text-secondary)">
+        <li>We ask each connected platform to revoke the access you granted, where the platform supports it.</li>
+        <li>Your profile, sign-in methods, sessions and notifications are deleted.</li>
+        {% for org in deleted_with_account %}
+        <li><strong>{{ org.name }}</strong> has no other members, so the whole organization is deleted: its workspaces, posts, media, inbox and analytics.</li>
+        {% endfor %}
+        <li>In organizations with other members, their channels and content stay with the organization and are no longer attributed to you.</li>
+    </ul>
+
+    <form method="post" novalidate>
+        {% csrf_token %}
+        {% if error %}
+        <p id="delete-error" class="rounded-lg border border-red-300 bg-red-50 p-3 mb-4 text-sm text-red-900" role="alert">{{ error }}</p>
+        {% endif %}
+
+        {% if needs_password %}
+        <div class="mb-4">
+            <label for="id_password" class="block text-sm font-semibold mb-1 text-(--text-primary)">Password</label>
+            <input type="password" name="password" id="id_password" autocomplete="current-password" required
+                   class="form-input-styled w-full">
+        </div>
+        {% else %}
+        <div class="mb-4">
+            <label for="id_email" class="block text-sm font-semibold mb-1 text-(--text-primary)">Your account email</label>
+            <input type="email" name="email" id="id_email" autocomplete="email" required class="form-input-styled w-full">
+        </div>
+        {% endif %}
+
+        {% if needs_code %}
+        <div class="mb-4">
+            <label for="id_code" class="block text-sm font-semibold mb-1 text-(--text-primary)">Authenticator or recovery code</label>
+            <input type="text" name="code" id="id_code" inputmode="numeric" autocomplete="one-time-code" required
+                   class="form-input-styled w-full">
+        </div>
+        {% endif %}
+
+        <div class="mb-6">
+            <label for="id_confirmation" class="block text-sm font-semibold mb-1 text-(--text-primary)">Type <span class="font-mono">{{ phrase }}</span> to confirm</label>
+            <input type="text" name="confirmation" id="id_confirmation" autocomplete="off" required
+                   {% if error %}aria-invalid="true" aria-describedby="delete-error"{% endif %}
+                   class="form-input-styled w-full">
+        </div>
+
+        <div class="flex flex-wrap gap-3">
+            <button type="submit" class="px-5 py-2 text-sm font-semibold rounded-full bg-red-600 text-white hover:bg-red-700">Permanently delete my account</button>
+            <a href="{% url 'accounts:settings' %}" class="px-5 py-2 text-sm font-medium rounded-full border border-(--border) text-(--text-primary)">Cancel</a>
+        </div>
+    </form>
+    {% endif %}
+</div>
+{% endblock %}

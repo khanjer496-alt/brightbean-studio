@@ -5,6 +5,9 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods, require_POST
+from django_ratelimit.decorators import ratelimit
+
+from . import deletion
 
 
 def health_check(request):
@@ -60,8 +63,6 @@ def account_settings(request):
             _handle_name_update(request, user)
         elif action == "update_password":
             _handle_password_update(request, user)
-        elif action == "delete_account":
-            return _handle_account_deletion(request, user)
 
         return redirect("accounts:settings")
 
@@ -185,42 +186,41 @@ def _handle_password_update(request, user):
     messages.success(request, "Password changed.")
 
 
-def _handle_account_deletion(request, user):
-    """Handle account deletion with sole-owner safety check."""
-    from apps.members.models import OrgMembership
+@login_required
+@ratelimit(key="user", rate="10/h", method="POST", block=True)
+@require_http_methods(["GET", "POST"])
+def delete_account(request):
+    """Delete the signed-in user's account after re-authentication."""
+    user = request.user
+    reasons = deletion.blockers(user)
+    error = ""
+    if request.method == "POST" and not reasons:
+        error = deletion.reauthentication_error(
+            user,
+            password=request.POST.get("password", ""),
+            code=request.POST.get("code", ""),
+            email=request.POST.get("email", ""),
+            phrase=request.POST.get("confirmation", ""),
+        )
+        if not error:
+            deletion.delete_account(user)
+            logout(request)
+            messages.success(request, "Your account and data have been deleted.")
+            return redirect("account_login")
 
-    # Check if user is the sole owner of any organization
-    owned_memberships = OrgMembership.objects.filter(user=user, org_role=OrgMembership.OrgRole.OWNER).select_related(
-        "organization"
+    return render(
+        request,
+        "accounts/delete_account.html",
+        {
+            "settings_active": "profile",
+            "blockers": reasons,
+            "error": error,
+            "phrase": deletion.CONFIRMATION_PHRASE,
+            "needs_password": deletion.needs_password(user),
+            "needs_code": deletion.needs_authenticator_code(user),
+            "deleted_with_account": deletion.organizations_deleted_with_account(user),
+        },
     )
-
-    sole_owner_orgs = []
-    for membership in owned_memberships:
-        other_owners = (
-            OrgMembership.objects.filter(
-                organization=membership.organization,
-                org_role=OrgMembership.OrgRole.OWNER,
-            )
-            .exclude(user=user)
-            .exists()
-        )
-        if not other_owners:
-            sole_owner_orgs.append(membership.organization.name)
-
-    if sole_owner_orgs:
-        org_names = ", ".join(sole_owner_orgs)
-        messages.error(
-            request,
-            f"You are the sole owner of: {org_names}. "
-            "Transfer ownership or delete the organization before deleting your account.",
-        )
-        return redirect("accounts:settings")
-
-    # Safe to delete
-    user.delete()
-    logout(request)
-    messages.success(request, "Your account has been deleted.")
-    return redirect("account_login")
 
 
 @login_required
