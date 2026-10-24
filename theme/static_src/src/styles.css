@@ -1026,6 +1026,8 @@ span.flatpickr-weekday {
     position: fixed; inset: 0; z-index: 200; display: flex; align-items: center; justify-content: center;
     padding: 1rem; background: rgba(0, 0, 0, 0.6);
   }
+  /* The shared confirm dialog is asked from inside other dialogs too (teleported ones included): keep it on top. */
+  .pd-modal-root--confirm { z-index: 300; }
   .pd-modal {
     display: flex; flex-direction: column; width: 100%; max-height: calc(100dvh - 2rem); overflow: hidden;
     background: var(--surface-0); border: 1px solid var(--border-hover); border-radius: var(--radius-2xl); box-shadow: var(--shadow-xl);

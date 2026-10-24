@@ -104,8 +104,15 @@ document.addEventListener('alpine:init', function () {
             var index = stack.indexOf(entry);
             if (index !== -1) stack.splice(index, 1);
             if (!stack.length) document.documentElement.classList.remove('pd-scroll-locked');
-            // Another dialog took over (e.g. the drawer closing as a modal opens): leave focus to it.
-            if (stack.length) { opener = null; return; }
+            // Another dialog is still open: give focus back to the opener when it lives in that dialog (a
+            // confirmation asked from inside a modal); otherwise another dialog took over (e.g. the drawer
+            // closing as a modal opens), so leave focus to it.
+            if (stack.length) {
+                var under = stack[stack.length - 1].el;
+                if (opener && under.contains(opener) && opener.getClientRects().length) opener.focus({ preventScroll: true });
+                opener = null;
+                return;
+            }
             var fallback = el.getAttribute('data-return-focus');
             var back = opener && document.contains(opener) && opener.getClientRects().length && !opener.closest('[inert]') ? opener : null;
             if (!back && fallback) {
