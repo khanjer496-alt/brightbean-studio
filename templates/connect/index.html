@@ -1,0 +1,37 @@
+{% extends "legal/base.html" %}
+{% block page_title %}Connect your AI{% endblock %}
+{% block description %}Connect {{ brand_name }} to Claude, ChatGPT, Copilot, Gemini, Cursor, VS Code and other AI tools.{% endblock %}
+{% block content %}
+<h1>Connect your AI</h1>
+<p class="legal-meta">Let an AI assistant plan, draft and schedule your social posts, within the limits you set</p>
+<p>{{ brand_name }} runs an MCP server, so any AI tool that supports MCP connectors can work with your workspace. You sign in and choose what the assistant may do on an approval screen. Anything it does is limited by those choices and by your workspace's autonomy setting, which can hold posts for a person to review.</p>
+
+<h2 id="server-url">Server URL</h2>
+<p><label for="mcp-url">Paste this into any MCP client that asks for a remote server URL.</label></p>
+<p><input id="mcp-url" class="connect-url" type="text" readonly value="{{ mcp_url }}"></p>
+<p>Sign-in uses OAuth with PKCE and dynamic client registration, so most clients need nothing else. If a tool cannot sign in with OAuth, issue an access token under <em>Organization, API keys</em> and add it as a Bearer token.</p>
+
+{% for group, items in groups.items %}
+<h2 id="{{ group|slugify }}">{{ group }}</h2>
+{% for item in items %}
+<section class="legal-note connect-card" aria-labelledby="platform-{{ item.slug }}">
+    <h3 id="platform-{{ item.slug }}">{{ item.name }}</h3>
+    <p class="connect-status"><strong>{{ item.status_label }}</strong></p>
+    <p>{{ item.summary }}</p>
+    <ol>
+    {% for step in item.steps %}<li>{{ step }}</li>{% endfor %}
+    </ol>
+    {% if item.command %}<p><code class="connect-command" tabindex="0">{{ item.command }}</code></p>{% endif %}
+    {% if item.links %}<p>{% for link in item.links %}<a class="connect-button" href="{{ link.href }}">{{ link.label }}</a> {% endfor %}</p>{% endif %}
+    {% if item.note %}<p class="legal-meta">{{ item.note }}</p>{% endif %}
+</section>
+{% endfor %}
+{% endfor %}
+
+<h2 id="more">More</h2>
+<ul>
+    <li><a href="{{ docs_url }}">REST API reference</a> for tools that call HTTP APIs directly.</li>
+    <li><a href="{% url 'legal:privacy' %}">Privacy policy</a> and <a href="{% url 'legal:terms' %}">terms</a>.</li>
+    <li>Help connecting: <a href="mailto:{{ brand_support_email }}">{{ brand_support_email }}</a></li>
+</ul>
+{% endblock %}

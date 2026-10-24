@@ -129,6 +129,7 @@ LOCAL_APPS = [
     "apps.plugs",
     "apps.autopost",
     "apps.legal",
+    "apps.connect",
     "theme",
 ]
 
@@ -805,6 +806,12 @@ RATELIMIT_USE_CACHE = "default"
 #   MCP_OAUTH_ISSUER_URL — origin of the OAuth Authorization Server (where
 #     /oauth/authorize/ sends unauthenticated users to log in via allauth).
 MCP_PUBLIC_BASE_URL = env("MCP_PUBLIC_BASE_URL", default=APP_URL).rstrip("/")
+# GitHub ``owner/repo`` of the public Claude plugin marketplace (integrations/claude); the Connect page shows the
+# install command only when this is set. MCP_WIDGET_DOMAIN is the dedicated origin ChatGPT renders the widgets on.
+AI_PLUGIN_MARKETPLACE_REPO = env("AI_PLUGIN_MARKETPLACE_REPO", default="")
+MCP_WIDGET_DOMAIN = env("MCP_WIDGET_DOMAIN", default="").rstrip("/")
+# Token for https://<host>/.well-known/openai-apps-challenge (ChatGPT app directory domain verification).
+OPENAI_APPS_CHALLENGE = env("OPENAI_APPS_CHALLENGE", default="")
 MCP_OAUTH_ISSUER_URL = env("MCP_OAUTH_ISSUER_URL", default=APP_URL).rstrip("/")
 
 # django-oauth-toolkit's default, named so ``apps.api_keys.ConnectedApp`` can point at the (swappable) model.
@@ -830,8 +837,12 @@ OAUTH2_PROVIDER = {
     # Always show the consent screen: it is where the person narrows what the client may do, so a returning
     # client must not be waved through on an earlier grant.
     "REQUEST_APPROVAL_PROMPT": "force",
-    # Claude's OAuth callback is always https; reject non-TLS redirect URIs.
-    "ALLOWED_REDIRECT_URI_SCHEMES": ["https"],
+    # Hosted clients redirect over https. http is for RFC 8252 loopback redirects only: dynamic registration and
+    # ``manage.py oauth_client`` refuse any other http URI (apps.oauth_server.views.is_allowed_redirect_uri).
+    "ALLOWED_REDIRECT_URI_SCHEMES": ["https", "http"],
+    # A loopback redirect registered as ``localhost`` matches on any port, like 127.0.0.1 and [::1] (RFC 8252 §7.3,
+    # §8.3): Claude Code and other CLIs register ``http://localhost:<port>/callback`` and may get another port later.
+    "ALLOW_LOCALHOST_LOOPBACK": True,
 }
 
 

@@ -8,7 +8,7 @@ Open **Settings → API Keys** for the deployment's MCP URL and API reference. T
 
 For a Bearer-token client, issue a token for the intended workspace and connected-account allowlist and start from the **Drafting assistant** preset: it can read, write drafts and use the AI assistant, and a person approves everything. Add capabilities (media, analytics, scheduling) only when needed; the token cannot use a tool outside its capabilities. See [scoped-tokens.md](scoped-tokens.md) for presets, daily budgets, expiry, IP ranges and example client config. Store the token in the client's credential settings, not in the brief or shared chat.
 
-The app supports these protocols; exact connector setup depends on the client. A public connector directory listing or certification is not claimed.
+The public page `/connect/` lists setup for each AI app and developer tool (Claude, ChatGPT, Copilot Studio, Gemini, Mistral, Perplexity, Cursor, VS Code, Raycast). Directory submission material is under `integrations/`. A public connector directory listing or certification is not claimed until a directory approves it.
 
 ## First useful workflow
 

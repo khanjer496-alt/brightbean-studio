@@ -83,10 +83,15 @@ def _wrap_text(payload: Any) -> dict:
     ``json`` content type isn't universally supported yet. Agents can
     always ``JSON.parse`` the returned text.
     """
-    return {
+    result: dict = {
         "content": [{"type": "text", "text": json.dumps(payload, default=str)}],
         "isError": False,
     }
+    if isinstance(payload, dict):
+        # The same object, machine-readable: hosts that render a widget (apps.mcp.widgets) read this, and
+        # clients that know structuredContent (MCP 2025-06-18) need no JSON.parse of the text.
+        result["structuredContent"] = json.loads(result["content"][0]["text"])
+    return result
 
 
 # Optional argument of the create-like tools; see ``_idempotent``.

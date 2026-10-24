@@ -1,0 +1,33 @@
+{
+  "properties": {
+    "connectionParameters": {
+      "token": {
+        "type": "oAuthSetting",
+        "oAuthSettings": {
+          "identityProvider": "oauth2",
+          "scopes": [
+            "mcp"
+          ],
+          "redirectMode": "GlobalPerConnector",
+          "customParameters": {
+            "AuthorizationUrl": {
+              "value": "https://app.postdelegate.com/oauth/authorize/"
+            },
+            "TokenUrl": {
+              "value": "https://app.postdelegate.com/oauth/token/"
+            },
+            "RefreshUrl": {
+              "value": "https://app.postdelegate.com/oauth/token/"
+            }
+          },
+          "clientId": "REPLACE_WITH_REGISTERED_CLIENT_ID"
+        },
+        "uiDefinition": null
+      }
+    },
+    "iconBrandColor": "#7357FF",
+    "capabilities": [],
+    "publisher": "Nasida Apps LLC",
+    "stackOwner": "Nasida Apps LLC"
+  }
+}

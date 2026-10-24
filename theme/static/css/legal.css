@@ -77,6 +77,35 @@
 .legal-table th[scope="row"] { min-width: 7.5rem; }
 .legal-table td { min-width: 9rem; }
 
+/* "Connect your AI" (apps.connect): reuses the legal page chrome. */
+.connect-url,
+.connect-command {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.6rem 0.8rem;
+  font: 0.875rem/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+  color: var(--legal-text);
+  background: var(--legal-surface);
+  border: 1px solid var(--legal-border);
+  border-radius: 0.5rem;
+  overflow-wrap: anywhere;
+}
+.connect-url:focus-visible,
+.connect-command:focus-visible { outline: 3px solid var(--legal-focus); outline-offset: 2px; }
+.connect-card h3 { margin-top: 0; }
+.connect-status { margin: 0 0 0.5rem; color: var(--legal-muted); font-size: 0.875rem; }
+.legal-page a.connect-button {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  background: var(--legal-link);
+  color: var(--legal-bg);
+  font-weight: 700;
+  text-decoration: none;
+}
+.legal-page a.connect-button:focus-visible { outline: 3px solid var(--legal-focus); outline-offset: 2px; }
+
 .legal-footer { border-top: 1px solid var(--legal-border); color: var(--legal-muted); font-size: 0.875rem; }
 .legal-footer p { margin: 0.25rem 0; }
 

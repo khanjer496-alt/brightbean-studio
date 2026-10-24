@@ -1,4 +1,4 @@
-"""Custom OAuth2 validator that restricts PKCE to S256 only.
+"""Custom OAuth2 validator that restricts PKCE to S256 only (and requires it of every public client).
 
 django-oauth-toolkit's default validator (and oauthlib under it) accepts both
 ``S256`` and ``plain`` for ``code_challenge_method``. RFC 7636 §4.2 marks
@@ -34,7 +34,17 @@ class S256OnlyOAuth2Validator(OAuth2Validator):
                 description="code_challenge_method must be S256",
                 request=request,
             )
-        return super().is_pkce_required(client_id, request)
+        if not super().is_pkce_required(client_id, request):
+            return False
+        # A confidential client (registered by an admin, ``manage.py oauth_client``) proves itself with its secret
+        # at the token endpoint, and some (Microsoft Power Platform connectors) send no PKCE. PKCE stays mandatory
+        # for every public client, which is every client dynamic registration creates.
+        client = getattr(request, "client", None)
+        if client is None or getattr(client, "client_id", None) != client_id:
+            from oauth2_provider.models import get_application_model
+
+            client = get_application_model().objects.filter(client_id=client_id).first()
+        return client is None or client.client_type != client.CLIENT_CONFIDENTIAL
 
     def validate_refresh_token(self, refresh_token, client, request, *args, **kwargs):
         """Refuse a refresh token whose connected app was disconnected or has expired.

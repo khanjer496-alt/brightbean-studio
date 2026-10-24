@@ -18,9 +18,16 @@ app_name = "oauth2_provider"
 # Chromium enforces form-action across the whole redirect chain, so the redirect
 # target must be allowlisted on the consent page or the flow dies silently there.
 # csp_update appends to the global CSP_FORM_ACTION, scoping the relaxation here only.
-authorize_view = csp_update(FORM_ACTION="https://claude.ai https://claude.com")(
-    views.ConsentAuthorizationView.as_view()
+# Other clients redirect elsewhere: ChatGPT (chatgpt.com), Copilot Studio (the Power Platform consent host), and
+# command-line or desktop clients on a loopback port (Claude Code, Cursor, VS Code). This is not what keeps a code
+# from reaching the wrong host (the exact redirect_uri match is); it only lets the browser follow the redirect. A
+# confidential client registered for any other host needs its origin added here. CSP has no syntax for an IPv6
+# literal, so a [::1] redirect only works in browsers that don't apply form-action to redirects.
+OAUTH_CLIENT_FORM_ACTION = (
+    "https://claude.ai https://claude.com https://chatgpt.com https://global.consent.azure-apim.net "
+    "http://localhost:* http://127.0.0.1:*"
 )
+authorize_view = csp_update(FORM_ACTION=OAUTH_CLIENT_FORM_ACTION)(views.ConsentAuthorizationView.as_view())
 
 urlpatterns = [
     path("authorize/", authorize_view, name="authorize"),

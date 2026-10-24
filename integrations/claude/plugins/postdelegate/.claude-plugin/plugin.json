@@ -1,0 +1,20 @@
+{
+  "name": "postdelegate",
+  "displayName": "PostDelegate",
+  "version": "1.0.0",
+  "description": "Plan, draft, schedule and review social posts across your connected channels from Claude, within the limits you set.",
+  "author": {
+    "name": "Nasida Apps LLC",
+    "email": "support@postdelegate.com",
+    "url": "https://postdelegate.com"
+  },
+  "homepage": "https://postdelegate.com",
+  "repository": "https://github.com/khanjer496-alt/brightbean-studio",
+  "license": "AGPL-3.0-only",
+  "keywords": ["social-media", "scheduling", "content", "analytics", "inbox", "mcp"],
+  "icon": "./icon.png",
+  "documentationUrl": "https://app.postdelegate.com/connect/",
+  "supportUrl": "mailto:support@postdelegate.com",
+  "privacyPolicyUrl": "https://app.postdelegate.com/legal/privacy/",
+  "termsOfServiceUrl": "https://app.postdelegate.com/legal/terms/"
+}

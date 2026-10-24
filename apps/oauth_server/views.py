@@ -16,7 +16,7 @@ from __future__ import annotations
 import json
 import logging
 import time
-from urllib.parse import urlparse
+from urllib.parse import urlsplit
 
 from django.core.cache import cache
 from django.http import HttpResponseBadRequest, JsonResponse
@@ -91,11 +91,37 @@ def _dcr_rate_limited(request) -> bool:
     return global_count > _DCR_GLOBAL_LIMIT
 
 
-def _is_https_uri(value) -> bool:
-    if not isinstance(value, str):
+#: RFC 8252 §7.3 loopback hosts. http is accepted for these only; DOT matches a registered ``127.0.0.1`` or ``[::1]``
+#: (and, with ``ALLOW_LOCALHOST_LOOPBACK``, ``localhost``) redirect on any port and every other URI exactly.
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
+def is_loopback_redirect(value: str) -> bool:
+    parsed = urlsplit(value)
+    return parsed.scheme == "http" and parsed.hostname in _LOOPBACK_HOSTS
+
+
+def is_allowed_redirect_uri(value) -> bool:
+    """A redirect URI a client may register: absolute https, or http on the loopback interface (RFC 8252 §7.3).
+
+    Command-line and desktop clients (Claude Code, Cursor, VS Code) receive the code on a loopback port they pick at
+    run time. Whitespace is refused because the URIs are stored space-separated (one value must not smuggle in a
+    second), and so are fragments (RFC 6749 §3.1.2) and userinfo, which could never match a request anyway.
+    """
+    if not isinstance(value, str) or not value or len(value) > 2000:
         return False
-    parsed = urlparse(value)
-    return parsed.scheme == "https" and bool(parsed.netloc)
+    if any(ch.isspace() or ord(ch) < 0x20 or ord(ch) == 0x7F for ch in value) or "#" in value:
+        return False
+    try:
+        parsed = urlsplit(value)
+        parsed.port  # noqa: B018 - raises ValueError on a malformed port
+    except ValueError:
+        return False
+    if not parsed.hostname or "@" in parsed.netloc or "*" in parsed.netloc:
+        return False
+    if parsed.scheme == "https":
+        return True
+    return is_loopback_redirect(value)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -128,10 +154,10 @@ class RegisterView(View):
             return _dcr_error("invalid_redirect_uri", "redirect_uris is required.")
         if len(redirect_uris) > _MAX_REDIRECT_URIS:
             return _dcr_error("invalid_redirect_uri", "Too many redirect_uris.")
-        if not all(_is_https_uri(u) for u in redirect_uris):
+        if not all(is_allowed_redirect_uri(u) for u in redirect_uris):
             return _dcr_error(
                 "invalid_redirect_uri",
-                "Each redirect_uri must be an absolute https URL.",
+                "Each redirect_uri must be an absolute https URL (or http on localhost, 127.0.0.1 or [::1]).",
             )
 
         grant_types = body.get("grant_types") or ["authorization_code"]
@@ -194,6 +220,34 @@ def protected_resource_metadata_view(request):
     return JsonResponse(protected_resource_metadata())
 
 
+#: Hosts whose OAuth callback belongs to the AI client itself: a code sent there reaches that host and nobody else,
+#: whatever name the registering client gave itself.
+KNOWN_CLIENT_HOSTS = {
+    "claude.ai": "Claude",
+    "claude.com": "Claude",
+    "chatgpt.com": "ChatGPT",
+    "global.consent.azure-apim.net": "Microsoft Copilot Studio",
+}
+
+
+def redirect_summary(application, redirect_uri: str) -> dict:
+    """Where the consent screen sends the person back to, and whether the client is one we can vouch for.
+
+    The ``client_name`` a dynamically registered client sends is whatever it chose, so the screen leads with the
+    redirect host (where the grant really goes) and warns unless the host is a known AI client's or an admin
+    registered the client (``manage.py oauth_client``).
+    """
+    host = (urlsplit(redirect_uri or "").hostname or "").lower()
+    loopback = bool(redirect_uri) and is_loopback_redirect(redirect_uri)
+    admin_registered = application is not None and application.client_type == application.CLIENT_CONFIDENTIAL
+    return {
+        "host": host,
+        "loopback": loopback,
+        "known_as": KNOWN_CLIENT_HOSTS.get(host, ""),
+        "verified": admin_registered or host in KNOWN_CLIENT_HOSTS,
+    }
+
+
 def _requested_capabilities(scope: str) -> tuple[list[str], bool]:
     """What the client asked for as ``(capabilities, explicit)``.
 
@@ -239,8 +293,11 @@ class ConsentAuthorizationView(AuthorizationView):
         context = super().get_context_data(**kwargs)
         form = context.get("form")
         scope = (form.initial.get("scope") if form is not None and not form.is_bound else None) or ""
+        redirect_uri = (form.initial.get("redirect_uri") if form is not None and not form.is_bound else None) or ""
         if form is not None and form.is_bound:
             scope = form.data.get("scope", "")
+            redirect_uri = form.data.get("redirect_uri", "")
+        context["client_redirect"] = redirect_summary(context.get("application"), redirect_uri)
         organization, connection = self._target(context.get("application"))
         offered, _ = _requested_capabilities(scope)
         ceiling = connection.admin_capabilities if connection is not None else None

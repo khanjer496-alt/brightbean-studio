@@ -1,0 +1,14 @@
+{
+  "name": "postdelegate",
+  "description": "PostDelegate for Claude: schedule and review social posts with your AI.",
+  "owner": { "name": "Nasida Apps LLC", "email": "support@postdelegate.com" },
+  "plugins": [
+    {
+      "name": "postdelegate",
+      "source": "./plugins/postdelegate",
+      "description": "Plan, draft, schedule and review social posts across your connected channels, within the limits you set.",
+      "category": "marketing",
+      "tags": ["social-media", "scheduling", "mcp"]
+    }
+  ]
+}

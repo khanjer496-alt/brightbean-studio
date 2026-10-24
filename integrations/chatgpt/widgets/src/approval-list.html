@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Approval list</title>
+<style>
+/*__CSS__*/
+</style>
+</head>
+<body>
+<main id="root" aria-live="polite"></main>
+<script>
+/*__SHARED_JS__*/
+</script>
+<script>
+(function () {
+  var el = Pd.el;
+  var root = document.getElementById("root");
+
+  function render(data) {
+    root.textContent = "";
+    var posts = (data && data.posts) || [];
+    if (!posts.length) {
+      root.appendChild(el("p", { class: "empty", text: "Nothing is waiting for review." }));
+      return;
+    }
+    root.appendChild(el("h1", { text: posts.length + " waiting for a decision" }));
+    var list = el("ul", { class: "stack plain-list" }, posts.map(function (post) {
+      var targets = (post.platform_posts || []).map(function (t) { return t.platform; }).filter(Boolean).join(", ");
+      var ask = el("button", { type: "button", text: "Review this" });
+      ask.addEventListener("click", function () {
+        Pd.followUp("Show me post " + post.id + " and tell me whether you would approve it, request changes or reject it.");
+      });
+      return el("li", { class: "card" }, [
+        el("div", { class: "row" }, [
+          el("strong", { text: post.title || "Post" }),
+          Pd.chip(post.status),
+          el("span", { class: "muted", text: targets }),
+          el("span", { class: "muted", text: Pd.formatWhen(post.scheduled_at || post.proposed_publish_at) }),
+        ]),
+        el("p", { class: "caption", text: (post.caption || "").slice(0, 280) }),
+        el("div", { class: "row" }, [ask]),
+      ]);
+    }));
+    root.appendChild(list);
+    if (data.next_cursor) root.appendChild(el("p", { class: "muted", text: "More are waiting. Ask for the next page." }));
+  }
+
+  Pd.start(render);
+})();
+</script>
+</body>
+</html>
