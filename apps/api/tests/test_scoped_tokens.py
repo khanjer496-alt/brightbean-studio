@@ -473,3 +473,136 @@ class TestScopeValidation:
         services.update_api_key(issued.api_key, editor=world.owner, permissions=[], social_accounts=[world.account1])
         kept = ApiKey.objects.get(pk=issued.api_key.pk)
         assert (kept.capabilities, kept.daily_ai_budget, kept.requires_approval) == (["read_calendar"], 7, True)
+
+
+# ---------------------------------------------------------------------------
+# Review round: presets work as issued, budgets can't be overshot, verify_token stays cheap
+# ---------------------------------------------------------------------------
+
+#: Routes that need a permission beyond what their capability pre-ticks: the issuer grants it separately.
+_NEEDS_AN_EXTRA_PERMISSION = {
+    "GET /webhooks/",
+    "GET /webhooks/{endpoint_id}",
+    "GET /webhooks/{endpoint_id}/deliveries",
+}
+
+
+class TestCapabilitiesWorkWithThePermissionsTheyPreTick:
+    @pytest.mark.parametrize("cap", caps.CAPABILITY_KEYS)
+    def test_no_route_of_a_capability_is_refused_for_a_permission_the_form_grants(self, world, cap):
+        issued = services.issue_api_key(
+            workspace=world.workspace,
+            social_accounts=[world.account1, world.account2],
+            issued_by=world.owner,
+            name="as issued",
+            permissions=caps.permissions_for([cap]),
+            capabilities=[cap],
+        )
+        client = tolerant(issued.plaintext_token)
+        refused = []
+        for route, owner in caps.ROUTE_CAPABILITY.items():
+            if owner != cap or route in _NEEDS_AN_EXTRA_PERMISSION:
+                continue
+            response = send(client, route)
+            if response.status_code == 403 and "Permission denied" in response.json().get("detail", ""):
+                refused.append((route, response.json()["detail"]))
+        assert not refused
+
+    def test_a_read_only_token_still_cannot_schedule_approve_or_send(self, world):
+        from apps.api.auth import _resolve_effective_permissions
+
+        issued, _ = make_token(world, list(caps.preset("read_only_analyst").capabilities))
+        effective = _resolve_effective_permissions(ApiKey.objects.get(pk=issued.api_key.pk))
+        assert not any(effective[p] for p in caps.GUARDED_PERMISSIONS)
+
+
+class TestOneRequestCannotOvershootThePostBudget:
+    def two_child_post(self, world):
+        from apps.composer.models import PlatformPost, Post
+
+        post = Post.objects.create(workspace=world.workspace, author=world.owner, caption="Two networks")
+        for account in (world.account1, world.account2):
+            PlatformPost.objects.create(post=post, social_account=account, status="draft")
+        return post
+
+    def schedule(self, client, post):
+        when = (timezone.now() + timedelta(hours=48)).isoformat()
+        return post_json(client, f"/api/v1/posts/{post.id}/schedule", {"scheduled_at": when})
+
+    def test_a_request_that_would_pass_the_budget_is_refused_whole_and_spends_nothing(self, world):
+        set_policy(world.workspace, publish_level="full_auto", draft_level="full_auto")
+        issued, client = make_token(world, ["draft_posts", "schedule_posts"], daily_post_budget=1)
+        post = self.two_child_post(world)
+        response = self.schedule(client, post)
+        assert response.status_code == 403
+        assert "daily limit of 1 scheduled posts" in response.json()["detail"]
+        assert not post.platform_posts.filter(status="scheduled").exists()
+        usage = ApiKeyDailyUsage.objects.filter(api_key=issued.api_key).first()
+        assert usage is None or usage.posts_scheduled == 0
+
+    def test_each_post_of_a_request_counts(self, world):
+        set_policy(world.workspace, publish_level="full_auto", draft_level="full_auto")
+        issued, client = make_token(world, ["draft_posts", "schedule_posts"], daily_post_budget=2)
+        post = self.two_child_post(world)
+        assert self.schedule(client, post).status_code == 200
+        assert ApiKeyDailyUsage.objects.get(api_key=issued.api_key).posts_scheduled == 2
+        refused = TestDailyPostBudget().schedule(client, world.account1)
+        assert refused.status_code == 403
+
+    def test_the_reservation_never_passes_the_budget(self, world):
+        from apps.api_keys import budgets
+
+        issued, _ = make_token(world, ["schedule_posts"], daily_post_budget=3)
+        results = [budgets.reserve_scheduled_post(issued.api_key) for _ in range(5)]
+        assert results == [True, True, True, False, False]
+        assert ApiKeyDailyUsage.objects.get(api_key=issued.api_key).posts_scheduled == 3
+
+
+class TestRepurposingSpendsTheAiBudget:
+    def test_a_run_needing_more_ai_calls_than_are_left_is_refused_before_it_starts(self, world):
+        from apps.repurpose.models import RepurposeJob
+
+        issued, client = make_token(world, ["use_ai_assistant"], daily_ai_budget=1)
+        response = post_json(
+            client,
+            "/api/v1/repurpose/jobs",
+            {
+                "source_type": "text",
+                "text": "A long article about calm social media. " * 40,
+                "outputs": [{"kind": "post", "social_account_ids": [str(world.account1.id), str(world.account2.id)]}],
+            },
+        )
+        assert response.status_code == 429
+        assert "daily AI budget" in response.json()["detail"]
+        assert not RepurposeJob.objects.exists()
+
+
+class TestVerifyTokenCost:
+    def test_a_request_resolves_its_token_in_three_queries(self, world, django_assert_max_num_queries):
+        issued, _ = make_token(world, ["read_calendar"], allowed_ip_ranges=["0.0.0.0/0"], daily_request_budget=50)
+        with django_assert_max_num_queries(3):
+            api_key = services.verify_token(issued.plaintext_token)
+            assert api_key is not None
+            list(api_key.social_accounts.all())
+            _ = api_key.workspace.name, api_key.issued_by.email
+
+    def test_the_permission_intersection_reuses_the_membership_verify_token_read(
+        self, world, django_assert_num_queries
+    ):
+        from apps.api.auth import _resolve_effective_permissions
+
+        issued, _ = make_token(world, ["read_calendar"])
+        api_key = services.verify_token(issued.plaintext_token)
+        with django_assert_num_queries(0):
+            _resolve_effective_permissions(api_key)
+
+    def test_a_deactivated_issuer_or_an_archived_workspace_kills_the_token(self, world):
+        issued, _ = make_token(world, ["read_calendar"])
+        world.workspace.is_archived = True
+        world.workspace.save(update_fields=["is_archived"])
+        assert services.verify_token(issued.plaintext_token) is None
+        world.workspace.is_archived = False
+        world.workspace.save(update_fields=["is_archived"])
+        world.owner.is_active = False
+        world.owner.save(update_fields=["is_active"])
+        assert services.verify_token(issued.plaintext_token) is None

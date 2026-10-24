@@ -39,8 +39,8 @@ from ninja.security import HttpBearer
 
 from apps.api.limits import is_failed_auth_ip_blocked, record_failed_auth
 from apps.api_keys import capabilities as caps
-from apps.api_keys.models import ApiKey
-from apps.api_keys.services import touch_last_used, verify_token
+from apps.api_keys.models import ApiKey, ConnectedApp
+from apps.api_keys.services import touch_connection_used, touch_last_used, verify_token
 
 LOG = logging.getLogger(__name__)
 
@@ -75,11 +75,15 @@ def _resolve_effective_permissions(api_key: ApiKey) -> dict[str, bool]:
     granted = set(api_key.permissions or [])
     if not granted or api_key.issued_by_id is None:
         return {k: False for k in granted}
-    try:
-        membership = WorkspaceMembership.objects.select_related("custom_role").get(
-            user_id=api_key.issued_by_id, workspace_id=api_key.workspace_id
+    # ``verify_token`` already read the issuer's membership; reuse it rather than query again.
+    membership = getattr(api_key, "issuer_membership", None)
+    if membership is None:
+        membership = (
+            WorkspaceMembership.objects.select_related("custom_role")
+            .filter(user_id=api_key.issued_by_id, workspace_id=api_key.workspace_id)
+            .first()
         )
-    except WorkspaceMembership.DoesNotExist:
+    if membership is None:
         # verify_token already rejects this path, but defend in depth.
         return {k: False for k in granted}
     issuer_perms = {k for k, v in membership.effective_permissions.items() if v}
@@ -290,14 +294,12 @@ class OAuthMcpActor:
     rate_override_reads = None
     rate_override_hourly = None
     rate_override_daily = None
-    # No budgets, IP ranges or approval mode either: those belong to minted keys.
-    daily_request_budget = None
-    daily_ai_budget = None
-    daily_post_budget = None
+    # No IP ranges: an OAuth client is a desktop app that moves between networks.
     allowed_ip_ranges: list[str] = []
-    requires_approval = False
 
-    def __init__(self, *, user: Any, membership: Any, capabilities: list[str] | None = None) -> None:
+    def __init__(
+        self, *, user: Any, membership: Any, capabilities: list[str] | None = None, connection: Any = None
+    ) -> None:
         self.issued_by = user
         self.issued_by_id = user.id
         self.workspace = membership.workspace
@@ -311,6 +313,13 @@ class OAuthMcpActor:
         self.effective_permissions = caps.narrow_permissions(membership.effective_permissions, capabilities)
         # What the person narrowed the connection to on the consent screen; None for a grant made before that existed.
         self.capabilities = capabilities
+        # The limits the person set on this client (``ConnectedApp``): budgets and approval mode. None for a
+        # grant made before connections existed, which carries no budgets.
+        self.connection = connection
+        self.daily_request_budget = getattr(connection, "daily_request_budget", None)
+        self.daily_ai_budget = getattr(connection, "daily_ai_budget", None)
+        self.daily_post_budget = getattr(connection, "daily_post_budget", None)
+        self.requires_approval = bool(getattr(connection, "requires_approval", False))
 
 
 def _resolve_active_membership(user: Any):
@@ -377,6 +386,11 @@ def _resolve_oauth_actor(token: str) -> OAuthMcpActor | None:
             tok.scope,
         )
         return None
+    connection = ConnectedApp.objects.filter(user_id=tok.user_id, application_id=tok.application_id).first()
+    if connection is not None and not connection.is_active:
+        # INFO: the person revoked this client, or the expiry they set has passed.
+        LOG.info("Bearer auth rejected: the OAuth connection for user %s is revoked or expired.", tok.user_id)
+        return None
     membership = _resolve_active_membership(tok.user)
     if membership is None:
         # WARNING: a valid, scoped, unexpired token whose user maps to no
@@ -386,7 +400,12 @@ def _resolve_oauth_actor(token: str) -> OAuthMcpActor | None:
             tok.user_id,
         )
         return None
-    return OAuthMcpActor(user=tok.user, membership=membership, capabilities=caps.from_scope(tok.scope))
+    # The token's ``cap:`` scopes intersected with the connection's: a refresh that asks for fewer scopes
+    # (dropping every ``cap:`` one) can't turn a narrowed grant into an unlimited one.
+    capabilities = caps.intersect(caps.from_scope(tok.scope), connection.capabilities if connection else None)
+    if connection is not None:
+        touch_connection_used(connection)
+    return OAuthMcpActor(user=tok.user, membership=membership, capabilities=capabilities, connection=connection)
 
 
 class McpAuth(ApiKeyAuth):

@@ -1,0 +1,108 @@
+{# One app connected with OAuth (Claude Desktop and other MCP connectors). Receives ``row`` (see views._connection_context). #}
+<article class="py-5" aria-labelledby="conn-{{ row.id }}-name">
+    <div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+        <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2 mb-1">
+                <h3 id="conn-{{ row.id }}-name" class="text-sm font-semibold break-words text-[var(--text-primary)]">{{ row.name }}</h3>
+                {% if row.status == "active" %}
+                <span class="px-2 py-0.5 text-xs rounded-full bg-emerald-100 text-emerald-800">Connected</span>
+                {% else %}
+                <span class="px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-900">Expired</span>
+                {% endif %}
+                <span class="px-2 py-0.5 text-xs rounded-full border border-stone-200 text-stone-600">OAuth</span>
+                {% if row.requires_approval %}<span class="px-2 py-0.5 text-xs rounded-full bg-sky-100 text-sky-900">Drafts only until approved</span>{% endif %}
+            </div>
+            <p class="text-xs flex flex-wrap gap-x-3 gap-y-1 text-[var(--text-tertiary)]">
+                <span>Acts as <strong class="font-medium text-[var(--text-secondary)]">{{ row.user.name|default:row.user.email }}</strong></span>
+                {% if row.last_used_at %}<span>Last used {{ row.last_used_at|timesince }} ago</span>{% else %}<span>Never used</span>{% endif %}
+                {% if row.expires_at %}<span>{% if row.status == "expired" %}Expired{% else %}Expires{% endif %} {{ row.expires_at|date:"M j, Y" }}</span>{% endif %}
+                <span>Connected {{ row.created_at|date:"M j, Y" }}</span>
+            </p>
+
+            <div class="mt-3">
+                <p class="text-[11px] font-semibold uppercase tracking-wide mb-1 text-[var(--text-tertiary)]">Can do</p>
+                {% if row.limited %}
+                <ul class="flex flex-wrap gap-1.5">
+                    {% for label in row.capability_labels %}<li class="px-2 py-0.5 text-xs rounded-md border border-stone-200 text-[var(--text-secondary)]">{{ label }}</li>{% empty %}<li class="text-xs text-[var(--text-secondary)]">Nothing</li>{% endfor %}
+                </ul>
+                {% else %}
+                <p class="text-xs text-[var(--text-secondary)]">Everything the person can do. Edit it to choose.</p>
+                {% endif %}
+            </div>
+
+            <dl class="mt-3 grid gap-3 sm:grid-cols-3">
+                {% for b in row.budgets %}
+                <div>
+                    <dt class="text-xs text-[var(--text-tertiary)]">{{ b.label }}</dt>
+                    <dd class="text-sm text-[var(--text-primary)]">{{ b.used }}{% if b.limit is not None %} of {{ b.limit }}{% else %} <span class="text-xs text-[var(--text-tertiary)]">no limit</span>{% endif %}</dd>
+                    {% if b.limit %}
+                    <progress max="{{ b.limit }}" value="{{ b.used }}" aria-label="{{ b.label }}: {{ b.used }} of {{ b.limit }}"
+                              class="mt-1 block h-1.5 w-full overflow-hidden rounded-full [&::-webkit-progress-bar]:bg-stone-200 {% if b.state == 'over' %}[&::-webkit-progress-value]:bg-red-600 [&::-moz-progress-bar]:bg-red-600{% elif b.state == 'near' %}[&::-webkit-progress-value]:bg-amber-500 [&::-moz-progress-bar]:bg-amber-500{% else %}[&::-webkit-progress-value]:bg-[var(--primary)] [&::-moz-progress-bar]:bg-[var(--primary)]{% endif %}"></progress>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </dl>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+            <div x-data="{ showEditModal: false }">
+                <button type="button" @click="showEditModal = true" class="px-4 py-1.5 text-xs font-medium rounded-full cursor-pointer border border-stone-300 bg-white text-stone-700 hover:bg-stone-50">Edit</button>
+                <template x-teleport="body">
+                    <div x-show="showEditModal" x-cloak x-transition.opacity @keydown.escape.window="showEditModal = false"
+                         class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+                         role="dialog" aria-modal="true" aria-labelledby="conn-edit-{{ row.id }}-title">
+                        <div @click.outside="showEditModal = false" x-show="showEditModal" x-transition
+                             class="w-full max-w-xl mx-4 max-h-[90vh] rounded-xl flex flex-col bg-[var(--surface-0)] border border-stone-200 shadow-2xl">
+                            <form method="POST" action="{% url 'api_keys:edit_connection' row.id %}" data-token-scope class="flex flex-col min-h-0">
+                                {% csrf_token %}
+                                <div class="flex items-start justify-between gap-4 px-5 sm:px-6 pt-6 pb-4 flex-shrink-0">
+                                    <div>
+                                        <h3 id="conn-edit-{{ row.id }}-title" class="text-lg font-semibold text-[var(--text-primary)]">Edit connected app</h3>
+                                        <p class="text-xs mt-1 text-[var(--text-tertiary)]"><strong class="text-[var(--text-primary)]">{{ row.name }}</strong> · {{ row.user.name|default:row.user.email }} · changes apply on the next request.</p>
+                                    </div>
+                                    <button type="button" @click="showEditModal = false" aria-label="Close" class="text-xl leading-none px-2 cursor-pointer text-[var(--text-tertiary)]">&times;</button>
+                                </div>
+                                <div class="space-y-5 px-5 sm:px-6 overflow-y-auto flex-1 min-h-0">
+                                    {% include "api_keys/_scope_fields.html" with scope_form=row.scope_form uid=row.id %}
+                                    <div>
+                                        <label for="conn-expires-{{ row.id }}" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Expires on <span class="font-normal text-[var(--text-tertiary)]">(optional)</span></label>
+                                        <input type="date" id="conn-expires-{{ row.id }}" name="expires_at" value="{{ row.expires_at|date:'Y-m-d' }}" class="form-input text-sm w-full">
+                                        <p class="text-xs mt-1 text-[var(--text-tertiary)]">After this day the app's tokens stop working and it can't refresh them.</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center justify-end gap-3 px-5 sm:px-6 pt-5 pb-6 flex-shrink-0">
+                                    <button type="button" @click="showEditModal = false" class="px-4 py-2 text-sm font-medium rounded-full cursor-pointer border border-stone-300 bg-white text-stone-700 hover:bg-stone-50">Cancel</button>
+                                    <button type="submit" class="btn-brand text-sm py-2 px-5">Save changes</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </template>
+            </div>
+
+            <div x-data="{ showRevokeModal: false }">
+                <button type="button" @click="showRevokeModal = true" class="px-4 py-1.5 text-xs font-medium rounded-full cursor-pointer bg-red-50 text-red-700 hover:bg-red-100">Revoke</button>
+                <template x-teleport="body">
+                    <div x-show="showRevokeModal" x-cloak x-transition.opacity @keydown.escape.window="showRevokeModal = false"
+                         class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+                         role="dialog" aria-modal="true" aria-labelledby="conn-revoke-{{ row.id }}-title">
+                        <div @click.outside="showRevokeModal = false" x-show="showRevokeModal" x-transition
+                             class="w-full max-w-md mx-4 rounded-xl flex flex-col bg-[var(--surface-0)] border border-stone-200 shadow-2xl">
+                            <div class="px-6 pt-6 pb-2">
+                                <h3 id="conn-revoke-{{ row.id }}-title" class="text-lg font-semibold text-[var(--text-primary)]">Disconnect app</h3>
+                                <p class="text-sm mt-2 text-[var(--text-secondary)]">
+                                    Disconnect <strong class="text-[var(--text-primary)]">{{ row.name }}</strong> for {{ row.user.name|default:row.user.email }}? It stops working on its very next request and can't refresh its access. To use it again, the person has to sign in and approve it again.
+                                </p>
+                            </div>
+                            <form method="POST" action="{% url 'api_keys:revoke_connection' row.id %}" class="flex items-center justify-end gap-3 px-6 pt-5 pb-6">
+                                {% csrf_token %}
+                                <button type="button" @click="showRevokeModal = false" class="px-4 py-2 text-sm font-medium rounded-full cursor-pointer border border-stone-300 bg-white text-stone-700 hover:bg-stone-50">Cancel</button>
+                                <button type="submit" class="px-5 py-2 text-sm font-medium rounded-full cursor-pointer bg-red-600 text-white hover:bg-red-700">Disconnect</button>
+                            </form>
+                        </div>
+                    </div>
+                </template>
+            </div>
+        </div>
+    </div>
+</article>

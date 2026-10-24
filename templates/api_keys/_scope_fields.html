@@ -11,6 +11,7 @@ The enclosing <form> carries data-token-scope; static/js/token-scope.js fills th
 </p>
 {% endif %}
 
+{% if not scope_form.oauth %}
 <fieldset>
     <legend class="text-sm font-semibold text-[var(--text-primary)]">What should this token be?</legend>
     <p class="text-xs mt-1 mb-2 text-[var(--text-tertiary)]">Pick a starting point. You can change anything below, and edit it again later.</p>
@@ -39,10 +40,15 @@ The enclosing <form> carries data-token-scope; static/js/token-scope.js fills th
         </label>
     </div>
 </fieldset>
+{% endif %}
 
 <fieldset>
     <legend class="text-sm font-semibold text-[var(--text-primary)]">What it may do</legend>
+    {% if scope_form.oauth %}
+    <p class="text-xs mt-1 mb-2 text-[var(--text-tertiary)]">The app can use only what is ticked here <em>and</em> was approved on its consent screen, within the person's own workspace permissions.</p>
+    {% else %}
     <p class="text-xs mt-1 mb-2 text-[var(--text-tertiary)]">The token can use only what is ticked, and only within the workspace permissions you grant it.</p>
+    {% endif %}
     <div class="space-y-4">
         {% for group, items in scope_form.groups %}
         <div>
@@ -52,7 +58,7 @@ The enclosing <form> carries data-token-scope; static/js/token-scope.js fills th
                 <label class="flex items-start gap-3 rounded-lg border border-stone-200 px-3 py-2 cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--primary)]">
                     <input type="checkbox" name="capabilities" value="{{ item.cap.key }}" class="mt-0.5 h-4 w-4 flex-none" {% if item.checked %}checked{% endif %}>
                     <span class="min-w-0">
-                        <span class="block text-sm font-medium text-[var(--text-primary)]">{{ item.cap.label }}{% if item.cap.risk == "high" %} <span class="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">Affects what people see</span>{% endif %}</span>
+                        <span class="block text-sm font-medium text-[var(--text-primary)]">{{ item.cap.label }}{% if item.cap.risk == "high" %} <span class="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">High risk</span>{% endif %}</span>
                         <span class="block text-xs text-[var(--text-secondary)]">{{ item.cap.summary }}</span>
                     </span>
                 </label>
@@ -86,8 +92,10 @@ The enclosing <form> carries data-token-scope; static/js/token-scope.js fills th
     </div>
 </fieldset>
 
+{% if not scope_form.oauth %}
 <div>
     <label for="{{ uid }}-ips" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Allowed IP ranges <span class="font-normal text-[var(--text-tertiary)]">(optional)</span></label>
     <textarea id="{{ uid }}-ips" name="allowed_ip_ranges" rows="2" spellcheck="false" autocomplete="off" aria-describedby="{{ uid }}-ips-help" placeholder="203.0.113.0/24" class="form-input text-sm w-full font-mono">{{ scope_form.ip_ranges_text }}</textarea>
     <p id="{{ uid }}-ips-help" class="text-xs mt-1 text-[var(--text-tertiary)]">One CIDR range or address per line. Requests from anywhere else are refused. Empty means any address.</p>
 </div>
+{% endif %}

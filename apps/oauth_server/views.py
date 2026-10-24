@@ -28,6 +28,7 @@ from oauth2_provider.models import get_application_model
 from oauth2_provider.views import AuthorizationView
 
 from apps.api_keys import capabilities as caps
+from apps.api_keys import services
 
 from .metadata import authorization_server_metadata, protected_resource_metadata
 
@@ -196,8 +197,8 @@ def protected_resource_metadata_view(request):
 def _requested_capabilities(scope: str) -> tuple[list[str], bool]:
     """What the client asked for as ``(capabilities, explicit)``.
 
-    A client that names ``cap:`` scopes asked for exactly those. One that asks only for ``mcp`` has named
-    nothing, so every capability is on offer and the sensible ones start ticked.
+    A client that names ``cap:`` scopes is offered exactly those. One that asks only for ``mcp`` has named
+    nothing, so every capability is on offer. Either way only the low- and medium-risk ones start ticked.
     """
     asked = caps.from_scope(scope)
     return (asked, True) if asked else (list(caps.CAPABILITY_KEYS), False)
@@ -225,14 +226,16 @@ class ConsentAuthorizationView(AuthorizationView):
             scope = form.data.get("scope", "")
         offered, explicit = _requested_capabilities(scope)
         chosen = set(self.request.POST.getlist("capability")) if self.request.method == "POST" else None
+        # What the client asked for limits what is offered; it never pre-ticks anything that publishes, sends or
+        # changes settings. Those start unticked whatever the client asked, so allowing them is the person's act.
         context["capability_choices"] = [
-            {
-                "cap": c,
-                "checked": (c.key in chosen) if chosen is not None else (explicit or c.default_on),
-            }
+            {"cap": c, "checked": (c.key in chosen) if chosen is not None else c.default_on}
             for c in caps.CAPABILITIES
             if c.key in offered
         ]
+        context["requires_approval"] = self.request.method == "POST" and bool(
+            self.request.POST.get("requires_approval")
+        )
         return context
 
     def form_valid(self, form):
@@ -248,6 +251,14 @@ class ConsentAuthorizationView(AuthorizationView):
             return self.render_to_response(self.get_context_data(form=form, **self._context_for(form)))
         base = [s for s in requested.split() if not s.startswith(caps.SCOPE_PREFIX)] or ["mcp"]
         form.cleaned_data["scope"] = " ".join([*base, *caps.scopes_for(chosen)])
+        # The connection carries the choice beyond the scopes: budgets and expiry set later on the API keys page,
+        # and a ceiling a refresh with fewer scopes can't lift.
+        services.record_oauth_consent(
+            user=self.request.user,
+            application=get_application_model().objects.get(client_id=form.cleaned_data["client_id"]),
+            capabilities=chosen,
+            requires_approval=bool(self.request.POST.get("requires_approval")),
+        )
         return super().form_valid(form)
 
     def _context_for(self, form) -> dict:

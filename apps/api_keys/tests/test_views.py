@@ -766,7 +766,7 @@ class TestScopedList:
     def test_shows_capabilities_expiry_last_use_and_the_budgets_against_todays_usage(
         self, admin_client, admin_user, workspace, social_account
     ):
-        from apps.api_keys.budgets import record_scheduled_post, reserve_ai_call
+        from apps.api_keys.budgets import reserve_ai_call, reserve_scheduled_post
 
         issued = self._issue(
             workspace,
@@ -779,8 +779,8 @@ class TestScopedList:
             expires_at=timezone.now() + timedelta(days=30),
         )
         reserve_ai_call(issued.api_key)
-        record_scheduled_post(issued.api_key)
-        record_scheduled_post(issued.api_key)
+        reserve_scheduled_post(issued.api_key)
+        reserve_scheduled_post(issued.api_key)
         body = admin_client.get(reverse("api_keys:list")).content.decode()
         assert "Read posts &amp; calendar" in body and "AI writing assistant" in body
         assert "Expires" in body and "Never used" in body
@@ -932,3 +932,91 @@ class TestScopedEditRotateRevoke:
         services.revoke_api_key(issued.api_key)
         r = admin_client.post(reverse("api_keys:rotate", args=[issued.api_key.id]), follow=True)
         assert "Only an active key can be rotated" in r.content.decode()
+
+
+@pytest.mark.django_db
+class TestConnectedApps:
+    """OAuth clients show beside the tokens, with the same limits, and can be edited and disconnected."""
+
+    def _connect(self, user, name="Claude Desktop", **fields):
+        from oauth2_provider.models import get_application_model
+
+        from apps.api_keys.models import ConnectedApp
+
+        model = get_application_model()
+        application = model.objects.create(
+            name=name,
+            client_type=model.CLIENT_PUBLIC,
+            authorization_grant_type=model.GRANT_AUTHORIZATION_CODE,
+            redirect_uris="https://claude.ai/api/mcp/auth_callback",
+        )
+        return ConnectedApp.objects.create(
+            user=user, application=application, capabilities=["read_calendar", "draft_posts"], **fields
+        )
+
+    def test_lists_a_members_connected_app_with_its_limits(self, admin_client, admin_user):
+        from apps.api_keys.budgets import reserve_ai_call
+
+        connection = self._connect(admin_user, daily_ai_budget=4)
+        reserve_ai_call(connection)
+        body = admin_client.get(reverse("api_keys:list")).content.decode()
+        assert "Claude Desktop" in body and "Connected apps" in body
+        assert "Draft posts" in body and "1 of 4" in body
+        assert reverse("api_keys:revoke_connection", args=[connection.id]) in body
+
+    def test_an_app_connected_by_someone_outside_the_org_is_not_listed(self, admin_client, member_user):
+        self._connect(member_user, name="Someone else's client")
+        assert "Someone else" not in admin_client.get(reverse("api_keys:list")).content.decode()
+
+    def test_edit_sets_capabilities_budgets_expiry_and_approval_mode(self, admin_client, admin_user):
+        connection = self._connect(admin_user)
+        response = admin_client.post(
+            reverse("api_keys:edit_connection", args=[connection.id]),
+            {
+                "scoped": "1",
+                "capabilities": ["read_calendar"],
+                "daily_request_budget": "50",
+                "daily_ai_budget": "",
+                "daily_post_budget": "0",
+                "requires_approval": "on",
+                "expires_at": "2031-01-31",
+            },
+        )
+        assert response.status_code == 302
+        connection.refresh_from_db()
+        assert connection.capabilities == ["read_calendar"]
+        assert (connection.daily_request_budget, connection.daily_ai_budget, connection.daily_post_budget) == (
+            50,
+            None,
+            0,
+        )
+        assert connection.requires_approval is True
+        assert connection.expires_at.date().isoformat() == "2031-01-31"
+
+    def test_disconnect_revokes_the_connection_and_its_tokens(self, admin_client, admin_user):
+        from oauth2_provider.models import get_access_token_model
+
+        connection = self._connect(admin_user)
+        get_access_token_model().objects.create(
+            user=admin_user,
+            application=connection.application,
+            token="abc",
+            expires=timezone.now() + timedelta(hours=1),
+            scope="mcp",
+        )
+        response = admin_client.post(reverse("api_keys:revoke_connection", args=[connection.id]))
+        assert response.status_code == 302
+        connection.refresh_from_db()
+        assert connection.revoked_at is not None
+        assert not get_access_token_model().objects.filter(application=connection.application).exists()
+
+    def test_another_orgs_connection_cannot_be_touched(self, admin_client, member_user):
+        connection = self._connect(member_user)
+        assert admin_client.post(reverse("api_keys:revoke_connection", args=[connection.id])).status_code == 404
+        assert admin_client.post(reverse("api_keys:edit_connection", args=[connection.id])).status_code == 404
+        connection.refresh_from_db()
+        assert connection.revoked_at is None
+
+    def test_a_member_without_manage_api_keys_cannot_disconnect(self, member_client, member_user):
+        connection = self._connect(member_user)
+        assert member_client.post(reverse("api_keys:revoke_connection", args=[connection.id])).status_code == 403

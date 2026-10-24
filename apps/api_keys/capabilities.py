@@ -49,6 +49,8 @@ CAPABILITIES: tuple[Capability, ...] = (
         "Read posts & calendar",
         "See posts, drafts, queues, posting slots, ideas, templates, tags, events, team members and connected accounts.",
         "low",
+        # Ideas, templates and evergreen items are read with the drafting permission; reading changes nothing.
+        ("create_posts",),
     ),
     Capability(
         "draft_posts",
@@ -64,7 +66,7 @@ CAPABILITIES: tuple[Capability, ...] = (
         "Schedule & publish",
         "Schedule posts, cancel or delete them, manage queues, posting slots and evergreen recycling.",
         "high",
-        ("create_posts", "publish_directly"),
+        ("create_posts", "publish_directly", "manage_social_accounts"),
         default_on=False,
     ),
     Capability(
@@ -79,7 +81,8 @@ CAPABILITIES: tuple[Capability, ...] = (
         "use_ai_assistant",
         "Content",
         "AI writing assistant",
-        "Ask the workspace's AI assistant to write or adapt captions. Counts toward the AI budget.",
+        "Ask the workspace's AI assistant to write or adapt captions and repurpose articles, PDFs and videos. "
+        "Counts toward the AI budget.",
         "medium",
         ("create_posts",),
     ),
@@ -123,14 +126,18 @@ CAPABILITIES: tuple[Capability, ...] = (
         "Settings read",
         "Read the brand voice, brand kit, autonomy policy, activity log, webhooks and link-in-bio pages.",
         "low",
+        # Webhooks are read with an admin permission (``manage_workspace_settings`` or ``manage_social_accounts``),
+        # which the issuer grants separately: it is never pre-ticked for a read capability.
+        ("create_posts", "view_analytics"),
     ),
     Capability(
         "write_settings",
         "Workspace",
         "Settings write",
-        "Change the brand voice, brand kit, autonomy policy, webhooks, link-in-bio pages and tracked competitors.",
+        "Change the brand voice, brand kit, autonomy policy, webhooks, link-in-bio pages and tracked competitors, "
+        "and run reports (which can email them to their recipients).",
         "high",
-        ("manage_workspace_settings",),
+        ("manage_workspace_settings", "manage_social_accounts", "view_analytics"),
         default_on=False,
     ),
 )
@@ -157,19 +164,24 @@ def clean(keys) -> list[str]:
     return [k for k in CAPABILITY_KEYS if k in wanted]
 
 
-def narrow_permissions(permissions: dict[str, bool], held) -> dict[str, bool]:
-    """``permissions`` with those withdrawn that only capabilities the token lacks would use.
+#: Permissions that widen what a request can do *inside* a route another capability opens (``create_posts`` with
+#: ``publish_directly`` schedules instead of drafting; ``pre_approved`` needs ``approve_posts``; ``send`` on a reply
+#: needs ``reply_from_inbox``). A token keeps one only while it holds a capability that lists it. Every other
+#: permission only matters on routes its own capability already gates, so withdrawing it would just break reads.
+GUARDED_PERMISSIONS = frozenset({"publish_directly", "approve_posts", "reply_from_inbox"})
 
-    A permission is withdrawn when some capability lists it and none the token holds does, so a token without
-    ``schedule_posts`` also loses ``publish_directly`` and cannot reach scheduling through a request that is
-    otherwise allowed (re-timing a post, starting a repeat). Permissions no capability lists are left alone.
+
+def narrow_permissions(permissions: dict[str, bool], held) -> dict[str, bool]:
+    """``permissions`` with the guarded ones withdrawn that no capability the token holds lists.
+
+    A token without ``schedule_posts`` loses ``publish_directly`` and so cannot reach scheduling through a request
+    that is otherwise allowed (creating a post with ``action=schedule``, re-timing a post, starting a repeat).
     """
     if held is None:
         return permissions
     held_set = set(held)
-    listed = {p for c in CAPABILITIES for p in c.permissions}
     usable = {p for c in CAPABILITIES if c.key in held_set for p in c.permissions}
-    return {k: (v and (k not in listed or k in usable)) for k, v in permissions.items()}
+    return {k: (v and (k not in GUARDED_PERMISSIONS or k in usable)) for k, v in permissions.items()}
 
 
 def permissions_for(keys) -> list[str]:
@@ -304,6 +316,7 @@ _ROUTES: dict[str, tuple[str, ...]] = {
         "DELETE /categories/{category_id}",
         "POST /events/",
         "DELETE /events/{event_id}",
+        "POST /repurpose/jobs/{job_id}/accept",
     ),
     "schedule_posts": (
         "POST /posts/{post_id}/schedule",
@@ -328,6 +341,9 @@ _ROUTES: dict[str, tuple[str, ...]] = {
     "use_ai_assistant": (
         "POST /ai/caption",
         "POST /ai/adapt",
+        "POST /repurpose/jobs",
+        "GET /repurpose/jobs/{job_id}",
+        "POST /repurpose/jobs/{job_id}/cancel",
     ),
     "read_inbox": (
         "GET /inbox/",
@@ -344,7 +360,6 @@ _ROUTES: dict[str, tuple[str, ...]] = {
         "GET /analytics/accounts/{account_id}",
         "GET /analytics/posts/{post_id}",
         "GET /reports/",
-        "POST /reports/{report_id}/run",
         "GET /reports/{report_id}/runs/latest",
         "GET /competitors/",
         "GET /competitors/comparison",
@@ -386,6 +401,8 @@ _ROUTES: dict[str, tuple[str, ...]] = {
         "DELETE /bio/pages/{page_id}/links/{link_id}",
         "POST /competitors/",
         "DELETE /competitors/{competitor_id}",
+        # Running a report can email it to its recipients, so it is not a read.
+        "POST /reports/{report_id}/run",
     ),
 }
 
@@ -433,6 +450,7 @@ _TOOLS: dict[str, tuple[str, ...]] = {
         "delete_category",
         "create_calendar_event",
         "delete_calendar_event",
+        "accept_repurpose_outputs",
     ),
     "schedule_posts": (
         "schedule_post",
@@ -460,6 +478,9 @@ _TOOLS: dict[str, tuple[str, ...]] = {
     "use_ai_assistant": (
         "generate_caption",
         "adapt_caption",
+        "create_repurpose_job",
+        "get_repurpose_job",
+        "cancel_repurpose_job",
     ),
     "read_inbox": (
         "list_inbox_messages",
@@ -476,7 +497,6 @@ _TOOLS: dict[str, tuple[str, ...]] = {
         "get_account_analytics",
         "get_post_analytics",
         "list_reports",
-        "run_report",
         "get_latest_report_run",
         "list_competitors",
         "get_competitor_comparison",
@@ -515,11 +535,14 @@ _TOOLS: dict[str, tuple[str, ...]] = {
         "delete_bio_link",
         "add_competitor",
         "remove_competitor",
+        "run_report",
     ),
 }
 
-#: Calls to the AI assistant, which count toward a token's daily AI budget.
-_AI_CAPABILITY = "use_ai_assistant"
+#: Routes and tools that make exactly one AI request, spent from the token's daily AI budget before they run.
+#: A repurposing job makes several and reserves them itself (``apps.api.ops.create_repurpose_job``).
+_ONE_AI_CALL_ROUTES = frozenset({"POST /ai/caption", "POST /ai/adapt"})
+_ONE_AI_CALL_TOOLS = frozenset({"generate_caption", "adapt_caption"})
 
 
 def _invert(table: dict[str, tuple[str, ...]]) -> dict[str, str]:
@@ -545,7 +568,7 @@ def tool_capability(name: str) -> str | None:
 
 
 def tool_uses_ai(name: str) -> bool:
-    return TOOL_CAPABILITY.get(name) == _AI_CAPABILITY
+    return name in _ONE_AI_CALL_TOOLS
 
 
 # Route matching. A route is "METHOD /path/{param}"; a request is matched on its method and path.
@@ -560,25 +583,31 @@ def _route_pattern(route: str) -> tuple[str, re.Pattern[str]]:
     return method, re.compile(f"^{regex}$")
 
 
-_PATTERNS: list[tuple[str, re.Pattern[str], str]] | None = None
+_PATTERNS: list[tuple[str, re.Pattern[str], str, str]] | None = None
 
 
-def _patterns() -> list[tuple[str, re.Pattern[str], str]]:
+def _patterns() -> list[tuple[str, re.Pattern[str], str, str]]:
     global _PATTERNS
     if _PATTERNS is None:
         # Literal segments first, so "/slots/next-free" is tried before "/slots/{slot_id}".
         ordered = sorted(ROUTE_CAPABILITY.items(), key=lambda item: item[0].count("{"))
-        _PATTERNS = [(*_route_pattern(route), cap_key) for route, cap_key in ordered]
+        _PATTERNS = [(*_route_pattern(route), route, cap_key) for route, cap_key in ordered]
     return _PATTERNS
+
+
+def _match(method: str, path: str) -> tuple[str, str] | None:
+    """``(route, capability)`` for the REST route serving ``method path``, or None when it is unmapped."""
+    method = (method or "").upper()
+    for route_method, pattern, route, cap_key in _patterns():
+        if route_method == method and pattern.match(path or ""):
+            return route, cap_key
+    return None
 
 
 def capability_for_request(method: str, path: str) -> str | None:
     """The capability the REST route at ``method path`` needs, or None when it is unmapped."""
-    method = (method or "").upper()
-    for route_method, pattern, cap_key in _patterns():
-        if route_method == method and pattern.match(path or ""):
-            return cap_key
-    return None
+    found = _match(method, path)
+    return found[1] if found else None
 
 
 def is_mcp_route(method: str, path: str) -> bool:
@@ -586,7 +615,8 @@ def is_mcp_route(method: str, path: str) -> bool:
 
 
 def route_uses_ai(method: str, path: str) -> bool:
-    return capability_for_request(method, path) == _AI_CAPABILITY
+    found = _match(method, path)
+    return found is not None and found[0] in _ONE_AI_CALL_ROUTES
 
 
 # ---------------------------------------------------------------------------
@@ -603,6 +633,15 @@ def allows_tool(capabilities, tool_name: str) -> bool:
     cap_key = TOOL_CAPABILITY.get(tool_name)
     # An unmapped tool is never shown to a limited token; the registry test keeps this from happening.
     return capabilities is None or (cap_key is not None and cap_key in capabilities)
+
+
+def intersect(first, second) -> list[str] | None:
+    """Capabilities in both sets, where None means not limited."""
+    if first is None:
+        return None if second is None else clean(second)
+    if second is None:
+        return clean(first)
+    return clean(set(first) & set(second))
 
 
 def token_capabilities(api_key) -> list[str] | None:

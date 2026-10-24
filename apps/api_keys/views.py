@@ -38,7 +38,7 @@ from django.views.decorators.http import require_http_methods
 
 from apps.api_keys import budgets, services
 from apps.api_keys import capabilities as caps
-from apps.api_keys.models import ApiKey
+from apps.api_keys.models import ApiKey, ConnectedApp
 from apps.members.models import (
     PERMISSION_KEYS,
     WorkspaceMembership,
@@ -123,9 +123,12 @@ def list_keys(request):
     # this page finds nothing and the modal stays closed.
     reveal_token = request.session.pop("reveal_token", None)
     reveal_key_name = request.session.pop("reveal_key_name", None)
+    connections = list(_org_connections(org).filter(revoked_at__isnull=True).order_by("-created_at"))
+    connection_usage = budgets.snapshots(connections)
     context = {
         "settings_active": "api_keys",
         "rows": rows,
+        "connection_rows": [_connection_context(c, usage=connection_usage.get(c.pk)) for c in connections],
         "show_all": show_all,
         "revoked_count": revoked_count,
         # Empty issuance form context — the modal renders inside the
@@ -225,6 +228,35 @@ def _row_context(api_key: ApiKey, *, user, memo: dict, usage: dict | None = None
     }
 
 
+def _org_connections(org):
+    """OAuth connections of the organization's members: clients that act as one of them."""
+    return (
+        ConnectedApp.objects.filter(user__org_memberships__organization=org)
+        .select_related("user", "application")
+        .distinct()
+    )
+
+
+def _connection_context(connection: ConnectedApp, *, usage: dict | None) -> dict:
+    """Adapt an ``ConnectedApp`` for the list: the same facts and limits a token row shows."""
+    expired = connection.expires_at is not None and connection.expires_at <= timezone.now()
+    held = caps.token_capabilities(connection)
+    return {
+        "id": connection.id,
+        "name": connection.application.name or "OAuth app",
+        "user": connection.user,
+        "status": "expired" if expired else "active",
+        "created_at": connection.created_at,
+        "last_used_at": connection.last_used_at,
+        "expires_at": connection.expires_at,
+        "limited": held is not None,
+        "capability_labels": [caps.label_for(k) for k in held or []],
+        "requires_approval": connection.requires_approval,
+        "budgets": _budget_rows(usage),
+        "scope_form": _scope_form_context(connection, oauth=True),
+    }
+
+
 _BUDGET_LABELS = (
     ("requests", "Calls today"),
     ("ai", "AI calls today"),
@@ -260,11 +292,13 @@ def _budget_rows(usage: dict | None) -> list[dict]:
     return rows
 
 
-def _scope_form_context(api_key: ApiKey | None) -> dict:
+def _scope_form_context(api_key: ApiKey | ConnectedApp | None, *, oauth: bool = False) -> dict:
     """What the token form shows: presets, capabilities grouped and ticked, budgets, IP ranges, approval mode.
 
     A new token starts from the Drafting assistant preset, which can only write drafts a person approves.
     A key from before scoped tokens (no capability limit) shows everything ticked, and saving applies the form.
+    An OAuth connection (``oauth``) has no presets or IP ranges: the person chose its capabilities on the consent
+    screen, and a desktop client moves between networks.
     """
     if api_key is None:
         start = caps.preset("drafting_assistant")
@@ -278,10 +312,13 @@ def _scope_form_context(api_key: ApiKey | None) -> dict:
         requires_approval, ip_text, legacy = start.requires_approval, "", False
     else:
         held = set(caps.CAPABILITY_KEYS if api_key.capabilities is None else caps.clean(api_key.capabilities))
-        selected = api_key.preset
         values = {name: getattr(api_key, name) for name, _ in _BUDGET_FIELDS}
-        requires_approval, ip_text = api_key.requires_approval, "\n".join(api_key.allowed_ip_ranges or [])
-        legacy = api_key.capabilities is None
+        requires_approval, ip_text = (
+            api_key.requires_approval,
+            "\n".join(getattr(api_key, "allowed_ip_ranges", None) or []),
+        )
+        legacy = api_key.capabilities is None and not oauth
+        selected = getattr(api_key, "preset", "")
     groups: dict[str, list] = {}
     for cap in caps.CAPABILITIES:
         groups.setdefault(cap.group, []).append({"cap": cap, "checked": cap.key in held})
@@ -301,6 +338,7 @@ def _scope_form_context(api_key: ApiKey | None) -> dict:
         "requires_approval": requires_approval,
         "ip_ranges_text": ip_text,
         "legacy": legacy,
+        "oauth": oauth,
     }
 
 
@@ -552,6 +590,8 @@ def issue_key(request):
             messages.error(request, e)
         return redirect("api_keys:list")
 
+    if "daily_request_budget" in scope:
+        scope["daily_request_budget"] = services.fit_request_budget(workspace, scope["daily_request_budget"])
     try:
         issued = services.issue_api_key(
             workspace=workspace,
@@ -659,6 +699,8 @@ def edit_key(request, key_id):
             messages.error(request, e)
         return redirect("api_keys:list")
 
+    if "daily_request_budget" in scope:
+        scope["daily_request_budget"] = services.fit_request_budget(key.workspace, scope["daily_request_budget"])
     try:
         services.update_api_key(
             key,
@@ -701,4 +743,58 @@ def rotate_key(request, key_id):
         return redirect("api_keys:list")
     request.session["reveal_token"] = issued.plaintext_token
     request.session["reveal_key_name"] = key.name
+    return redirect("api_keys:list")
+
+
+# ---------------------------------------------------------------------------
+# OAuth connections
+# ---------------------------------------------------------------------------
+
+
+def _org_connection_or_404(request, connection_id) -> ConnectedApp:
+    return get_object_or_404(_org_connections(request.org), id=connection_id)
+
+
+@_require_manage_api_keys
+@require_http_methods(["POST"])
+def edit_connection(request, connection_id):
+    """Change an OAuth client's capabilities, budgets, approval mode and expiry, like a token's."""
+    connection = _org_connection_or_404(request, connection_id)
+    if connection.revoked_at is not None:
+        messages.info(request, "That app was disconnected; it can't be edited.")
+        return redirect("api_keys:list")
+    scope, errors = _scope_from_post(request.POST)
+    expires_at, exp_err = _parse_expires_at((request.POST.get("expires_at") or "").strip())
+    if exp_err:
+        errors.append(exp_err)
+    if not scope and not errors:
+        errors.append("Choose at least one capability.")
+    if errors:
+        for e in errors:
+            messages.error(request, e)
+        return redirect("api_keys:list")
+    try:
+        services.update_connected_app(
+            connection,
+            capabilities=scope["capabilities"],
+            requires_approval=scope["requires_approval"],
+            expires_at=expires_at,
+            daily_request_budget=scope["daily_request_budget"],
+            daily_ai_budget=scope["daily_ai_budget"],
+            daily_post_budget=scope["daily_post_budget"],
+        )
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect("api_keys:list")
+    messages.success(request, f"Updated “{connection.application.name}”.")
+    return redirect("api_keys:list")
+
+
+@_require_manage_api_keys
+@require_http_methods(["POST"])
+def revoke_connection(request, connection_id):
+    """Disconnect an OAuth client: its tokens stop working now and it can't refresh them."""
+    connection = _org_connection_or_404(request, connection_id)
+    services.revoke_connected_app(connection)
+    messages.success(request, f"Disconnected “{connection.application.name}”.")
     return redirect("api_keys:list")

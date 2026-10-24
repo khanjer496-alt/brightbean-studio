@@ -35,3 +35,16 @@ class S256OnlyOAuth2Validator(OAuth2Validator):
                 request=request,
             )
         return super().is_pkce_required(client_id, request)
+
+    def validate_refresh_token(self, refresh_token, client, request, *args, **kwargs):
+        """Refuse a refresh token whose connection was revoked or has expired.
+
+        Revoking a connection already revokes its refresh tokens; this is the second lock, and the one that makes
+        an expiry set on the API keys page stop the client from minting new access tokens.
+        """
+        if not super().validate_refresh_token(refresh_token, client, request, *args, **kwargs):
+            return False
+        from apps.api_keys.models import ConnectedApp
+
+        connection = ConnectedApp.objects.filter(user=request.user, application=client).first()
+        return connection is None or connection.is_active

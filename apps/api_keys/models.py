@@ -160,25 +160,79 @@ class ApiKey(models.Model):
         return not (self.expires_at is not None and self.expires_at <= timezone.now())
 
 
-class ApiKeyDailyUsage(models.Model):
-    """What one token has spent of its AI and scheduling budgets on one UTC day.
+class ConnectedApp(models.Model):
+    """The limits a person set on one OAuth client (an MCP connector such as Claude Desktop) acting as them.
 
-    Request counts are not here: they come from ``ApiKeyUsageHourly``, which already counts every call.
+    One row per person and client, written by the consent screen and edited on the API keys page. It carries the
+    same tool-level scope a minted key does (capabilities, budgets, expiry, read-only until approved), so the
+    client's access tokens *and* the refresh tokens behind them answer to it: the capabilities here are intersected
+    with the token's ``cap:`` scopes, so a client cannot widen a narrowed grant by refreshing with fewer scopes, and
+    revoking or expiring the row refuses its access tokens and stops its refresh tokens minting new ones.
     """
 
-    api_key = models.ForeignKey(ApiKey, on_delete=models.CASCADE, related_name="daily_usage")
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="connected_apps")
+    application = models.ForeignKey(
+        settings.OAUTH2_PROVIDER_APPLICATION_MODEL, on_delete=models.CASCADE, related_name="+"
+    )
+    capabilities = models.JSONField(
+        null=True, blank=True, default=None, help_text="Capability keys the client may use. Null = not limited."
+    )
+    daily_request_budget = models.PositiveIntegerField(blank=True, null=True)
+    daily_ai_budget = models.PositiveIntegerField(blank=True, null=True)
+    daily_post_budget = models.PositiveIntegerField(blank=True, null=True)
+    requires_approval = models.BooleanField(
+        default=False, help_text="Read-only until approved: autonomy is forced to Draft only for this client."
+    )
+    expires_at = models.DateTimeField(blank=True, null=True)
+    revoked_at = models.DateTimeField(blank=True, null=True)
+    last_used_at = models.DateTimeField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "api_keys_connected_app"
+        constraints = [
+            models.UniqueConstraint(fields=["user", "application"], name="uniq_connected_app_user_app"),
+        ]
+
+    def __str__(self):
+        return f"{self.application_id} for {self.user_id}"
+
+    @property
+    def is_active(self) -> bool:
+        from django.utils import timezone
+
+        if self.revoked_at is not None:
+            return False
+        return not (self.expires_at is not None and self.expires_at <= timezone.now())
+
+
+class ApiKeyDailyUsage(models.Model):
+    """What one token has spent of its budgets on one UTC day.
+
+    ``actor`` is ``key:<api_key_id>`` or ``oauth:<connection_id>``. A key's calls are counted from
+    ``ApiKeyUsageHourly`` instead of ``requests``, which only an OAuth connection's request budget uses.
+    """
+
+    actor = models.CharField(max_length=64)
+    api_key = models.ForeignKey(ApiKey, on_delete=models.CASCADE, related_name="daily_usage", null=True, blank=True)
+    connected_app = models.ForeignKey(
+        ConnectedApp, on_delete=models.CASCADE, related_name="daily_usage", null=True, blank=True
+    )
     day = models.DateField(help_text="The UTC day these counts belong to.")
+    requests = models.PositiveIntegerField(default=0)
     ai_calls = models.PositiveIntegerField(default=0)
     posts_scheduled = models.PositiveIntegerField(default=0)
 
     class Meta:
         db_table = "api_keys_daily_usage"
         constraints = [
-            models.UniqueConstraint(fields=["api_key", "day"], name="uniq_apikey_daily_usage"),
+            models.UniqueConstraint(fields=["actor", "day"], name="uniq_token_daily_usage"),
         ]
 
     def __str__(self):
-        return f"{self.api_key_id} {self.day}: ai={self.ai_calls} posts={self.posts_scheduled}"
+        return f"{self.actor} {self.day}: ai={self.ai_calls} posts={self.posts_scheduled}"
 
 
 class ApiKeyAuditLog(models.Model):

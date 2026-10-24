@@ -15,6 +15,8 @@ from dataclasses import dataclass
 
 from django.utils import timezone
 
+from apps.api_keys import budgets
+
 from . import service
 from .models import ActionType, AgentAction, Decision
 from .service import Verdict
@@ -310,6 +312,7 @@ def gate_resume(*, workspace, actor, post, platform_posts, source: str = "api") 
                     final_text=gate.text,
                 )
 
+            _release_reserved_posts(pairs)
             refusal = AutonomyRefusalError(message, write)
             refusal.log()
             return refusal
@@ -329,10 +332,22 @@ def gate_resume(*, workspace, actor, post, platform_posts, source: str = "api") 
     return None
 
 
+def _release_reserved_posts(pairs) -> None:
+    """Hand back the token's post budget for gated posts that were allowed but won't be scheduled after all."""
+    allowed = [gate for _, gate in pairs if gate.schedule and gate.action_type == ActionType.PUBLISH_POSTS]
+    if allowed:
+        budgets.release_scheduled_posts(allowed[0].actor.token, len(allowed))
+
+
 def refusal_for(pairs, post) -> AutonomyRefusalError | None:
-    """Log and return the refusal if any of the gated posts is blocked, else None."""
+    """Log and return the refusal if any of the gated posts is blocked, else None.
+
+    A refusal stops the whole request, so the posts the gate allowed (and reserved from the token's daily post
+    budget) are not scheduled either and get their budget back.
+    """
     for pp, gate in pairs:
         if gate.blocked:
+            _release_reserved_posts(pairs)
             return gate.refuse(post=post, platform_post=pp)
     return None
 

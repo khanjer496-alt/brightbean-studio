@@ -33,7 +33,7 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from apps.api_keys import capabilities as caps
-from apps.api_keys.models import ApiKey
+from apps.api_keys.models import ApiKey, ConnectedApp
 
 # Deployment-configurable customer-facing prefix.  Upstream keeps its original
 # default; PostDelegate sets ``postdelegate_`` without changing the token
@@ -180,6 +180,16 @@ def _check_scope(workspace, *, capabilities, daily_request_budget) -> list[str] 
                 f"The daily request budget must stay within your plan's allowance of {plan_cap} calls a day."
             )
     return cleaned
+
+
+def fit_request_budget(workspace, daily_request_budget: int | None) -> int | None:
+    """A request budget no larger than the plan's daily allowance, so a preset made for a bigger plan still applies."""
+    if daily_request_budget is None:
+        return None
+    from apps.billing.entitlements import get_entitlements
+
+    plan_cap = get_entitlements(workspace.organization).max_api_calls_per_day
+    return daily_request_budget if plan_cap is None else min(daily_request_budget, plan_cap)
 
 
 def issue_api_key(
@@ -428,6 +438,86 @@ def revoke_api_key(api_key: ApiKey) -> None:
 
 
 # ---------------------------------------------------------------------------
+# OAuth connections: the same limits for a client a person connected with OAuth
+# ---------------------------------------------------------------------------
+
+
+def record_oauth_consent(*, user, application, capabilities: list[str], requires_approval: bool) -> ConnectedApp:
+    """Store what the person allowed on the consent screen for this client.
+
+    A fresh consent replaces the capabilities and approval mode, and lifts an earlier revocation (the person just
+    approved the client again). Budgets and expiry set on the API keys page stay.
+    """
+    cleaned = caps.clean(capabilities)
+    if not cleaned:
+        raise ValueError("Choose at least one capability.")
+    connection, _ = ConnectedApp.objects.update_or_create(
+        user=user,
+        application=application,
+        defaults={"capabilities": cleaned, "requires_approval": requires_approval, "revoked_at": None},
+    )
+    if connection.expires_at is not None and connection.expires_at <= timezone.now():
+        # An expiry that has passed would leave the client the person just approved unable to connect.
+        connection.expires_at = None
+        connection.save(update_fields=["expires_at", "updated_at"])
+    return connection
+
+
+def update_connected_app(
+    connection: ConnectedApp,
+    *,
+    capabilities: list[str],
+    requires_approval: bool,
+    expires_at=None,
+    daily_request_budget: int | None = None,
+    daily_ai_budget: int | None = None,
+    daily_post_budget: int | None = None,
+) -> ConnectedApp:
+    """Change a connected client's limits. Its tokens keep at most what the person consented to (their scopes)."""
+    cleaned = caps.clean(capabilities)
+    if not cleaned:
+        raise ValueError("Choose at least one capability.")
+    connection.capabilities = cleaned
+    connection.requires_approval = requires_approval
+    connection.expires_at = expires_at
+    connection.daily_request_budget = daily_request_budget
+    connection.daily_ai_budget = daily_ai_budget
+    connection.daily_post_budget = daily_post_budget
+    connection.save(
+        update_fields=[
+            "capabilities",
+            "requires_approval",
+            "expires_at",
+            "daily_request_budget",
+            "daily_ai_budget",
+            "daily_post_budget",
+            "updated_at",
+        ]
+    )
+    return connection
+
+
+def revoke_connected_app(connection: ConnectedApp) -> None:
+    """Cut a connected client off now: its access tokens stop working and its refresh tokens can't mint new ones.
+
+    The tokens are deleted (refresh tokens are revoked the way django-oauth-toolkit does it), and the connection
+    is marked revoked, which ``apps.api.auth`` and the refresh validator both check.
+    """
+    from django.db import transaction
+    from oauth2_provider.models import get_access_token_model, get_grant_model, get_refresh_token_model
+
+    with transaction.atomic():
+        if connection.revoked_at is None:
+            connection.revoked_at = timezone.now()
+            connection.save(update_fields=["revoked_at", "updated_at"])
+        mine = {"user_id": connection.user_id, "application_id": connection.application_id}
+        for refresh in get_refresh_token_model().objects.filter(revoked__isnull=True, **mine):
+            refresh.revoke()
+        get_access_token_model().objects.filter(**mine).delete()
+        get_grant_model().objects.filter(**mine).delete()
+
+
+# ---------------------------------------------------------------------------
 # Verification (read path) — hot path; gets called on every API request.
 # ---------------------------------------------------------------------------
 
@@ -437,29 +527,26 @@ def verify_token(raw: str) -> ApiKey | None:
 
     Returns None for: malformed token, unknown prefix, hash mismatch,
     revoked key, expired key, **issuer no longer a member of the key's
-    workspace** (or issuer deleted). The caller turns None into 401.
+    workspace** (or issuer deleted or deactivated, or the workspace archived).
+    The caller turns None into 401.
 
-    The row is read from the database on every call (two indexed queries), never from a cache:
-    a process-local cache cannot learn about a revocation made on another worker.
+    The row is read from the database on every call, never from a cache: a process-local cache cannot learn about
+    a revocation made on another worker. That costs three indexed queries: the key joined to its issuer and
+    workspace (by the unique ``lookup_prefix``), the issuer's membership (by the unique user + workspace pair,
+    kept on the key as ``issuer_membership`` for the permission intersection), and the account allowlist. The
+    capabilities, budgets and IP ranges are columns of the key row, so they cost nothing more.
 
     Constant-time compare on the hash defends against timing oracles on
     the secret part.
     """
+    from django.db.models import prefetch_related_objects
+
     parsed = parse_token(raw)
     if parsed is None:
         return None
 
-    # ``workspace`` is not joined here: it is read lazily, fresh, when a request needs it.
-    try:
-        api_key = (
-            ApiKey.objects.select_related("issued_by")
-            .prefetch_related("social_accounts")
-            .get(lookup_prefix=parsed.lookup_prefix)
-        )
-    except ApiKey.DoesNotExist:
-        return None
-
-    if not api_key.is_active:
+    api_key = ApiKey.objects.select_related("issued_by", "workspace").filter(lookup_prefix=parsed.lookup_prefix).first()
+    if api_key is None or not api_key.is_active:
         return None
 
     expected_hash = _hmac_hex(parsed.random_part)
@@ -468,32 +555,30 @@ def verify_token(raw: str) -> ApiKey | None:
 
     # Even an unrevoked, unexpired key must die if the issuer was offboarded, deleted, or moved out of the
     # workspace. The model docstring promises this; the model property alone can't express it without a DB hit.
-    if not _issuer_still_authorized(api_key):
+    membership = _issuer_membership(api_key)
+    if membership is None:
         return None
-
+    api_key.issuer_membership = membership  # type: ignore[attr-defined]
+    prefetch_related_objects([api_key], "social_accounts")
     return api_key
 
 
-def _issuer_still_authorized(api_key: ApiKey) -> bool:
-    """True iff ``api_key.issued_by`` still has a WorkspaceMembership in the
-    key's workspace.
+def _issuer_membership(api_key: ApiKey):
+    """The issuer's ``WorkspaceMembership`` in the key's workspace, or None when the key must not work.
 
-    Returns False when the issuer was deleted (FK set to NULL by
-    ``on_delete=SET_NULL``) or when their workspace membership has been
-    removed. Demotion within the workspace is handled separately by the
-    per-request permission intersection in the Ninja auth class — this
-    function only gates *any* access at all.
+    None when the issuer was deleted (FK set to NULL by ``on_delete=SET_NULL``) or deactivated, when the workspace
+    is archived, or when their workspace membership has been removed. Demotion within the workspace is handled by
+    the per-request permission intersection in the Ninja auth class, which reuses this row.
     """
     from apps.members.models import WorkspaceMembership
 
-    if api_key.issued_by_id is None:
-        return False
-    return WorkspaceMembership.objects.filter(
-        user_id=api_key.issued_by_id,
-        workspace_id=api_key.workspace_id,
-        user__is_active=True,
-        workspace__is_archived=False,
-    ).exists()
+    if api_key.issued_by_id is None or not api_key.issued_by.is_active or api_key.workspace.is_archived:
+        return None
+    return (
+        WorkspaceMembership.objects.select_related("custom_role")
+        .filter(user_id=api_key.issued_by_id, workspace_id=api_key.workspace_id)
+        .first()
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -522,3 +607,10 @@ def touch_last_used(api_key: ApiKey, *, ip: str | None) -> None:
         return
     now = timezone.now()
     ApiKey.objects.filter(pk=api_key.pk).update(last_used_at=now, last_used_ip=ip)
+
+
+def touch_connection_used(connection) -> None:
+    """``ConnectedApp.last_used_at``, at most once a minute (same debounce as keys)."""
+    if not cache.add(f"oauthconn:last_touched:{connection.pk}", "1", _LAST_USED_DEBOUNCE_SECONDS):
+        return
+    type(connection).objects.filter(pk=connection.pk).update(last_used_at=timezone.now())

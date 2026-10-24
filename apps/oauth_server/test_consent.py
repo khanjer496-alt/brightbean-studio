@@ -121,6 +121,23 @@ class TestConsentScreen:
         assert [c["cap"].key for c in ctx["capability_choices"]] == ["read_calendar", "draft_posts"]
         assert all(c["checked"] for c in ctx["capability_choices"])
 
+    def test_a_client_asking_for_high_risk_capabilities_gets_them_offered_unticked(self, signed_in, application):
+        client, *_ = signed_in
+        scope = "mcp cap:read_calendar cap:schedule_posts cap:write_settings cap:reply_inbox"
+        response = client.get("/oauth/authorize/", authorize_params(application, scope))
+        ticked = {c["cap"].key for c in response.context["capability_choices"] if c["checked"]}
+        assert ticked == {"read_calendar"}
+        assert response.content.decode().count("High risk</span>") == 3
+
+    def test_the_screen_is_protected_against_cross_site_posts(self, signed_in, application):
+        from django.contrib.auth import get_user_model
+
+        _, user, _ = signed_in
+        forged = SecureClient(enforce_csrf_checks=True)
+        forged.force_login(get_user_model().objects.get(pk=user.pk))
+        data = {**authorize_params(application), "capability": ["read_calendar"], "allow": "Authorize"}
+        assert forged.post("/oauth/authorize/", data=data).status_code == 403
+
     def test_a_returning_client_still_sees_the_screen(self, signed_in, application):
         client, *_ = signed_in
         exchange(application, consent_post(client, application, ["read_calendar"]))
@@ -182,8 +199,9 @@ class TestNarrowingIsStored:
         tokens = exchange(application, consent_post(client, application, ["read_calendar"]))
         actor = _resolve_oauth_actor(tokens["access_token"])
         assert actor.capabilities == ["read_calendar"]
-        assert actor.effective_permissions["create_posts"] is False
         assert actor.effective_permissions["publish_directly"] is False
+        assert actor.effective_permissions["approve_posts"] is False
+        assert actor.effective_permissions["reply_from_inbox"] is False
 
     def test_only_offered_capabilities_can_be_granted(self, signed_in, application):
         client, *_ = signed_in
@@ -222,3 +240,102 @@ class TestGrantsFromBeforeNarrowing:
         actor = _resolve_oauth_actor(raw)
         assert actor.capabilities is None
         assert list_tools(raw) == set(caps.TOOL_CAPABILITY)
+
+
+def refresh(application, refresh_token, scope=None):
+    data = {"grant_type": "refresh_token", "refresh_token": refresh_token, "client_id": application.client_id}
+    if scope is not None:
+        data["scope"] = scope
+    return Client().post("/oauth/token/", data=data)
+
+
+def connection_for(user, application):
+    from apps.api_keys.models import ConnectedApp
+
+    return ConnectedApp.objects.get(user=user, application=application)
+
+
+class TestTheConnectionHoldsTheLimits:
+    def test_consent_records_the_capabilities_and_approval_mode(self, signed_in, application):
+        client, user, _ = signed_in
+        data = {**authorize_params(application), "capability": ["read_calendar"], "allow": "Authorize"}
+        exchange(application, client.post("/oauth/authorize/", data={**data, "requires_approval": "1"}))
+        connection = connection_for(user, application)
+        assert connection.capabilities == ["read_calendar"]
+        assert connection.requires_approval is True
+
+    def test_a_refresh_that_drops_the_capability_scopes_cannot_widen_the_grant(self, signed_in, application):
+        from apps.api.auth import _resolve_oauth_actor
+
+        client, *_ = signed_in
+        tokens = exchange(application, consent_post(client, application, ["read_calendar"]))
+        widened = refresh(application, tokens["refresh_token"], scope="mcp")
+        assert widened.status_code == 200, widened.content
+        assert widened.json()["scope"] == "mcp"
+        assert _resolve_oauth_actor(widened.json()["access_token"]).capabilities == ["read_calendar"]
+
+    def test_a_refresh_cannot_ask_for_a_capability_that_was_not_granted(self, signed_in, application):
+        client, *_ = signed_in
+        tokens = exchange(application, consent_post(client, application, ["read_calendar"]))
+        response = refresh(application, tokens["refresh_token"], scope="mcp cap:read_calendar cap:schedule_posts")
+        assert response.status_code == 400
+        assert response.json()["error"] == "invalid_scope"
+
+    def test_revoking_stops_the_access_token_and_the_refresh_token(self, signed_in, application):
+        from apps.api.auth import _resolve_oauth_actor
+        from apps.api_keys import services
+
+        client, user, _ = signed_in
+        tokens = exchange(application, consent_post(client, application, ["read_calendar"]))
+        services.revoke_connected_app(connection_for(user, application))
+        assert _resolve_oauth_actor(tokens["access_token"]) is None
+        assert refresh(application, tokens["refresh_token"]).status_code == 400
+
+    def test_an_expired_connection_refuses_its_tokens_and_cannot_refresh(self, signed_in, application):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        from apps.api.auth import _resolve_oauth_actor
+
+        client, user, _ = signed_in
+        tokens = exchange(application, consent_post(client, application, ["read_calendar"]))
+        connection = connection_for(user, application)
+        connection.expires_at = timezone.now() - timedelta(minutes=1)
+        connection.save(update_fields=["expires_at"])
+        assert _resolve_oauth_actor(tokens["access_token"]) is None
+        assert refresh(application, tokens["refresh_token"]).status_code == 400
+
+    def test_approving_again_after_a_revocation_reconnects(self, signed_in, application):
+        from apps.api.auth import _resolve_oauth_actor
+        from apps.api_keys import services
+
+        client, user, _ = signed_in
+        exchange(application, consent_post(client, application, ["read_calendar"]))
+        services.revoke_connected_app(connection_for(user, application))
+        tokens = exchange(application, consent_post(client, application, ["read_calendar"]))
+        assert _resolve_oauth_actor(tokens["access_token"]) is not None
+
+    def test_the_request_budget_applies_to_the_connection(self, signed_in, application):
+        client, user, _ = signed_in
+        tokens = exchange(application, consent_post(client, application, ["read_calendar"]))
+        connection = connection_for(user, application)
+        connection.daily_request_budget = 1
+        connection.save(update_fields=["daily_request_budget"])
+        assert list_tools(tokens["access_token"])
+        response = SecureClient(HTTP_AUTHORIZATION=f"Bearer {tokens['access_token']}").post(
+            "/api/v1/mcp/",
+            data=json.dumps({"jsonrpc": "2.0", "id": 2, "method": "tools/list"}),
+            content_type="application/json",
+        )
+        assert response.status_code == 429
+
+    def test_read_only_until_approved_reaches_the_autonomy_gate(self, signed_in, application):
+        from apps.api.auth import _resolve_oauth_actor
+
+        client, user, _ = signed_in
+        data = {**authorize_params(application), "capability": ["read_calendar"], "allow": "Authorize"}
+        tokens = exchange(application, client.post("/oauth/authorize/", data={**data, "requires_approval": "1"}))
+        actor = _resolve_oauth_actor(tokens["access_token"])
+        assert actor.requires_approval is True
+        assert actor.connection == connection_for(user, application)

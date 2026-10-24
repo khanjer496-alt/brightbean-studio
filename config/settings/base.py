@@ -789,6 +789,9 @@ RATELIMIT_USE_CACHE = "default"
 MCP_PUBLIC_BASE_URL = env("MCP_PUBLIC_BASE_URL", default=APP_URL).rstrip("/")
 MCP_OAUTH_ISSUER_URL = env("MCP_OAUTH_ISSUER_URL", default=APP_URL).rstrip("/")
 
+# django-oauth-toolkit's default, named so ``apps.api_keys.ConnectedApp`` can point at the (swappable) model.
+OAUTH2_PROVIDER_APPLICATION_MODEL = "oauth2_provider.Application"
+
 OAUTH2_PROVIDER = {
     "SCOPES": {"mcp": f"Call {BRAND_NAME} MCP tools on your behalf"},
     "DEFAULT_SCOPES": ["mcp"],

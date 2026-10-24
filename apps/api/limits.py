@@ -390,12 +390,16 @@ def enforce_token_budgets(request: HttpRequest) -> None:
     spend their AI budget in ``apps.mcp.transport``, where the tool is known.
     """
     api_key = request.auth  # type: ignore[attr-defined]
-    if not isinstance(api_key, ApiKey):
+    if api_key is None:
         return
-    request_budget = api_key.daily_request_budget
+    request_budget = getattr(api_key, "daily_request_budget", None)
     if request_budget is not None:
-        _, used_day = usage_in_windows(actor_for(api_key), timezone.now())
-        if used_day >= request_budget:
+        if isinstance(api_key, ApiKey):
+            _, used_day = usage_in_windows(actor_for(api_key), timezone.now())
+            spent = used_day >= request_budget
+        else:
+            spent = not budgets.reserve_request(api_key)
+        if spent:
             raise token_budget_error("token_daily_requests", request_budget)
     if caps.route_uses_ai(request.method or "", request.path) and not budgets.reserve_ai_call(api_key):
         raise token_budget_error("token_daily_ai", api_key.daily_ai_budget or 0)

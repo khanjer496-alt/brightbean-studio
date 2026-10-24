@@ -224,14 +224,17 @@ def evaluate(
     )
     failures = report.failures()
     reasons = [r.reason for r in failures]
-    if action_type == ActionType.PUBLISH_POSTS and token is not None and budgets.post_budget_spent(token):
-        reason = f"this token has used its daily limit of {token.daily_post_budget} scheduled posts"
-        return _verdict(BLOCK, action_type, level, level_source, [reason], report)
     if report.blocked:
         reasons = [r.reason for r in failures if r.blocking]
         return _verdict(BLOCK, action_type, level, level_source, reasons, report)
     if report.needs_review:
         return _verdict(HOLD, action_type, level, level_source, reasons, report)
+    # The token's own post budget is spent here, once per post about to be scheduled, so the posts of one
+    # request (one per account) and of concurrent requests all count before any is allowed. Inside the caller's
+    # transaction, a request that fails afterwards gives its reservations back.
+    if action_type == ActionType.PUBLISH_POSTS and token is not None and not budgets.reserve_scheduled_post(token):
+        reason = f"this token has used its daily limit of {token.daily_post_budget} scheduled posts"
+        return _verdict(BLOCK, action_type, level, level_source, [reason], report)
     return _verdict(EXECUTE, action_type, level, level_source, [], report, undo_delay=delay)
 
 
@@ -298,8 +301,6 @@ def record(
         ),
         target_key=target_key,
     )
-    if action_type == ActionType.PUBLISH_POSTS and action.decision == Decision.EXECUTED:
-        budgets.record_scheduled_post(actor.token)
     if notify:
         announce(action)
     return action

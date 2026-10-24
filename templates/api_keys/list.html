@@ -75,6 +75,23 @@
     </div>
     {% endif %}
 
+    <section class="mt-10" aria-labelledby="connected-apps-heading">
+        <h2 id="connected-apps-heading" class="text-base font-semibold text-[var(--text-primary)]">Connected apps</h2>
+        <p class="text-sm mt-1 mb-4 max-w-xl text-[var(--text-tertiary)]">
+            Apps your team connected by signing in (OAuth), such as Claude Desktop. Each acts as the person who approved it,
+            limited to what they ticked on the consent screen and the limits you set here.
+        </p>
+        {% if connection_rows %}
+        <div class="rounded-xl border border-stone-200 bg-[var(--surface-0)] px-5 sm:px-6 divide-y divide-stone-200">
+            {% for row in connection_rows %}
+            {% include "api_keys/_connection_row.html" with row=row %}
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="px-6 py-8 text-center text-sm rounded-xl border border-stone-200 bg-[var(--surface-0)] text-[var(--text-tertiary)]">No apps connected with OAuth.</p>
+        {% endif %}
+    </section>
+
     {# ---- Issuance modal ---------------------------------------------- #}
     {% include "api_keys/_issue_modal.html" %}
 

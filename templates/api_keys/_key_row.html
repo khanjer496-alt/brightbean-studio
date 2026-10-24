@@ -102,7 +102,7 @@
                                     <details class="rounded-lg border border-stone-200 px-3 py-2">
                                         <summary class="cursor-pointer text-sm font-semibold text-[var(--text-primary)]">Workspace permissions (advanced)</summary>
                                         {% if row.editable_permissions %}
-                                        <p class="text-xs mt-2 mb-2 text-[var(--text-tertiary)]">Capabilities you tick above add the permissions they need. Unticking a capability withdraws the permissions only it uses.</p>
+                                        <p class="text-xs mt-2 mb-2 text-[var(--text-tertiary)]">Capabilities you tick above add the permissions they need. Without Schedule &amp; publish, Approvals or Inbox reply, the token also loses the scheduling, approving and reply-sending permissions those carry.</p>
                                         <div class="space-y-1.5">
                                             {% for perm_key, label, checked in row.editable_permissions %}
                                             <label class="flex items-start gap-2 text-sm px-3 py-2 rounded-lg border border-stone-200 cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--primary)]">

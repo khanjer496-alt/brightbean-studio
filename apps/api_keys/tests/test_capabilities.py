@@ -57,6 +57,15 @@ class TestRegistryCompleteness:
             path = caps.API_PREFIX + re.sub(r"\{[^}]+\}", "11111111-1111-1111-1111-111111111111", template)
             assert caps.capability_for_request(method, path) == expected, route
 
+    def test_only_the_caption_routes_and_tools_spend_one_ai_call_each(self):
+        assert caps.route_uses_ai("POST", "/api/v1/ai/caption")
+        assert caps.tool_uses_ai("adapt_caption")
+        # A repurposing run reserves all of its calls itself, so the route must not spend one more.
+        assert not caps.route_uses_ai("POST", "/api/v1/repurpose/jobs")
+        assert not caps.tool_uses_ai("create_repurpose_job")
+        assert caps.capability_for_request("POST", "/api/v1/repurpose/jobs") == "use_ai_assistant"
+        assert caps.capability_for_request("POST", f"/api/v1/repurpose/jobs/{'1' * 8}/accept") == "draft_posts"
+
     def test_a_literal_segment_wins_over_a_parameter(self):
         assert caps.capability_for_request("GET", "/api/v1/slots/next-free") == "read_calendar"
         assert caps.capability_for_request("PATCH", "/api/v1/slots/abc") == "schedule_posts"
@@ -106,14 +115,33 @@ class TestPresetsAndHelpers:
         assert caps.from_scope(scope) == ["read_calendar", "draft_posts"]
         assert caps.from_scope("mcp") is None
 
-    def test_narrow_permissions_withdraws_only_what_held_capabilities_do_not_use(self):
-        perms = {"create_posts": True, "publish_directly": True, "edit_others_posts": True, "view_analytics": True}
+    def test_narrow_permissions_withdraws_the_guarded_permissions_held_capabilities_do_not_carry(self):
+        perms = {
+            "create_posts": True,
+            "publish_directly": True,
+            "approve_posts": True,
+            "reply_from_inbox": True,
+            "edit_others_posts": True,
+            "view_analytics": True,
+        }
         narrowed = caps.narrow_permissions(perms, ["draft_posts"])
         assert narrowed["create_posts"] is True
-        assert narrowed["publish_directly"] is False  # only schedule_posts uses it
-        assert narrowed["view_analytics"] is False  # only read_analytics uses it
-        assert narrowed["edit_others_posts"] is True  # no capability lists it, so untouched
+        assert narrowed["publish_directly"] is False  # only schedule_posts carries it
+        assert narrowed["approve_posts"] is False  # only manage_approvals carries it
+        assert narrowed["reply_from_inbox"] is False  # only reply_inbox carries it
+        # Not guarded: these only matter on routes their own capability already gates, so reads keep working.
+        assert narrowed["view_analytics"] is True
+        assert narrowed["edit_others_posts"] is True
+        assert caps.narrow_permissions(perms, ["schedule_posts"])["publish_directly"] is True
         assert caps.narrow_permissions(perms, None) is perms
 
+    def test_every_guarded_permission_is_carried_by_some_capability(self):
+        carried = {p for c in caps.CAPABILITIES for p in c.permissions}
+        assert carried >= caps.GUARDED_PERMISSIONS
+
     def test_permissions_for_capabilities(self):
-        assert caps.permissions_for(["schedule_posts"]) == ["create_posts", "publish_directly"]
+        assert caps.permissions_for(["schedule_posts"]) == [
+            "create_posts",
+            "manage_social_accounts",
+            "publish_directly",
+        ]
