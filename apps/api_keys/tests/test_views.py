@@ -936,9 +936,9 @@ class TestScopedEditRotateRevoke:
 
 @pytest.mark.django_db
 class TestConnectedApps:
-    """OAuth clients show beside the tokens, with the same limits, and can be edited and disconnected."""
+    """OAuth apps show beside the tokens: admins see and limit every app in their org, members manage their own."""
 
-    def _connect(self, user, name="Claude Desktop", **fields):
+    def _connect(self, user, organization, name="Claude Desktop", **fields):
         from oauth2_provider.models import get_application_model
 
         from apps.api_keys.models import ConnectedApp
@@ -951,25 +951,56 @@ class TestConnectedApps:
             redirect_uris="https://claude.ai/api/mcp/auth_callback",
         )
         return ConnectedApp.objects.create(
-            user=user, application=application, capabilities=["read_calendar", "draft_posts"], **fields
+            user=user,
+            application=application,
+            organization=organization,
+            capabilities=["read_calendar", "draft_posts"],
+            **fields,
         )
 
-    def test_lists_a_members_connected_app_with_its_limits(self, admin_client, admin_user):
+    @pytest.fixture
+    def org_member(self, db, organization):
+        """A plain member of the admin's organization (no manage_api_keys)."""
+        from django.test import Client
+
+        from apps.accounts.models import User
+
+        user = User.objects.create_user(
+            email="plain-member@example.com", password=None, name="Plain", tos_accepted_at=timezone.now()
+        )
+        OrgMembership.objects.filter(user=user).delete()
+        OrgMembership.objects.create(user=user, organization=organization, org_role=OrgMembership.OrgRole.MEMBER)
+        client = Client()
+        client.force_login(user)
+        return user, client
+
+    def test_lists_an_app_in_the_org_with_its_limits(self, admin_client, admin_user, organization):
         from apps.api_keys.budgets import reserve_ai_call
 
-        connection = self._connect(admin_user, daily_ai_budget=4)
+        connection = self._connect(admin_user, organization, daily_ai_budget=4)
         reserve_ai_call(connection)
         body = admin_client.get(reverse("api_keys:list")).content.decode()
         assert "Claude Desktop" in body and "Connected apps" in body
         assert "Draft posts" in body and "1 of 4" in body
         assert reverse("api_keys:revoke_connection", args=[connection.id]) in body
 
-    def test_an_app_connected_by_someone_outside_the_org_is_not_listed(self, admin_client, member_user):
-        self._connect(member_user, name="Someone else's client")
-        assert "Someone else" not in admin_client.get(reverse("api_keys:list")).content.decode()
+    def test_an_app_connected_to_another_org_is_not_listed(self, admin_client, admin_user, member_user):
+        other_org = member_user.org_memberships.first().organization
+        self._connect(admin_user, other_org, name="Connected elsewhere")
+        assert "Connected elsewhere" not in admin_client.get(reverse("api_keys:list")).content.decode()
 
-    def test_edit_sets_capabilities_budgets_expiry_and_approval_mode(self, admin_client, admin_user):
-        connection = self._connect(admin_user)
+    def test_another_orgs_app_is_a_404_even_for_the_same_person(self, admin_client, admin_user, member_user):
+        other_org = member_user.org_memberships.first().organization
+        connection = self._connect(admin_user, other_org)
+        for name in ("revoke_connection", "edit_connection", "reinstate_connection"):
+            assert admin_client.post(reverse(f"api_keys:{name}", args=[connection.id])).status_code == 404, name
+        connection.refresh_from_db()
+        assert connection.revoked_at is None
+
+    def test_an_admin_edit_sets_a_ceiling_budgets_expiry_and_approval_mode(
+        self, admin_client, admin_user, organization
+    ):
+        connection = self._connect(admin_user, organization)
         response = admin_client.post(
             reverse("api_keys:edit_connection", args=[connection.id]),
             {
@@ -984,39 +1015,64 @@ class TestConnectedApps:
         )
         assert response.status_code == 302
         connection.refresh_from_db()
-        assert connection.capabilities == ["read_calendar"]
+        assert connection.admin_capabilities == ["read_calendar"]
+        assert connection.capabilities == ["read_calendar", "draft_posts"]  # the person's own choice is kept
+        assert connection.effective_capabilities == ["read_calendar"]
         assert (connection.daily_request_budget, connection.daily_ai_budget, connection.daily_post_budget) == (
             50,
             None,
             0,
         )
-        assert connection.requires_approval is True
+        assert connection.admin_requires_approval is True
         assert connection.expires_at.date().isoformat() == "2031-01-31"
 
-    def test_disconnect_revokes_the_connection_and_its_tokens(self, admin_client, admin_user):
+    def test_an_admin_disconnect_revokes_the_tokens_and_sticks(self, admin_client, admin_user, organization):
         from oauth2_provider.models import get_access_token_model
 
-        connection = self._connect(admin_user)
+        connection = self._connect(admin_user, organization)
         get_access_token_model().objects.create(
             user=admin_user,
             application=connection.application,
             token="abc",
             expires=timezone.now() + timedelta(hours=1),
-            scope="mcp",
+            scope=f"mcp org:{organization.id}",
         )
-        response = admin_client.post(reverse("api_keys:revoke_connection", args=[connection.id]))
-        assert response.status_code == 302
+        assert admin_client.post(reverse("api_keys:revoke_connection", args=[connection.id])).status_code == 302
+        connection.refresh_from_db()
+        assert connection.revoked_at is not None and connection.admin_revoked_at is not None
+        assert not get_access_token_model().objects.filter(application=connection.application).exists()
+        body = admin_client.get(reverse("api_keys:list")).content.decode()
+        assert "Disconnected by an admin" in body and "Allow again" in body
+        assert admin_client.post(reverse("api_keys:reinstate_connection", args=[connection.id])).status_code == 302
+        connection.refresh_from_db()
+        assert connection.admin_revoked_at is None
+
+    def test_a_member_sees_and_disconnects_their_own_app(self, org_member, organization):
+        user, client = org_member
+        connection = self._connect(user, organization, name="My laptop Claude")
+        page = client.get(reverse("api_keys:my_connections"))
+        assert page.status_code == 200 and "My laptop Claude" in page.content.decode()
+        assert client.post(reverse("api_keys:revoke_connection", args=[connection.id])).status_code == 302
         connection.refresh_from_db()
         assert connection.revoked_at is not None
-        assert not get_access_token_model().objects.filter(application=connection.application).exists()
+        assert connection.admin_revoked_at is None  # their own disconnect: approving again undoes it
 
-    def test_another_orgs_connection_cannot_be_touched(self, admin_client, member_user):
-        connection = self._connect(member_user)
-        assert admin_client.post(reverse("api_keys:revoke_connection", args=[connection.id])).status_code == 404
-        assert admin_client.post(reverse("api_keys:edit_connection", args=[connection.id])).status_code == 404
+    def test_a_member_can_only_narrow_their_own_app(self, org_member, organization):
+        user, client = org_member
+        connection = self._connect(user, organization)
+        client.post(
+            reverse("api_keys:edit_connection", args=[connection.id]),
+            {"scoped": "1", "capabilities": ["read_calendar", "schedule_posts"], "daily_post_budget": "999"},
+        )
+        connection.refresh_from_db()
+        assert connection.capabilities == ["read_calendar"]
+        assert connection.daily_post_budget is None and connection.admin_capabilities is None
+
+    def test_a_member_cannot_see_or_touch_someone_elses_app(self, org_member, admin_user, organization):
+        user, client = org_member
+        connection = self._connect(admin_user, organization, name="The admin's app")
+        assert "The admin's app" not in client.get(reverse("api_keys:my_connections")).content.decode()
+        assert client.post(reverse("api_keys:revoke_connection", args=[connection.id])).status_code == 404
+        assert client.post(reverse("api_keys:reinstate_connection", args=[connection.id])).status_code == 403
         connection.refresh_from_db()
         assert connection.revoked_at is None
-
-    def test_a_member_without_manage_api_keys_cannot_disconnect(self, member_client, member_user):
-        connection = self._connect(member_user)
-        assert member_client.post(reverse("api_keys:revoke_connection", args=[connection.id])).status_code == 403

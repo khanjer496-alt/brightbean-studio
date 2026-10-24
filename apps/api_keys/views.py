@@ -30,6 +30,7 @@ from django.core.exceptions import (
 from django.core.exceptions import (
     ValidationError as DjangoValidationError,
 )
+from django.db.models import Q
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -124,12 +125,10 @@ def list_keys(request):
     # this page finds nothing and the modal stays closed.
     reveal_token = request.session.pop("reveal_token", None)
     reveal_key_name = request.session.pop("reveal_key_name", None)
-    connections = list(_org_connections(org).filter(revoked_at__isnull=True).order_by("-created_at"))
-    connection_usage = budgets.snapshots(connections)
     context = {
         "settings_active": "api_keys",
         "rows": rows,
-        "connection_rows": [_connection_context(c, usage=connection_usage.get(c.pk)) for c in connections],
+        "connection_rows": _connection_rows(_listed_connections(_org_connections(org)), as_admin=True),
         "show_all": show_all,
         "revoked_count": revoked_count,
         # Empty issuance form context — the modal renders inside the
@@ -230,31 +229,67 @@ def _row_context(api_key: ApiKey, *, user, memo: dict, usage: dict | None = None
 
 
 def _org_connections(org):
-    """OAuth connections of the organization's members: clients that act as one of them."""
-    return (
-        ConnectedApp.objects.filter(user__org_memberships__organization=org)
-        .select_related("user", "application")
-        .distinct()
-    )
+    """Apps connected to this organization: OAuth clients that act as one of its members, only in its workspaces."""
+    return ConnectedApp.objects.filter(organization=org).select_related("user", "application")
 
 
-def _connection_context(connection: ConnectedApp, *, usage: dict | None) -> dict:
-    """Adapt an ``ConnectedApp`` for the list: the same facts and limits a token row shows."""
-    expired = connection.expires_at is not None and connection.expires_at <= timezone.now()
-    held = caps.token_capabilities(connection)
+def _listed_connections(qs) -> list[ConnectedApp]:
+    """Connected apps worth showing: live ones, and those an admin disconnected (so an admin can allow them again)."""
+    return list(qs.filter(Q(revoked_at__isnull=True) | Q(admin_revoked_at__isnull=False)).order_by("-created_at"))
+
+
+def _connection_rows(connections: list[ConnectedApp], *, as_admin: bool) -> list[dict]:
+    usage = budgets.snapshots(connections)
+    return [_connection_context(c, usage=usage.get(c.pk), as_admin=as_admin) for c in connections]
+
+
+def _connection_context(connection: ConnectedApp, *, usage: dict | None, as_admin: bool) -> dict:
+    """Adapt a ``ConnectedApp`` for the list: the same facts and limits a token row shows.
+
+    ``as_admin`` decides what Edit changes: an admin sets the ceiling, budgets and expiry; the person who connected
+    the app can only narrow their own choice.
+    """
+    if connection.admin_revoked_at is not None:
+        status = "blocked"
+    elif connection.expires_at is not None and connection.expires_at <= timezone.now():
+        status = "expired"
+    else:
+        status = "active"
+    held = connection.effective_capabilities
+    form_source = connection
+    if as_admin and connection.admin_capabilities is not None:
+        # An admin edits the ceiling, so the form starts from it.
+        form_source = ConnectedApp(
+            capabilities=connection.admin_capabilities,
+            requires_approval=connection.admin_requires_approval,
+            daily_request_budget=connection.daily_request_budget,
+            daily_ai_budget=connection.daily_ai_budget,
+            daily_post_budget=connection.daily_post_budget,
+        )
+    elif as_admin:
+        form_source = ConnectedApp(
+            capabilities=connection.capabilities,
+            requires_approval=connection.admin_requires_approval,
+            daily_request_budget=connection.daily_request_budget,
+            daily_ai_budget=connection.daily_ai_budget,
+            daily_post_budget=connection.daily_post_budget,
+        )
     return {
         "id": connection.id,
         "name": connection.application.name or "OAuth app",
         "user": connection.user,
-        "status": "expired" if expired else "active",
+        "status": status,
+        "as_admin": as_admin,
         "created_at": connection.created_at,
         "last_used_at": connection.last_used_at,
         "expires_at": connection.expires_at,
         "limited": held is not None,
         "capability_labels": [caps.label_for(k) for k in held or []],
-        "requires_approval": connection.requires_approval,
+        "limited_by_admin": connection.admin_capabilities is not None,
+        "requires_approval": connection.effective_requires_approval,
+        "approval_forced": connection.admin_requires_approval,
         "budgets": _budget_rows(usage),
-        "scope_form": _scope_form_context(connection, oauth=True),
+        "scope_form": _scope_form_context(form_source, oauth=True, member=not as_admin),
     }
 
 
@@ -293,7 +328,7 @@ def _budget_rows(usage: dict | None) -> list[dict]:
     return rows
 
 
-def _scope_form_context(api_key: ApiKey | ConnectedApp | None, *, oauth: bool = False) -> dict:
+def _scope_form_context(api_key: ApiKey | ConnectedApp | None, *, oauth: bool = False, member: bool = False) -> dict:
     """What the token form shows: presets, capabilities grouped and ticked, budgets, IP ranges, approval mode.
 
     A new token starts from the Drafting assistant preset, which can only write drafts a person approves.
@@ -322,6 +357,8 @@ def _scope_form_context(api_key: ApiKey | ConnectedApp | None, *, oauth: bool = 
         selected = getattr(api_key, "preset", "")
     groups: dict[str, list] = {}
     for cap in caps.CAPABILITIES:
+        if member and cap.key not in held:
+            continue  # The person can only narrow; allowing more goes through the consent screen.
         groups.setdefault(cap.group, []).append({"cap": cap, "checked": cap.key in held})
     return {
         "presets": [
@@ -340,6 +377,8 @@ def _scope_form_context(api_key: ApiKey | ConnectedApp | None, *, oauth: bool = 
         "ip_ranges_text": ip_text,
         "legacy": legacy,
         "oauth": oauth,
+        # The person who connected an app narrows only what it may do; budgets and expiry are the admins'.
+        "member": member,
     }
 
 
@@ -752,18 +791,48 @@ def rotate_key(request, key_id):
 # ---------------------------------------------------------------------------
 
 
-def _org_connection_or_404(request, connection_id) -> ConnectedApp:
-    return get_object_or_404(_org_connections(request.org), id=connection_id)
+def _is_admin(request) -> bool:
+    return has_org_permission(getattr(request, "org_membership", None), "manage_api_keys")
 
 
-@_require_manage_api_keys
+def _connection_or_404(request, connection_id) -> ConnectedApp:
+    """A connected app in the current organization that this person may manage: any of them for an admin, their
+    own for everyone else. Anything else, including another organization's, is a 404."""
+    org = getattr(request, "org", None)
+    if org is None:
+        raise Http404()
+    qs = _org_connections(org)
+    if not _is_admin(request):
+        qs = qs.filter(user=request.user)
+    return get_object_or_404(qs, id=connection_id)
+
+
+def _back(request):
+    return redirect("api_keys:list" if _is_admin(request) else "api_keys:my_connections")
+
+
+@login_required
+def my_connections(request):
+    """Every member's own connected apps in the current organization, to see, narrow and disconnect."""
+    org = getattr(request, "org", None)
+    if org is None:
+        raise Http404()
+    rows = _connection_rows(_listed_connections(_org_connections(org).filter(user=request.user)), as_admin=False)
+    return render(
+        request,
+        "api_keys/my_connections.html",
+        {"settings_active": "connected_apps", "connection_rows": rows},
+    )
+
+
+@login_required
 @require_http_methods(["POST"])
 def edit_connection(request, connection_id):
-    """Change an OAuth client's capabilities, budgets, approval mode and expiry, like a token's."""
-    connection = _org_connection_or_404(request, connection_id)
-    if connection.revoked_at is not None:
+    """An admin sets a connected app's ceiling, budgets, approval mode and expiry; its owner narrows their choice."""
+    connection = _connection_or_404(request, connection_id)
+    if connection.revoked_at is not None and connection.admin_revoked_at is None:
         messages.info(request, "That app was disconnected; it can't be edited.")
-        return redirect("api_keys:list")
+        return _back(request)
     scope, errors = _scope_from_post(request.POST)
     expires_at, exp_err = _parse_expires_at((request.POST.get("expires_at") or "").strip())
     if exp_err:
@@ -773,33 +842,52 @@ def edit_connection(request, connection_id):
     if errors:
         for e in errors:
             messages.error(request, e)
-        return redirect("api_keys:list")
-    plan_cap = get_entitlements(request.org).max_api_calls_per_day
-    request_budget = scope["daily_request_budget"]
-    if plan_cap is not None and request_budget is not None:
-        request_budget = min(request_budget, plan_cap)
+        return _back(request)
     try:
-        services.update_connected_app(
-            connection,
-            capabilities=scope["capabilities"],
-            requires_approval=scope["requires_approval"],
-            expires_at=expires_at,
-            daily_request_budget=request_budget,
-            daily_ai_budget=scope["daily_ai_budget"],
-            daily_post_budget=scope["daily_post_budget"],
-        )
+        if _is_admin(request):
+            plan_cap = get_entitlements(request.org).max_api_calls_per_day
+            request_budget = scope["daily_request_budget"]
+            if plan_cap is not None and request_budget is not None:
+                request_budget = min(request_budget, plan_cap)
+            services.set_connected_app_limits(
+                connection,
+                capabilities=scope["capabilities"],
+                requires_approval=scope["requires_approval"],
+                expires_at=expires_at,
+                daily_request_budget=request_budget,
+                daily_ai_budget=scope["daily_ai_budget"],
+                daily_post_budget=scope["daily_post_budget"],
+            )
+        else:
+            services.narrow_connected_app(
+                connection, capabilities=scope["capabilities"], requires_approval=scope["requires_approval"]
+            )
     except ValueError as exc:
         messages.error(request, str(exc))
-        return redirect("api_keys:list")
+        return _back(request)
     messages.success(request, f"Updated “{connection.application.name}”.")
-    return redirect("api_keys:list")
+    return _back(request)
+
+
+@login_required
+@require_http_methods(["POST"])
+def revoke_connection(request, connection_id):
+    """Disconnect an app: its tokens stop working now and it can't refresh them.
+
+    An admin's disconnect sticks (the person can't approve the app again until an admin allows it); the person's
+    own disconnect can be undone by approving the app again.
+    """
+    connection = _connection_or_404(request, connection_id)
+    services.revoke_connected_app(connection, by_admin=_is_admin(request))
+    messages.success(request, f"Disconnected “{connection.application.name}”.")
+    return _back(request)
 
 
 @_require_manage_api_keys
 @require_http_methods(["POST"])
-def revoke_connection(request, connection_id):
-    """Disconnect an OAuth client: its tokens stop working now and it can't refresh them."""
-    connection = _org_connection_or_404(request, connection_id)
-    services.revoke_connected_app(connection)
-    messages.success(request, f"Disconnected “{connection.application.name}”.")
+def reinstate_connection(request, connection_id):
+    """Lift an admin's disconnect so the person can approve the app again."""
+    connection = _connection_or_404(request, connection_id)
+    services.reinstate_connected_app(connection)
+    messages.success(request, f"“{connection.application.name}” can be connected again.")
     return redirect("api_keys:list")

@@ -26,6 +26,9 @@ API_PREFIX = "/api/v1"
 
 #: Prefix of the OAuth scopes that carry a narrowed capability set (``cap:schedule_posts``).
 SCOPE_PREFIX = "cap:"
+#: Prefix of the OAuth scope that ties a grant's tokens to one organization (``org:<uuid>``). Only the consent
+#: screen adds it; a client can't ask for one.
+ORG_SCOPE_PREFIX = "org:"
 
 
 @dataclass(frozen=True)
@@ -663,3 +666,15 @@ def from_scope(scope: str | None) -> list[str] | None:
     """Capabilities carried by an OAuth scope string; None when it names none (a grant from before narrowing)."""
     found = [s[len(SCOPE_PREFIX) :] for s in (scope or "").split() if s.startswith(SCOPE_PREFIX)]
     return clean(found) if found else None
+
+
+def org_scope(organization_id) -> str:
+    return f"{ORG_SCOPE_PREFIX}{organization_id}"
+
+
+def org_from_scope(scope: str | None) -> str | None:
+    """The organization id an OAuth scope string is tied to, or None for a grant from before connected apps."""
+    for item in (scope or "").split():
+        if item.startswith(ORG_SCOPE_PREFIX):
+            return item[len(ORG_SCOPE_PREFIX) :]
+    return None

@@ -442,28 +442,38 @@ def revoke_api_key(api_key: ApiKey) -> None:
 # ---------------------------------------------------------------------------
 
 
-def record_oauth_consent(*, user, application, capabilities: list[str], requires_approval: bool) -> ConnectedApp:
-    """Store what the person allowed on the consent screen for this client.
+class ConsentBlockedError(ValueError):
+    """An admin disconnected this app for the organization; only an admin can allow it again."""
 
-    A fresh consent replaces the capabilities and approval mode, and lifts an earlier revocation (the person just
-    approved the client again). Budgets and expiry set on the API keys page stay.
+
+def record_oauth_consent(
+    *, user, application, organization, capabilities: list[str], requires_approval: bool
+) -> ConnectedApp:
+    """Store what the person allowed on the consent screen for this client in this organization.
+
+    A fresh consent replaces the person's own choice and lifts their own earlier disconnect, but stays inside the
+    admins' ceiling: capabilities outside ``admin_capabilities`` are dropped, the admins' approval mode, budgets
+    and expiry are kept, and an app an admin disconnected raises :class:`ConsentBlockedError`.
     """
-    cleaned = caps.clean(capabilities)
+    existing = ConnectedApp.objects.filter(user=user, application=application, organization=organization).first()
+    if existing is not None and existing.admin_revoked_at is not None:
+        raise ConsentBlockedError(
+            "An admin disconnected this app. Ask an admin of your organization to allow it again."
+        )
+    ceiling = existing.admin_capabilities if existing is not None else None
+    cleaned = caps.intersect(caps.clean(capabilities), ceiling) or []
     if not cleaned:
         raise ValueError("Choose at least one capability.")
     connection, _ = ConnectedApp.objects.update_or_create(
         user=user,
         application=application,
+        organization=organization,
         defaults={"capabilities": cleaned, "requires_approval": requires_approval, "revoked_at": None},
     )
-    if connection.expires_at is not None and connection.expires_at <= timezone.now():
-        # An expiry that has passed would leave the client the person just approved unable to connect.
-        connection.expires_at = None
-        connection.save(update_fields=["expires_at", "updated_at"])
     return connection
 
 
-def update_connected_app(
+def set_connected_app_limits(
     connection: ConnectedApp,
     *,
     capabilities: list[str],
@@ -473,20 +483,23 @@ def update_connected_app(
     daily_ai_budget: int | None = None,
     daily_post_budget: int | None = None,
 ) -> ConnectedApp:
-    """Change a connected client's limits. Its tokens keep at most what the person consented to (their scopes)."""
+    """An admin's limits on a connected app: a ceiling the person's re-approval can't exceed.
+
+    The app uses what the person allowed *within* ``capabilities`` here, and its tokens keep at most their scopes.
+    """
     cleaned = caps.clean(capabilities)
     if not cleaned:
         raise ValueError("Choose at least one capability.")
-    connection.capabilities = cleaned
-    connection.requires_approval = requires_approval
+    connection.admin_capabilities = cleaned
+    connection.admin_requires_approval = requires_approval
     connection.expires_at = expires_at
     connection.daily_request_budget = daily_request_budget
     connection.daily_ai_budget = daily_ai_budget
     connection.daily_post_budget = daily_post_budget
     connection.save(
         update_fields=[
-            "capabilities",
-            "requires_approval",
+            "admin_capabilities",
+            "admin_requires_approval",
             "expires_at",
             "daily_request_budget",
             "daily_ai_budget",
@@ -497,24 +510,50 @@ def update_connected_app(
     return connection
 
 
-def revoke_connected_app(connection: ConnectedApp) -> None:
-    """Cut a connected client off now: its access tokens stop working and its refresh tokens can't mint new ones.
+def narrow_connected_app(connection: ConnectedApp, *, capabilities: list[str], requires_approval: bool) -> ConnectedApp:
+    """The person narrows their own app: they can drop capabilities, never add one they did not approve."""
+    current = connection.capabilities if connection.capabilities is not None else list(caps.CAPABILITY_KEYS)
+    cleaned = caps.intersect(caps.clean(capabilities), current) or []
+    if not cleaned:
+        raise ValueError("Keep at least one capability, or disconnect the app.")
+    connection.capabilities = cleaned
+    connection.requires_approval = requires_approval
+    connection.save(update_fields=["capabilities", "requires_approval", "updated_at"])
+    return connection
 
-    The tokens are deleted (refresh tokens are revoked the way django-oauth-toolkit does it), and the connection
-    is marked revoked, which ``apps.api.auth`` and the refresh validator both check.
+
+def revoke_connected_app(connection: ConnectedApp, *, by_admin: bool = False) -> None:
+    """Cut a connected app off now: its access tokens stop working and its refresh tokens can't mint new ones.
+
+    The grant's tokens (those scoped to this organization) are deleted, refresh tokens revoked the way
+    django-oauth-toolkit does it, and the row marked disconnected, which ``apps.api.auth`` and the refresh
+    validator both check. An admin's disconnect also sets ``admin_revoked_at``, which the person's own re-approval
+    can't lift.
     """
     from django.db import transaction
     from oauth2_provider.models import get_access_token_model, get_grant_model, get_refresh_token_model
 
+    now = timezone.now()
+    org_scope = caps.org_scope(connection.organization_id)
+    mine = {"user_id": connection.user_id, "application_id": connection.application_id}
     with transaction.atomic():
-        if connection.revoked_at is None:
-            connection.revoked_at = timezone.now()
-            connection.save(update_fields=["revoked_at", "updated_at"])
-        mine = {"user_id": connection.user_id, "application_id": connection.application_id}
-        for refresh in get_refresh_token_model().objects.filter(revoked__isnull=True, **mine):
+        connection.revoked_at = connection.revoked_at or now
+        if by_admin:
+            connection.admin_revoked_at = connection.admin_revoked_at or now
+        connection.save(update_fields=["revoked_at", "admin_revoked_at", "updated_at"])
+        refresh_tokens = get_refresh_token_model().objects.filter(
+            revoked__isnull=True, access_token__scope__contains=org_scope, **mine
+        )
+        for refresh in refresh_tokens:
             refresh.revoke()
-        get_access_token_model().objects.filter(**mine).delete()
-        get_grant_model().objects.filter(**mine).delete()
+        get_access_token_model().objects.filter(scope__contains=org_scope, **mine).delete()
+        get_grant_model().objects.filter(scope__contains=org_scope, **mine).delete()
+
+
+def reinstate_connected_app(connection: ConnectedApp) -> None:
+    """An admin lifts their disconnect. The app stays disconnected until the person approves it again."""
+    connection.admin_revoked_at = None
+    connection.save(update_fields=["admin_revoked_at", "updated_at"])
 
 
 # ---------------------------------------------------------------------------

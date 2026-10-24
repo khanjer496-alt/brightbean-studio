@@ -6,11 +6,14 @@
                 <h3 id="conn-{{ row.id }}-name" class="text-sm font-semibold break-words text-[var(--text-primary)]">{{ row.name }}</h3>
                 {% if row.status == "active" %}
                 <span class="px-2 py-0.5 text-xs rounded-full bg-emerald-100 text-emerald-800">Connected</span>
+                {% elif row.status == "blocked" %}
+                <span class="px-2 py-0.5 text-xs rounded-full bg-red-100 text-red-800">Disconnected by an admin</span>
                 {% else %}
                 <span class="px-2 py-0.5 text-xs rounded-full bg-amber-100 text-amber-900">Expired</span>
                 {% endif %}
                 <span class="px-2 py-0.5 text-xs rounded-full border border-stone-200 text-stone-600">OAuth</span>
-                {% if row.requires_approval %}<span class="px-2 py-0.5 text-xs rounded-full bg-sky-100 text-sky-900">Drafts only until approved</span>{% endif %}
+                {% if row.requires_approval %}<span class="px-2 py-0.5 text-xs rounded-full bg-sky-100 text-sky-900">Drafts only until approved{% if row.approval_forced %} (set by an admin){% endif %}</span>{% endif %}
+                {% if row.limited_by_admin %}<span class="px-2 py-0.5 text-xs rounded-full border border-stone-200 text-stone-600">Limited by an admin</span>{% endif %}
             </div>
             <p class="text-xs flex flex-wrap gap-x-3 gap-y-1 text-[var(--text-tertiary)]">
                 <span>Acts as <strong class="font-medium text-[var(--text-secondary)]">{{ row.user.name|default:row.user.email }}</strong></span>
@@ -45,6 +48,16 @@
         </div>
 
         <div class="flex flex-wrap items-center gap-2">
+            {% if row.status == "blocked" %}
+            {% if row.as_admin %}
+            <form method="POST" action="{% url 'api_keys:reinstate_connection' row.id %}">
+                {% csrf_token %}
+                <button type="submit" class="px-4 py-1.5 text-xs font-medium rounded-full cursor-pointer border border-stone-300 bg-white text-stone-700 hover:bg-stone-50">Allow again</button>
+            </form>
+            {% else %}
+            <p class="text-xs max-w-xs text-[var(--text-tertiary)]">Ask an owner or admin to allow it again.</p>
+            {% endif %}
+            {% else %}
             <div x-data="{ showEditModal: false }">
                 <button type="button" @click="showEditModal = true" class="px-4 py-1.5 text-xs font-medium rounded-full cursor-pointer border border-stone-300 bg-white text-stone-700 hover:bg-stone-50">Edit</button>
                 <template x-teleport="body">
@@ -57,18 +70,20 @@
                                 {% csrf_token %}
                                 <div class="flex items-start justify-between gap-4 px-5 sm:px-6 pt-6 pb-4 flex-shrink-0">
                                     <div>
-                                        <h3 id="conn-edit-{{ row.id }}-title" class="text-lg font-semibold text-[var(--text-primary)]">Edit connected app</h3>
+                                        <h3 id="conn-edit-{{ row.id }}-title" class="text-lg font-semibold text-[var(--text-primary)]">{% if row.as_admin %}Limit connected app{% else %}Narrow connected app{% endif %}</h3>
                                         <p class="text-xs mt-1 text-[var(--text-tertiary)]"><strong class="text-[var(--text-primary)]">{{ row.name }}</strong> · {{ row.user.name|default:row.user.email }} · changes apply on the next request.</p>
                                     </div>
                                     <button type="button" @click="showEditModal = false" aria-label="Close" class="text-xl leading-none px-2 cursor-pointer text-[var(--text-tertiary)]">&times;</button>
                                 </div>
                                 <div class="space-y-5 px-5 sm:px-6 overflow-y-auto flex-1 min-h-0">
                                     {% include "api_keys/_scope_fields.html" with scope_form=row.scope_form uid=row.id %}
+                                    {% if row.as_admin %}
                                     <div>
                                         <label for="conn-expires-{{ row.id }}" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Expires on <span class="font-normal text-[var(--text-tertiary)]">(optional)</span></label>
                                         <input type="date" id="conn-expires-{{ row.id }}" name="expires_at" value="{{ row.expires_at|date:'Y-m-d' }}" class="form-input text-sm w-full">
                                         <p class="text-xs mt-1 text-[var(--text-tertiary)]">After this day the app's tokens stop working and it can't refresh them.</p>
                                     </div>
+                                    {% endif %}
                                 </div>
                                 <div class="flex items-center justify-end gap-3 px-5 sm:px-6 pt-5 pb-6 flex-shrink-0">
                                     <button type="button" @click="showEditModal = false" class="px-4 py-2 text-sm font-medium rounded-full cursor-pointer border border-stone-300 bg-white text-stone-700 hover:bg-stone-50">Cancel</button>
@@ -91,7 +106,7 @@
                             <div class="px-6 pt-6 pb-2">
                                 <h3 id="conn-revoke-{{ row.id }}-title" class="text-lg font-semibold text-[var(--text-primary)]">Disconnect app</h3>
                                 <p class="text-sm mt-2 text-[var(--text-secondary)]">
-                                    Disconnect <strong class="text-[var(--text-primary)]">{{ row.name }}</strong> for {{ row.user.name|default:row.user.email }}? It stops working on its very next request and can't refresh its access. To use it again, the person has to sign in and approve it again.
+                                    {% if row.as_admin %}Disconnect <strong class="text-[var(--text-primary)]">{{ row.name }}</strong> for {{ row.user.name|default:row.user.email }}? It stops working on its very next request and can't refresh its access. It stays disconnected until an admin allows it again.{% else %}Disconnect <strong class="text-[var(--text-primary)]">{{ row.name }}</strong>? It stops working on its very next request. To use it again, connect it from the app and approve it.{% endif %}
                                 </p>
                             </div>
                             <form method="POST" action="{% url 'api_keys:revoke_connection' row.id %}" class="flex items-center justify-end gap-3 px-6 pt-5 pb-6">
@@ -103,6 +118,7 @@
                     </div>
                 </template>
             </div>
+            {% endif %}
         </div>
     </div>
 </article>

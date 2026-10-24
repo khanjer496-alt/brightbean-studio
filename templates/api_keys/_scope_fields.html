@@ -44,8 +44,10 @@ The enclosing <form> carries data-token-scope; static/js/token-scope.js fills th
 
 <fieldset>
     <legend class="text-sm font-semibold text-[var(--text-primary)]">What it may do</legend>
-    {% if scope_form.oauth %}
-    <p class="text-xs mt-1 mb-2 text-[var(--text-tertiary)]">The app can use only what is ticked here <em>and</em> was approved on its consent screen, within the person's own workspace permissions.</p>
+    {% if scope_form.member %}
+    <p class="text-xs mt-1 mb-2 text-[var(--text-tertiary)]">Untick anything you no longer want it to do. To allow more, connect the app again from the app itself.</p>
+    {% elif scope_form.oauth %}
+    <p class="text-xs mt-1 mb-2 text-[var(--text-tertiary)]">A limit for this app: it can use only what is ticked here <em>and</em> what the person approved, within their own workspace permissions. Approving the app again can't go past it.</p>
     {% else %}
     <p class="text-xs mt-1 mb-2 text-[var(--text-tertiary)]">The token can use only what is ticked, and only within the workspace permissions you grant it.</p>
     {% endif %}
@@ -79,6 +81,7 @@ The enclosing <form> carries data-token-scope; static/js/token-scope.js fills th
     </label>
 </div>
 
+{% if not scope_form.member %}
 <fieldset>
     <legend class="text-sm font-semibold text-[var(--text-primary)]">Daily limits</legend>
     <p class="text-xs mt-1 mb-2 text-[var(--text-tertiary)]">Counted per UTC day, on top of your plan's limits. Leave empty for no limit of its own.</p>
@@ -91,6 +94,8 @@ The enclosing <form> carries data-token-scope; static/js/token-scope.js fills th
         {% endfor %}
     </div>
 </fieldset>
+
+{% endif %}
 
 {% if not scope_form.oauth %}
 <div>

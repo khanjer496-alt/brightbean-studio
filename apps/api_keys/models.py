@@ -161,13 +161,18 @@ class ApiKey(models.Model):
 
 
 class ConnectedApp(models.Model):
-    """The limits a person set on one OAuth client (an MCP connector such as Claude Desktop) acting as them.
+    """One OAuth client (an MCP connector such as Claude Desktop) a person connected to one organization.
 
-    One row per person and client, written by the consent screen and edited on the API keys page. It carries the
-    same tool-level scope a minted key does (capabilities, budgets, expiry, read-only until approved), so the
-    client's access tokens *and* the refresh tokens behind them answer to it: the capabilities here are intersected
-    with the token's ``cap:`` scopes, so a client cannot widen a narrowed grant by refreshing with fewer scopes, and
-    revoking or expiring the row refuses its access tokens and stops its refresh tokens minting new ones.
+    Written by the consent screen and edited on the API keys page. It carries the same tool-level scope a minted
+    key does (capabilities, budgets, expiry, read-only until approved), and every access and refresh token of the
+    grant answers to it: the consent screen adds an ``org:<organization_id>`` scope that ties the tokens to this
+    row, and the capabilities are intersected with the tokens' ``cap:`` scopes, so a refresh with fewer scopes can
+    neither widen the grant nor move it to another organization.
+
+    Two layers of limits: the person's own (``capabilities``, ``requires_approval``, ``revoked_at``), which they
+    set on the consent screen and can narrow or revoke themselves, and the organization admins' ceiling
+    (``admin_capabilities``, ``admin_requires_approval``, ``admin_revoked_at``, the budgets and the expiry), which
+    a fresh consent can't exceed or undo.
     """
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -175,17 +180,32 @@ class ConnectedApp(models.Model):
     application = models.ForeignKey(
         settings.OAUTH2_PROVIDER_APPLICATION_MODEL, on_delete=models.CASCADE, related_name="+"
     )
+    organization = models.ForeignKey(
+        "organizations.Organization",
+        on_delete=models.CASCADE,
+        related_name="connected_apps",
+        help_text="The organization the grant was made for; its tokens act only in this organization's workspaces.",
+    )
     capabilities = models.JSONField(
-        null=True, blank=True, default=None, help_text="Capability keys the client may use. Null = not limited."
+        null=True, blank=True, default=None, help_text="What the person allowed. Null = not limited."
+    )
+    admin_capabilities = models.JSONField(
+        null=True, blank=True, default=None, help_text="The admins' ceiling. Null = no ceiling."
     )
     daily_request_budget = models.PositiveIntegerField(blank=True, null=True)
     daily_ai_budget = models.PositiveIntegerField(blank=True, null=True)
     daily_post_budget = models.PositiveIntegerField(blank=True, null=True)
     requires_approval = models.BooleanField(
-        default=False, help_text="Read-only until approved: autonomy is forced to Draft only for this client."
+        default=False, help_text="The person asked for drafts only until a person approves."
+    )
+    admin_requires_approval = models.BooleanField(
+        default=False, help_text="An admin requires drafts only until approved; the person can't turn it off."
     )
     expires_at = models.DateTimeField(blank=True, null=True)
-    revoked_at = models.DateTimeField(blank=True, null=True)
+    revoked_at = models.DateTimeField(blank=True, null=True, help_text="Disconnected (by the person or an admin).")
+    admin_revoked_at = models.DateTimeField(
+        blank=True, null=True, help_text="Disconnected by an admin: only an admin can allow it again."
+    )
     last_used_at = models.DateTimeField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -193,19 +213,33 @@ class ConnectedApp(models.Model):
     class Meta:
         db_table = "api_keys_connected_app"
         constraints = [
-            models.UniqueConstraint(fields=["user", "application"], name="uniq_connected_app_user_app"),
+            models.UniqueConstraint(
+                fields=["user", "application", "organization"], name="uniq_connected_app_user_app_org"
+            ),
         ]
+        indexes = [models.Index(fields=["organization", "revoked_at"], name="idx_connected_app_org_revoked")]
 
     def __str__(self):
-        return f"{self.application_id} for {self.user_id}"
+        return f"{self.application_id} for {self.user_id} in {self.organization_id}"
 
     @property
     def is_active(self) -> bool:
         from django.utils import timezone
 
-        if self.revoked_at is not None:
+        if self.revoked_at is not None or self.admin_revoked_at is not None:
             return False
         return not (self.expires_at is not None and self.expires_at <= timezone.now())
+
+    @property
+    def effective_capabilities(self) -> list[str] | None:
+        """What the client may use: the person's choice within the admins' ceiling (None = not limited)."""
+        from apps.api_keys import capabilities as caps
+
+        return caps.intersect(self.capabilities, self.admin_capabilities)
+
+    @property
+    def effective_requires_approval(self) -> bool:
+        return self.requires_approval or self.admin_requires_approval
 
 
 class ApiKeyDailyUsage(models.Model):

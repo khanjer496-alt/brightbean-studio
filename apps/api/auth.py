@@ -319,10 +319,10 @@ class OAuthMcpActor:
         self.daily_request_budget = getattr(connection, "daily_request_budget", None)
         self.daily_ai_budget = getattr(connection, "daily_ai_budget", None)
         self.daily_post_budget = getattr(connection, "daily_post_budget", None)
-        self.requires_approval = bool(getattr(connection, "requires_approval", False))
+        self.requires_approval = bool(getattr(connection, "effective_requires_approval", False))
 
 
-def _resolve_active_membership(user: Any):
+def _resolve_active_membership(user: Any, organization_id: Any = None):
     """Pick the workspace an OAuth caller operates in.
 
     Mirrors the dashboard's "current workspace" notion (see
@@ -338,6 +338,9 @@ def _resolve_active_membership(user: Any):
     base = WorkspaceMembership.objects.select_related("workspace", "custom_role").filter(
         user=user, workspace__is_archived=False, workspace__sample_marker__isnull=True
     )
+    if organization_id is not None:
+        # A grant tied to one organization only ever acts in that organization's workspaces.
+        base = base.filter(workspace__organization_id=organization_id)
     if getattr(user, "last_workspace_id", None):
         current = base.filter(workspace_id=user.last_workspace_id).first()
         if current is not None:
@@ -386,12 +389,23 @@ def _resolve_oauth_actor(token: str) -> OAuthMcpActor | None:
             tok.scope,
         )
         return None
-    connection = ConnectedApp.objects.filter(user_id=tok.user_id, application_id=tok.application_id).first()
-    if connection is not None and not connection.is_active:
-        # INFO: the person revoked this client, or the expiry they set has passed.
-        LOG.info("Bearer auth rejected: the OAuth connection for user %s is revoked or expired.", tok.user_id)
+    # A grant made on the consent screen is tied to one organization by its ``org:`` scope and answers to that
+    # organization's ``ConnectedApp``. A token without the scope is from before connected apps; once the person has
+    # a connected app for this client, such a token (say, refreshed with fewer scopes) is refused.
+    org_id = caps.org_from_scope(tok.scope)
+    connection = None
+    if org_id is not None:
+        connection = ConnectedApp.objects.filter(
+            user_id=tok.user_id, application_id=tok.application_id, organization_id=org_id
+        ).first()
+        if connection is None or not connection.is_active:
+            # INFO: the person or an admin disconnected this app, or its expiry has passed.
+            LOG.info("Bearer auth rejected: the connected app for user %s is disconnected or expired.", tok.user_id)
+            return None
+    elif ConnectedApp.objects.filter(user_id=tok.user_id, application_id=tok.application_id).exists():
+        LOG.info("Bearer auth rejected: OAuth token for user %s lost its organization scope.", tok.user_id)
         return None
-    membership = _resolve_active_membership(tok.user)
+    membership = _resolve_active_membership(tok.user, organization_id=org_id)
     if membership is None:
         # WARNING: a valid, scoped, unexpired token whose user maps to no
         # workspace is the genuinely anomalous case operators want to see.
@@ -402,7 +416,7 @@ def _resolve_oauth_actor(token: str) -> OAuthMcpActor | None:
         return None
     # The token's ``cap:`` scopes intersected with the connection's: a refresh that asks for fewer scopes
     # (dropping every ``cap:`` one) can't turn a narrowed grant into an unlimited one.
-    capabilities = caps.intersect(caps.from_scope(tok.scope), connection.capabilities if connection else None)
+    capabilities = caps.intersect(caps.from_scope(tok.scope), connection.effective_capabilities if connection else None)
     if connection is not None:
         touch_connection_used(connection)
     return OAuthMcpActor(user=tok.user, membership=membership, capabilities=capabilities, connection=connection)

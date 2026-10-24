@@ -87,6 +87,11 @@ def exchange(application, response):
     return token_response.json()
 
 
+def scope_set(tokens) -> set[str]:
+    """The granted scopes without the ``org:`` one the consent screen always adds."""
+    return {s for s in tokens["scope"].split() if not s.startswith(caps.ORG_SCOPE_PREFIX)}
+
+
 def list_tools(token):
     client = SecureClient(HTTP_AUTHORIZATION=f"Bearer {token}")
     response = client.post(
@@ -155,7 +160,7 @@ class TestNarrowingIsStored:
     def test_the_grant_carries_only_the_ticked_capabilities(self, signed_in, application):
         client, *_ = signed_in
         tokens = exchange(application, consent_post(client, application, ["read_calendar", "draft_posts"]))
-        assert set(tokens["scope"].split()) == {"mcp", "cap:read_calendar", "cap:draft_posts"}
+        assert scope_set(tokens) == {"mcp", "cap:read_calendar", "cap:draft_posts"}
 
     def test_mcp_tools_list_shows_only_what_was_granted(self, signed_in, application):
         client, *_ = signed_in
@@ -207,12 +212,12 @@ class TestNarrowingIsStored:
         client, *_ = signed_in
         scope = "mcp cap:read_calendar"
         tokens = exchange(application, consent_post(client, application, ["read_calendar", "write_settings"], scope))
-        assert set(tokens["scope"].split()) == {"mcp", "cap:read_calendar"}
+        assert scope_set(tokens) == {"mcp", "cap:read_calendar"}
 
     def test_unknown_capabilities_are_ignored(self, signed_in, application):
         client, *_ = signed_in
         tokens = exchange(application, consent_post(client, application, ["read_calendar", "launch_missiles"]))
-        assert set(tokens["scope"].split()) == {"mcp", "cap:read_calendar"}
+        assert scope_set(tokens) == {"mcp", "cap:read_calendar"}
 
     def test_approving_with_nothing_ticked_shows_the_screen_again_and_grants_nothing(self, signed_in, application):
         from oauth2_provider.models import get_grant_model
@@ -267,12 +272,15 @@ class TestTheConnectionHoldsTheLimits:
     def test_a_refresh_that_drops_the_capability_scopes_cannot_widen_the_grant(self, signed_in, application):
         from apps.api.auth import _resolve_oauth_actor
 
-        client, *_ = signed_in
+        client, _, workspace = signed_in
         tokens = exchange(application, consent_post(client, application, ["read_calendar"]))
-        widened = refresh(application, tokens["refresh_token"], scope="mcp")
-        assert widened.status_code == 200, widened.content
-        assert widened.json()["scope"] == "mcp"
-        assert _resolve_oauth_actor(widened.json()["access_token"]).capabilities == ["read_calendar"]
+        kept_org = refresh(application, tokens["refresh_token"], scope=f"mcp org:{workspace.organization_id}")
+        assert kept_org.status_code == 200, kept_org.content
+        assert _resolve_oauth_actor(kept_org.json()["access_token"]).capabilities == ["read_calendar"]
+        dropped_all = refresh(application, kept_org.json()["refresh_token"], scope="mcp")
+        assert dropped_all.status_code == 200, dropped_all.content
+        # Without its organization scope the token is tied to nothing, so it is refused outright.
+        assert _resolve_oauth_actor(dropped_all.json()["access_token"]) is None
 
     def test_a_refresh_cannot_ask_for_a_capability_that_was_not_granted(self, signed_in, application):
         client, *_ = signed_in
@@ -339,3 +347,113 @@ class TestTheConnectionHoldsTheLimits:
         actor = _resolve_oauth_actor(tokens["access_token"])
         assert actor.requires_approval is True
         assert actor.connection == connection_for(user, application)
+
+
+class TestTheGrantBelongsToOneOrganization:
+    def second_org_workspace(self, user):
+        from apps.members.models import OrgMembership
+        from apps.organizations.models import Organization
+        from apps.workspaces.models import Workspace
+
+        org = Organization.objects.create(name="Other org")
+        workspace = Workspace.objects.create(name="Other workspace", organization=org)
+        OrgMembership.objects.create(user=user, organization=org, org_role=OrgMembership.OrgRole.OWNER)
+        WorkspaceMembership.objects.create(
+            user=user, workspace=workspace, workspace_role=WorkspaceMembership.WorkspaceRole.OWNER
+        )
+        return workspace
+
+    def test_the_consent_ties_the_grant_to_the_current_organization(self, signed_in, application):
+        client, user, workspace = signed_in
+        tokens = exchange(application, consent_post(client, application, ["read_calendar"]))
+        assert f"org:{workspace.organization_id}" in tokens["scope"].split()
+        assert connection_for(user, application).organization_id == workspace.organization_id
+
+    def test_a_token_keeps_acting_in_its_own_organization_when_the_person_switches(self, signed_in, application):
+        from apps.api.auth import _resolve_oauth_actor
+
+        client, user, workspace = signed_in
+        tokens = exchange(application, consent_post(client, application, ["read_calendar"]))
+        other = self.second_org_workspace(user)
+        user.last_workspace_id = other.id
+        user.save(update_fields=["last_workspace_id"])
+        actor = _resolve_oauth_actor(tokens["access_token"])
+        assert actor.workspace.organization_id == workspace.organization_id
+
+    def test_a_token_is_refused_once_the_person_leaves_its_organization(self, signed_in, application):
+        from apps.api.auth import _resolve_oauth_actor
+
+        client, user, workspace = signed_in
+        tokens = exchange(application, consent_post(client, application, ["read_calendar"]))
+        self.second_org_workspace(user)
+        WorkspaceMembership.objects.filter(user=user, workspace=workspace).delete()
+        assert _resolve_oauth_actor(tokens["access_token"]) is None
+
+    def test_a_client_cannot_ask_for_an_organization(self, signed_in, application):
+        client, _, workspace = signed_in
+        scope = f"mcp org:{workspace.organization_id}"
+        assert client.get("/oauth/authorize/", authorize_params(application, scope)).status_code == 400
+
+
+class TestTheAdminsCeiling:
+    def limit(self, user, application, capabilities):
+        from apps.api_keys import services
+
+        return services.set_connected_app_limits(
+            connection_for(user, application), capabilities=capabilities, requires_approval=True
+        )
+
+    def test_re_approval_cannot_go_past_the_ceiling(self, signed_in, application):
+        from apps.api.auth import _resolve_oauth_actor
+
+        client, user, _ = signed_in
+        exchange(application, consent_post(client, application, ["read_calendar", "draft_posts"]))
+        self.limit(user, application, ["read_calendar"])
+        screen = client.get("/oauth/authorize/", authorize_params(application)).context
+        assert [c["cap"].key for c in screen["capability_choices"]] == ["read_calendar"]
+        assert screen["approval_forced"] is True
+        tokens = exchange(application, consent_post(client, application, ["read_calendar", "draft_posts"]))
+        assert scope_set(tokens) == {"mcp", "cap:read_calendar"}
+        assert connection_for(user, application).capabilities == ["read_calendar"]
+        assert _resolve_oauth_actor(tokens["access_token"]).requires_approval is True
+
+    def test_the_ceiling_applies_to_tokens_issued_before_it_and_their_refreshes(self, signed_in, application):
+        from apps.api.auth import _resolve_oauth_actor
+
+        client, user, _ = signed_in
+        tokens = exchange(application, consent_post(client, application, ["read_calendar", "draft_posts"]))
+        self.limit(user, application, ["read_calendar"])
+        assert _resolve_oauth_actor(tokens["access_token"]).capabilities == ["read_calendar"]
+        refreshed = refresh(application, tokens["refresh_token"])
+        assert refreshed.status_code == 200
+        assert _resolve_oauth_actor(refreshed.json()["access_token"]).capabilities == ["read_calendar"]
+
+    def test_an_admins_disconnect_sticks_until_an_admin_lifts_it(self, signed_in, application):
+        from oauth2_provider.models import get_grant_model
+
+        from apps.api_keys import services
+
+        client, user, _ = signed_in
+        tokens = exchange(application, consent_post(client, application, ["read_calendar"]))
+        services.revoke_connected_app(connection_for(user, application), by_admin=True)
+        assert refresh(application, tokens["refresh_token"]).status_code == 400
+        screen = client.get("/oauth/authorize/", authorize_params(application))
+        assert screen.context["blocked_by_admin"] is True
+        assert "disconnected by an admin" in screen.content.decode()
+        again = consent_post(client, application, ["read_calendar"])
+        assert again.status_code == 200 and "Ask an owner or admin" in again.content.decode()
+        assert not get_grant_model().objects.exists()
+        assert connection_for(user, application).admin_revoked_at is not None
+
+        services.reinstate_connected_app(connection_for(user, application))
+        assert exchange(application, consent_post(client, application, ["read_calendar"]))["access_token"]
+
+    def test_the_persons_own_disconnect_is_undone_by_approving_again(self, signed_in, application):
+        from apps.api.auth import _resolve_oauth_actor
+        from apps.api_keys import services
+
+        client, user, _ = signed_in
+        exchange(application, consent_post(client, application, ["read_calendar"]))
+        services.revoke_connected_app(connection_for(user, application))
+        tokens = exchange(application, consent_post(client, application, ["read_calendar"]))
+        assert _resolve_oauth_actor(tokens["access_token"]) is not None

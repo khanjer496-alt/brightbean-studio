@@ -19,7 +19,7 @@ import time
 from urllib.parse import urlparse
 
 from django.core.cache import cache
-from django.http import JsonResponse
+from django.http import HttpResponseBadRequest, JsonResponse
 from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
@@ -213,10 +213,27 @@ class ConsentAuthorizationView(AuthorizationView):
     """
 
     def get(self, request, *args, **kwargs):
+        if caps.ORG_SCOPE_PREFIX in request.GET.get("scope", ""):
+            # Only the consent screen ties a grant to an organization; a client can't choose one.
+            return HttpResponseBadRequest("The org: scope can't be requested.")
         if "approval_prompt" in request.GET:
             request.GET = request.GET.copy()
             request.GET.pop("approval_prompt")
         return super().get(request, *args, **kwargs)
+
+    def _target(self, application):
+        """``(organization, connected app or None)`` this approval is for: the person's current organization."""
+        from apps.api.auth import _resolve_active_membership
+        from apps.api_keys.models import ConnectedApp
+
+        membership = _resolve_active_membership(self.request.user)
+        if membership is None or application is None:
+            return None, None
+        organization = membership.workspace.organization
+        connection = ConnectedApp.objects.filter(
+            user=self.request.user, application=application, organization=organization
+        ).first()
+        return organization, connection
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -224,38 +241,59 @@ class ConsentAuthorizationView(AuthorizationView):
         scope = (form.initial.get("scope") if form is not None and not form.is_bound else None) or ""
         if form is not None and form.is_bound:
             scope = form.data.get("scope", "")
-        offered, explicit = _requested_capabilities(scope)
+        organization, connection = self._target(context.get("application"))
+        offered, _ = _requested_capabilities(scope)
+        ceiling = connection.admin_capabilities if connection is not None else None
+        if ceiling is not None:
+            offered = [k for k in offered if k in ceiling]
         chosen = set(self.request.POST.getlist("capability")) if self.request.method == "POST" else None
-        # What the client asked for limits what is offered; it never pre-ticks anything that publishes, sends or
-        # changes settings. Those start unticked whatever the client asked, so allowing them is the person's act.
+        # What the client asked for limits what is offered, and so does the ceiling an admin set; nothing that
+        # publishes, sends or changes settings starts ticked, whatever the client asked.
         context["capability_choices"] = [
             {"cap": c, "checked": (c.key in chosen) if chosen is not None else c.default_on}
             for c in caps.CAPABILITIES
             if c.key in offered
         ]
-        context["requires_approval"] = self.request.method == "POST" and bool(
-            self.request.POST.get("requires_approval")
-        )
+        context["limited_by_admin"] = ceiling is not None
+        context["organization"] = organization
+        context["blocked_by_admin"] = connection is not None and connection.admin_revoked_at is not None
+        context["requires_approval"] = (
+            self.request.method == "POST" and bool(self.request.POST.get("requires_approval"))
+        ) or bool(connection is not None and connection.admin_requires_approval)
+        context["approval_forced"] = bool(connection is not None and connection.admin_requires_approval)
         return context
 
     def form_valid(self, form):
         if not form.cleaned_data.get("allow"):
             return super().form_valid(form)  # Cancel: DOT answers access_denied.
+        application = get_application_model().objects.get(client_id=form.cleaned_data["client_id"])
+        organization, connection = self._target(application)
         requested = form.cleaned_data.get("scope") or ""
         offered, _ = _requested_capabilities(requested)
+        if connection is not None and connection.admin_capabilities is not None:
+            offered = [k for k in offered if k in connection.admin_capabilities]
         chosen = [k for k in caps.clean(self.request.POST.getlist("capability")) if k in offered]
-        if not chosen:
+        if organization is None:
+            form.add_error(None, "You need a workspace before an app can connect to it.")
+        elif connection is not None and connection.admin_revoked_at is not None:
+            form.add_error(None, "An admin disconnected this app. Ask an admin of your organization to allow it again.")
+        elif not chosen:
             # Tampered or empty: re-show the screen rather than issue a grant that names no capability,
             # which would read as "not narrowed".
             form.add_error(None, "Choose at least one thing the app may do, or cancel.")
+        if form.errors:
             return self.render_to_response(self.get_context_data(form=form, **self._context_for(form)))
-        base = [s for s in requested.split() if not s.startswith(caps.SCOPE_PREFIX)] or ["mcp"]
-        form.cleaned_data["scope"] = " ".join([*base, *caps.scopes_for(chosen)])
-        # The connection carries the choice beyond the scopes: budgets and expiry set later on the API keys page,
-        # and a ceiling a refresh with fewer scopes can't lift.
+        base = [
+            s
+            for s in requested.split()
+            if not s.startswith(caps.SCOPE_PREFIX) and not s.startswith(caps.ORG_SCOPE_PREFIX)
+        ] or ["mcp"]
+        # The ``org:`` scope ties every token of this grant to the organization's connected app.
+        form.cleaned_data["scope"] = " ".join([*base, *caps.scopes_for(chosen), caps.org_scope(organization.id)])
         services.record_oauth_consent(
             user=self.request.user,
-            application=get_application_model().objects.get(client_id=form.cleaned_data["client_id"]),
+            application=application,
+            organization=organization,
             capabilities=chosen,
             requires_approval=bool(self.request.POST.get("requires_approval")),
         )
