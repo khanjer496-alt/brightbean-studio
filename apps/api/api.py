@@ -32,6 +32,7 @@ from apps.api.routers.categories import router as categories_router
 from apps.api.routers.competitors import router as competitors_router
 from apps.api.routers.events import router as events_router
 from apps.api.routers.evergreen import router as evergreen_router
+from apps.api.routers.feeds import router as feeds_router
 from apps.api.routers.hashtag_sets import router as hashtag_sets_router
 from apps.api.routers.ideas import groups_router as idea_groups_router
 from apps.api.routers.ideas import router as ideas_router
@@ -40,6 +41,7 @@ from apps.api.routers.links import router as links_router
 from apps.api.routers.me import router as me_router
 from apps.api.routers.media import router as media_router
 from apps.api.routers.members import router as members_router
+from apps.api.routers.plugs import router as plugs_router
 from apps.api.routers.posts import router as posts_router
 from apps.api.routers.queues import router as queues_router
 from apps.api.routers.reports import router as reports_router
@@ -178,6 +180,8 @@ api.add_router("/sets", sets_router)
 api.add_router("/inbox", inbox_router)
 api.add_router("/ai", ai_router)
 api.add_router("/repurpose", repurpose_router)
+api.add_router("/plugs", plugs_router)
+api.add_router("/feeds", feeds_router)
 api.add_router("/webhooks", webhooks_router)
 api.add_router("/hashtag-sets", hashtag_sets_router)
 api.add_router("/signatures", signatures_router)

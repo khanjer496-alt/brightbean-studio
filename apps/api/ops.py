@@ -36,6 +36,7 @@ from apps.api.schemas import (
     AccountSetsListResponse,
     AddCompetitorRequest,
     AddEvergreenRequest,
+    AddFeedRequest,
     AgentActionResponse,
     AgentActionsListResponse,
     AIVisibilityAnswerResponse,
@@ -55,6 +56,7 @@ from apps.api.schemas import (
     CalendarEventsListResponse,
     CategoriesListResponse,
     CategoryResponse,
+    CheckFeedResponse,
     CommentResponse,
     CommentsListResponse,
     CompetitorComparisonGroup,
@@ -63,11 +65,17 @@ from apps.api.schemas import (
     CompetitorNetworkResponse,
     CompetitorResponse,
     CompetitorsListResponse,
+    CreatePlugRuleRequest,
     DeletedResponse,
     EvergreenDetailResponse,
     EvergreenItemResponse,
     EvergreenListResponse,
     EvergreenRepeatResponse,
+    FeedAutopostResponse,
+    FeedDetailResponse,
+    FeedItemResponse,
+    FeedResponse,
+    FeedsListResponse,
     HashtagSetsListResponse,
     HashtagSetSummary,
     IdeaGroupResponse,
@@ -82,6 +90,10 @@ from apps.api.schemas import (
     MemberResponse,
     MembersListResponse,
     NextFreeSlotsResponse,
+    PlugNetworkResponse,
+    PlugRuleResponse,
+    PlugRulesListResponse,
+    PlugRunResponse,
     PostingSlotResponse,
     PostingSlotsListResponse,
     PostResponse,
@@ -104,6 +116,8 @@ from apps.api.schemas import (
     TagsListResponse,
     TemplateResponse,
     TemplatesListResponse,
+    UpdateFeedAutopostRequest,
+    UpdatePlugRuleRequest,
     UpdatePostRequest,
     UsageMeterResponse,
     UsageResponse,
@@ -3141,3 +3155,380 @@ def accept_repurpose_outputs(actor: Actor, job_id: uuid.UUID, *, output_ids: lis
     except ValueError as exc:
         raise OpError(422, str(exc)) from exc
     return _repurpose_job_response(_get_repurpose_job(actor, job_id)).with_autonomy(note)
+
+
+# ---------------------------------------------------------------------------
+# Engagement automations ("plugs")
+# ---------------------------------------------------------------------------
+
+
+def _plug_error(exc: Exception) -> OpError:
+    return OpError(422, str(exc))
+
+
+def _plug_run_response(run) -> PlugRunResponse:
+    return PlugRunResponse(
+        id=run.id,
+        post_id=run.platform_post.post_id,
+        status=run.status,
+        reached_value=run.reached_value,
+        last_counts={k: int(v) for k, v in (run.last_counts or {}).items()},
+        detail=run.detail,
+        result_post_id=run.result_post_id,
+        fired_at=run.fired_at,
+        updated_at=run.updated_at,
+    )
+
+
+def _plug_rule_response(rule, *, with_runs: bool = False) -> PlugRuleResponse:
+    return PlugRuleResponse(
+        id=rule.id,
+        social_account_id=rule.social_account_id,
+        post_id=rule.platform_post.post_id if rule.platform_post_id else None,
+        trigger=rule.trigger,
+        threshold=rule.threshold,
+        window_hours=rule.window_hours,
+        action=rule.action,
+        reposter_account_id=rule.actor_account_id,
+        message=rule.message,
+        check_interval_minutes=rule.interval_minutes,
+        reads_per_post=rule.reads_per_post,
+        read_cost_per_post_usd=rule.read_cost_per_post,
+        is_active=rule.is_active,
+        summary=rule.summary,
+        runs=[_plug_run_response(r) for r in rule.runs.select_related("platform_post")[:20]] if with_runs else [],
+        created_at=rule.created_at,
+    )
+
+
+def _plug_rules_visible(actor: Actor) -> QuerySet:
+    """Rules whose account (and reposter) are on the key's allowlist."""
+    from apps.plugs.models import PlugRule
+
+    allowed = actor.allowed_account_ids
+    return (
+        PlugRule.objects.for_workspace(actor.workspace_id)
+        .filter(social_account_id__in=allowed)
+        .filter(Q(actor_account__isnull=True) | Q(actor_account_id__in=allowed))
+        .select_related("social_account", "actor_account", "platform_post")
+    )
+
+
+def _plug_rule(actor: Actor, rule_id: uuid.UUID):
+    rule = _plug_rules_visible(actor).filter(id=rule_id).first()
+    if rule is None:
+        raise OpError(404, "Rule not found")
+    return rule
+
+
+def _plug_networks(actor: Actor) -> list[PlugNetworkResponse]:
+    from apps.plugs import services as plug_services
+    from providers import plug_capability_for
+
+    accounts = SocialAccount.objects.for_workspace(actor.workspace_id).filter(
+        id__in=actor.allowed_account_ids, connection_status=SocialAccount.ConnectionStatus.CONNECTED
+    )
+    out = []
+    for account in accounts.order_by("platform", "account_name"):
+        cap = plug_capability_for(account.platform)
+        if not (cap.watchable or cap.can_act_for_others):
+            continue
+        out.append(
+            PlugNetworkResponse(
+                social_account_id=account.id,
+                platform=account.platform,
+                triggers=sorted(t.value for t in cap.triggers),
+                own_actions=sorted(a.value for a in cap.own_actions),
+                cross_actions=sorted(a.value for a in cap.cross_actions),
+                reposter_account_ids=[
+                    r.id for r in plug_services.reposter_choices(account) if r.id in actor.allowed_account_ids
+                ],
+                message_max_length=cap.message_max_length,
+                check_interval_minutes=cap.check_interval_minutes,
+                metered_reads=cap.metered_reads,
+                read_cost_usd=cap.read_cost_usd,
+                max_actions_per_day=cap.max_actions_per_day,
+                requires_approval=cap.requires_approval,
+            )
+        )
+    return out
+
+
+def list_plug_rules(
+    actor: Actor, *, social_account_id: uuid.UUID | None = None, limit: int = LIMIT_DEFAULT, cursor: str | None = None
+) -> PlugRulesListResponse:
+    """Engagement automation rules on the key's accounts, plus what each account's network supports. Needs ``create_posts``."""
+    actor.require("create_posts")
+    qs = _plug_rules_visible(actor)
+    if social_account_id is not None:
+        qs = qs.filter(social_account_id=social_account_id)
+    rows, next_cursor = _paginate(qs.order_by("created_at", "id"), limit=limit, cursor=cursor)
+    return PlugRulesListResponse(
+        rules=[_plug_rule_response(r) for r in rows],
+        networks=_plug_networks(actor),
+        limit=limit,
+        next_cursor=next_cursor,
+    )
+
+
+def get_plug_rule(actor: Actor, rule_id: uuid.UUID) -> PlugRuleResponse:
+    """One rule with how it has gone on the posts it watched. Needs ``create_posts``."""
+    actor.require("create_posts")
+    return _plug_rule_response(_plug_rule(actor, rule_id), with_runs=True)
+
+
+def _reposter(actor: Actor, reposter_id: uuid.UUID | None) -> SocialAccount | None:
+    if reposter_id is None:
+        return None
+    if reposter_id not in actor.allowed_account_ids:
+        raise OpError(403, "reposter_account_id is not in this key's allowlist.")
+    account = SocialAccount.objects.for_workspace(actor.workspace_id).filter(id=reposter_id).first()
+    if account is None:
+        raise OpError(422, "reposter_account_id not found in this workspace")
+    return account
+
+
+def create_plug_rule(actor: Actor, payload: CreatePlugRuleRequest) -> PlugRuleResponse:
+    """Add a rule: when a post reaches N likes, reposts or views within T hours, repost, reply or quote it.
+
+    Needs ``publish_directly``. The autonomy policy still decides, when the rule fires, whether the action is
+    taken, held for a person or blocked.
+    """
+    from apps.plugs import services as plug_services
+
+    actor.require("publish_directly")
+    account = _require_account(actor, payload.social_account_id)
+    if account.workspace_id != actor.workspace_id:
+        raise OpError(404, "social_account_id not found in this workspace")
+    platform_post = None
+    if payload.post_id is not None:
+        platform_post = (
+            PlatformPost.objects.select_related("post", "social_account")
+            .filter(post_id=payload.post_id, post__workspace_id=actor.workspace_id, social_account=account)
+            .first()
+        )
+        if platform_post is None:
+            raise OpError(404, "Post not found on that account")
+    reposter = _reposter(actor, payload.reposter_account_id)
+    try:
+        rule = plug_services.create_rule(
+            workspace=actor.workspace,
+            account=account,
+            platform_post=platform_post,
+            user=actor.user,
+            trigger=payload.trigger,
+            threshold=payload.threshold,
+            window_hours=payload.window_hours,
+            action=payload.action,
+            actor_account=reposter,
+            message=payload.message,
+            check_interval_minutes=payload.check_interval_minutes,
+        )
+    except plug_services.PlugError as exc:
+        raise _plug_error(exc) from exc
+    return _plug_rule_response(rule)
+
+
+def update_plug_rule(actor: Actor, rule_id: uuid.UUID, payload: UpdatePlugRuleRequest) -> PlugRuleResponse:
+    """Change a rule or switch it on or off; omitted fields keep their value. Needs ``publish_directly``."""
+    from apps.plugs import services as plug_services
+
+    actor.require("publish_directly")
+    rule = _plug_rule(actor, rule_id)
+    changes = payload.model_dump(exclude_unset=True, exclude={"reposter_account_id", "clear_reposter"})
+    if payload.clear_reposter:
+        changes["actor_account"] = None
+    elif payload.reposter_account_id is not None:
+        changes["actor_account"] = _reposter(actor, payload.reposter_account_id)
+    try:
+        rule = plug_services.update_rule(rule, **changes)
+    except plug_services.PlugError as exc:
+        raise _plug_error(exc) from exc
+    return _plug_rule_response(rule)
+
+
+def delete_plug_rule(actor: Actor, rule_id: uuid.UUID) -> DeletedResponse:
+    """Remove a rule and stop watching with it. What it already did stays. Needs ``publish_directly``."""
+    from apps.plugs import services as plug_services
+
+    actor.require("publish_directly")
+    plug_services.delete_rule(_plug_rule(actor, rule_id))
+    return DeletedResponse(id=rule_id)
+
+
+# ---------------------------------------------------------------------------
+# RSS auto-posting ("feeds")
+# ---------------------------------------------------------------------------
+
+
+def _feed_response(feed, *, with_items: bool = False):
+    autopost = getattr(feed, "autopost", None)
+    body = {
+        "id": feed.id,
+        "name": feed.name,
+        "url": feed.url,
+        "website_url": feed.website_url,
+        "autopost": None,
+    }
+    if autopost is not None:
+        body["autopost"] = FeedAutopostResponse(
+            is_active=autopost.is_active,
+            account_ids=list(autopost.accounts.values_list("id", flat=True)),
+            mode=autopost.mode,
+            destination=autopost.destination,
+            delay_minutes=autopost.delay_minutes,
+            include_keywords=list(autopost.include_keywords),
+            exclude_keywords=list(autopost.exclude_keywords),
+            max_posts_per_day=autopost.max_posts_per_day,
+            started_at=autopost.started_at,
+            last_checked_at=autopost.last_checked_at,
+            next_check_at=autopost.next_check_at,
+            consecutive_failures=autopost.consecutive_failures,
+            last_error=autopost.last_error,
+        )
+    if not with_items:
+        return FeedResponse(**body)
+    from apps.autopost import services as autopost_services
+
+    items = autopost_services.recent_items(autopost) if autopost is not None else []
+    return FeedDetailResponse(
+        **body,
+        items=[
+            FeedItemResponse(
+                id=i.id,
+                title=i.title,
+                link=i.link,
+                published_at=i.published_at,
+                status=i.status,
+                reason=i.reason,
+                ai_used=i.ai_used,
+                outcomes=i.outcomes,
+                created_at=i.created_at,
+            )
+            for i in items
+        ],
+    )
+
+
+def _feed(actor: Actor, feed_id: uuid.UUID):
+    """A feed in this workspace whose auto-posting targets are all on the key's allowlist (else 404)."""
+    from apps.composer.models import Feed
+
+    feed = Feed.objects.for_workspace(actor.workspace_id).select_related("autopost").filter(id=feed_id).first()
+    autopost = getattr(feed, "autopost", None)
+    if feed is None or (
+        autopost is not None and not set(autopost.accounts.values_list("id", flat=True)) <= actor.allowed_account_ids
+    ):
+        raise OpError(404, "Feed not found")
+    return feed
+
+
+def list_feeds(actor: Actor) -> FeedsListResponse:
+    """Feeds the workspace follows, with their auto-posting settings. Needs ``create_posts``."""
+    from apps.composer.models import Feed
+
+    actor.require("create_posts")
+    allowed = actor.allowed_account_ids
+    feeds = []
+    for feed in Feed.objects.for_workspace(actor.workspace_id).select_related("autopost").order_by("name"):
+        autopost = getattr(feed, "autopost", None)
+        if autopost is not None and not set(autopost.accounts.values_list("id", flat=True)) <= allowed:
+            continue
+        feeds.append(_feed_response(feed))
+    return FeedsListResponse(feeds=feeds)
+
+
+def get_feed(actor: Actor, feed_id: uuid.UUID) -> FeedDetailResponse:
+    """One feed with the latest items and what became of each. Needs ``create_posts``."""
+    actor.require("create_posts")
+    return _feed_response(_feed(actor, feed_id), with_items=True)
+
+
+def add_feed(actor: Actor, payload: AddFeedRequest) -> FeedResponse:
+    """Follow a feed (its address is fetched and checked first). Following posts nothing. Needs ``publish_directly``."""
+    from apps.autopost import services as autopost_services
+
+    actor.require("publish_directly")
+    try:
+        feed = autopost_services.create_feed(actor.workspace, actor.user, name=payload.name, url=payload.url)
+    except autopost_services.AutopostError as exc:
+        raise OpError(422, str(exc)) from exc
+    return _feed_response(feed)
+
+
+def update_feed_autopost(actor: Actor, feed_id: uuid.UUID, payload: UpdateFeedAutopostRequest) -> FeedDetailResponse:
+    """Switch auto-posting on for a feed, or change it. Needs ``publish_directly``.
+
+    Switching on needs ``account_ids`` and posts only items published from then on. Every account must be on the
+    key's allowlist. The autonomy policy decides, per post, whether it is scheduled, held as a draft or blocked.
+    """
+    from apps.autopost import services as autopost_services
+
+    actor.require("publish_directly")
+    feed = _feed(actor, feed_id)
+    autopost = getattr(feed, "autopost", None)
+    fields: dict[str, Any] = {}
+    if payload.account_ids is not None:
+        outside = [str(i) for i in payload.account_ids if i not in actor.allowed_account_ids]
+        if outside:
+            raise OpError(403, f"account_ids not in this key's allowlist: {outside}")
+        fields["accounts"] = list(
+            SocialAccount.objects.for_workspace(actor.workspace_id).filter(id__in=payload.account_ids)
+        )
+    for source, target in (
+        ("mode", "mode"),
+        ("destination", "destination"),
+        ("delay_minutes", "delay_minutes"),
+        ("max_posts_per_day", "max_posts_per_day"),
+        ("include_keywords", "include"),
+        ("exclude_keywords", "exclude"),
+    ):
+        if getattr(payload, source) is not None:
+            fields[target] = getattr(payload, source)
+    try:
+        if autopost is None:
+            if payload.account_ids is None:
+                raise OpError(422, "account_ids is required to switch auto-posting on.")
+            defaults = {
+                "mode": "link",
+                "destination": "draft",
+                "delay_minutes": 60,
+                "max_posts_per_day": 3,
+                "include": [],
+                "exclude": [],
+            }
+            autopost = autopost_services.enable(actor.workspace, feed, actor.user, **{**defaults, **fields})
+            if payload.is_active is False:
+                autopost_services.update(autopost, is_active=False)
+        else:
+            autopost_services.update(autopost, is_active=payload.is_active, **fields)
+    except autopost_services.AutopostError as exc:
+        raise OpError(422, str(exc)) from exc
+    return _feed_response(_feed(actor, feed_id), with_items=True)
+
+
+def check_feed(actor: Actor, feed_id: uuid.UUID) -> CheckFeedResponse:
+    """Read the feed now and handle its new items (at most once a minute). Needs ``publish_directly``."""
+    from apps.autopost import services as autopost_services
+
+    actor.require("publish_directly")
+    autopost = getattr(_feed(actor, feed_id), "autopost", None)
+    if autopost is None:
+        raise OpError(422, "Auto-posting is not switched on for this feed.")
+    try:
+        result = autopost_services.check_now(autopost)
+    except autopost_services.TooSoonError as exc:
+        raise OpError(429, str(exc)) from exc
+    return CheckFeedResponse(status=result.status, new_items=result.new_items, posted=result.posted, error=result.error)
+
+
+def stop_feed_autopost(actor: Actor, feed_id: uuid.UUID) -> DeletedResponse:
+    """Stop auto-posting a feed (it stays followed; posts already made stay). Needs ``publish_directly``."""
+    from apps.autopost import services as autopost_services
+
+    actor.require("publish_directly")
+    autopost = getattr(_feed(actor, feed_id), "autopost", None)
+    if autopost is None:
+        raise OpError(404, "Auto-posting is not switched on for this feed.")
+    autopost_services.disable(autopost)
+    return DeletedResponse(id=feed_id)

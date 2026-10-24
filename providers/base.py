@@ -26,6 +26,8 @@ from .types import (
     MentionSuggestion,
     OAuthTokens,
     PeakWindow,
+    PlugCapability,
+    PlugTarget,
     PostMetrics,
     PostSetting,
     PostType,
@@ -240,6 +242,13 @@ class SocialProvider(ABC):
     # offer suggestions without building a provider. Anything False leaves "@"
     # as plain text.
     mention_lookup: ClassVar[bool] = False
+
+    # What engagement automations ("plugs", ``apps.plugs``) may do on this network:
+    # the counts it can read on a post, and the actions the account itself or
+    # another connected account can take once one is reached (see
+    # ``PlugCapability``). The default takes none, so a provider opts in only for
+    # what its official API documents, citing the page in ``source``.
+    plugs: ClassVar[PlugCapability] = PlugCapability()
 
     # Per-post settings the platform needs beyond the caption (a subreddit, a
     # flair, a channel). The composer renders them, ``validate_post_settings``
@@ -534,6 +543,30 @@ class SocialProvider(ABC):
             result = self.publish_comment(access_token, root.platform_post_id, content.text)
             return PublishResult(platform_post_id=result.platform_comment_id, extra=result.extra)
         raise NotImplementedError(f"{self.platform_name} does not publish threads")
+
+    def plug_metrics(self, access_token: str, post_id: str) -> dict[str, int]:
+        """Counts for one of the account's posts under ``PlugTrigger`` names (``likes``, ``reposts``, ``views``).
+
+        Only called for a provider whose ``plugs`` declares triggers. The default
+        reads ``get_post_metrics`` (shares are reposts, impressions or video views
+        are views); a provider with a lighter or differently shaped call overrides
+        it. A count the platform does not report is left out.
+        """
+        metrics = self.get_post_metrics(access_token, post_id)
+        counts = {
+            "likes": metrics.likes,
+            "reposts": metrics.shares,
+            "views": metrics.video_views or metrics.impressions,
+        }
+        return {key: int(value) for key, value in counts.items() if value}
+
+    def repost_post(self, access_token: str, target: PlugTarget) -> PublishResult:
+        """Boost / reshare ``target`` on the connected account. Only for a provider whose ``plugs`` lists REPOST."""
+        raise NotImplementedError(f"{self.platform_name} does not support reposting")
+
+    def quote_post(self, access_token: str, target: PlugTarget, text: str) -> PublishResult:
+        """Repost ``target`` with ``text`` of the account's own. Only for a provider whose ``plugs`` lists QUOTE."""
+        raise NotImplementedError(f"{self.platform_name} does not support quoting")
 
     def search_mentions(self, access_token: str, query: str, limit: int = 8) -> list[MentionSuggestion]:
         """Accounts whose handle or name matches ``query``, best match first.

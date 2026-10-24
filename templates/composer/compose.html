@@ -1737,6 +1737,11 @@
             </div>
         </form>
 
+        {% if post %}
+        {# Engagement automations (apps.plugs): loaded apart from the form, so its buttons never touch the post being edited. #}
+        <div hx-get="{% url 'plugs:composer_panel' workspace_id=workspace.id post_id=post.id %}" hx-trigger="load" hx-swap="outerHTML"></div>
+        {% endif %}
+
         {% if post and approval_history %}
         <!-- Approval History & Comments -->
         <div class="mt-4 border-t border-stone-200 pt-4">
@@ -2245,6 +2250,7 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/plugs-form.js' %}"></script>
 <script nonce="{{ request.csp_nonce }}">
   // Reviewer approve / request-changes return 204 + toast + approvalAction. Let the
   // toast show, then reload so the status banner and history reflect the new state.

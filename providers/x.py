@@ -82,6 +82,10 @@ from .types import (
     MentionSuggestion,
     OAuthTokens,
     PeakWindow,
+    PlugAction,
+    PlugCapability,
+    PlugTarget,
+    PlugTrigger,
     PostSetting,
     PostType,
     PublishContent,
@@ -269,6 +273,26 @@ class XProvider(SocialProvider):
         return f"https://x.com/i/web/status/{post_id}" if re.fullmatch(r"[0-9]{1,30}", post_id) else ""
 
     media_rules = {PostType.IMAGE: _IMAGE_RULES, PostType.VIDEO: _VIDEO_RULES}
+
+    # Reposting is POST /2/users/{id}/retweets with the tweet.write scope; a reply is POST /2/tweets with
+    # reply.in_reply_to_tweet_id. Quote posts (quote_tweet_id) need an Enterprise plan, so they are not offered.
+    # Counts come from GET /2/tweets/{id} public_metrics, billed per read to the customer's own app ($0.005 per
+    # post read, https://docs.x.com/x-api/getting-started/pricing, checked 2026-10-24).
+    # https://docs.x.com/x-api/posts/repost-post  https://docs.x.com/x-api/posts/creation-of-a-post
+    # Policy (developer guidelines, checked 2026-10-24): an automated repost is fine for informational content but
+    # "no bulk spam", and multiple accounts must not be used "to amplify the same message", so another account never
+    # reposts (no cross actions). A reply here is the account's follow-up on its own post, never an unsolicited reply.
+    plugs = PlugCapability(
+        triggers=frozenset({PlugTrigger.LIKES, PlugTrigger.REPOSTS, PlugTrigger.VIEWS}),
+        own_actions=frozenset({PlugAction.REPOST, PlugAction.REPLY}),
+        message_max_length=280,
+        check_interval_minutes=60,
+        metered_reads=True,
+        read_cost_usd=0.005,
+        max_actions_per_day=5,
+        source="https://docs.x.com/x-api/posts/repost-post",
+        policy_source="https://docs.x.com/developer-guidelines",
+    )
 
     # Source: https://sproutsocial.com/insights/best-times-to-post-on-social-media/ (published 2026-03-31; checked 2026-10-24):
     # Mon 2-3pm, 5pm; Tue-Thu 12-6pm. Hours are the audience's local time; industry averages, not your audience.
@@ -666,6 +690,43 @@ class XProvider(SocialProvider):
                 ambiguous_write=True,
             )
         return CommentResult(platform_comment_id=str(data["id"]), extra={"tweet_id": str(data["id"])})
+
+    def plug_metrics(self, access_token: str, post_id: str) -> dict[str, int]:
+        data = (
+            self._api("GET", f"/2/tweets/{post_id}", access_token, params={"tweet.fields": "public_metrics"})
+            .json()
+            .get("data")
+            or {}
+        )
+        metrics = data.get("public_metrics") or {}
+        counts = {
+            "likes": metrics.get("like_count") or 0,
+            "reposts": metrics.get("retweet_count") or 0,
+            "views": metrics.get("impression_count") or 0,
+        }
+        return {key: int(value) for key, value in counts.items() if value}
+
+    def repost_post(self, access_token: str, target: PlugTarget) -> PublishResult:
+        """Repost with ``POST /2/users/{id}/retweets`` as the connected account."""
+        me = self._api("GET", "/2/users/me", access_token).json()["data"]["id"]
+        data = (
+            self._api(
+                "POST",
+                f"/2/users/{me}/retweets",
+                access_token,
+                json={"tweet_id": str(target.platform_post_id)},
+            )
+            .json()
+            .get("data")
+            or {}
+        )
+        if not data.get("retweeted"):
+            raise APIError(
+                "X did not confirm the repost",
+                platform=self.platform_name,
+                ambiguous_write=True,
+            )
+        return PublishResult(platform_post_id=str(target.platform_post_id), extra=data)
 
     def find_thread_part(
         self,

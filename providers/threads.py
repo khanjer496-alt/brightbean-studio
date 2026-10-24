@@ -17,6 +17,10 @@ from .types import (
     MediaType,
     OAuthTokens,
     PeakWindow,
+    PlugAction,
+    PlugCapability,
+    PlugTarget,
+    PlugTrigger,
     PostMetrics,
     PostType,
     PublishContent,
@@ -75,6 +79,21 @@ class ThreadsProvider(SocialProvider):
     best_time_windows = (
         PeakWindow(days=(1, 2, 3), hours=(8, 9, 10)),
         PeakWindow(days=(0, 4), hours=(9, 10, 11)),
+    )
+
+    # A reply is a text container with reply_to_id, published like any post; insights report views, likes and
+    # reposts. POST /{threads-id}/repost boosts a post for the connected account (threads_content_publish).
+    # Reposting one's own post is not offered: the API page does not say it is allowed, and the app does not.
+    # https://developers.facebook.com/docs/threads/posts/reposts
+    plugs = PlugCapability(
+        triggers=frozenset({PlugTrigger.LIKES, PlugTrigger.REPOSTS, PlugTrigger.VIEWS}),
+        own_actions=frozenset({PlugAction.REPLY}),
+        cross_actions=frozenset({PlugAction.REPOST}),
+        message_max_length=500,
+        source="https://developers.facebook.com/docs/threads/posts/reposts",
+        # Meta's inauthentic-behaviour policy targets networks of accounts boosting each other, so a repost by another
+        # account is only ever made once a person approves it (every cross-account action is held).
+        policy_source="https://transparency.meta.com/policies/community-standards/inauthentic-behavior/",
     )
 
     writing_style = "Casual and conversational, like talking to followers. At most one hashtag; emojis welcome."
@@ -528,6 +547,11 @@ class ThreadsProvider(SocialProvider):
             platform_comment_id=reply_id,
             extra=publish_resp.json(),
         )
+
+    def repost_post(self, access_token: str, target: PlugTarget) -> PublishResult:
+        """Repost a Threads post for the connected account (``POST /{threads-id}/repost``)."""
+        data = self._request("POST", f"{API_BASE}/{target.platform_post_id}/repost", access_token=access_token).json()
+        return PublishResult(platform_post_id=str(data.get("id", "")), extra=data)
 
     # ------------------------------------------------------------------
     # Analytics

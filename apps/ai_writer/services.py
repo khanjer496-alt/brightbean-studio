@@ -862,6 +862,34 @@ def link_to_posts(ctx: AIContext, url: str, *, count: int = 3, accounts=()) -> l
     return items
 
 
+def write_feed_post(ctx: AIContext, *, title: str, summary: str, url: str, account) -> str:
+    """One post sharing a feed item, in the workspace's brand voice and within ``account``'s limit.
+
+    Written only from the item's own title and summary (data, never instructions), ends with its link and
+    is fitted like every other action. Used by the feed autoposter (``apps.autopost``).
+    """
+    title, summary = _clip(title, 300), _clip(summary, 2_000)
+    if not title and not summary:
+        raise ValueError("The item has nothing to write about.")
+    # The post, plus a shorten pass if it comes back too long.
+    run = _start(ctx, max_calls=2)
+    text = _text(
+        _run(
+            ctx,
+            run,
+            action="feed",
+            prompt=(
+                f"Write one social media post for {account.get_platform_display()} that shares this article. Base it "
+                "only on the material below and end with the link, written exactly as given. Keep it within "
+                f"{account.char_limit} characters.\n\n"
+                f'<source url="{_attr(url)}" title="{_attr(title)}">\n{_escape_tags(summary)}\n</source>'
+            ),
+            schema=_TEXT_SCHEMA,
+        )
+    )
+    return _fit_to_account(ctx, run, text, account)
+
+
 def save_posts_as_ideas(workspace, user, drafts: list[str]) -> list:
     """Add each draft to the workspace's idea board, in its first column."""
     from apps.composer.models import Idea, IdeaGroup

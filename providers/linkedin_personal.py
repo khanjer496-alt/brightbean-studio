@@ -20,11 +20,14 @@ from __future__ import annotations
 from datetime import datetime
 
 from .linkedin import API_BASE, LinkedInProvider
-from .types import AccountProfile, CommentResult, InboxMessage
+from .types import AccountProfile, CommentResult, InboxMessage, PlugCapability
 
 
 class LinkedInPersonalProvider(LinkedInProvider):
     """LinkedIn provider scoped to personal member posting."""
+
+    # No share statistics for a personal profile, so nothing to wait for on its own posts: no automations.
+    plugs = PlugCapability()
 
     @property
     def platform_name(self) -> str:

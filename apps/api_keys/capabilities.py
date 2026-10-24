@@ -50,7 +50,8 @@ CAPABILITIES: tuple[Capability, ...] = (
         "read_calendar",
         "Content",
         "Read posts & calendar",
-        "See posts, drafts, queues, posting slots, ideas, templates, tags, events, team members and connected accounts.",
+        "See posts, drafts, queues, posting slots, ideas, templates, tags, events, team members, connected accounts, "
+        "engagement automations and followed feeds.",
         "low",
         # Ideas, templates and evergreen items are read with the drafting permission; reading changes nothing.
         ("create_posts",),
@@ -67,7 +68,8 @@ CAPABILITIES: tuple[Capability, ...] = (
         "schedule_posts",
         "Content",
         "Schedule & publish",
-        "Schedule posts, cancel or delete them, manage queues, posting slots and evergreen recycling.",
+        "Schedule posts, cancel or delete them, manage queues, posting slots, evergreen recycling, engagement automations "
+        "(repost or reply when a post takes off) and RSS auto-posting.",
         "high",
         ("create_posts", "publish_directly", "manage_social_accounts"),
         default_on=False,
@@ -300,6 +302,10 @@ _ROUTES: dict[str, tuple[str, ...]] = {
         "GET /usage/",
         "GET /sets/",
         "GET /sets/{set_id}",
+        "GET /plugs/",
+        "GET /plugs/{rule_id}",
+        "GET /feeds/",
+        "GET /feeds/{feed_id}",
     ),
     "draft_posts": (
         "POST /posts/",
@@ -339,6 +345,14 @@ _ROUTES: dict[str, tuple[str, ...]] = {
         "POST /evergreen/",
         "PATCH /evergreen/{item_id}",
         "DELETE /evergreen/{item_id}",
+        # Rules and feeds make the workspace post on its own later, so they are scheduling, not drafting.
+        "POST /plugs/",
+        "PATCH /plugs/{rule_id}",
+        "DELETE /plugs/{rule_id}",
+        "POST /feeds/",
+        "PATCH /feeds/{feed_id}",
+        "POST /feeds/{feed_id}/check",
+        "DELETE /feeds/{feed_id}/autopost",
     ),
     "upload_media": (
         "POST /media/",
@@ -443,6 +457,10 @@ _TOOLS: dict[str, tuple[str, ...]] = {
         "list_signatures",
         "list_members",
         "get_usage",
+        "list_plug_rules",
+        "get_plug_rule",
+        "list_feeds",
+        "get_feed",
     ),
     "draft_posts": (
         "create_draft",
@@ -483,6 +501,13 @@ _TOOLS: dict[str, tuple[str, ...]] = {
         "add_to_evergreen",
         "pause_evergreen_item",
         "remove_from_evergreen",
+        "create_plug_rule",
+        "update_plug_rule",
+        "delete_plug_rule",
+        "add_feed",
+        "update_feed_autopost",
+        "check_feed",
+        "stop_feed_autopost",
     ),
     "upload_media": (
         "upload_media",

@@ -16,6 +16,11 @@ logger = logging.getLogger(__name__)
 class LinkedInCompanyProvider(LinkedInProvider):
     """LinkedIn provider scoped to Company Page posting."""
 
+    @classmethod
+    def credentials_for_account(cls, account) -> dict:
+        # The Page is the author of whatever the account reshares.
+        return {"author_urn": f"urn:li:organization:{account.account_platform_id}"}
+
     @property
     def platform_name(self) -> str:
         return "LinkedIn (Company Page)"

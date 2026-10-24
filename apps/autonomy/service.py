@@ -258,6 +258,7 @@ def record(
     post=None,
     platform_post=None,
     reply=None,
+    plug_run=None,
     source_text: str = "",
     final_text: str = "",
     requested_at: dt.datetime | None = None,
@@ -293,6 +294,7 @@ def record(
         post=post,
         platform_post=platform_post,
         reply=reply,
+        plug_run=plug_run,
         requested_at=requested_at,
         release_at=(
             release_time(verdict, requested_at)

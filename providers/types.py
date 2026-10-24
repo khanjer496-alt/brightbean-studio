@@ -312,6 +312,85 @@ class ThreadCapability:
         return self.mode is not ThreadMode.NONE
 
 
+class PlugTrigger(enum.StrEnum):
+    """A count on a published post that an engagement automation can wait for."""
+
+    LIKES = "likes"
+    REPOSTS = "reposts"
+    VIEWS = "views"
+
+
+class PlugAction(enum.StrEnum):
+    """What an engagement automation can do once its trigger is reached."""
+
+    # Boost / reshare the post.
+    REPOST = "repost"
+    # Reply to the post with a follow-up message (a link, a call to action).
+    REPLY = "reply"
+    # Repost it with a comment of one's own.
+    QUOTE = "quote"
+
+
+@dataclass(frozen=True)
+class PlugCapability:
+    """What a platform lets engagement automations ("plugs") do, declared per provider.
+
+    Read off the provider class (``SocialProvider.plugs``) by the rule editor,
+    the checker, the API and MCP, so nothing outside the provider names a
+    platform. An empty declaration means the network takes no automations.
+    """
+
+    # Counts the provider can read for one of its own posts (``plug_metrics``).
+    triggers: frozenset[PlugTrigger] = frozenset()
+    # What the account can do to its own post.
+    own_actions: frozenset[PlugAction] = frozenset()
+    # What *another* connected account on the same network can do to the post.
+    cross_actions: frozenset[PlugAction] = frozenset()
+    # Characters a reply or quote message may carry; None means the account's own limit.
+    message_max_length: int | None = None
+    # The shortest gap, in minutes, between two reads of one post's counts (a rule may ask for a longer one).
+    # Raised where reading costs money or quota.
+    check_interval_minutes: int = 15
+    # True when each read is billed to the customer's own developer app.
+    metered_reads: bool = False
+    # What one read costs the customer in US dollars, where the platform publishes a price; None when free or unknown.
+    read_cost_usd: float | None = None
+    # Every action needs a person's approval, whatever the autonomy level: the platform's terms don't allow it to be
+    # automated. (An action by *another* account always needs approval anyway; see ``apps.plugs.services``.)
+    requires_approval: bool = False
+    # Actions one account may take through automations in any 24 hours, so a burst of popular posts never turns
+    # into a burst of reposts the platform would read as spam.
+    max_actions_per_day: int = 10
+    # The platform documentation the declaration was checked against.
+    source: str = ""
+    # The platform's automation / developer policy the allowed actions were checked against.
+    policy_source: str = ""
+
+    @property
+    def watchable(self) -> bool:
+        """Whether a rule can be set on this network's own posts: a count to wait for and something to do."""
+        return bool(self.triggers and (self.own_actions or self.cross_actions))
+
+    @property
+    def can_act_for_others(self) -> bool:
+        """Whether an account here can be the reposter of another account's post."""
+        return bool(self.cross_actions)
+
+    def allows(self, action: PlugAction | str, *, cross_account: bool) -> bool:
+        return action in (self.cross_actions if cross_account else self.own_actions)
+
+
+@dataclass(frozen=True)
+class PlugTarget:
+    """The published post an automation acts on."""
+
+    platform_post_id: str
+    # Public address of the post, for networks that find a remote post by its link.
+    permalink: str = ""
+    # True when the account acting is not the one that published the post.
+    cross_account: bool = False
+
+
 @dataclass(frozen=True)
 class MentionSuggestion:
     """One account a user can @mention, as a platform's directory returned it."""
