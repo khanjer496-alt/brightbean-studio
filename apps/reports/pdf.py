@@ -28,6 +28,7 @@ from .models import (
     SECTION_ACTIVITY,
     SECTION_AI_SUMMARY,
     SECTION_INBOX,
+    SECTION_LINK_CLICKS,
     SECTION_NETWORKS,
     SECTION_SUMMARY,
     SECTION_TOP_POSTS,
@@ -382,6 +383,37 @@ def _inbox(pdf: _Report):
     )
 
 
+def _link_clicks(pdf: _Report):
+    _heading(pdf, "Link clicks")
+    c = pdf.data["link_clicks"]
+    pdf.set_font(FONT, "", 10)
+    pdf.set_text_color(*INK)
+    pdf.multi_cell(
+        0,
+        5.5,
+        clean(
+            f"{c['clicks']} clicks on shortened links, about {c['people']} people. "
+            f"{c['previews']} link-preview fetches by platforms are not counted."
+        ),
+        new_x="LMARGIN",
+        new_y="NEXT",
+    )
+    if c["accounts"]:
+        _table(
+            pdf,
+            ["Account", "Clicks"],
+            [130, 40],
+            [[f"{row['name']} ({row['platform']})", row["clicks"]] for row in c["accounts"]],
+        )
+    if c["links"]:
+        _table(
+            pdf,
+            ["Link", "Clicks"],
+            [130, 40],
+            [[f"{row['short_url']}  {row['destination']}", row["clicks"]] for row in c["links"]],
+        )
+
+
 def render_pdf(data: dict) -> bytes:
     """The finished report as PDF bytes (laid out twice: the first pass counts the pages)."""
     pages = _layout(data, None).pages_count
@@ -407,4 +439,6 @@ def _layout(data: dict, total_pages: int | None) -> _Report:
         _activity(pdf)
     if SECTION_INBOX in sections and data.get("inbox"):
         _inbox(pdf)
+    if SECTION_LINK_CLICKS in sections and data.get("link_clicks"):
+        _link_clicks(pdf)
     return pdf

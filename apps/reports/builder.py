@@ -26,6 +26,8 @@ from apps.analytics.templatetags.analytics_extras import delta_color, fmt_metric
 from apps.billing.entitlements import PlanLimitError, get_entitlements
 from apps.billing.plans import Feature
 from apps.inbox.models import InboxMessage, InboxReply
+from apps.links import services as link_services
+from apps.links.models import ShortLink
 from apps.social_accounts.models import SocialAccount
 
 from .branding import branding_for
@@ -33,6 +35,7 @@ from .models import (
     SECTION_ACTIVITY,
     SECTION_AI_SUMMARY,
     SECTION_INBOX,
+    SECTION_LINK_CLICKS,
     SECTION_NETWORKS,
     SECTION_SUMMARY,
     SECTION_TOP_POSTS,
@@ -219,6 +222,31 @@ def _inbox(definition: ReportDefinition, accounts, rng: AnalyticsRange) -> dict 
     }
 
 
+def _link_clicks(definition: ReportDefinition, accounts, rng: AnalyticsRange) -> dict | None:
+    """Clicks on the short links made for the report's accounts, by account and by link (None if there are none)."""
+    ids = [a.id for a in accounts]
+    if not ShortLink.objects.filter(workspace_id=definition.workspace_id, social_account_id__in=ids).exists():
+        return None
+    summary = link_services.clicks_summary(definition.workspace, start=rng.start, end=rng.end, account_ids=ids)
+    return {
+        "clicks": fmt_metric(summary["totals"]["clicks"], "count"),
+        "people": fmt_metric(summary["totals"]["unique_visitors"], "count"),
+        "previews": fmt_metric(summary["totals"]["previews"], "count"),
+        "accounts": [
+            {"name": row["name"], "platform": row["platform"], "clicks": fmt_metric(row["clicks"], "count")}
+            for row in summary["accounts"]
+        ],
+        "links": [
+            {
+                "short_url": row["short_url"],
+                "destination": Truncator(row["destination_url"]).chars(70),
+                "clicks": fmt_metric(row["clicks"], "count"),
+            }
+            for row in summary["links"][:TOP_POSTS]
+        ],
+    }
+
+
 def _hours(hours: float | None) -> str:
     if hours is None:
         return "No replies yet"
@@ -351,6 +379,7 @@ def build_report_data(
         "top_posts": _top_posts(post_data) if SECTION_TOP_POSTS in sections or SECTION_AI_SUMMARY in sections else [],
         "activity": _activity(accounts, rng, post_data) if SECTION_ACTIVITY in sections else None,
         "inbox": _inbox(definition, accounts, rng) if SECTION_INBOX in sections else None,
+        "link_clicks": _link_clicks(definition, accounts, rng) if SECTION_LINK_CLICKS in sections else None,
         "excluded": sorted({r.unavailable for r in rows if r.unavailable}),
         "ai_summary": None,
     }
