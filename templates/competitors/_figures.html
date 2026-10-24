@@ -1,0 +1,5 @@
+{% load analytics_extras %}
+<td class="px-4 py-2.5 text-right font-mono text-ink-2">{% include "analytics/_figure.html" with value=row.followers kind="count" %}</td>
+<td class="px-4 py-2.5 text-right font-mono text-ink-2">{% if row.growth is None %}<span class="text-ink-3">—<span class="sr-only"> not enough data</span></span>{% else %}{{ row.growth|fmt_signed }}{% endif %}</td>
+<td class="px-4 py-2.5 text-right font-mono text-ink-2">{% if row.posts_per_week is None %}<span class="text-ink-3">—<span class="sr-only"> not available</span></span>{% else %}{{ row.posts_per_week|floatformat:1 }}{% endif %}</td>
+<td class="px-4 py-2.5 text-right font-mono text-ink-2">{% if row.avg_engagement is None %}<span class="text-ink-3">—<span class="sr-only"> not available</span></span>{% else %}{{ row.avg_engagement|floatformat:"0g" }}{% endif %}</td>

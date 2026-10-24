@@ -20,6 +20,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET
 
+from apps.competitors import services as competitor_services
 from apps.composer.models import PlatformPost
 from apps.inbox.review_stats import review_overview
 from apps.members.models import WorkspaceMembership
@@ -181,6 +182,8 @@ def _nav(workspace, rng: AnalyticsRange, active: str, extra: dict | None = None)
         "accounts": reverse("analytics:accounts", kwargs=kwargs) + qs,
         "compare": reverse("analytics:compare", kwargs=kwargs) + qs,
         "reports": reverse("reports:list", kwargs=kwargs),
+        "competitors": reverse("competitors:index", kwargs=kwargs) + qs,
+        "ai_visibility": reverse("ai_visibility:index", kwargs=kwargs),
     }
 
 
@@ -229,6 +232,8 @@ def analytics_index(request: HttpRequest, workspace_id) -> HttpResponse:
         ],
         "trend_summary": summarize_trend(data["trend"]),
         "excluded": _excluded_by_reason(data["accounts"]),
+        "competitors": competitor_services.overview_section(workspace, rng, accounts),
+        "competitors_url": reverse("competitors:index", kwargs={"workspace_id": workspace.id}) + rng.querystring(),
         # Reviews are inbox data, so they don't depend on the platform's analytics being switched on.
         "reviews": review_overview(
             SocialAccount.objects.filter(
