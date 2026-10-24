@@ -1,7 +1,7 @@
 {# Single token in the list. Receives ``row`` (see views._row_context). #}
 <article class="py-5" aria-labelledby="key-{{ row.id }}-name">
     <div class="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
-        <div class="min-w-0 flex-1">
+        <div class="min-w-0 flex-[1_1_100%] sm:flex-1">
             <div class="flex flex-wrap items-center gap-2 mb-1">
                 <h3 id="key-{{ row.id }}-name" class="text-sm font-semibold break-words text-[var(--text-primary)]">{{ row.name }}</h3>
                 {% if row.status == "active" %}
@@ -40,7 +40,7 @@
                     <dd class="text-sm text-[var(--text-primary)]">{{ b.used }}{% if b.limit is not None %} of {{ b.limit }}{% else %} <span class="text-xs text-[var(--text-tertiary)]">no limit</span>{% endif %}</dd>
                     {% if b.limit %}
                     <progress max="{{ b.limit }}" value="{{ b.used }}" aria-label="{{ b.label }}: {{ b.used }} of {{ b.limit }}"
-                              class="mt-1 block h-1.5 w-full overflow-hidden rounded-full [&::-webkit-progress-bar]:bg-stone-200 {% if b.state == 'over' %}[&::-webkit-progress-value]:bg-red-600 [&::-moz-progress-bar]:bg-red-600{% elif b.state == 'near' %}[&::-webkit-progress-value]:bg-amber-500 [&::-moz-progress-bar]:bg-amber-500{% else %}[&::-webkit-progress-value]:bg-[var(--primary)] [&::-moz-progress-bar]:bg-[var(--primary)]{% endif %}"></progress>
+                              class="mt-1 block h-1.5 w-full overflow-hidden rounded-full appearance-none bg-[var(--surface-3)] [&::-webkit-progress-bar]:bg-[var(--surface-3)] {% if b.state == 'over' %}[&::-webkit-progress-value]:bg-red-600 [&::-moz-progress-bar]:bg-red-600{% elif b.state == 'near' %}[&::-webkit-progress-value]:bg-amber-500 [&::-moz-progress-bar]:bg-amber-500{% else %}[&::-webkit-progress-value]:bg-[var(--primary)] [&::-moz-progress-bar]:bg-[var(--primary)]{% endif %}"></progress>
                     {% endif %}
                 </div>
                 {% endfor %}
