@@ -87,6 +87,12 @@ PLATFORM_DAILY_POST_LIMIT: dict[str, int] = {
     "reddit": 25,
     # POST /2/tweets allows 100 per 15 minutes, but each post is billed to the customer's own app.
     "x": 100,
+    # Long-form platforms: a few articles or newsletters a day is already a lot.
+    "medium": 25,
+    "wordpress": 50,
+    "hashnode": 25,
+    # A campaign emails a whole list, so the cap protects its subscribers rather than the API.
+    "listmonk": 10,
 }
 
 _DEFAULT_FALLBACK = 50

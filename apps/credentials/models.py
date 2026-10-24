@@ -65,6 +65,10 @@ class PlatformCredential(models.Model):
         SLACK = "slack", "Slack"
         REDDIT = "reddit", "Reddit"
         X = "x", "X (Twitter)"
+        MEDIUM = "medium", "Medium"
+        WORDPRESS = "wordpress", "WordPress"
+        HASHNODE = "hashnode", "Hashnode"
+        LISTMONK = "listmonk", "Listmonk"
 
     class TestResult(models.TextChoices):
         SUCCESS = "success", "Success"

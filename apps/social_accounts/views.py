@@ -759,6 +759,116 @@ def connect_devto(request, workspace_id):
 
 
 # ------------------------------------------------------------------
+# Pasted-credentials Connect (Medium, WordPress, Hashnode, Listmonk: a token or password, no OAuth)
+# ------------------------------------------------------------------
+
+
+def _connect_with_credentials(request, workspace_id, platform):
+    """Render and handle the connect form a provider declares in ``connect_fields``.
+
+    A password input is never sent back to the page. The provider checks the credentials against the
+    platform and returns the profile and the secret stored (encrypted) as the account's access token.
+    """
+    from providers import PROVIDER_REGISTRY
+
+    provider_cls = PROVIDER_REGISTRY[platform]
+    label = provider_cls().platform_name
+
+    def render_form(values=None):
+        return render(
+            request,
+            "social_accounts/credentials_connect.html",
+            {
+                "workspace_id": workspace_id,
+                "platform": platform,
+                "platform_label": label,
+                "intro": provider_cls.connect_intro,
+                "notice": provider_cls.connect_notice,
+                "connect_url": f"social_accounts:{provider_cls.connect_url_name}",
+                "fields": [
+                    {"field": field, "value": "" if field.kind == "password" else (values or {}).get(field.key, "")}
+                    for field in provider_cls.connect_fields
+                ],
+            },
+        )
+
+    if request.method == "GET":
+        return render_form()
+
+    values = {field.key: request.POST.get(field.key, "").strip() for field in provider_cls.connect_fields}
+    if not all(values.values()):
+        messages.error(request, f"Fill in every {label} field.")
+        return render_form(values)
+
+    instance_url = ""
+    url_field = provider_cls.connect_url_field
+    if url_field:
+        # Validate against SSRF - an https address that resolves to a public host only.
+        instance_url = provider_cls.normalize_site_url(values[url_field])
+        if not instance_url or not _is_safe_url(instance_url):
+            messages.error(request, "Enter a public https address. Private or reserved addresses are not allowed.")
+            return render_form(values)
+        values[url_field] = instance_url
+
+    try:
+        provider = _get_provider_for_platform(platform, request.workspace.organization_id, workspace_id=workspace_id)
+        profile, secret = provider.connect_with_form(values)
+        _create_or_update_account(
+            workspace_id=workspace_id,
+            platform=platform,
+            profile=profile,
+            access_token=secret,
+            instance_url=instance_url,
+            platform_data=(profile.extra or {}).get("account_data"),
+        )
+        messages.success(request, f"Connected {profile.name} on {label}.")
+    except PlanLimitError as exc:
+        messages.error(request, exc.message)
+        return redirect("social_accounts:list", workspace_id=workspace_id)
+    except PublishError as exc:
+        messages.error(request, str(exc))
+        return render_form(values)
+    except Exception:
+        logger.exception("%s connection failed", label)
+        messages.error(request, f"Failed to connect {label}. Check the details and try again.")
+        return render_form(values)
+
+    return _after_connect_redirect(request, workspace_id)
+
+
+@login_required
+@require_permission("manage_social_accounts")
+@ratelimit(key="user", rate="20/m", method="POST", block=True)
+def connect_medium(request, workspace_id):
+    """Connect Medium with an existing integration token."""
+    return _connect_with_credentials(request, workspace_id, PlatformCredential.Platform.MEDIUM)
+
+
+@login_required
+@require_permission("manage_social_accounts")
+@ratelimit(key="user", rate="20/m", method="POST", block=True)
+def connect_wordpress(request, workspace_id):
+    """Connect a self-hosted WordPress site with an Application Password."""
+    return _connect_with_credentials(request, workspace_id, PlatformCredential.Platform.WORDPRESS)
+
+
+@login_required
+@require_permission("manage_social_accounts")
+@ratelimit(key="user", rate="20/m", method="POST", block=True)
+def connect_hashnode(request, workspace_id):
+    """Connect Hashnode with a personal access token."""
+    return _connect_with_credentials(request, workspace_id, PlatformCredential.Platform.HASHNODE)
+
+
+@login_required
+@require_permission("manage_social_accounts")
+@ratelimit(key="user", rate="20/m", method="POST", block=True)
+def connect_listmonk(request, workspace_id):
+    """Connect a self-hosted Listmonk instance with an API user."""
+    return _connect_with_credentials(request, workspace_id, PlatformCredential.Platform.LISTMONK)
+
+
+# ------------------------------------------------------------------
 # Telegram Connect (platform bot added to a channel or group, no OAuth)
 # ------------------------------------------------------------------
 

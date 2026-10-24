@@ -694,6 +694,12 @@ PLATFORM_CREDENTIALS_FROM_ENV = {
     # DEV.to - per-account API key (no OAuth). The key is supplied by the user
     # at connect time, so no app-level credentials apply (same as Bluesky).
     "devto": {},
+    # Medium, WordPress, Hashnode and Listmonk - the user pastes their own token or
+    # application password at connect time, so no app-level credentials apply.
+    "medium": {},
+    "wordpress": {},
+    "hashnode": {},
+    "listmonk": {},
     # Telegram - one platform-wide bot posts to every connected chat. The user
     # adds the bot to their channel or group as an administrator.
     "telegram": {

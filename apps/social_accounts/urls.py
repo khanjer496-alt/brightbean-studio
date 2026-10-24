@@ -37,6 +37,26 @@ urlpatterns = [
         name="connect_telegram",
     ),
     path(
+        "<uuid:workspace_id>/connect/medium/",
+        views.connect_medium,
+        name="connect_medium",
+    ),
+    path(
+        "<uuid:workspace_id>/connect/wordpress/",
+        views.connect_wordpress,
+        name="connect_wordpress",
+    ),
+    path(
+        "<uuid:workspace_id>/connect/hashnode/",
+        views.connect_hashnode,
+        name="connect_hashnode",
+    ),
+    path(
+        "<uuid:workspace_id>/connect/listmonk/",
+        views.connect_listmonk,
+        name="connect_listmonk",
+    ),
+    path(
         "<uuid:workspace_id>/connect/x/",
         views.connect_x,
         name="connect_x",

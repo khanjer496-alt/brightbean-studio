@@ -23,7 +23,7 @@
 
 ## About BrightBean Studio
 
-BrightBean Studio is an open-source, self-hostable social media management platform built for creators, agencies and SMBs. It does what Sendible, SocialPilot, or ContentStudio do, but free and without per-seat, per-channel, or per-workspace limits. Plan, compose, schedule, approve, publish, and monitor content across Facebook, Instagram, LinkedIn, TikTok, YouTube, Pinterest, Threads, Bluesky, Google Business Profile, Mastodon, and DEV.to from a single multi-workspace dashboard.
+BrightBean Studio is an open-source, self-hostable social media management platform built for creators, agencies and SMBs. It does what Sendible, SocialPilot, or ContentStudio do, but free and without per-seat, per-channel, or per-workspace limits. Plan, compose, schedule, approve, publish, and monitor content across Facebook, Instagram, LinkedIn, TikTok, YouTube, Pinterest, Threads, Bluesky, Google Business Profile, Mastodon, DEV.to, Medium, WordPress, Hashnode, and Listmonk from a single multi-workspace dashboard.
 
 It's for people managing many client accounts under one roof who'd rather own their social stack than pay $100–300/month to a SaaS vendor. Every feature is available to every user. No paid tier, no feature gate, no upsell.
 
@@ -84,6 +84,10 @@ A free hosted version is available at [brightbean.xyz/studio](https://brightbean
 | <img src="https://cdn.simpleicons.org/slack" width="16" height="16"> Slack | ✓ | — | — | — |
 | <img src="https://cdn.simpleicons.org/reddit" width="16" height="16"> Reddit | ✓ | — | — | — |
 | <img src="https://cdn.simpleicons.org/x" width="16" height="16"> X (Twitter) | ✓ | — | — | — |
+| <img src="https://cdn.simpleicons.org/medium" width="16" height="16"> Medium | ✓ | — | — | — |
+| <img src="https://cdn.simpleicons.org/wordpress" width="16" height="16"> WordPress (self-hosted) | ✓ | — | — | — |
+| <img src="https://cdn.simpleicons.org/hashnode" width="16" height="16"> Hashnode | ✓ | — | — | — |
+| <img src="https://cdn.simpleicons.org/listmonk" width="16" height="16"> Listmonk | ✓ | — | — | — |
 
 ---
 
@@ -745,6 +749,22 @@ No developer app registration needed. Users connect by entering a personal **API
 3. Copy the generated key and paste it when connecting your account in Brightbean Studio
 
 Posts publish as DEV.to articles (title + Markdown body). The key can be revoked at any time from the same settings page.
+
+### Medium
+
+Medium no longer issues new API integration tokens (its [API docs](https://github.com/Medium/medium-api-docs) are archived), so this only works for accounts that already have one. Open **Settings → Security and apps → Integration tokens** on Medium; if the section is missing, the account can't use Medium's API. Paste the token when connecting. Posts publish as stories (title + Markdown body), optionally to a publication you write for.
+
+### WordPress (self-hosted)
+
+No developer app registration needed. The site must run WordPress 5.6+ over HTTPS with the REST API reachable. Create an **Application Password** under **Users → Profile → Application Passwords**, then enter the site address, the username and the password when connecting. Posts publish through `/wp-json/wp/v2` as the user (status, category and tags from the post; the first image becomes the featured image). WordPress.com sites aren't supported yet. The site address must be public: private and reserved addresses are refused.
+
+### Hashnode
+
+Generate a token under **Account settings → Developer** on Hashnode and paste it when connecting. Hashnode's API only works for publications on a Pro plan. Posts publish as articles to the publication chosen in the composer.
+
+### Listmonk
+
+Create an API user under **Admin → Users** in your Listmonk instance (it needs to read lists and manage campaigns), then enter the instance address (HTTPS, public), the API username and the token. Each post becomes a Markdown campaign (title = subject) sent to the list chosen in the composer, or saved as a draft campaign.
 
 ### Telegram
 

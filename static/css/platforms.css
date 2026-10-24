@@ -27,6 +27,10 @@
     --platform-slack: #4a154b;
     --platform-discord: #5865f2;
     --platform-telegram: #26a5e4;
+    --platform-medium: #000000;
+    --platform-wordpress: #21759b;
+    --platform-hashnode: #2962ff;
+    --platform-listmonk: #0055d4;
 }
 
 .pi-facebook { background: var(--platform-facebook); }
@@ -45,6 +49,10 @@
 .pi-slack { background: var(--platform-slack); }
 .pi-discord { background: var(--platform-discord); }
 .pi-telegram { background: var(--platform-telegram); }
+.pi-medium { background: var(--platform-medium); }
+.pi-wordpress { background: var(--platform-wordpress); }
+.pi-hashnode { background: var(--platform-hashnode); }
+.pi-listmonk { background: var(--platform-listmonk); }
 
 /* YouTube renders its full wordmark-style label rather than a filled badge (fixed w-4/w-5 badges too). */
 .pi-youtube {
@@ -58,6 +66,7 @@
 /* Black badges would vanish on the dark app surfaces; a faint inner edge keeps their shape. */
 .pi-tiktok,
 .pi-threads,
+.pi-medium,
 .pi-x {
     box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.22);
 }

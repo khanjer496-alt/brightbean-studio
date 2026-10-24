@@ -201,6 +201,10 @@ _CONNECT_SUGGESTION_ORDER: tuple[str, ...] = (
     "slack",
     "reddit",
     "x",
+    "medium",
+    "wordpress",
+    "hashnode",
+    "listmonk",
 )
 
 
