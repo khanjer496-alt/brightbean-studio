@@ -41,3 +41,7 @@ node scripts/gen-icons.mjs       # rebuilds public/icons.svg sprite from Simple 
 - Home-page bento mockups are our own simplified illustrations; only the calendar, week and composer images are real app screenshots (`docs/design/screens/wave2`). No page content is hidden behind scroll animations.
 - Product screenshots are from `docs/design/screens/wave2/` in the app repo.
 - Competitor statements are hedged and must be re-verified before launch; see the compare pages.
+
+## Deploy
+
+`./scripts/deploy.sh` (from `site/`) builds and publishes to the Cloudflare Pages project `postdelegate`. It refuses to run with merge conflicts or uncommitted changes. Requires `wrangler login` on the machine (Pages-only scopes).
