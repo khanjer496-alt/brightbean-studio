@@ -2,40 +2,39 @@
 import Logo from './Logo.astro';
 import { SITE } from '../data/site';
 const cols = [
-  { title: 'Product', links: [['Features', '/#features'], ['Pricing', '/pricing'], ['Platforms', '/platforms'], ['For AI agents', '/agents'], ['Sign in', SITE.login]] },
-  { title: 'AI & API', links: [['MCP server', '/mcp'], ['REST API', '/api'], ['Claude Cowork', '/claude-cowork'], ['Codex', '/codex']] },
+  { title: 'Product', links: [['Features', '/#features'], ['Pricing', '/pricing'], ['Platforms', '/platforms'], ['Sign in', SITE.login], ['Start free', SITE.signup]] },
+  { title: 'AI & developers', links: [['For AI agents', '/agents'], ['MCP server', '/mcp'], ['REST API', '/api'], ['Claude', '/claude-cowork'], ['Codex & coding agents', '/codex']] },
   { title: 'Schedulers', links: [['Instagram', '/instagram-scheduler'], ['LinkedIn', '/linkedin-scheduler'], ['Facebook', '/facebook-scheduler'], ['TikTok', '/tiktok-scheduler'], ['YouTube', '/youtube-scheduler'], ['Bluesky', '/bluesky-scheduler']] },
   { title: 'Compare & tools', links: [['All comparisons', '/compare'], ['vs Postiz', '/compare/postiz'], ['vs Post Bridge', '/compare/post-bridge'], ['Caption checker', '/tools/caption-checker'], ['UTM builder', '/tools/utm-builder']] },
-  { title: 'Company', links: [['About', '/about'], ['Status', '/status'], ['Support', '/support'], ['Terms', SITE.legal.terms], ['Privacy', SITE.legal.privacy], ['Data deletion', SITE.legal.dataDeletion], ['Licenses', SITE.legal.licenses]] },
+  { title: 'Company', links: [['About', '/about'], ['Status', '/status'], ['Support', '/support'], ['Terms', SITE.legal.terms], ['Privacy', SITE.legal.privacy], ['Security', SITE.legal.security], ['Data deletion', SITE.legal.dataDeletion], ['Licenses', SITE.legal.licenses]] },
 ];
 ---
-<footer class="border-t border-line bg-surface">
-  <div class="container-x py-14">
-    <div class="grid gap-10 lg:grid-cols-[1.2fr_2.8fr]">
+<footer class="border-t border-line bg-[#07070b]">
+  <div class="container-x py-16">
+    <div class="grid gap-12 lg:grid-cols-[1.1fr_3fr]">
       <div>
-        <a href="/" aria-label="PostDelegate home"><Logo /></a>
-        <p class="mt-4 max-w-xs text-sm leading-relaxed text-ink-2">The safest way to let AI run your social media — with any AI you choose.</p>
-        <a href={`mailto:${SITE.email}`} class="mt-4 inline-block text-sm font-semibold text-brand-200 hover:text-white">{SITE.email}</a>
+        <a href="/" aria-label="PostDelegate home" class="inline-flex min-h-11 items-center"><Logo /></a>
+        <p class="mt-4 max-w-xs text-xl font-extrabold leading-snug tracking-tight">The safest way to let AI run your social media.</p>
+        <p class="mt-2 max-w-xs text-sm text-ink-2">With any AI you choose.</p>
+        <a href={`mailto:${SITE.email}`} class="mt-5 inline-flex min-h-11 items-center text-sm font-semibold text-brand-200 hover:text-white">{SITE.email}</a>
+        <a href={SITE.source} rel="noopener" class="mt-1 flex min-h-11 w-fit items-center gap-2 rounded-full border border-line px-4 text-sm font-semibold text-ink-2 hover:border-line-hover hover:text-white">
+          <svg class="size-4" fill="currentColor" aria-hidden="true"><use href="/icons.svg#i-github" /></svg> Source on GitHub
+        </a>
       </div>
-      <div class="grid grid-cols-2 gap-8 sm:grid-cols-3 lg:grid-cols-5">
+      <div class="grid grid-cols-2 gap-x-6 gap-y-10 sm:grid-cols-3 lg:grid-cols-5">
         {cols.map((c) => (
           <div>
             <h2 class="text-xs font-bold uppercase tracking-[0.14em] text-ink-3">{c.title}</h2>
-            <ul class="mt-4 space-y-2.5">
-              {c.links.map(([label, href]) => (<li><a href={href} class="text-sm text-ink-2 transition hover:text-white">{label}</a></li>))}
+            <ul class="mt-3">
+              {c.links.map(([label, href]) => (<li><a href={href} class="flex min-h-11 items-center text-sm text-ink-2 transition hover:text-white">{label}</a></li>))}
             </ul>
           </div>
         ))}
       </div>
     </div>
-    <div class="mt-12 flex flex-col gap-3 border-t border-line pt-6 text-xs text-ink-3 sm:flex-row sm:items-center sm:justify-between">
-      <p>© {new Date().getFullYear()} {SITE.operator}. PostDelegate is built on open source.</p>
-      <p>
-        Open source under AGPL-3.0:
-        <a href={SITE.source} class="font-semibold text-ink-2 underline underline-offset-4 hover:text-white" rel="noopener">source code</a>
-        ·
-        <a href={SITE.legal.licenses} class="underline underline-offset-4 hover:text-white">licenses</a>
-      </p>
+    <div class="mt-14 flex flex-col gap-2 border-t border-line pt-6 text-xs text-ink-3 sm:flex-row sm:items-center sm:justify-between">
+      <p>© {new Date().getFullYear()} {SITE.operator}. Built on <a href={SITE.upstream} rel="noopener" class="underline underline-offset-4 hover:text-white">BrightBean Studio</a> (AGPL-3.0).</p>
+      <p>Network logos are trademarks of their owners and are used only to identify the networks you can connect.</p>
     </div>
   </div>
 </footer>

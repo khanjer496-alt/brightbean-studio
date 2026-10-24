@@ -1,0 +1,13 @@
+---
+import Doodles from './Doodles.astro';
+// Centered title; `mark` words get a hand-drawn underline or circle.
+interface Props { title: string; mark?: string; kind?: 'underline' | 'circle'; sub?: string; id?: string }
+const { title, mark, kind = 'underline', sub, id } = Astro.props;
+const parts = mark ? title.split(mark) : [title];
+---
+<div class="mx-auto max-w-3xl text-center">
+  <h2 class="h2" id={id}>
+    {parts[0]}{mark && (<span class="relative inline-block whitespace-nowrap">{mark}{kind === 'underline' ? <Doodles kind="underline" class="-bottom-2 h-3 text-lime" /> : <Doodles kind="circle" class="-inset-x-3 -inset-y-2 h-[calc(100%+1rem)] w-[calc(100%+1.5rem)] text-lime" />}</span>)}{parts[1] ?? ''}
+  </h2>
+  {sub && <p class="lead mx-auto mt-5 max-w-2xl">{sub}</p>}
+</div>

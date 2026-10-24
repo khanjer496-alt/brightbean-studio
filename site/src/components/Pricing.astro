@@ -14,17 +14,17 @@ const fmt = (n: number) => `$${n}`;
     </div>
   )}
   <div class="mt-8 flex justify-center">
-    <div role="radiogroup" aria-label="Billing interval" class="inline-flex rounded-full border border-line bg-surface-1 p-1 text-sm font-bold">
-      <button type="button" role="radio" aria-checked="true" data-set="month" class="int-btn rounded-full px-5 py-2 transition">Monthly</button>
-      <button type="button" role="radio" aria-checked="false" data-set="year" class="int-btn rounded-full px-5 py-2 transition">Yearly <span class="ml-1 rounded-full bg-lime/15 px-2 py-0.5 text-[11px] text-lime">save 20%</span></button>
+    <div role="radiogroup" aria-label="Billing interval" class="inline-flex rounded-full border border-white/15 bg-white/5 p-1 text-sm font-bold">
+      <button type="button" role="radio" aria-checked="true" data-set="month" class="int-btn min-h-11 rounded-full px-5 py-2 transition">Monthly</button>
+      <button type="button" role="radio" aria-checked="false" data-set="year" class="int-btn min-h-11 rounded-full px-5 py-2 transition">Yearly <span class="ml-1 rounded-full bg-lime px-2 py-0.5 text-[11px] text-[#0a0a0f]">save 20%</span></button>
     </div>
   </div>
   <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
     {PLANS.map((p) => (
-      <div class:list={['card flex flex-col p-6', p.popular && 'border-brand/60 bg-gradient-to-b from-brand-600/20 to-surface-1 shadow-[0_20px_60px_-30px_rgba(115,87,255,.8)]']}>
+      <div class:list={['relative flex flex-col rounded-3xl p-6', p.popular ? 'plan-hot' : 'border border-line bg-surface-1']}>
         <div class="flex items-center justify-between">
           <h3 class="text-lg font-extrabold">{p.name}</h3>
-          {p.popular && <span class="rounded-full bg-brand-600 px-2.5 py-1 text-[11px] font-bold">Best for teams</span>}
+          {p.popular && <span class="rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-[#0a0a0f]">Best for teams</span>}
         </div>
         <p class="mt-2 min-h-10 text-sm text-ink-2">{p.tagline}</p>
         <p class="mt-5 flex items-baseline gap-1">
@@ -35,7 +35,7 @@ const fmt = (n: number) => `$${n}`;
         <p class="mt-1 h-5 text-xs text-ink-3">
           {p.monthly > 0 ? (<><span class="m">billed monthly</span><span class="y">{fmt(p.yearly)} billed yearly</span></>) : 'No card needed'}
         </p>
-        <a href={SITE.signup} class:list={['btn mt-5', p.popular ? 'btn-primary' : 'btn-ghost']}>{p.monthly === 0 ? 'Start free' : 'Start 14-day trial'}</a>
+        <a href={SITE.signup} class:list={['btn mt-5', p.popular ? 'btn-white' : 'btn-outline']}>{p.monthly === 0 ? 'Start free' : 'Start 14-day trial'}</a>
         <ul class="mt-6 space-y-2.5 border-t border-line pt-5 text-sm text-ink-2">
           <li><b class="text-ink">{p.channels}</b> social channels</li>
           <li><b class="text-ink">{p.workspaces}</b> workspace{p.workspaces === '1' ? '' : 's'}</li>
@@ -52,7 +52,7 @@ const fmt = (n: number) => `$${n}`;
 </div>
 <style>
   .pricing[data-interval='month'] .y, .pricing[data-interval='year'] .m { display: none; }
-  .int-btn[aria-checked='true'] { background: var(--color-brand-600); color: #fff; }
+  .int-btn[aria-checked='true'] { background: #fff; color: #0a0a0f; }
   .int-btn[aria-checked='false'] { color: var(--color-ink-2); }
 </style>
 <script>

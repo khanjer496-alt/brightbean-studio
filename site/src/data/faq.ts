@@ -1,4 +1,4 @@
-export const FAQ = [
+export const FAQ: { q: string; a: string }[] = [
   { q: 'What is PostDelegate?', a: 'PostDelegate is a social media scheduler built for people and AI agents. You plan posts on a shared calendar, review and approve them with your team or clients, and publish to your connected channels. An AI agent can draft and schedule for you, but you set how much it may do on its own.' },
   { q: 'How does the AI part work?', a: 'You choose the AI. Add your own API key (Anthropic, OpenAI, Google Gemini, or any OpenAI-compatible service), or drive PostDelegate from Claude or ChatGPT through our MCP server. AI is never part of a plan and is never marked up: you pay your AI provider directly, or nothing if you do not use AI.' },
   { q: 'Can an AI post things I did not approve?', a: 'Only as far as you allow. Every workspace has an autonomy dial for each kind of action (draft, schedule and publish, reply, recycle). New workspaces start at “Draft only”, where an agent can write drafts but a person must approve anything that goes out. Approvals your workspace requires are never skipped by the dial.' },
@@ -9,3 +9,8 @@ export const FAQ = [
   { q: 'Is it open source?', a: 'The PostDelegate workspace is open source under AGPL-3.0, built on BrightBean Studio. You can read the source on GitHub.' },
   { q: 'Do I need an AI agent to use it?', a: 'No. Connecting an agent is optional. The web app works on its own as a calendar, composer, approval workflow, inbox and analytics tool.' },
 ];
+FAQ.push(
+  { q: 'Which AI tools can connect?', a: 'Any client that speaks MCP can connect to your workspace’s MCP endpoint, including Claude, ChatGPT, Claude Code, Codex and Cursor. You can also call the REST API from your own code or from automation tools such as n8n, Make or Zapier using HTTP requests and webhooks. We do not ship native apps for those automation tools.' },
+  { q: 'Can I manage several brands or clients?', a: 'Yes. Workspaces keep brands and clients separate. Paid plans include a client portal and a client sign-off stage so clients can approve posts without seeing your internals, plus scheduled white-label reports.' },
+  { q: 'How do I delete my data?', a: 'Follow the data deletion instructions at app.postdelegate.com/legal/data-deletion/. Revoking PostDelegate’s access inside a social platform is a separate step from deleting the data we store.' },
+);
