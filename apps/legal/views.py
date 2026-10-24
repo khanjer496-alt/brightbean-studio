@@ -82,7 +82,10 @@ THIRD_PARTY_ASSETS = [
         "version": "18.0.0",
         "license": "MIT",
         "url": "https://emojibase.dev",
-        "delivery": "Bundled (static/js/emoji-data.json); built from Unicode emoji data (Unicode License)",
+        "delivery": (
+            "Bundled (static/js/emoji-data.json, licence texts in emoji-data.LICENSE.txt); "
+            "built from Unicode emoji data (Unicode License V3)"
+        ),
     },
     {
         "name": "Swagger UI",

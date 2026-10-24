@@ -3,7 +3,8 @@
 //   node build-emoji-data.mjs <extracted emojibase-data package dir> <output file>
 //
 // Download the package into an empty directory (`npm pack emojibase-data@<exact version>`), extract it
-// there, and run this from a different directory. The picker reads rows as
+// there, and run this from a different directory. Keep static/js/emoji-data.LICENSE.txt (the package's
+// LICENSE plus the Unicode License) in step with the version used. The picker reads rows as
 // [glyph, name, keywords, skinToneGlyphs?]; everything else in the dataset is dropped to keep it small.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
