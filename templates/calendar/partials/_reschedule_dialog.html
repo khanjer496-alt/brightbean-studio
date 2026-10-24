@@ -1,0 +1,55 @@
+{% comment %}
+Body of the "Reschedule post" dialog (the keyboard / touch alternative to dragging a calendar chip).
+Loaded into #reschedule-dialog-body by the chip's button; static/js/reschedule-dialog.js opens the
+<dialog>, submits the form to calendar:reschedule and refreshes the grid.
+Context: workspace, pp, denial_message, current_value, timezone_name, schedules_on_save, keeps_status.
+{% endcomment %}
+<div class="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
+    <div class="min-w-0">
+        <h2 id="reschedule-dialog-title" class="text-base font-semibold text-ink">Reschedule post</h2>
+        <p class="mt-0.5 truncate text-xs text-ink-3">
+            {{ pp.post.title|default:pp.post.caption_snippet|default:"Untitled post"|truncatechars:60 }}
+            · {{ pp.social_account.account_name|default:pp.social_account.account_handle }}
+        </p>
+    </div>
+    <button type="button" data-dialog-close aria-label="Close"
+            class="-me-1 inline-flex size-8 shrink-0 items-center justify-center rounded-full text-ink-3 hover:bg-surface-2 hover:text-ink">
+        <svg class="size-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+    </button>
+</div>
+
+{% if denial_message %}
+<div class="px-5 py-5">
+    <p role="alert" class="text-sm text-bad">{{ denial_message }}</p>
+</div>
+<div class="flex justify-end border-t border-line px-5 py-4">
+    <button type="button" data-dialog-close autofocus
+            class="min-h-9 rounded-full border border-line px-4 text-sm font-semibold text-ink-2 hover:bg-surface-2">Close</button>
+</div>
+{% else %}
+<form method="post" action="{% url 'calendar:reschedule' workspace_id=workspace.id %}" data-reschedule-form
+      data-platform-post-id="{{ pp.id }}">
+    {% csrf_token %}
+    <input type="hidden" name="platform_post_id" value="{{ pp.id }}">
+    <div class="space-y-3 px-5 py-5">
+        <div>
+            <label for="reschedule-datetime" class="mb-1 block text-sm font-semibold text-ink">New date and time</label>
+            <input id="reschedule-datetime" type="datetime-local" name="new_datetime" required autofocus
+                   value="{{ current_value|default:'' }}" aria-describedby="reschedule-help"
+                   class="min-h-10 w-full rounded-lg border border-line bg-surface-0 px-3 text-sm text-ink">
+        </div>
+        <p id="reschedule-help" class="text-xs text-ink-3">
+            Times are in {{ timezone_name }}.
+            {% if schedules_on_save %}Saving schedules this {{ pp.get_status_display|lower }} post for publishing at that time.
+            {% elif keeps_status %}Approval covers the content, not the time, so this post keeps its {{ pp.get_status_display|lower }} status.{% endif %}
+        </p>
+        <p data-reschedule-error role="alert" class="hidden text-sm text-bad"></p>
+    </div>
+    <div class="flex justify-end gap-2 border-t border-line px-5 py-4">
+        <button type="button" data-dialog-close
+                class="min-h-9 rounded-full border border-line px-4 text-sm font-semibold text-ink-2 hover:bg-surface-2">Cancel</button>
+        <button type="submit"
+                class="min-h-9 rounded-full bg-accent px-4 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50">Reschedule</button>
+    </div>
+</form>
+{% endif %}

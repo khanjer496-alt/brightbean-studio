@@ -29,7 +29,7 @@
         {% if message.sender_avatar_url %}
         <img src="{{ message.sender_avatar_url }}" alt="" class="w-8 h-8 rounded-full object-cover">
         {% else %}
-        <div class="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-stone-500" style="background: var(--surface-2);">
+        <div class="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-stone-500 bg-surface-2">
             {{ message.sender_name|make_list|first|upper }}
         </div>
         {% endif %}
@@ -55,7 +55,7 @@
             {% include "inbox/partials/_sentiment_badge.html" %}
             <!-- Assignment -->
             {% if message.assigned_to %}
-            <span class="badge-pill" style="background: var(--accent-indigo-soft); color: var(--accent-indigo);">
+            <span class="badge-pill bg-[var(--accent-indigo-soft)] text-[var(--accent-indigo)]">
                 <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
                 {{ message.assigned_to.get_short_name|default:message.assigned_to.email|truncatechars:10 }}
             </span>

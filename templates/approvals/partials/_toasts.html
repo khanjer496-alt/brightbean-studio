@@ -20,6 +20,12 @@ fired by the same response doesn't tear down the toast before it's seen.
   button:disabled, button[disabled] { cursor: not-allowed; }
   #bb-toast-host { position:fixed; z-index:200; bottom:1.5rem; left:50%; transform:translateX(-50%); display:flex; flex-direction:column; align-items:center; gap:.5rem; pointer-events:none; }
   .bb-toast { display:flex; align-items:center; gap:.625rem; padding:.625rem 1rem .625rem .75rem; border-radius:.75rem; color:#fff; box-shadow:0 12px 30px rgba(23,20,18,.32); animation:bb-toastPop 240ms cubic-bezier(.16,1,.3,1); pointer-events:auto; }
+  .bb-toast { background:var(--surface-3); border:1px solid var(--border-hover); }
+  .bb-toast-icon { display:flex; color:var(--bb-toast-accent); }
+  .bb-toast--success { --bb-toast-accent:var(--accent-emerald); }
+  .bb-toast--info { --bb-toast-accent:var(--brand-400); }
+  .bb-toast--warn { --bb-toast-accent:var(--accent-amber); }
+  .bb-toast--error { --bb-toast-accent:var(--error-700); background:#7F1D1D; border-color:transparent; }
   .bb-toast-title { font-size:.8125rem; font-weight:600; line-height:1.2; }
   .bb-toast-body { font-size:.75rem; color:var(--text-secondary); line-height:1.2; }
 </style>
@@ -28,22 +34,21 @@ fired by the same response doesn't tear down the toast before it's seen.
 (function () {
   if (window.__bbToastInit) return;
   window.__bbToastInit = true;
-  var TONES = {
-    success: { accent: '#34D399', bg: '#1C1917', icon: '<circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/>' },
-    info:    { accent: '#FB923C', bg: '#1C1917', icon: '<path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>' },
-    warn:    { accent: '#FBBF24', bg: '#1C1917', icon: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>' },
-    error:   { accent: '#FCA5A5', bg: '#7F1D1D', icon: '<path d="M6 18L18 6M6 6l12 12"/>' },
+  var ICONS = {
+    success: '<circle cx="12" cy="12" r="10"/><path d="M9 12l2 2 4-4"/>',
+    info:    '<path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/>',
+    warn:    '<circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>',
+    error:   '<path d="M6 18L18 6M6 6l12 12"/>',
   };
   function render(detail) {
     if (!detail || !detail.title) return;
     var host = document.getElementById('bb-toast-host');
     if (!host) return;
-    var t = TONES[detail.tone] || TONES.success;
+    var tone = ICONS[detail.tone] ? detail.tone : 'success';
     var el = document.createElement('div');
-    el.className = 'bb-toast';
-    el.style.background = t.bg;
+    el.className = 'bb-toast bb-toast--' + tone;
     el.innerHTML =
-      '<span style="color:' + t.accent + ';display:flex"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + t.icon + '</svg></span>' +
+      '<span class="bb-toast-icon"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ICONS[tone] + '</svg></span>' +
       '<div><div class="bb-toast-title"></div>' + (detail.body ? '<div class="bb-toast-body"></div>' : '') + '</div>';
     el.querySelector('.bb-toast-title').textContent = detail.title;
     if (detail.body) el.querySelector('.bb-toast-body').textContent = detail.body;

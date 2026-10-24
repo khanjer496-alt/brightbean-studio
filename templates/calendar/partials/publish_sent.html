@@ -6,17 +6,18 @@ Shows all published/partially_published platform posts. Loaded via HTMX into #ta
 
 <div x-data{% if is_htmx %} class="tab-slide-in"{% endif %}>
     {% if platform_posts %}
-    <table class="w-full">
+    <div class="overflow-x-auto" tabindex="0" role="region" aria-label="Sent posts">
+    <table class="w-full min-w-[640px]">
         <thead>
-            <tr class="border-b border-stone-200 text-left">
-                <th class="pl-4 w-8"></th>
-                <th class="px-4 py-3 text-xs font-semibold text-stone-400 uppercase tracking-wider">Media</th>
-                <th class="px-4 py-3 text-xs font-semibold text-stone-400 uppercase tracking-wider">Status</th>
-                <th class="px-4 py-3 text-xs font-semibold text-stone-400 uppercase tracking-wider">Published</th>
-                <th class="px-4 py-3 text-xs font-semibold text-stone-400 uppercase tracking-wider">Caption</th>
-                <th class="px-4 py-3 text-xs font-semibold text-stone-400 uppercase tracking-wider">Platform</th>
-                <th class="px-4 py-3 text-xs font-semibold text-stone-400 uppercase tracking-wider">Author</th>
-                <th class="px-4 py-3 text-xs font-semibold text-stone-400 uppercase tracking-wider"><span class="sr-only">Actions</span></th>
+            <tr class="border-b border-stone-200 text-start">
+                <th scope="col" class="ps-4 w-8"><span class="sr-only">Select</span></th>
+                <th scope="col" class="px-4 py-3 text-xs font-semibold text-stone-500 uppercase tracking-wider">Media</th>
+                <th scope="col" class="px-4 py-3 text-xs font-semibold text-stone-500 uppercase tracking-wider">Status</th>
+                <th scope="col" class="px-4 py-3 text-xs font-semibold text-stone-500 uppercase tracking-wider">Published</th>
+                <th scope="col" class="px-4 py-3 text-xs font-semibold text-stone-500 uppercase tracking-wider">Caption</th>
+                <th scope="col" class="px-4 py-3 text-xs font-semibold text-stone-500 uppercase tracking-wider">Platform</th>
+                <th scope="col" class="px-4 py-3 text-xs font-semibold text-stone-500 uppercase tracking-wider">Author</th>
+                <th scope="col" class="px-4 py-3 text-xs font-semibold text-stone-500 uppercase tracking-wider"><span class="sr-only">Actions</span></th>
             </tr>
         </thead>
         <tbody>
@@ -40,7 +41,7 @@ Shows all published/partially_published platform posts. Loaded via HTMX into #ta
                         {% endif %}
                         {% if first_att.media_asset.media_type == 'video' %}
                         <div class="absolute inset-0 flex items-center justify-center">
-                            <div class="w-4 h-4 rounded-full bg-black/50 flex items-center justify-center">
+                            <div class="w-4 h-4 rounded-full bg-black/50 flex items-center justify-center" aria-hidden="true">
                                 <svg class="w-2 h-2 text-white ml-px" fill="currentColor" viewBox="0 0 24 24"><path d="M5 3l14 9-14 9V3z"/></svg>
                             </div>
                         </div>
@@ -53,18 +54,18 @@ Shows all published/partially_published platform posts. Loaded via HTMX into #ta
                     </div>
                     {% else %}
                     <div class="w-10 h-10 rounded-lg bg-stone-50 flex items-center justify-center">
-                        <svg class="w-4 h-4 text-stone-200" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
+                        <svg class="w-4 h-4 text-stone-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                     </div>
                     {% endif %}
                     {% endwith %}
                 </td>
                 <td class="px-4 py-3">
                     <span class="post-chip status-{{ pp.display_status }} inline-flex">
-                        <span class="chip-dot"></span>
+                        <span class="chip-dot" aria-hidden="true"></span>
                         {{ pp.display_status_label }}
                     </span>
                     {% if pp.status == "failed" and pp.publish_error %}
-                    <p class="text-[11px] text-red-500 mt-1 max-w-[220px] truncate" title="{{ pp.publish_error }}">{{ pp.publish_error }}</p>
+                    <p class="text-[11px] text-red-600 mt-1 max-w-[220px] truncate" title="{{ pp.publish_error }}">{{ pp.publish_error }}</p>
                     {% endif %}
                     {% comment %}
                     Published, but its first comment never landed — amber, not red:
@@ -77,14 +78,14 @@ Shows all published/partially_published platform posts. Loaded via HTMX into #ta
                 <td class="px-4 py-3 text-xs text-stone-500 tabular-nums whitespace-nowrap">
                     {% if pp.post.scheduled_at %}
                     {{ pp.post.scheduled_at|date:"M d, Y" }}<br>
-                    <span class="text-stone-400">{{ pp.post.scheduled_at|date:"H:i" }}</span>
+                    <span class="text-stone-500">{{ pp.post.scheduled_at|date:"H:i" }}</span>
                     {% else %}
-                    <span class="text-stone-300">-</span>
+                    <span class="text-stone-500">-</span>
                     {% endif %}
                 </td>
                 <td class="px-4 py-3 text-sm text-stone-600 max-w-xs truncate">
                     <span class="inline-flex items-center gap-1.5 max-w-full">
-                        <span class="truncate">{{ pp.post.title|default:pp.post.caption_snippet|default:"(no caption)" }}</span>
+                        <a href="{% url 'composer:compose_edit' workspace_id=workspace.id post_id=pp.post_id %}?account={{ pp.social_account_id }}" class="truncate hover:underline" @click.stop>{{ pp.post.title|default:pp.post.caption_snippet|default:"(no caption)" }}</a>
                         {% include "calendar/partials/_thread_badge.html" with post=pp.post pp=pp %}
                     </span>
                 </td>
@@ -113,6 +114,7 @@ Shows all published/partially_published platform posts. Loaded via HTMX into #ta
             {% endfor %}
         </tbody>
     </table>
+    </div>
     <div id="evergreen-modal"></div>
     {% else %}
     {% if not has_connected_accounts %}
@@ -120,10 +122,10 @@ Shows all published/partially_published platform posts. Loaded via HTMX into #ta
     {% else %}
     <div class="text-center py-20 px-6">
         <div class="w-16 h-16 mx-auto rounded-2xl bg-stone-100 flex items-center justify-center mb-4">
-            <svg class="w-7 h-7 text-stone-300" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            <svg class="w-7 h-7 text-stone-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
         </div>
         <p class="text-sm font-medium text-stone-500 mb-1">No sent posts yet</p>
-        <p class="text-xs text-stone-400 mb-5 max-w-[240px] mx-auto">Published posts will appear here after they go live</p>
+        <p class="text-xs text-stone-500 mb-5 max-w-[240px] mx-auto">Published posts will appear here after they go live</p>
     </div>
     {% endif %}
     {% endif %}

@@ -4,80 +4,37 @@
 {% block title %}Connect your accounts - {{ org.name }}{% endblock %}
 
 {% block auth_content %}
-<div style="width: 100%; max-width: 640px; padding: 0 16px;">
+<div class="w-full max-w-[640px] px-4">
 
     <!-- Header card -->
-    <div style="text-align: center; margin-bottom: 32px;">
+    <div class="text-center mb-8">
         <!-- Org identity -->
-        <div style="
-            width: 56px; height: 56px;
-            background: var(--primary);
-            border-radius: var(--radius-xl);
-            display: inline-flex; align-items: center; justify-content: center;
-            color: white; font-weight: 700; font-size: 1.25rem;
-            box-shadow: var(--shadow-primary);
-            margin-bottom: 20px;
-        ">{{ org.name|make_list|first|upper }}</div>
+        <div class="bg-accent rounded-xl text-white w-14 h-14 inline-flex items-center justify-center font-bold text-xl shadow-[var(--shadow-primary)] mb-5">{{ org.name|make_list|first|upper }}</div>
 
-        <h1 style="
-            font-family: var(--font-display);
-            font-size: clamp(1.5rem, 3.5vw, 1.875rem);
-            font-weight: 700;
-            color: var(--text-primary);
-            letter-spacing: -0.02em;
-            line-height: 1.2;
-            margin-bottom: 8px;
-        ">Connect your social accounts</h1>
-        <p style="
-            font-size: 0.9375rem;
-            color: var(--text-secondary);
-            line-height: 1.6;
-        ">to <strong style="color: var(--text-primary); font-weight: 600;">{{ workspace.name }}</strong> on {{ org.name }}</p>
+        <h1 class="text-ink font-[family-name:var(--font-display)] text-[clamp(1.5rem,3.5vw,1.875rem)] font-bold tracking-[-0.02em] leading-[1.2] mb-2">Connect your social accounts</h1>
+        <p class="text-ink-2 text-[0.9375rem] leading-[1.6]">to <strong class="text-ink font-semibold">{{ workspace.name }}</strong> on {{ org.name }}</p>
     </div>
 
     <!-- Error message -->
     {% if error %}
-    <div style="
-        background: var(--error-50);
-        border: 1px solid rgba(239,68,68,0.15);
-        border-radius: var(--radius-lg);
-        padding: 12px 16px;
-        margin-bottom: 20px;
-        display: flex; align-items: center; gap: 10px;
-        font-size: 0.8125rem; color: var(--error-700);
-    ">
-        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+    <div class="bg-bad-soft border border-[rgba(239,68,68,0.15)] rounded-[var(--radius-lg)] py-3 px-4 mb-5 flex items-center gap-2.5 text-[0.8125rem] text-bad">
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
         {{ error }}
     </div>
     {% endif %}
 
     <!-- Platform grid -->
-    <div style="
-        background: var(--surface-0);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-xl);
-        box-shadow: var(--shadow-sm);
-        overflow: hidden;
-        margin-bottom: 24px;
-    ">
+    <div class="bg-surface-0 border border-line rounded-xl overflow-hidden shadow-[var(--shadow-sm)] mb-6">
         {% for value, label in platform_choices %}
         {% if value in configured_platforms %}
-        <div style="
-            padding: 16px 20px;
-            {% if not forloop.last %}border-bottom: 1px solid var(--surface-2);{% endif %}
-            display: flex; align-items: center; gap: 14px;
-        ">
+        <div class="py-4 px-5 {% if not forloop.last %}border-b border-surface-2{% endif %} flex items-center gap-3.5">
             {% if value == 'youtube' %}
             <div class="flex items-center justify-center flex-shrink-0 w-10 h-10">
                 {% include "partials/_youtube_icon.html" %}
             </div>
             {% else %}
             <!-- Platform icon -->
-            <div style="
-                width: 40px; height: 40px; flex-shrink: 0;
-                border-radius: var(--radius-lg);
-                display: flex; align-items: center; justify-content: center;
-            " class="
+            <div class="w-10 h-10 shrink-0 rounded-[var(--radius-lg)] flex items-center justify-center
                 {% if value == 'facebook' %}bg-blue-50 text-blue-600
                 {% elif value == 'instagram' %}bg-gradient-to-br from-purple-50 to-pink-50 text-pink-600
                 {% elif value == 'linkedin_personal' %}bg-blue-50 text-blue-700
@@ -96,9 +53,9 @@
 
             {% endif %}
             <!-- Platform info -->
-            <div style="flex: 1; min-width: 0;">
-                <div style="font-size: 0.875rem; font-weight: 600; color: var(--text-primary);">{{ label }}</div>
-                <div style="font-size: 0.75rem; color: var(--text-tertiary); margin-top: 1px;">
+            <div class="flex-1 min-w-0">
+                <div class="text-ink text-sm font-semibold">{{ label }}</div>
+                <div class="text-ink-3 text-xs mt-px">
                     {% if value == 'facebook' %}Pages &amp; Groups
                     {% elif value == 'instagram' %}Business &amp; Creator
                     {% elif value == 'linkedin_personal' %}Personal profile
@@ -116,16 +73,11 @@
 
             <!-- Connect button or connected state -->
             {% if value in connected_accounts %}
-            <div style="display: flex; align-items: center; gap: 8px;">
-                <span style="font-size: 0.8125rem; font-weight: 500; color: var(--success-700);">
+            <div class="flex items-center gap-2">
+                <span class="text-[0.8125rem] font-medium text-good">
                     Connected
                 </span>
-                <div style="
-                    width: 28px; height: 28px;
-                    background: var(--success-50);
-                    border-radius: var(--radius-full);
-                    display: flex; align-items: center; justify-content: center;
-                ">
+                <div class="w-7 h-7 bg-good-soft rounded-full flex items-center justify-center">
                     <svg width="14" height="14" fill="none" stroke="var(--success-500)" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                         <polyline points="20 6 9 17 4 12"/>
                     </svg>
@@ -134,156 +86,62 @@
             {% else %}
             {% if value == 'bluesky' %}
             <!-- Bluesky: inline form (no OAuth) -->
-            <div x-data="{ showForm: false }" style="flex-shrink: 0;">
+            <div x-data="{ showForm: false }" class="shrink-0">
                 <button @click="showForm = !showForm"
-                        class="btn-primary-hover"
-                        style="
-                    display: inline-flex; align-items: center; gap: 6px;
-                    padding: 7px 16px;
-                    font-size: 0.75rem; font-weight: 600;
-                    color: white; background: var(--primary);
-                    border: none; border-radius: var(--radius-full);
-                    cursor: pointer;
-                    box-shadow: var(--shadow-primary);
-                    transition: all 200ms ease;
-                ">
+                        class="btn-primary-hover text-white bg-accent inline-flex items-center gap-1.5 py-[7px] px-4 text-xs font-semibold border-0 rounded-full cursor-pointer shadow-[var(--shadow-primary)] transition-all duration-200">
                     Connect
                     <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
                 </button>
-                <div x-show="showForm" x-cloak style="
-                    position: fixed; inset: 0; z-index: 50;
-                    display: flex; align-items: center; justify-content: center;
-                    background: rgba(0,0,0,0.4); padding: 16px;
-                " @click.self="showForm = false">
-                    <form method="post" action="{% url 'onboarding:connection_bluesky' token=link.token %}" style="
-                        background: var(--surface-0);
-                        border-radius: var(--radius-xl);
-                        padding: 24px;
-                        width: 100%; max-width: 380px;
-                        box-shadow: var(--shadow-xl);
-                    ">
+                <div x-show="showForm" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.4)] p-4" @click.self="showForm = false">
+                    <form class="bg-surface-0 rounded-xl p-6 w-full max-w-[380px] shadow-[var(--shadow-xl)]" method="post" action="{% url 'onboarding:connection_bluesky' token=link.token %}">
                         {% csrf_token %}
-                        <h3 style="font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); margin-bottom: 16px;">Connect Bluesky</h3>
-                        <div style="margin-bottom: 12px;">
-                            <label style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 4px;">Handle</label>
-                            <input type="text" name="handle" placeholder="you.bsky.social" required style="
-                                width: 100%; padding: 9px 12px;
-                                font-size: 0.875rem; font-family: var(--font-body);
-                                border: 1.5px solid var(--border);
-                                border-radius: var(--radius-lg);
-                                background: var(--surface-0);
-                                color: var(--text-primary);
-                                outline: none;
-                            ">
+                        <h3 class="text-ink text-[0.9375rem] font-semibold mb-4">Connect Bluesky</h3>
+                        <div class="mb-3">
+                            <label class="text-ink text-[0.8125rem] font-semibold block mb-1">Handle</label>
+                            <input class="bg-surface-0 text-ink w-full py-[9px] px-3 text-sm font-[family-name:var(--font-body)] border-[1.5px] border-line rounded-[var(--radius-lg)] outline-none focus:border-accent" type="text" name="handle" placeholder="you.bsky.social" required>
                         </div>
-                        <div style="margin-bottom: 16px;">
-                            <label style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 4px;">App Password</label>
-                            <input type="password" name="app_password" required style="
-                                width: 100%; padding: 9px 12px;
-                                font-size: 0.875rem; font-family: var(--font-body);
-                                border: 1.5px solid var(--border);
-                                border-radius: var(--radius-lg);
-                                background: var(--surface-0);
-                                color: var(--text-primary);
-                                outline: none;
-                            ">
-                            <p style="font-size: 0.6875rem; color: var(--text-tertiary); margin-top: 4px;">Generate at Settings &rarr; App Passwords on Bluesky</p>
+                        <div class="mb-4">
+                            <label class="text-ink text-[0.8125rem] font-semibold block mb-1">App Password</label>
+                            <input class="bg-surface-0 text-ink w-full py-[9px] px-3 text-sm font-[family-name:var(--font-body)] border-[1.5px] border-line rounded-[var(--radius-lg)] outline-none focus:border-accent" type="password" name="app_password" required>
+                            <p class="text-ink-3 text-[0.6875rem] mt-1">Generate at Settings &rarr; App Passwords on Bluesky</p>
                         </div>
-                        <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                            <button type="button" @click="showForm = false" style="
-                                padding: 8px 16px; font-size: 0.8125rem; font-weight: 600;
-                                background: var(--surface-0); color: var(--text-primary);
-                                border: 1px solid var(--border); border-radius: var(--radius-full);
-                                cursor: pointer;
-                            ">Cancel</button>
-                            <button type="submit" style="
-                                padding: 8px 16px; font-size: 0.8125rem; font-weight: 600;
-                                background: var(--primary); color: white;
-                                border: none; border-radius: var(--radius-full);
-                                cursor: pointer; box-shadow: var(--shadow-primary);
-                            ">Connect</button>
+                        <div class="flex gap-2 justify-end">
+                            <button class="bg-surface-0 text-ink border border-line py-2 px-4 text-[0.8125rem] font-semibold rounded-full cursor-pointer" type="button" @click="showForm = false">Cancel</button>
+                            <button class="bg-accent text-white py-2 px-4 text-[0.8125rem] font-semibold border-0 rounded-full cursor-pointer shadow-[var(--shadow-primary)]" type="submit">Connect</button>
                         </div>
                     </form>
                 </div>
             </div>
             {% elif value == 'mastodon' %}
             <!-- Mastodon: instance URL form -->
-            <div x-data="{ showForm: false }" style="flex-shrink: 0;">
+            <div x-data="{ showForm: false }" class="shrink-0">
                 <button @click="showForm = !showForm"
-                        class="btn-primary-hover"
-                        style="
-                    display: inline-flex; align-items: center; gap: 6px;
-                    padding: 7px 16px;
-                    font-size: 0.75rem; font-weight: 600;
-                    color: white; background: var(--primary);
-                    border: none; border-radius: var(--radius-full);
-                    cursor: pointer;
-                    box-shadow: var(--shadow-primary);
-                    transition: all 200ms ease;
-                ">
+                        class="btn-primary-hover text-white bg-accent inline-flex items-center gap-1.5 py-[7px] px-4 text-xs font-semibold border-0 rounded-full cursor-pointer shadow-[var(--shadow-primary)] transition-all duration-200">
                     Connect
                     <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
                 </button>
-                <div x-show="showForm" x-cloak style="
-                    position: fixed; inset: 0; z-index: 50;
-                    display: flex; align-items: center; justify-content: center;
-                    background: rgba(0,0,0,0.4); padding: 16px;
-                " @click.self="showForm = false">
-                    <form method="post" action="{% url 'onboarding:connection_mastodon' token=link.token %}" style="
-                        background: var(--surface-0);
-                        border-radius: var(--radius-xl);
-                        padding: 24px;
-                        width: 100%; max-width: 380px;
-                        box-shadow: var(--shadow-xl);
-                    ">
+                <div x-show="showForm" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-[rgba(0,0,0,0.4)] p-4" @click.self="showForm = false">
+                    <form class="bg-surface-0 rounded-xl p-6 w-full max-w-[380px] shadow-[var(--shadow-xl)]" method="post" action="{% url 'onboarding:connection_mastodon' token=link.token %}">
                         {% csrf_token %}
-                        <h3 style="font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); margin-bottom: 16px;">Connect Mastodon</h3>
-                        <div style="margin-bottom: 16px;">
-                            <label style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 4px;">Instance URL</label>
-                            <input type="text" name="instance_url" placeholder="mastodon.social" required style="
-                                width: 100%; padding: 9px 12px;
-                                font-size: 0.875rem; font-family: var(--font-body);
-                                border: 1.5px solid var(--border);
-                                border-radius: var(--radius-lg);
-                                background: var(--surface-0);
-                                color: var(--text-primary);
-                                outline: none;
-                            ">
+                        <h3 class="text-ink text-[0.9375rem] font-semibold mb-4">Connect Mastodon</h3>
+                        <div class="mb-4">
+                            <label class="text-ink text-[0.8125rem] font-semibold block mb-1">Instance URL</label>
+                            <input class="bg-surface-0 text-ink w-full py-[9px] px-3 text-sm font-[family-name:var(--font-body)] border-[1.5px] border-line rounded-[var(--radius-lg)] outline-none focus:border-accent" type="text" name="instance_url" placeholder="mastodon.social" required>
                         </div>
-                        <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                            <button type="button" @click="showForm = false" style="
-                                padding: 8px 16px; font-size: 0.8125rem; font-weight: 600;
-                                background: var(--surface-0); color: var(--text-primary);
-                                border: 1px solid var(--border); border-radius: var(--radius-full);
-                                cursor: pointer;
-                            ">Cancel</button>
-                            <button type="submit" style="
-                                padding: 8px 16px; font-size: 0.8125rem; font-weight: 600;
-                                background: var(--primary); color: white;
-                                border: none; border-radius: var(--radius-full);
-                                cursor: pointer; box-shadow: var(--shadow-primary);
-                            ">Connect</button>
+                        <div class="flex gap-2 justify-end">
+                            <button class="bg-surface-0 text-ink border border-line py-2 px-4 text-[0.8125rem] font-semibold rounded-full cursor-pointer" type="button" @click="showForm = false">Cancel</button>
+                            <button class="bg-accent text-white py-2 px-4 text-[0.8125rem] font-semibold border-0 rounded-full cursor-pointer shadow-[var(--shadow-primary)]" type="submit">Connect</button>
                         </div>
                     </form>
                 </div>
             </div>
             {% else %}
             <!-- Standard OAuth platforms -->
-            <form method="post" action="{% url 'onboarding:connection_oauth_start' token=link.token %}" style="flex-shrink: 0;">
+            <form method="post" action="{% url 'onboarding:connection_oauth_start' token=link.token %}" class="shrink-0">
                 {% csrf_token %}
                 <input type="hidden" name="platform" value="{{ value }}">
                 <button type="submit"
-                        class="btn-primary-hover"
-                        style="
-                    display: inline-flex; align-items: center; gap: 6px;
-                    padding: 7px 16px;
-                    font-size: 0.75rem; font-weight: 600;
-                    color: white; background: var(--primary);
-                    border: none; border-radius: var(--radius-full);
-                    cursor: pointer;
-                    box-shadow: var(--shadow-primary);
-                    transition: all 200ms ease;
-                ">
+                        class="btn-primary-hover text-white bg-accent inline-flex items-center gap-1.5 py-[7px] px-4 text-xs font-semibold border-0 rounded-full cursor-pointer shadow-[var(--shadow-primary)] transition-all duration-200">
                     Connect
                     <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
                 </button>
@@ -297,16 +155,8 @@
 
     <!-- Connected count summary + Done button -->
     {% if connected_accounts %}
-    <div style="
-        background: var(--success-50);
-        border: 1px solid rgba(34,197,94,0.15);
-        border-radius: var(--radius-lg);
-        padding: 14px 18px;
-        margin-bottom: 20px;
-        display: flex; align-items: center; gap: 10px;
-        font-size: 0.8125rem; color: var(--success-700); font-weight: 500;
-    ">
-        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+    <div class="bg-good-soft border border-[rgba(34,197,94,0.15)] rounded-[var(--radius-lg)] py-[14px] px-[18px] mb-5 flex items-center gap-2.5 text-[0.8125rem] text-good font-medium">
+        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
         {{ connected_accounts|length }} account{{ connected_accounts|length|pluralize }} connected
     </div>
     {% endif %}
@@ -314,29 +164,18 @@
     <form method="post" action="{% url 'onboarding:connection_done' token=link.token %}">
         {% csrf_token %}
         <button type="submit"
-                class="btn-primary-lift"
-                style="
-            width: 100%;
-            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-            padding: 14px 28px;
-            font-size: 0.9375rem; font-weight: 600; font-family: var(--font-body);
-            color: white; background: var(--primary);
-            border: none; border-radius: var(--radius-full);
-            cursor: pointer;
-            box-shadow: var(--shadow-primary);
-            transition: all 200ms ease;
-        ">
+                class="btn-primary-lift text-white bg-accent w-full inline-flex items-center justify-center gap-2 py-3.5 px-7 text-[0.9375rem] font-semibold font-[family-name:var(--font-body)] border-0 rounded-full cursor-pointer shadow-[var(--shadow-primary)] transition-all duration-200">
             Done &mdash; Notify {{ org.name }}
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
         </button>
     </form>
 
     <!-- Footer help -->
-    <div style="text-align: center; margin-top: 28px;">
-        <p style="font-size: 0.75rem; color: var(--text-ghost); line-height: 1.6;">
-            Need help? Contact <strong style="color: var(--text-tertiary);">{{ org.name }}</strong>
+    <div class="text-center mt-7">
+        <p class="text-xs text-ink-4 leading-[1.6]">
+            Need help? Contact <strong class="text-ink-3">{{ org.name }}</strong>
         </p>
-        <p style="font-size: 0.6875rem; color: var(--text-ghost); margin-top: 4px;">
+        <p class="text-[0.6875rem] text-ink-4 mt-1">
             This link expires {{ link.expires_at|date:"M j, Y" }}
         </p>
     </div>

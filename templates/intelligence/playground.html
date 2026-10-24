@@ -5,7 +5,7 @@
 {% block page_header %}
 <div class="flex flex-wrap items-center justify-between gap-3 mb-4 lg:mb-[25px]">
     <div>
-        <h1 class="text-xl sm:text-2xl font-semibold text-stone-900" style="letter-spacing: -0.01em;">Intelligence</h1>
+        <h1 class="text-xl sm:text-2xl font-semibold text-stone-900 tracking-[-0.01em]">Intelligence</h1>
         <p class="text-sm text-stone-500 mt-1">
             YouTube packaging scoring, channel benchmarks, content-gap research.
         </p>
@@ -27,7 +27,7 @@
         {% if can_manage_billing %}
         <div class="h-7 w-px bg-stone-200"></div>
         <a href="{% url 'intelligence:billing-settings' org_id=organization.id %}"
-           class="text-xs font-medium hover:underline" style="color: var(--primary);">
+           class="text-xs font-medium hover:underline text-accent">
             Billing →
         </a>
         {% endif %}

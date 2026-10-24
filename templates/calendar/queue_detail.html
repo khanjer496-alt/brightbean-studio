@@ -5,16 +5,16 @@
 {% block page_header %}
 <div class="flex items-center justify-between mb-6">
     <div class="flex items-center gap-3">
-        <a href="{% url 'calendar:queue_list' workspace_id=workspace.id %}" class="text-stone-400 hover:text-stone-600 transition-colors">
-            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        <a href="{% url 'calendar:queue_list' workspace_id=workspace.id %}" class="inline-flex size-8 items-center justify-center text-stone-500 hover:text-stone-700 transition-colors" aria-label="Back to queues">
+            <svg class="w-5 h-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
         </a>
         <div>
-            <h1 class="text-base font-semibold text-stone-900" style="letter-spacing: -0.01em;">{{ queue.name }}</h1>
+            <h1 class="text-base font-semibold tracking-tight text-stone-900">{{ queue.name }}</h1>
             <div class="flex items-center gap-2 mt-0.5">
                 <span class="text-xs text-stone-500">{{ queue.social_account.account_name|default:queue.social_account.account_handle }} · {{ queue.social_account.get_platform_display }}</span>
                 {% if queue.category %}
                 <span class="inline-flex items-center gap-1 text-[10px] font-semibold px-1.5 py-0.5 rounded-full border border-stone-200">
-                    <span class="w-2 h-2 rounded-full" style="background: {{ queue.category.color }};"></span>
+                    <span class="w-2 h-2 rounded-full" style="background: {{ queue.category.color }};" aria-hidden="true"></span>
                     {{ queue.category.name }}
                 </span>
                 {% endif %}
@@ -28,6 +28,22 @@
 <div class="max-w-2xl"
      x-data="{
          draggedId: null,
+         lastMove: null,
+         status: '',
+         // Move up / Move down answer with the new place; announce it and keep focus on the control used.
+         noteMove(e) {
+             const d = e.detail || {};
+             if (!d.entryId) return;
+             this.lastMove = d;
+             this.status = 'Moved to position ' + d.position + ' of ' + d.total + '.';
+         },
+         refocus() {
+             if (!this.lastMove) return;
+             const row = document.querySelector('[data-entry-id=\'' + this.lastMove.entryId + '\']');
+             const btn = row && (row.querySelector('[data-move=\'' + this.lastMove.direction + '\']:not([disabled])') || row.querySelector('[data-move]:not([disabled])'));
+             if (btn) btn.focus();
+             this.lastMove = null;
+         },
          onDragStart(e, id) { this.draggedId = id; e.dataTransfer.effectAllowed = 'move'; },
          onDragOver(e) { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; },
          onDrop(e, targetId) {
@@ -44,15 +60,18 @@
          }
      }"
      id="queue-entries"
+     @queue-reordered.camel.window="noteMove($event)"
+     @htmx:after-settle.window="refocus()"
      hx-get="{% url 'calendar:queue_detail' workspace_id=workspace.id queue_id=queue.id %}"
      hx-trigger="queueReordered from:body"
      hx-select="#entries-list"
      hx-target="#entries-list"
      hx-swap="outerHTML">
 
-    <div id="entries-list" class="space-y-2">
+    <p class="sr-only" role="status" x-text="status"></p>
+    <ol id="entries-list" class="space-y-2" aria-label="Queued posts in publishing order">
         {% for entry in entries %}
-        <div class="group flex items-center gap-3 p-3 bg-white rounded-lg border border-stone-200 hover:border-stone-300 transition-colors cursor-grab active:cursor-grabbing"
+        <li class="group flex flex-wrap sm:flex-nowrap items-center gap-3 p-3 bg-white rounded-lg border border-stone-200 hover:border-stone-300 transition-colors cursor-grab active:cursor-grabbing"
              draggable="true"
              data-entry-id="{{ entry.id }}"
              @dragstart="onDragStart($event, '{{ entry.id }}')"
@@ -60,12 +79,12 @@
              @drop="onDrop($event, '{{ entry.id }}')">
 
             <!-- Drag handle -->
-            <div class="text-stone-300 flex-shrink-0">
+            <div class="text-stone-500 flex-shrink-0" aria-hidden="true">
                 <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/></svg>
             </div>
 
             <!-- Slot order -->
-            <div class="w-6 h-6 rounded-full bg-stone-100 flex items-center justify-center text-[10px] font-bold text-stone-500 flex-shrink-0">
+            <div class="w-6 h-6 rounded-full bg-stone-100 flex items-center justify-center text-[11px] font-bold text-stone-500 flex-shrink-0">
                 {{ forloop.counter }}
             </div>
 
@@ -84,7 +103,7 @@
                         {{ entry.post.get_status_display }}
                     </span>
                     {% if entry.post.author %}
-                    <span class="text-[10px] text-stone-400">{{ entry.post.author.name|default:entry.post.author.email }}</span>
+                    <span class="text-[11px] text-stone-500">{{ entry.post.author.name|default:entry.post.author.email }}</span>
                     {% endif %}
                 </div>
             </div>
@@ -93,32 +112,45 @@
             <div class="text-right flex-shrink-0">
                 {% if entry.assigned_slot_datetime %}
                 <span class="text-xs font-medium text-stone-700">{{ entry.assigned_slot_datetime|date:"M d" }}</span>
-                <span class="text-[10px] text-stone-400 block">{{ entry.assigned_slot_datetime|time:"H:i" }}</span>
+                <span class="text-[11px] text-stone-500 block">{{ entry.assigned_slot_datetime|time:"H:i" }}</span>
                 {% else %}
-                <span class="text-xs text-stone-400">No slot</span>
+                <span class="text-xs text-stone-500">No slot</span>
                 {% endif %}
             </div>
 
-            <!-- Remove from queue (leaves a gap; the slot frees up) -->
-            <button type="button"
-                    class="text-stone-300 hover:text-red-500 transition-colors flex-shrink-0 opacity-0 group-hover:opacity-100"
-                    hx-post="{% url 'calendar:queue_entry_remove' workspace_id=workspace.id queue_id=queue.id entry_id=entry.id %}"
-                    hx-confirm="Remove this post from the queue? Its slot will free up."
-                    @click.stop
-                    @dragstart.stop
-                    title="Remove from queue">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-            </button>
-        </div>
+            <!-- Keyboard / touch alternative to dragging: move one place earlier or later -->
+            <div class="flex flex-shrink-0 items-center gap-1" @dragstart.stop>
+                <button type="button" data-move="up" {% if forloop.first %}disabled{% endif %}
+                        class="inline-flex size-8 items-center justify-center rounded-md border border-stone-200 text-stone-600 hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                        hx-post="{% url 'calendar:queue_entry_move' workspace_id=workspace.id queue_id=queue.id entry_id=entry.id direction='up' %}" hx-swap="none"
+                        aria-label="Move earlier: {{ entry.post.caption_snippet|default:'post'|truncatechars:40 }}">
+                    <svg class="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 15l7-7 7 7"/></svg>
+                </button>
+                <button type="button" data-move="down" {% if forloop.last %}disabled{% endif %}
+                        class="inline-flex size-8 items-center justify-center rounded-md border border-stone-200 text-stone-600 hover:bg-stone-100 disabled:opacity-40 disabled:cursor-not-allowed"
+                        hx-post="{% url 'calendar:queue_entry_move' workspace_id=workspace.id queue_id=queue.id entry_id=entry.id direction='down' %}" hx-swap="none"
+                        aria-label="Move later: {{ entry.post.caption_snippet|default:'post'|truncatechars:40 }}">
+                    <svg class="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                </button>
+                <!-- Remove from queue (leaves a gap; the slot frees up) -->
+                <button type="button"
+                        class="inline-flex size-8 items-center justify-center text-stone-500 hover:text-red-500 transition-colors"
+                        hx-post="{% url 'calendar:queue_entry_remove' workspace_id=workspace.id queue_id=queue.id entry_id=entry.id %}"
+                        hx-confirm="Remove this post from the queue? Its slot will free up."
+                        aria-label="Remove from queue: {{ entry.post.caption_snippet|default:'post'|truncatechars:40 }}">
+                    <svg class="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                </button>
+            </div>
+        </li>
         {% empty %}
-        <div class="text-center py-16">
+        <li class="text-center py-16 list-none">
             <div class="w-12 h-12 rounded-full bg-stone-100 flex items-center justify-center mx-auto mb-3">
                 <svg class="w-6 h-6 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
             </div>
             <p class="text-sm font-medium text-stone-700">Queue is empty</p>
             <p class="text-xs text-stone-500 mt-1">Add posts to this queue from the composer using "Add to Queue".</p>
-        </div>
+        </li>
         {% endfor %}
-    </div>
+    </ol>
 </div>
 {% endblock %}

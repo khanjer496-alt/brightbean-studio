@@ -1,0 +1,17 @@
+{% comment %}An open channel posting slot on the week / day / agenda views. Context: slot, workspace, optional compact.{% endcomment %}
+<div class="calendar-channel-slot{% if compact %} calendar-channel-slot--week{% endif %} {% if slot.is_past %}is-past-open{% endif %}">
+    <span class="calendar-slot-platform-icon" aria-hidden="true">
+        {% include "social_accounts/partials/_platform_icon.html" with platform=slot.account.platform size="3" %}
+    </span>
+    <span class="truncate">{{ slot.account.account_name|default:slot.account.account_handle }}</span>
+    <span class="tabular-nums text-stone-500">{{ slot.time_label }}</span>
+    {% if not slot.is_past %}
+    <a href="{% url 'composer:compose' workspace_id=workspace.id %}?account={{ slot.account.id }}&scheduled_date={{ slot.compose_date }}&scheduled_time={{ slot.compose_time }}"
+       class="calendar-slot-add"
+       aria-label="Schedule post for {{ slot.account.account_name|default:slot.account.account_handle }} at {{ slot.time_label }}">
+        <svg class="w-3 h-3" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+    </a>
+    {% else %}
+    <span class="calendar-slot-state">Open</span>
+    {% endif %}
+</div>

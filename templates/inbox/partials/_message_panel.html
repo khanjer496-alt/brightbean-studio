@@ -7,7 +7,7 @@
                 {% if message.sender_avatar_url %}
                 <img src="{{ message.sender_avatar_url }}" alt="" class="w-10 h-10 rounded-full object-cover flex-shrink-0">
                 {% else %}
-                <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-stone-500 flex-shrink-0" style="background: var(--surface-2);">
+                <div class="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-stone-500 flex-shrink-0 bg-surface-2">
                     {{ message.sender_name|make_list|first|upper }}
                 </div>
                 {% endif %}
@@ -32,21 +32,22 @@
             <div class="flex items-center gap-2 flex-shrink-0">
                 <!-- Status dropdown -->
                 <div x-data="{ statusOpen: false }" class="relative">
-                    <button @click="statusOpen = !statusOpen"
+                    <button type="button" @click="statusOpen = !statusOpen" @keydown.escape="statusOpen = false" aria-haspopup="true" aria-controls="status-menu-{{ message.id }}"
+                            :aria-expanded="statusOpen ? 'true' : 'false'" aria-expanded="false" aria-label="Status: {{ message.get_status_display }}. Change status"
                             class="badge-pill badge-status-{{ message.status }} cursor-pointer hover:opacity-80 transition-opacity">
                         {{ message.get_status_display }}
-                        <svg class="w-2.5 h-2.5 ml-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                        <svg class="w-2.5 h-2.5 ms-0.5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
                     </button>
-                    <div x-show="statusOpen" @click.away="statusOpen = false" x-cloak
+                    <div id="status-menu-{{ message.id }}" x-show="statusOpen" @click.away="statusOpen = false" @keydown.escape="statusOpen = false" x-cloak
                          x-transition
-                         class="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg ring-1 ring-stone-200 py-1 z-50 min-w-[120px]">
+                         class="absolute end-0 top-full mt-1 bg-white rounded-lg shadow-lg ring-1 ring-stone-200 py-1 z-50 min-w-[120px]">
                         {% for value, label in status_choices %}
-                        <button hx-post="{% url 'inbox:change_status' workspace_id=workspace.id message_id=message.id %}"
+                        <button type="button" hx-post="{% url 'inbox:change_status' workspace_id=workspace.id message_id=message.id %}"
                                 hx-vals='{"status": "{{ value }}"}'
                                 hx-target="#inbox-detail-panel"
                                 hx-swap="innerHTML"
                                 @click="statusOpen = false"
-                                class="w-full text-left px-3 py-1.5 text-[12px] text-stone-700 hover:bg-stone-50 transition-colors {% if message.status == value %}font-semibold{% endif %}">
+                                class="w-full min-h-8 text-start px-3 py-1.5 text-[12px] text-stone-700 hover:bg-stone-50 transition-colors {% if message.status == value %}font-semibold{% endif %}">
                             {{ label }}
                         </button>
                         {% endfor %}
