@@ -1,5 +1,6 @@
 import datetime as dt
 import json
+import time
 from unittest.mock import patch
 
 import httpx
@@ -405,6 +406,31 @@ def test_send_request_gives_up_when_the_response_drips_past_the_overall_deadline
     # A deadline that has already passed by the first chunk.
     with patch.object(services, "REQUEST_DEADLINE_SECONDS", -1.0), pytest.raises(httpx.TimeoutException):
         services._send_request(endpoint.url, b"{}", {}, transport=httpx.MockTransport(handler))
+
+
+def test_send_request_gives_up_at_the_deadline_however_slow_each_step_is(endpoint):
+    def handler(request):
+        time.sleep(2)  # within every per-step timeout, but past the overall deadline
+        return httpx.Response(200)
+
+    started = time.monotonic()
+    with patch.object(services, "REQUEST_DEADLINE_SECONDS", 0.3), pytest.raises(httpx.TimeoutException):
+        services._send_request(endpoint.url, b"{}", {}, transport=httpx.MockTransport(handler))
+    assert time.monotonic() - started < 1.5
+
+
+def test_send_request_errors_reach_the_caller(endpoint):
+    def handler(request):
+        raise httpx.ConnectError("refused")
+
+    with pytest.raises(httpx.ConnectError):
+        services._send_request(endpoint.url, b"{}", {}, transport=httpx.MockTransport(handler))
+
+
+def test_a_list_of_long_strings_marks_its_object_truncated():
+    capped = services.cap_text_fields({"tags": ["x" * 20, "ok"], "inner": {"a": "y" * 20}}, 10)
+    assert capped["truncated"] is True and capped["tags"] == ["x" * 10, "ok"]
+    assert capped["inner"] == {"a": "y" * 10, "truncated": True}
 
 
 def test_long_text_fields_are_truncated_and_marked(endpoint, workspace):

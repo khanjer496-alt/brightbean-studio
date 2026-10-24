@@ -14,6 +14,7 @@ import hmac
 import json
 import logging
 import secrets
+import threading
 import time
 import uuid
 from datetime import timedelta
@@ -47,8 +48,9 @@ MANAGE_PERMISSIONS = ("manage_workspace_settings", "manage_social_accounts")
 SECRET_PREFIX = "whsec_"
 # Each connect, write and read may wait this long...
 REQUEST_TIMEOUT_SECONDS = 10.0
-# ...but the whole exchange, response body included, is cut off after this
-# long, so a receiver dripping bytes cannot hold a worker open indefinitely.
+# ...but the delivery gives up on the whole exchange, response body included,
+# after this long by the wall clock, so a receiver that is slow at every step
+# or drips bytes cannot hold a worker longer (see ``_send_request``).
 REQUEST_DEADLINE_SECONDS = 20.0
 # Text fields in an event's ``data`` longer than this are cut short and the
 # object holding them gets ``"truncated": true`` (see ``cap_text_fields``).
@@ -234,9 +236,16 @@ def cap_text_fields(value, limit: int):
     if not isinstance(value, dict):
         return value
     capped = {key: cap_text_fields(item, limit) for key, item in value.items()}
-    if any(isinstance(item, str) and len(item) > limit for item in value.values()):
+    if any(_has_long_text(item, limit) for item in value.values()):
         capped["truncated"] = True
     return capped
+
+
+def _has_long_text(item, limit: int) -> bool:
+    """A string over ``limit``, or a list holding one (a nested object is flagged on its own)."""
+    if isinstance(item, list):
+        return any(_has_long_text(element, limit) for element in item)
+    return isinstance(item, str) and len(item) > limit
 
 
 def limit_payload_size(data: dict) -> dict:
@@ -374,15 +383,38 @@ def _send_request(url: str, body: bytes, headers: dict, *, pinned_ip: str | None
         url, host_header, extensions = _pinned(url, pinned_ip)
         headers = {**headers, **host_header}
     deadline = time.monotonic() + REQUEST_DEADLINE_SECONDS
+    outcome: dict = {}
+
+    def exchange():
+        try:
+            outcome["result"] = _exchange(url, body, headers, extensions, transport, deadline)
+        except BaseException as exc:  # handed to the caller below
+            outcome["error"] = exc
+
+    # httpx only bounds each connect, write and read on its own, so a receiver
+    # slow at each of them can take several timeouts in all. The exchange runs
+    # on a thread that is waited for until the deadline and no longer; one
+    # left behind stops by itself at its next deadline check or read timeout.
+    worker = threading.Thread(target=exchange, name="webhook-delivery", daemon=True)
+    worker.start()
+    worker.join(max(deadline - time.monotonic(), 0))
+    if worker.is_alive():
+        raise httpx.ReadTimeout("No complete response before the delivery deadline.")
+    if "error" in outcome:
+        raise outcome["error"]
+    return outcome["result"]
+
+
+def _exchange(url: str, body: bytes, headers: dict, extensions: dict, transport, deadline: float):
     client = httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS, follow_redirects=False, transport=transport)
     with client, client.stream("POST", url, content=body, headers=headers, extensions=extensions) as response:
         received = bytearray()
         for chunk in response.iter_bytes():
+            if time.monotonic() > deadline:
+                raise httpx.ReadTimeout("The response took too long to arrive.")
             received += chunk
             if len(received) >= RESPONSE_BODY_LIMIT * 4:
                 break
-            if time.monotonic() > deadline:
-                raise httpx.ReadTimeout("The response took too long to arrive.")
         text = bytes(received).decode("utf-8", errors="replace")
         return response.status_code, text[:RESPONSE_BODY_LIMIT]
 
