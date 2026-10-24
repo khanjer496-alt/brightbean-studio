@@ -4,7 +4,7 @@ Usage: {% include "social_accounts/partials/_account_card.html" with account=acc
 {% endcomment %}
 {% load social_accounts_tags %}
 <div id="account-{{ account.id }}" class="group relative bg-white rounded-xl border border-stone-200 p-5 transition-all duration-200 hover:shadow">
-    <div class="flex items-start gap-4">
+    <div class="flex flex-wrap items-start gap-x-4 gap-y-3 sm:flex-nowrap">
         <!-- Avatar -->
         <div class="flex-shrink-0">
             {% if account.display_avatar_url %}
@@ -37,7 +37,7 @@ Usage: {% include "social_accounts/partials/_account_card.html" with account=acc
         </div>
 
         <!-- Actions -->
-        <div class="flex items-center gap-2" x-data="{ confirmDisconnect: false, optionsOpen: {{ options_form|yesno:'true,false' }} }">
+        <div class="flex w-full flex-wrap items-center justify-end gap-2 sm:w-auto sm:flex-nowrap" x-data="{ confirmDisconnect: false, optionsOpen: {{ options_form|yesno:'true,false' }} }">
             {% if account.needs_reconnect %}
             <form method="post" action="{% url 'social_accounts:reconnect' workspace_id=workspace_id account_id=account.id %}">
                 {% csrf_token %}
