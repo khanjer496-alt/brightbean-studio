@@ -7,6 +7,8 @@ the team wrote it here or someone wrote it on the platform; a reply the platform
 rejected does not count. Response time runs to the *first* reply, so editing a
 reply later does not make the team look slower.
 
+A review the platform has since removed is kept in the inbox but left out.
+
 Fewer than ``MIN_SAMPLE`` reviews is flagged ``low_sample``: the page says so
 and does not compare such an average with the previous period.
 """
@@ -38,9 +40,13 @@ def _parse(value):
 def _review_rows(accounts, start_at, end_at):
     """``(message, created_at)`` for reviews of ``accounts`` created in ``[start_at, end_at)``."""
     rows = []
-    qs = InboxMessage.objects.filter(
-        social_account__in=accounts, message_type=InboxMessage.MessageType.REVIEW, rating__isnull=False
-    ).filter(received_at__gte=start_at)
+    qs = (
+        InboxMessage.objects.filter(
+            social_account__in=accounts, message_type=InboxMessage.MessageType.REVIEW, rating__isnull=False
+        )
+        .exclude(extra__has_key="removed_from_platform_at")
+        .filter(received_at__gte=start_at)
+    )
     for message in qs:
         created = _parse((message.extra or {}).get("create_time")) or message.received_at
         if start_at <= created < end_at:

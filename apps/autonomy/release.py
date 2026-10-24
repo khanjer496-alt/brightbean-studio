@@ -395,6 +395,31 @@ def _start_series(post) -> None:
         refresh_series(post)
 
 
+def resume_stopped_thread(platform_post, user, *, confirm_unconfirmed: bool = False) -> None:
+    """Resume a thread stopped part-way and close its "thread paused" entry in Activity.
+
+    The one way the composer, the REST API and MCP resume a thread, so the
+    entry doesn't keep waiting for a review that already happened whichever
+    of them was used. ``user`` is the person resuming (for an API key, the
+    person who issued it; may be None). Raises ``ValueError`` like
+    ``resume_thread``, and then leaves the entry waiting.
+    """
+    from apps.publisher.engine import resume_thread
+
+    resume_thread(platform_post, confirm_unconfirmed=confirm_unconfirmed)
+    resolve_paused_thread(platform_post, user)
+
+
+def resolve_paused_thread(platform_post, user) -> int:
+    """Mark a paused thread's pending "thread paused" entries as approved by ``user``.
+
+    Returns how many entries were resolved.
+    """
+    return AgentAction.objects.filter(
+        platform_post=platform_post, operation="thread.paused", decision=Decision.HELD, review_outcome=""
+    ).update(review_outcome="approved", reviewed_by=user, reviewed_at=timezone.now())
+
+
 def dismiss_held(action: AgentAction, user, *, channel: str = "web") -> AgentAction:
     """Dismiss a held item: the draft stays a draft, the reply draft is discarded."""
     from apps.inbox.models import InboxReply

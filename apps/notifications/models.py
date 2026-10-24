@@ -25,6 +25,7 @@ class EventType(models.TextChoices):
     APPROVAL_HOLD_REQUESTED = "approval_hold_requested", "Client requested a hold"
     CLIENT_CONNECTED_ACCOUNTS = "client_connected_accounts", "Client connected accounts"
     BILLING_PAYMENT_FAILED = "billing_payment_failed", "Subscription payment failed"
+    BILLING_SUBSCRIPTION_CONFLICT = "billing_subscription_conflict", "Second subscription found"
     WEBHOOK_DISABLED = "webhook_disabled", "Webhook endpoint turned off"
     AGENT_ACTION_HELD = "agent_action_held", "Agent action held for review"
     AGENT_ACTION_BLOCKED = "agent_action_blocked", "Agent action blocked"

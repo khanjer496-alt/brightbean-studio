@@ -1027,7 +1027,7 @@ register_tool(
 
 def _resume_thread(args: dict, context: dict[str, Any]) -> dict:
     """Pick a partially published thread back up from the part where it stopped."""
-    from apps.publisher.engine import resume_thread
+    from apps.autonomy.release import resume_stopped_thread
 
     _require_perm(context, "create_posts")
     _require_perm(context, "publish_directly")
@@ -1038,14 +1038,13 @@ def _resume_thread(args: dict, context: dict[str, Any]) -> dict:
     stopped = [pp for pp in post.platform_posts.all() if pp.is_thread_partial]
     if not stopped:
         raise JsonRpcError(INVALID_PARAMS, "No thread on this post is stopped part-way")
-    refusal = gate_resume(
-        workspace=post.workspace, actor=_agent(context), post=post, platform_posts=stopped, source="mcp"
-    )
+    actor = _agent(context)
+    refusal = gate_resume(workspace=post.workspace, actor=actor, post=post, platform_posts=stopped, source="mcp")
     if refusal is not None:
         raise _autonomy_error(refusal)
     for pp in stopped:
         try:
-            resume_thread(pp, confirm_unconfirmed=args.get("confirm_unconfirmed") is True)
+            resume_stopped_thread(pp, actor.user, confirm_unconfirmed=args.get("confirm_unconfirmed") is True)
         except ValueError as exc:
             raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
     return _wrap_text(_serialize_post(_get_post_for_key(api_key, args["post_id"]), context))

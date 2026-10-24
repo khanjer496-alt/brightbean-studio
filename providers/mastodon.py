@@ -10,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime
 from functools import partial
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
 from django.conf import settings
 
@@ -125,6 +125,12 @@ class MastodonProvider(SocialProvider):
     supports_public_profile_metrics = True
     competitor_handle_hint = "name@mastodon.social"
     competitor_handle_pattern = r"[a-z0-9_]{1,100}(@[a-z0-9.-]+\.[a-z]{2,})?"
+
+    @classmethod
+    def qualify_competitor_handle(cls, handle, using_account):
+        # "name" means "on the connected account's instance"; store it as name@instance.
+        host = (urlsplit(getattr(using_account, "instance_url", "") or "").hostname or "").lower()
+        return handle if "@" in handle or not host else f"{handle}@{host}"
 
     @classmethod
     def _competitor_handle_from_url(cls, host, segments):
