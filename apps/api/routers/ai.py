@@ -22,6 +22,7 @@ from ninja.errors import HttpError
 from apps.ai_writer.client import AIError
 from apps.ai_writer.models import AIRequestLog
 from apps.ai_writer.services import AIContext, adapt_for_networks, write_caption
+from apps.api import ops
 from apps.api.limits import enforce_http_rate_limits
 from apps.api.middleware import log_audit_entry
 from apps.api.schemas import (
@@ -50,6 +51,16 @@ def _allowlisted_accounts(request: HttpRequest, ids: list[uuid.UUID]) -> list:
     return [allowed[i] for i in dict.fromkeys(ids)]
 
 
+def _accounts_with_set(request: HttpRequest, ids: list[uuid.UUID], set_id: uuid.UUID | None) -> list:
+    """The requested accounts plus, with a ``set_id``, the usable accounts of that saved set."""
+    if set_id is not None:
+        try:
+            ids = [*ids, *ops.set_account_ids(ops.Actor.from_request(request), set_id)]
+        except ops.OpError as exc:
+            raise HttpError(exc.status, exc.message) from exc
+    return _allowlisted_accounts(request, ids)
+
+
 def _context(request: HttpRequest) -> AIContext:
     return AIContext(
         workspace=request.workspace,  # type: ignore[attr-defined]
@@ -69,7 +80,7 @@ def _ai_http_error(exc: AIError) -> HttpError:
 def generate_caption(request, payload: GenerateCaptionRequest):
     enforce_http_rate_limits(request, is_write=True)
     _require_perm(request, "create_posts")
-    accounts = _allowlisted_accounts(request, payload.social_account_ids)
+    accounts = _accounts_with_set(request, payload.social_account_ids, payload.set_id)
     try:
         caption = write_caption(_context(request), payload.prompt, accounts)
     except AIError as exc:
@@ -84,7 +95,9 @@ def generate_caption(request, payload: GenerateCaptionRequest):
 def adapt_caption(request, payload: AdaptCaptionRequest):
     enforce_http_rate_limits(request, is_write=True)
     _require_perm(request, "create_posts")
-    accounts = _allowlisted_accounts(request, payload.social_account_ids)
+    accounts = _accounts_with_set(request, payload.social_account_ids, payload.set_id)
+    if not accounts:
+        raise HttpError(422, "Give social_account_ids, a set_id, or both.")
     try:
         adapted = adapt_for_networks(_context(request), payload.caption, accounts)
     except AIError as exc:

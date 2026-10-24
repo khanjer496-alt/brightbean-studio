@@ -389,6 +389,14 @@ class CreatePostRequest(Schema):
         description="Tag names for the post (created in the workspace's tag list if new). Replaces the current tags.",
     )
     category_id: uuid.UUID | None = Field(None, description="Content category for the post (see ``/categories``).")
+    shorten_links: bool | None = Field(
+        None,
+        description=(
+            "Shorten the links in the post when it is scheduled, one short link per account (and tag them with the "
+            "workspace's UTM settings). ``null`` follows the workspace's preference, where ``ask`` means no; the "
+            "workspace's ``never`` setting always wins."
+        ),
+    )
     idempotency_key: str | None = Field(
         None,
         max_length=128,
@@ -1255,6 +1263,9 @@ class GenerateCaptionRequest(Schema):
             "the smallest of their character limits. Omit for a caption with no length target."
         ),
     )
+    set_id: uuid.UUID | None = Field(
+        None, description="A saved account set (``/sets``), added to ``social_account_ids``."
+    )
 
 
 class GenerateCaptionResponse(Schema):
@@ -1264,10 +1275,12 @@ class GenerateCaptionResponse(Schema):
 class AdaptCaptionRequest(Schema):
     caption: str = Field(..., min_length=1, max_length=10_000, description="The caption to adapt.")
     social_account_ids: list[uuid.UUID] = Field(
-        ...,
-        min_length=1,
+        default_factory=list,
         max_length=25,
-        description="Accounts to adapt it for (must be in this key's allowlist).",
+        description="Accounts to adapt it for (must be in this key's allowlist). Give these, ``set_id``, or both.",
+    )
+    set_id: uuid.UUID | None = Field(
+        None, description="A saved account set (``/sets``), added to ``social_account_ids``."
     )
 
 
@@ -2477,6 +2490,9 @@ class RepurposeOutputRequest(Schema):
         max_length=25,
         description="Accounts it is written for (required for thread, post, carousel and standalone).",
     )
+    set_id: uuid.UUID | None = Field(
+        None, description="A saved account set (``/sets``) to write for, instead of listing ``social_account_ids``."
+    )
     count: int | None = Field(None, ge=1, le=10, description="Slides for ``carousel`` or posts for ``standalone``.")
 
 
@@ -2540,3 +2556,143 @@ class RepurposeJobResponse(Schema):
 
 class AcceptRepurposeOutputsRequest(Schema):
     output_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=100)
+
+
+# ---------------------------------------------------------------------------
+# /links — short links, clicks
+# ---------------------------------------------------------------------------
+
+
+class CreateShortLinkRequest(Schema):
+    url: str = Field(..., max_length=2000, description="An absolute http(s) address; anything else is refused.")
+    social_account_id: uuid.UUID | None = Field(
+        None,
+        description="Tie the link to an account so its clicks count under that account (must be on the allowlist).",
+    )
+    post_id: uuid.UUID | None = Field(None, description="Tie the link to a post so its clicks count under that post.")
+
+
+class ShortLinkResponse(Schema):
+    id: uuid.UUID
+    short_url: str
+    destination_url: str
+    provider: str = Field(..., description="``builtin`` (served by this site) or the workspace's own link service.")
+    is_active: bool
+    post_id: uuid.UUID | None = None
+    social_account_id: uuid.UUID | None = None
+    created_at: dt.datetime
+    clicks: int = Field(0, description="Clicks in the last 30 days (UTC days).")
+    unique_clicks: int = 0
+
+    @field_serializer("created_at")
+    def _serialize_dt(self, value: dt.datetime) -> str | None:
+        return _serialize_utc_z(value)
+
+
+class ShortLinksListResponse(Schema):
+    links: list[ShortLinkResponse]
+    limit: int
+    next_cursor: str | None = None
+
+
+class LinkStatsLink(Schema):
+    link_id: uuid.UUID
+    short_url: str
+    destination_url: str
+    post_id: uuid.UUID | None = None
+    social_account_id: uuid.UUID | None = None
+    is_active: bool
+    clicks: int
+    unique_clicks: int
+    previews: int
+
+
+class LinkStatsDay(Schema):
+    day: dt.date
+    clicks: int
+
+
+class LinkStatsPost(Schema):
+    post_id: uuid.UUID
+    clicks: int
+    unique_clicks: int
+
+
+class LinkStatsAccount(Schema):
+    social_account_id: uuid.UUID
+    platform: str
+    name: str
+    clicks: int
+    unique_clicks: int
+
+
+class LinkStatsResponse(Schema):
+    days: int
+    start: dt.date
+    end: dt.date
+    clicks: int
+    unique_visitors: int = Field(
+        ..., description="Sum of each day's estimated distinct visitors (daily-salted, not stored)."
+    )
+    previews: int = Field(..., description="Fetches by platforms' link-preview bots; never counted as clicks.")
+    series: list[LinkStatsDay]
+    links: list[LinkStatsLink]
+    posts: list[LinkStatsPost]
+    accounts: list[LinkStatsAccount]
+
+
+# ---------------------------------------------------------------------------
+# /sets — saved groups of accounts
+# ---------------------------------------------------------------------------
+
+
+class AccountSetResponse(Schema):
+    id: uuid.UUID
+    name: str
+    social_account_ids: list[uuid.UUID] = Field(..., description="Accounts in the set that this key can use.")
+    defaults: dict[str, dict[str, Any]] = Field(
+        default_factory=dict, description="Per-account default settings, keyed by account id."
+    )
+    created_at: dt.datetime
+    updated_at: dt.datetime
+
+    @field_serializer("created_at", "updated_at")
+    def _serialize_dt(self, value: dt.datetime) -> str | None:
+        return _serialize_utc_z(value)
+
+
+class AccountSetsListResponse(Schema):
+    sets: list[AccountSetResponse]
+    limit: int
+    next_cursor: str | None = None
+
+
+class CreateAccountSetRequest(Schema):
+    name: str = Field(..., min_length=1, max_length=80)
+    social_account_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=100)
+    defaults: dict[str, dict[str, Any]] = Field(
+        default_factory=dict,
+        description=(
+            "Optional per-account default settings keyed by account id, such as a Pinterest ``board_id`` or a "
+            "TikTok ``privacy_level``. Each platform accepts only the keys it declares."
+        ),
+    )
+
+
+class UpdateAccountSetRequest(Schema):
+    name: str | None = Field(None, min_length=1, max_length=80)
+    social_account_ids: list[uuid.UUID] | None = Field(None, min_length=1, max_length=100)
+    defaults: dict[str, dict[str, Any]] | None = None
+
+
+class CreateSetDraftRequest(Schema):
+    """One draft for every connected account in a set, sharing a caption and media."""
+
+    caption: str = Field(..., max_length=10_000)
+    title: str = Field("", max_length=255)
+    first_comment: str = Field("", max_length=10_000)
+    internal_notes: str = Field("", max_length=10_000)
+    media_asset_ids: list[uuid.UUID] = Field(default_factory=list)
+    tags: list[str] | None = Field(None, max_length=25)
+    category_id: uuid.UUID | None = None
+    shorten_links: bool | None = Field(None, description="As on ``POST /posts/``.")

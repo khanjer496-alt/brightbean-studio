@@ -32,6 +32,8 @@ from apps.api.limits import check_platform_quota
 from apps.api.pagination import decode_offset_cursor, encode_offset_cursor
 from apps.api.schemas import (
     AccountAutonomyResponse,
+    AccountSetResponse,
+    AccountSetsListResponse,
     AddCompetitorRequest,
     AddEvergreenRequest,
     AgentActionResponse,
@@ -72,6 +74,11 @@ from apps.api.schemas import (
     IdeaGroupsListResponse,
     IdeaResponse,
     IdeasListResponse,
+    LinkStatsAccount,
+    LinkStatsDay,
+    LinkStatsLink,
+    LinkStatsPost,
+    LinkStatsResponse,
     MemberResponse,
     MembersListResponse,
     NextFreeSlotsResponse,
@@ -89,6 +96,8 @@ from apps.api.schemas import (
     ReportsListResponse,
     RepurposeJobResponse,
     RepurposeOutputResponse,
+    ShortLinkResponse,
+    ShortLinksListResponse,
     SignaturesListResponse,
     SignatureSummary,
     TagResponse,
@@ -2645,6 +2654,283 @@ def get_bio_stats(actor: Actor, page_id: uuid.UUID, *, days: int = 30) -> BioSta
 
 
 # ---------------------------------------------------------------------------
+# Short links and click counts
+# ---------------------------------------------------------------------------
+
+
+def _short_link_response(link, stat=None) -> ShortLinkResponse:
+    stat = stat or {}
+    return ShortLinkResponse(
+        id=link.id,
+        short_url=link.short_url,
+        destination_url=link.destination_url,
+        provider=link.provider,
+        is_active=link.is_active,
+        post_id=link.post_id,
+        social_account_id=link.social_account_id,
+        created_at=link.created_at,
+        clicks=stat.get("clicks", 0),
+        unique_clicks=stat.get("unique_clicks", 0),
+    )
+
+
+def _visible_links(actor: Actor) -> QuerySet:
+    """The workspace's links, minus those tied to an account outside this key's allowlist."""
+    from apps.links import services as link_services
+
+    return link_services.link_listing(actor.workspace).filter(
+        Q(social_account__isnull=True) | Q(social_account_id__in=actor.allowed_account_ids)
+    )
+
+
+def create_short_link(
+    actor: Actor, *, url: str, social_account_id: uuid.UUID | None = None, post_id: uuid.UUID | None = None
+) -> ShortLinkResponse:
+    """Make a short link with the workspace's chosen link service (built in unless the workspace set up its own)."""
+    from apps.links import services as link_services
+    from apps.links.shorteners import ShortenerError
+
+    actor.require("create_posts")
+    account = None
+    if social_account_id is not None:
+        if social_account_id not in actor.allowed_account_ids:
+            raise OpError(403, "social_account_id is not in this key's allowlist.")
+        account = SocialAccount.objects.filter(pk=social_account_id, workspace_id=actor.workspace_id).first()
+        if account is None:
+            raise OpError(404, "Account not found")
+    post = _get_visible_post(actor, post_id, prefetch=False) if post_id is not None else None
+    try:
+        link = link_services.create_short_link(actor.workspace, url, user=actor.user, post=post, social_account=account)
+    except link_services.LinkError as exc:
+        raise OpError(422, exc.message) from exc
+    except ShortenerError as exc:
+        raise OpError(502, str(exc)) from exc
+    return _short_link_response(link)
+
+
+def list_short_links(
+    actor: Actor,
+    *,
+    post_id: uuid.UUID | None = None,
+    social_account_id: uuid.UUID | None = None,
+    limit: int = LIMIT_DEFAULT,
+    cursor: str | None = None,
+) -> ShortLinksListResponse:
+    """Short links, newest first, each with its clicks over the last 30 days."""
+    from apps.links import services as link_services
+
+    actor.require("view_analytics")
+    qs = _visible_links(actor).order_by("-created_at", "id")
+    if post_id is not None:
+        qs = qs.filter(post_id=post_id)
+    if social_account_id is not None:
+        qs = qs.filter(social_account_id=social_account_id)
+    rows, next_cursor = _paginate(qs, limit=limit, cursor=cursor)
+    summary = link_services.stats_summary(actor.workspace, 30, link_ids=[r.pk for r in rows])
+    stats = {item["link_id"]: item for item in summary["links"]}
+    return ShortLinksListResponse(
+        links=[_short_link_response(r, stats.get(r.pk)) for r in rows], limit=limit, next_cursor=next_cursor
+    )
+
+
+def get_link_stats(
+    actor: Actor,
+    *,
+    days: int = 30,
+    post_id: uuid.UUID | None = None,
+    social_account_id: uuid.UUID | None = None,
+    link_id: uuid.UUID | None = None,
+) -> LinkStatsResponse:
+    """Clicks per day, per link, per post and per account (cookie-less; previews are kept apart)."""
+    from apps.links import services as link_services
+
+    actor.require("view_analytics")
+    if days < 1 or days > link_services.STATS_DAYS_MAX:
+        raise OpError(422, f"days must be between 1 and {link_services.STATS_DAYS_MAX}")
+    visible = _visible_links(actor)
+    if post_id is not None:
+        visible = visible.filter(post_id=post_id)
+    if social_account_id is not None:
+        visible = visible.filter(social_account_id=social_account_id)
+    if link_id is not None:
+        visible = visible.filter(pk=link_id)
+        if not visible.exists():
+            raise OpError(404, "Link not found")
+    summary = link_services.stats_summary(actor.workspace, days, link_ids=list(visible.values_list("pk", flat=True)))
+    return LinkStatsResponse(
+        days=summary["days"],
+        start=summary["start"],
+        end=summary["end"],
+        clicks=summary["totals"]["clicks"],
+        unique_visitors=summary["totals"]["unique_visitors"],
+        previews=summary["totals"]["previews"],
+        series=[LinkStatsDay(**row) for row in summary["series"]],
+        links=[LinkStatsLink(**row) for row in summary["links"]],
+        posts=[LinkStatsPost(**row) for row in summary["posts"]],
+        accounts=[LinkStatsAccount(**row) for row in summary["accounts"]],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Saved account sets
+# ---------------------------------------------------------------------------
+
+
+def _set_response(actor: Actor, obj) -> AccountSetResponse:
+    allowed = actor.allowed_account_ids
+    ids = [a.id for a in obj.accounts.all() if a.id in allowed]
+    return AccountSetResponse(
+        id=obj.id,
+        name=obj.name,
+        social_account_ids=ids,
+        defaults={k: v for k, v in obj.defaults.items() if uuid.UUID(k) in allowed},
+        created_at=obj.created_at,
+        updated_at=obj.updated_at,
+    )
+
+
+def _get_set(actor: Actor, set_id: uuid.UUID):
+    from apps.account_sets import services as set_services
+
+    obj = set_services.get_set(actor.workspace, set_id)
+    if obj is None:
+        raise OpError(404, "Set not found")
+    return obj
+
+
+def set_account_ids(actor: Actor, set_id: uuid.UUID) -> list[uuid.UUID]:
+    """The connected accounts of a set that this key may use (what ``set_id`` expands to)."""
+    from apps.account_sets import services as set_services
+
+    accounts = set_services.usable_accounts(_get_set(actor, set_id), allowed_ids=actor.allowed_account_ids)
+    if not accounts:
+        raise OpError(422, "None of that set's accounts are connected and available to this key.")
+    return [a.id for a in accounts]
+
+
+def list_account_sets(
+    actor: Actor, *, limit: int = LIMIT_DEFAULT, cursor: str | None = None
+) -> AccountSetsListResponse:
+    from apps.account_sets import services as set_services
+
+    actor.require("create_posts")
+    rows, next_cursor = _paginate(
+        set_services.sets_for(actor.workspace).order_by("name", "id"), limit=limit, cursor=cursor
+    )
+    return AccountSetsListResponse(sets=[_set_response(actor, r) for r in rows], limit=limit, next_cursor=next_cursor)
+
+
+def get_account_set(actor: Actor, set_id: uuid.UUID) -> AccountSetResponse:
+    actor.require("create_posts")
+    return _set_response(actor, _get_set(actor, set_id))
+
+
+def _set_refusal(exc) -> OpError:
+    return OpError(422, f"{exc.field}: {exc.message}" if exc.field else exc.message)
+
+
+def create_account_set(
+    actor: Actor, *, name: str, social_account_ids: list[uuid.UUID], defaults: dict | None = None
+) -> AccountSetResponse:
+    from apps.account_sets import services as set_services
+
+    actor.require("manage_social_accounts")
+    if not set(social_account_ids) <= actor.allowed_account_ids:
+        raise OpError(403, "social_account_ids includes an account outside this key's allowlist.")
+    try:
+        obj = set_services.create_set(
+            actor.workspace, name=name, account_ids=social_account_ids, defaults=defaults, user=actor.user
+        )
+    except set_services.SetError as exc:
+        raise _set_refusal(exc) from exc
+    return _set_response(actor, obj)
+
+
+def update_account_set(
+    actor: Actor,
+    set_id: uuid.UUID,
+    *,
+    name: str | None = None,
+    social_account_ids: list[uuid.UUID] | None = None,
+    defaults: dict | None = None,
+) -> AccountSetResponse:
+    from apps.account_sets import services as set_services
+
+    actor.require("manage_social_accounts")
+    obj = _get_set(actor, set_id)
+    hidden = [a.id for a in obj.accounts.all() if a.id not in actor.allowed_account_ids]
+    if social_account_ids is not None and not set(social_account_ids) <= actor.allowed_account_ids:
+        raise OpError(403, "social_account_ids includes an account outside this key's allowlist.")
+    try:
+        set_services.update_set(
+            obj, name=name, account_ids=social_account_ids, defaults=defaults, hidden_account_ids=hidden
+        )
+    except set_services.SetError as exc:
+        raise _set_refusal(exc) from exc
+    return _set_response(actor, _get_set(actor, set_id))
+
+
+def delete_account_set(actor: Actor, set_id: uuid.UUID) -> DeletedResponse:
+    from apps.account_sets import services as set_services
+
+    actor.require("manage_social_accounts")
+    obj = _get_set(actor, set_id)
+    if any(a.id not in actor.allowed_account_ids for a in obj.accounts.all()):
+        raise OpError(403, "The set holds accounts outside this key's allowlist, so it can't be deleted with this key.")
+    set_services.delete_set(obj)
+    return DeletedResponse(id=set_id)
+
+
+def create_set_draft(
+    actor: Actor,
+    set_id: uuid.UUID,
+    *,
+    caption: str,
+    title: str = "",
+    first_comment: str = "",
+    internal_notes: str = "",
+    media_asset_ids: list[uuid.UUID] | None = None,
+    tags: list[str] | None = None,
+    category_id: uuid.UUID | None = None,
+    shorten_links: bool | None = None,
+) -> PostResponse:
+    """One draft post on every connected account of a set, with each account's saved default settings."""
+    from apps.account_sets import services as set_services
+
+    actor.require("create_posts")
+    obj = _get_set(actor, set_id)
+    accounts = set_services.usable_accounts(obj, allowed_ids=actor.allowed_account_ids)
+    if not accounts:
+        raise OpError(422, "None of that set's accounts are connected and available to this key.")
+    validate_post_taxonomy(actor, tags=tags, category_id=category_id)
+    try:
+        with transaction.atomic():
+            post = composer_services.create_post(
+                workspace=actor.workspace,
+                social_account=accounts[0],
+                caption=caption,
+                title=title,
+                first_comment=first_comment,
+                internal_notes=internal_notes,
+                media_asset_ids=media_asset_ids or [],
+                author=actor.user,
+                status="draft",
+                shorten_links=shorten_links,
+            )
+            for account in accounts[1:]:
+                PlatformPost.objects.create(post=post, social_account=account, status="draft")
+            for child in post.platform_posts.all():
+                defaults = set_services.defaults_for(obj, child.social_account)
+                if defaults:
+                    child.platform_extra = {**(child.platform_extra or {}), **defaults}
+                    child.save(update_fields=["platform_extra", "updated_at"])
+            apply_post_taxonomy(actor, post, tags=tags, category_id=category_id)
+    except ValueError as exc:
+        raise OpError(422, str(exc)) from exc
+    return post_response(actor, _get_visible_post(actor, post.id))
+
+
+# ---------------------------------------------------------------------------
 # Repurposing
 # ---------------------------------------------------------------------------
 
@@ -2699,6 +2985,15 @@ def _get_repurpose_job(actor: Actor, job_id: uuid.UUID):
     return job
 
 
+def _expand_output_set(actor: Actor, item: dict) -> dict:
+    """An output that names a saved set is written for the set's usable accounts, together with any listed."""
+    set_id = item.get("set_id")
+    if set_id is None:
+        return item
+    ids = list(dict.fromkeys([*(item.get("social_account_ids") or []), *set_account_ids(actor, set_id)]))
+    return {**{k: v for k, v in item.items() if k != "set_id"}, "social_account_ids": ids}
+
+
 def create_repurpose_job(
     actor: Actor,
     *,
@@ -2721,6 +3016,7 @@ def create_repurpose_job(
     from apps.repurpose import sources
 
     actor.require("create_posts")
+    outputs = [_expand_output_set(actor, item) for item in outputs]
     for item in outputs:
         for account_id in item.get("social_account_ids") or []:
             if account_id not in actor.allowed_account_ids:

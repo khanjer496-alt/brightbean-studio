@@ -433,6 +433,17 @@ def _apply_post_taxonomy(post: Post, tags: list[str] | None, category_id: UUID |
         raise JsonRpcError(INVALID_PARAMS, exc.message) from exc
 
 
+_LINK_INPUT_PROPERTIES = {
+    "shorten_links": {
+        "type": "boolean",
+        "description": (
+            "Shorten the post's links when it is scheduled, one short link per account, tagged with the workspace's "
+            'UTM settings. Omit to follow the workspace preference ("ask" counts as no); "never" always wins.'
+        ),
+    },
+}
+
+
 def _create_draft(args: dict, context: dict[str, Any]) -> dict:
     _require_perm(context, "create_posts")
     api_key = context["api_key"]
@@ -471,6 +482,7 @@ def _create_draft(args: dict, context: dict[str, Any]) -> dict:
             status="draft",
             parts=parts,
             post_settings=args.get("post_settings"),
+            shorten_links=args.get("shorten_links"),
         )
     except ValueError as exc:
         raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
@@ -525,6 +537,7 @@ register_tool(
                 "parts": _PARTS_INPUT_SCHEMA,
                 "post_settings": _POST_SETTINGS_INPUT_SCHEMA,
                 **_TAXONOMY_INPUT_PROPERTIES,
+                **_LINK_INPUT_PROPERTIES,
                 **IDEMPOTENCY_KEY_INPUT_PROPERTY,
             },
             "required": ["social_account_id", "caption"],
@@ -663,6 +676,7 @@ def _schedule_post(args: dict, context: dict[str, Any]) -> dict:
                 status="scheduled" if schedule_now else "draft",
                 parts=parts,
                 post_settings=args.get("post_settings"),
+                shorten_links=args.get("shorten_links"),
             )
             _apply_post_taxonomy(post, tags, category_id, context)
             if repeat is not None:
@@ -711,6 +725,7 @@ register_tool(
                 "parts": _PARTS_INPUT_SCHEMA,
                 "post_settings": _POST_SETTINGS_INPUT_SCHEMA,
                 **_TAXONOMY_INPUT_PROPERTIES,
+                **_LINK_INPUT_PROPERTIES,
                 **IDEMPOTENCY_KEY_INPUT_PROPERTY,
             },
             "required": ["social_account_id", "caption", "scheduled_at"],
@@ -2207,12 +2222,35 @@ def _resolve_allowed_accounts(api_key, ids: list) -> list[SocialAccount]:
     return [_resolve_allowed_account(api_key, i) for i in dict.fromkeys(ids)]
 
 
+def _accounts_with_set(args: dict, context: dict[str, Any]) -> list[SocialAccount]:
+    """``social_account_ids`` plus, when ``set_id`` is given, the usable accounts of that saved set."""
+    ids = list(args.get("social_account_ids") or [])
+    if args.get("set_id"):
+        try:
+            ids += [
+                str(i)
+                for i in ops.set_account_ids(ops.Actor.from_context(context), _parse_uuid(args["set_id"], "set_id"))
+            ]
+        except ops.OpError as exc:
+            raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
+    return _resolve_allowed_accounts(context["api_key"], ids)
+
+
+_SET_ID_INPUT_PROPERTY = {
+    "set_id": {
+        "type": "string",
+        "format": "uuid",
+        "description": "A saved account set (see list_account_sets), added to social_account_ids.",
+    },
+}
+
+
 def _generate_caption(args: dict, context: dict[str, Any]) -> dict:
     from apps.ai_writer.client import AIError
     from apps.ai_writer.services import write_caption
 
     _require_perm(context, "create_posts")
-    accounts = _resolve_allowed_accounts(context["api_key"], args.get("social_account_ids") or [])
+    accounts = _accounts_with_set(args, context)
     try:
         caption = write_caption(_ai_context(context), args["prompt"], accounts)
     except (AIError, ValueError) as exc:
@@ -2245,6 +2283,7 @@ register_tool(
                     "default": [],
                     "description": "Accounts the caption is for, from this key's allowlist (see list_accounts).",
                 },
+                **_SET_ID_INPUT_PROPERTY,
             },
             "required": ["prompt"],
             "additionalProperties": False,
@@ -2259,7 +2298,9 @@ def _adapt_caption(args: dict, context: dict[str, Any]) -> dict:
     from apps.ai_writer.services import adapt_for_networks
 
     _require_perm(context, "create_posts")
-    accounts = _resolve_allowed_accounts(context["api_key"], args["social_account_ids"])
+    accounts = _accounts_with_set(args, context)
+    if not accounts:
+        raise JsonRpcError(INVALID_PARAMS, "Give social_account_ids, a set_id, or both.")
     try:
         adapted = adapt_for_networks(_ai_context(context), args["caption"], accounts)
     except (AIError, ValueError) as exc:
@@ -2296,12 +2337,15 @@ register_tool(
                 "social_account_ids": {
                     "type": "array",
                     "items": {"type": "string", "format": "uuid"},
-                    "minItems": 1,
                     "maxItems": 25,
-                    "description": "Accounts to adapt it for, from this key's allowlist (see list_accounts).",
+                    "description": (
+                        "Accounts to adapt it for, from this key's allowlist (see list_accounts). Give these, "
+                        "set_id, or both."
+                    ),
                 },
+                **_SET_ID_INPUT_PROPERTY,
             },
-            "required": ["caption", "social_account_ids"],
+            "required": ["caption"],
             "additionalProperties": False,
         },
         handler=_adapt_caption,
