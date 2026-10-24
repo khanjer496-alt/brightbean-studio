@@ -632,6 +632,25 @@ class TestRemovedReviewReconcile:
         assert not message.removed_from_platform and message.status == InboxMessage.Status.OPEN
         assert "removed_previous_status" not in message.extra
 
+    def test_the_next_reconcile_restores_a_review_listed_again(self, inbox_workspace, gbp_account):
+        message = make_review(inbox_workspace, gbp_account, 2, status=InboxMessage.Status.OPEN)
+        self._run(gbp_account, self._ids(1))
+        message.refresh_from_db()
+        assert message.removed_from_platform
+        self._run(gbp_account, self._ids(1, 2))
+        message.refresh_from_db()
+        assert not message.removed_from_platform and message.status == InboxMessage.Status.OPEN
+        assert "removed_previous_status" not in message.extra
+
+    def test_a_removed_review_cannot_be_replied_to(self, inbox_workspace, gbp_account):
+        from apps.inbox.reply_policy import WEB_INBOX, review_reply_allowed
+
+        message = make_review(inbox_workspace, gbp_account, 2)
+        self._run(gbp_account, self._ids(1))
+        message.refresh_from_db()
+        allowed, reason = review_reply_allowed(message, origin=WEB_INBOX)
+        assert not allowed and "removed" in reason
+
     def test_an_empty_list_with_reviews_on_file_changes_nothing(self, inbox_workspace, gbp_account):
         message = make_review(inbox_workspace, gbp_account, 1)
         assert self._run(gbp_account, set()) == 0

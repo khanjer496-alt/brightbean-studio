@@ -136,6 +136,9 @@ def review_reply_allowed(message, *, origin=PROGRAMMATIC, actor=None):
     against the workspace's reply policy as it is now, so a crisis pause or a
     level lowered since the agent asked stops it.
     """
+    if message.removed_from_platform:
+        platform = message.social_account.get_platform_display()
+        return False, f"This review was removed from {platform}, so there is nothing to reply to."
     if origin == WEB_INBOX or actor is not None:
         return True, ""
     from apps.autonomy.service import reply_send_blocker

@@ -6,8 +6,8 @@ awaiting a reply, forever. Once a day per location this lists the platform's
 review ids (cheap: ids only) and compares them with the reviews the inbox holds.
 A review that is gone is archived and stamped ``removed_from_platform_at``; it
 is kept, never deleted, so history and replies survive, and it drops out of
-"needs reply" and the rating analytics. If the platform lists it again the
-sync restores it.
+"needs reply" and the rating analytics. If the platform lists it again, the
+sync (when it fetches the review) or the next reconcile restores it.
 
 Quotas: locations are checked at most once a day and a few per run, a spent
 quota stops the run through the shared circuit breaker, and a rate limit holds
@@ -123,6 +123,7 @@ def reconcile_account(account, *, quota_cache: dict | None = None) -> int | bool
         state.save(update_fields=["consecutive_rate_limits", "backoff_until"])
         return None
 
+    restored = _restore_listed_again(account, listed)
     # Reviews that arrived while the list was being read are not in it; only
     # those the inbox already held when it started can be judged gone.
     candidates = [
@@ -147,6 +148,37 @@ def reconcile_account(account, *, quota_cache: dict | None = None) -> int | bool
         message.save(update_fields=["extra", "status"])
     state.last_reconciled_at = started_at
     state.save(update_fields=["last_reconciled_at", "consecutive_rate_limits", "backoff_until"])
-    if missing:
-        logger.info("Archived %d review(s) deleted on the platform for account %s", len(missing), account.id)
+    if missing or restored:
+        logger.info(
+            "Review reconcile for account %s: archived %d deleted on the platform, restored %d listed again",
+            account.id,
+            len(missing),
+            restored,
+        )
     return len(missing)
+
+
+def _restore_listed_again(account, listed: set[str]) -> int:
+    """Undo the archiving of removed reviews the platform lists again; returns how many.
+
+    The routine poll only fetches reviews updated since it last looked, so a
+    review the platform reinstates unchanged would otherwise stay archived.
+    """
+    restored = 0
+    removed = InboxMessage.objects.filter(
+        social_account=account,
+        message_type=InboxMessage.MessageType.REVIEW,
+        extra__has_key="removed_from_platform_at",
+    )
+    for message in removed:
+        if message.platform_message_id not in listed:
+            continue
+        extra = dict(message.extra or {})
+        extra.pop("removed_from_platform_at", None)
+        previous = extra.pop("removed_previous_status", None)
+        message.extra = extra
+        if previous and message.status == InboxMessage.Status.ARCHIVED:
+            message.status = previous
+        message.save(update_fields=["extra", "status"])
+        restored += 1
+    return restored
