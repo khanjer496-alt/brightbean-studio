@@ -535,6 +535,10 @@
               class="flex flex-col">
             <input type="hidden" name="selected_accounts" :value="selectedAccounts.join(',')">
             <input type="hidden" name="shorten_links" :value="shortenLinks">
+            {# A selected channel that is not customised says so, so a saved override is cleared only on purpose. #}
+            <template x-for="accId in selectedAccounts" :key="'reset-' + accId">
+                <input type="hidden" :name="'override_reset_' + accId" value="1" :disabled="overrides[accId]">
+            </template>
             {% if account_scope %}
             <!-- Composer opened scoped to one account (?account=) — save endpoints
                  must not delete/transition platform posts outside this scope. -->
@@ -1141,6 +1145,7 @@
                                            :for="'override-title-' + accId"
                                            x-text="(charLimits[accId]?.title_label || 'Title') + ' override'"></label>
                                     <input :id="'override-title-' + accId" type="text" :name="'override_title_' + accId" :disabled="!overrides[accId]"
+                                           x-model="overrideTitles[accId]"
                                            class="w-full text-sm px-3 py-2 rounded-lg border border-[var(--border-input)] bg-surface-1 text-ink outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-ring)] transition-all"
                                            :placeholder="'Custom ' + (charLimits[accId]?.title_label || 'title') + '…'"
                                            :maxlength="charLimits[accId]?.title_max_length || 255"
@@ -2534,6 +2539,7 @@ function providerSettings(accId, workspaceId, liveExtras) {
 <script src="{% static 'js/composer-links.js' %}"></script>
 <script src="{% static 'js/composer-tabs.js' %}"></script>
 {{ platform_extras|json_script:"composer-platform-extras" }}
+{{ platform_overrides|json_script:"composer-platform-overrides" }}
 {{ media_items|json_script:"composer-media-items" }}
 {{ thread_parts|json_script:"composer-thread-parts" }}
 <script src="{% static 'js/composer-inserts.js' %}"></script>
@@ -2555,6 +2561,7 @@ function composerApp() {
         // Per-account custom captions, bound to the override textareas so the
         // AI assistant's "Adapt for each network" can fill them.
         overrideCaptions: {},
+        overrideTitles: {},
         advancedOpen: {},
         platformExtras: JSON.parse(document.getElementById('composer-platform-extras').textContent) || {},
         showMediaPicker: false,
@@ -2691,6 +2698,7 @@ function composerApp() {
             const go = () => {
                 this.overrides[accId] = false;
                 this.overrideCaptions[accId] = '';
+                this.overrideTitles[accId] = '';
                 this.threadParts.forEach((part) => { if (part.caption_overrides) delete part.caption_overrides[accId]; });
                 this.debouncedPreviewUpdate();
             };
@@ -3077,9 +3085,13 @@ function composerApp() {
                 this.previewIsDrawer = !e.matches;
                 if (e.matches) this.showPreviewPanel = false;
             });
-            // Initialize overrides map
+            // Initialize overrides map; a channel with saved text of its own opens as customised.
+            const saved = JSON.parse(document.getElementById('composer-platform-overrides').textContent) || {};
             this.selectedAccounts.forEach(id => {
-                this.overrides[id] = false;
+                const own = saved[id];
+                this.overrides[id] = !!(own && (own.caption || own.title || own.first_comment));
+                if (own && own.caption) this.overrideCaptions[id] = own.caption;
+                if (own && own.title) this.overrideTitles[id] = own.title;
                 this.advancedOpen[id] = false;
                 if (!this.platformExtras[id]) this.platformExtras[id] = {};
             });
@@ -3143,6 +3155,9 @@ function composerApp() {
             if (idx > -1) {
                 this.selectedAccounts.splice(idx, 1);
                 delete this.overrides[id];
+                // Deselecting drops the channel's own text with its saved post, so selecting it again starts shared.
+                delete this.overrideCaptions[id];
+                delete this.overrideTitles[id];
                 delete this.advancedOpen[id];
                 if (this.activeTab === id) this.activeTab = 'global';
             } else {

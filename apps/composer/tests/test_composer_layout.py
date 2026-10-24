@@ -64,3 +64,65 @@ class ComposerLayoutTests(TestCase):
             "data-unsaved-guard",
         ):
             assert needle in self.body, needle
+
+
+class ChannelOverrideRoundTripTests(ComposerLayoutTests):
+    """A channel's own text survives reopening and saving; only an explicit reset (or deselecting) clears it."""
+
+    def _save(self, post, **extra):
+        url = reverse("composer:save_post_edit", kwargs={"workspace_id": self.ws.id, "post_id": post.id})
+        data = {"caption": "Shared", "selected_accounts": str(self.account.id), "action": "save_draft", **extra}
+        return self.client.post(url, data, HTTP_HX_REQUEST="true")
+
+    def _post(self):
+        from apps.composer.models import PlatformPost, Post
+
+        post = Post.objects.create(workspace=self.ws, author=User.objects.get(), caption="Shared")
+        pp = PlatformPost.objects.create(
+            post=post,
+            social_account=self.account,
+            platform_specific_caption="Own text",
+            platform_specific_first_comment="Own comment",
+        )
+        return post, pp
+
+    def test_reopening_exposes_the_saved_override_to_the_form(self):
+        post, _pp = self._post()
+        resp = self.client.get(
+            reverse("composer:compose_edit", kwargs={"workspace_id": self.ws.id, "post_id": post.id})
+        )
+        saved = resp.context["platform_overrides"][str(self.account.id)]
+        assert saved["caption"] == "Own text"
+        assert 'id="composer-platform-overrides"' in resp.content.decode()
+
+    def test_saving_without_the_field_keeps_the_override(self):
+        post, pp = self._post()
+        assert self._save(post).status_code == 204
+        pp.refresh_from_db()
+        assert pp.platform_specific_caption == "Own text"
+        assert pp.platform_specific_first_comment == "Own comment"
+
+    def test_saving_the_submitted_text_updates_it_and_a_blank_clears_it(self):
+        post, pp = self._post()
+        self._save(post, **{f"override_caption_{self.account.id}": " Edited "})
+        pp.refresh_from_db()
+        assert pp.platform_specific_caption == "Edited"
+        self._save(post, **{f"override_caption_{self.account.id}": ""})
+        pp.refresh_from_db()
+        assert pp.platform_specific_caption is None
+
+    def test_explicit_reset_clears_every_override(self):
+        post, pp = self._post()
+        self._save(post, **{f"override_reset_{self.account.id}": "1"})
+        pp.refresh_from_db()
+        assert pp.platform_specific_caption is None
+        assert pp.platform_specific_first_comment is None
+
+    def test_deselecting_and_reselecting_starts_shared(self):
+        from apps.composer.models import PlatformPost
+
+        post, _pp = self._post()
+        self._save(post, selected_accounts="")
+        assert not PlatformPost.objects.filter(post=post).exists()
+        self._save(post)
+        assert PlatformPost.objects.get(post=post).platform_specific_caption is None
