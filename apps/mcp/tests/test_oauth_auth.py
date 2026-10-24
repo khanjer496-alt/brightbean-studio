@@ -271,12 +271,19 @@ class TestOAuthShimCoversToolSurface:
     turn that latent runtime break into a CI failure.
     """
 
-    def test_no_registered_tool_internal_errors_via_oauth(self):
+    def test_no_registered_tool_internal_errors_via_oauth(self, monkeypatch):
         # Drive every registered tool once over the OAuth path. Tools with
         # required args fail schema validation (INVALID_PARAMS) before their
         # body runs; no tool should ever hit INTERNAL_ERROR, which would mean
         # the shim is missing an attribute the handler touched.
+        from apps.api import limits
         from apps.mcp.tools import all_tools
+
+        # One call per tool is more than a minute's write allowance now that
+        # the surface has grown; the limiter isn't what this guards.
+        monkeypatch.setattr(limits, "DEFAULT_WRITE_RATE", "10000/m")
+        monkeypatch.setattr(limits, "DEFAULT_READ_RATE", "10000/m")
+        monkeypatch.setattr(limits, "WORKSPACE_AGG_WRITE_RATE", "10000/m")
 
         user, _ws, _sa = _make_user_with_workspace("surface-oauth@example.com", WorkspaceMembership.WorkspaceRole.OWNER)
         c = _SecureClient(HTTP_AUTHORIZATION=f"Bearer {_mint_oauth_token(user)}")
