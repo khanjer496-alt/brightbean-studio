@@ -11,8 +11,10 @@ the audit trail remembers exactly which target was acted on.
 """
 
 import logging
+from datetime import timedelta
 
 from django.db import transaction
+from django.utils import timezone
 
 from apps.composer.models import PlatformPost, Post
 from apps.members.models import WorkspaceMembership
@@ -21,8 +23,8 @@ from apps.notifications.models import EventType
 from apps.webhooks import events as webhook_events
 from apps.webhooks.models import EventType as WebhookEventType
 
-from .models import ApprovalAction, ApprovalReminder
-from .policy import clear_final_approval, mark_final_approval
+from .models import ApprovalAction, ApprovalReminder, Channel
+from .policy import clear_final_approval, mark_final_approval, publish_fingerprint, targets_fingerprint
 
 logger = logging.getLogger(__name__)
 
@@ -52,7 +54,7 @@ def _approval_membership(target, user, workspace):
     return membership
 
 
-def _review_states(membership):
+def review_states(membership):
     # Client sign-off is a separate stage; neither an internal reviewer nor a
     # client may perform both stages by calling the other HTTP endpoint.
     if membership.workspace_role == WorkspaceMembership.WorkspaceRole.CLIENT:
@@ -106,7 +108,7 @@ def _transition_or_skip(pp, target_status):
     return True
 
 
-def _record_action(post, platform_post, user, action, comment=""):
+def _record_action(post, platform_post, user, action, comment="", *, channel=Channel.WEB, fingerprint=""):
     """Create an ApprovalAction row for either a bundled or per-PP action."""
     return ApprovalAction.objects.create(
         post=post,
@@ -114,11 +116,58 @@ def _record_action(post, platform_post, user, action, comment=""):
         user=user,
         action=action,
         comment=comment,
+        channel=channel,
+        fingerprint=fingerprint,
     )
+
+
+def _record_actions(post, moved, is_bundled, user, action, comment="", *, channel=Channel.WEB):
+    """Audit ``action`` on the targets that moved: one bundled row, or one row per target.
+
+    Each row keeps the fingerprint of the content it covered, as it stands now
+    that the transition has happened.
+    """
+    if is_bundled:
+        _record_action(post, None, user, action, comment, channel=channel, fingerprint=targets_fingerprint(moved))
+        return
+    for pp in moved:
+        _record_action(post, pp, user, action, comment, channel=channel, fingerprint=publish_fingerprint(pp))
+
+
+def start_stage(post, stage, workspace, *, due_at=None):
+    """Open (or restart) the reminder record for ``stage``, with its approval deadline.
+
+    The deadline is ``due_at`` when given, else the workspace's SLA from now, else none.
+    """
+    if due_at is None and workspace.approval_sla_hours:
+        due_at = timezone.now() + timedelta(hours=workspace.approval_sla_hours)
+    return ApprovalReminder.objects.update_or_create(
+        post=post,
+        stage=stage,
+        defaults={
+            "reminder_count": 0,
+            "last_reminder_at": None,
+            "escalated": False,
+            "due_at": due_at,
+            "deadline_reminded_at": None,
+        },
+    )[0]
+
+
+def _ask_in_slack(post, workspace):
+    """Post the approval request to the workspace's Slack channel, if one is connected."""
+    from .slack import queue_request
+
+    try:
+        queue_request(post, workspace)
+    except Exception:  # noqa: BLE001 - a Slack problem must never block the workflow
+        logger.warning("Could not queue the Slack approval request for post %s", post.id, exc_info=True)
 
 
 def _notify_reviewers(workspace, actor, *, post, event_type, title, body):
     """Notify every workspace member with ``approve_posts`` (except the actor)."""
+    if event_type == EventType.POST_SUBMITTED:
+        _ask_in_slack(post, workspace)
     reviewers = WorkspaceMembership.objects.filter(workspace=workspace).select_related("user", "custom_role")
     for membership in reviewers:
         perms = membership.effective_permissions
@@ -137,7 +186,7 @@ def _notify_reviewers(workspace, actor, *, post, event_type, title, body):
 # ---------------------------------------------------------------------------
 
 
-def submit_for_review(target, user, workspace):
+def submit_for_review(target, user, workspace, *, channel=Channel.WEB):
     """Submit a post (or single platform post) for internal review."""
     post, targets, is_bundled = _resolve_targets(
         target, eligible_from_states={"draft", "changes_requested", "rejected"}
@@ -152,17 +201,9 @@ def submit_for_review(target, user, workspace):
         if not moved:
             return moved
 
-        if is_bundled:
-            _record_action(post, None, user, ApprovalAction.ActionType.SUBMITTED)
-        else:
-            for pp in moved:
-                _record_action(post, pp, user, ApprovalAction.ActionType.SUBMITTED)
+        _record_actions(post, moved, is_bundled, user, ApprovalAction.ActionType.SUBMITTED, channel=channel)
 
-        ApprovalReminder.objects.update_or_create(
-            post=post,
-            stage="pending_review",
-            defaults={"reminder_count": 0, "last_reminder_at": None, "escalated": False},
-        )
+        start_stage(post, "pending_review", workspace)
 
     # Notify all reviewers (members with approve_posts permission)
     _notify_reviewers(
@@ -178,7 +219,7 @@ def submit_for_review(target, user, workspace):
 
 
 @transaction.atomic
-def approve_post(target, user, workspace, comment=""):
+def approve_post(target, user, workspace, comment="", *, channel=Channel.WEB):
     """Approve a post or single platform post.
 
     If the workspace runs the two-stage internal+client flow and we're moving
@@ -187,7 +228,7 @@ def approve_post(target, user, workspace, comment=""):
     """
     membership = _approval_membership(target, user, workspace)
     workspace = membership.workspace
-    post, targets, is_bundled = _resolve_targets(target, eligible_from_states=_review_states(membership))
+    post, targets, is_bundled = _resolve_targets(target, eligible_from_states=review_states(membership))
 
     two_stage = workspace.approval_workflow_mode == "required_internal_and_client"
     moved = []
@@ -209,22 +250,16 @@ def approve_post(target, user, workspace, comment=""):
         if not moved:
             return moved
 
-        if is_bundled:
-            _record_action(post, None, user, ApprovalAction.ActionType.APPROVED, comment)
-        else:
-            for pp in moved:
-                _record_action(post, pp, user, ApprovalAction.ActionType.APPROVED, comment)
+        _record_actions(post, moved, is_bundled, user, ApprovalAction.ActionType.APPROVED, comment, channel=channel)
 
         if advanced_to_client:
-            ApprovalReminder.objects.update_or_create(
-                post=post,
-                stage="pending_client",
-                defaults={"reminder_count": 0, "last_reminder_at": None, "escalated": False},
-            )
+            start_stage(post, "pending_client", workspace)
             _notify_clients(post, workspace)
 
     if not advanced_to_client:
-        webhook_events.approval_event(WebhookEventType.POST_APPROVED, post, workspace, user, moved, comment)
+        webhook_events.approval_event(
+            WebhookEventType.POST_APPROVED, post, workspace, user, moved, comment, channel=channel
+        )
 
     # Only tell the author "approved" when the post actually reached approved —
     # in two-stage mode an internal approval that advances to pending_client is
@@ -245,14 +280,14 @@ def approve_post(target, user, workspace, comment=""):
 
 
 @transaction.atomic
-def request_changes(target, user, workspace, comment):
+def request_changes(target, user, workspace, comment, *, channel=Channel.WEB):
     """Request changes on a post or single platform post. Comment is required."""
     if not comment.strip():
         raise ValueError("A comment is required when requesting changes.")
 
     membership = _approval_membership(target, user, workspace)
     workspace = membership.workspace
-    post, targets, is_bundled = _resolve_targets(target, eligible_from_states=_review_states(membership))
+    post, targets, is_bundled = _resolve_targets(target, eligible_from_states=review_states(membership))
 
     moved = []
     with transaction.atomic():
@@ -263,13 +298,13 @@ def request_changes(target, user, workspace, comment):
         if not moved:
             return moved
 
-        if is_bundled:
-            _record_action(post, None, user, ApprovalAction.ActionType.CHANGES_REQUESTED, comment)
-        else:
-            for pp in moved:
-                _record_action(post, pp, user, ApprovalAction.ActionType.CHANGES_REQUESTED, comment)
+        _record_actions(
+            post, moved, is_bundled, user, ApprovalAction.ActionType.CHANGES_REQUESTED, comment, channel=channel
+        )
 
-    webhook_events.approval_event(WebhookEventType.POST_CHANGES_REQUESTED, post, workspace, user, moved, comment)
+    webhook_events.approval_event(
+        WebhookEventType.POST_CHANGES_REQUESTED, post, workspace, user, moved, comment, channel=channel
+    )
 
     if post.author and post.author != user:
         notify(
@@ -287,14 +322,14 @@ def request_changes(target, user, workspace, comment):
 
 
 @transaction.atomic
-def reject_post(target, user, workspace, comment):
+def reject_post(target, user, workspace, comment, *, channel=Channel.WEB):
     """Reject a post or single platform post. Comment is required."""
     if not comment.strip():
         raise ValueError("A comment is required when rejecting a post.")
 
     membership = _approval_membership(target, user, workspace)
     workspace = membership.workspace
-    post, targets, is_bundled = _resolve_targets(target, eligible_from_states=_review_states(membership))
+    post, targets, is_bundled = _resolve_targets(target, eligible_from_states=review_states(membership))
 
     moved = []
     with transaction.atomic():
@@ -305,11 +340,7 @@ def reject_post(target, user, workspace, comment):
         if not moved:
             return moved
 
-        if is_bundled:
-            _record_action(post, None, user, ApprovalAction.ActionType.REJECTED, comment)
-        else:
-            for pp in moved:
-                _record_action(post, pp, user, ApprovalAction.ActionType.REJECTED, comment)
+        _record_actions(post, moved, is_bundled, user, ApprovalAction.ActionType.REJECTED, comment, channel=channel)
 
     if post.author and post.author != user:
         notify(
@@ -327,7 +358,7 @@ def reject_post(target, user, workspace, comment):
 
 
 @transaction.atomic
-def request_hold(target, user, workspace, comment):
+def request_hold(target, user, workspace, comment, *, channel=Channel.WEB):
     """Client requests a hold on an already-approved post. Comment is required.
 
     Parks the post in ``on_hold`` — out of the publish path (the publisher only
@@ -348,18 +379,14 @@ def request_hold(target, user, workspace, comment):
         if not moved:
             return moved
 
-        if is_bundled:
-            _record_action(post, None, user, ApprovalAction.ActionType.HELD, comment)
-        else:
-            for pp in moved:
-                _record_action(post, pp, user, ApprovalAction.ActionType.HELD, comment)
+        _record_actions(post, moved, is_bundled, user, ApprovalAction.ActionType.HELD, comment, channel=channel)
 
     _notify_reviewers_of_hold(post, workspace, user, comment)
     return post
 
 
 @transaction.atomic
-def resume_hold(target, user, workspace):
+def resume_hold(target, user, workspace, *, channel=Channel.WEB):
     """Lift a client-requested hold — move an ``on_hold`` post back to ``approved``.
 
     Reviewer-side counterpart to :func:`request_hold`, so a held post is never a
@@ -378,16 +405,14 @@ def resume_hold(target, user, workspace):
         if not moved:
             return moved
 
-        if is_bundled:
-            _record_action(post, None, user, ApprovalAction.ActionType.APPROVED, "Hold lifted.")
-        else:
-            for pp in moved:
-                _record_action(post, pp, user, ApprovalAction.ActionType.APPROVED, "Hold lifted.")
+        _record_actions(
+            post, moved, is_bundled, user, ApprovalAction.ActionType.APPROVED, "Hold lifted.", channel=channel
+        )
 
     return moved
 
 
-def resubmit_post(target, user, workspace):
+def resubmit_post(target, user, workspace, *, channel=Channel.WEB):
     """Resubmit a post after changes/rejection — or re-review an edited approved post."""
     post, targets, is_bundled = _resolve_targets(
         target, eligible_from_states={"changes_requested", "rejected", "approved"}
@@ -402,17 +427,9 @@ def resubmit_post(target, user, workspace):
         if not moved:
             return moved
 
-        if is_bundled:
-            _record_action(post, None, user, ApprovalAction.ActionType.RESUBMITTED)
-        else:
-            for pp in moved:
-                _record_action(post, pp, user, ApprovalAction.ActionType.RESUBMITTED)
+        _record_actions(post, moved, is_bundled, user, ApprovalAction.ActionType.RESUBMITTED, channel=channel)
 
-        ApprovalReminder.objects.update_or_create(
-            post=post,
-            stage="pending_review",
-            defaults={"reminder_count": 0, "last_reminder_at": None, "escalated": False},
-        )
+        start_stage(post, "pending_review", workspace)
 
     _notify_reviewers(
         workspace,
@@ -426,7 +443,7 @@ def resubmit_post(target, user, workspace):
     return post
 
 
-def bulk_approve(post_ids, user, workspace):
+def bulk_approve(post_ids, user, workspace, *, channel=Channel.WEB):
     """Approve all eligible PlatformPosts under each post (bundled per post)."""
     results = []
     posts = Post.objects.filter(
@@ -437,7 +454,7 @@ def bulk_approve(post_ids, user, workspace):
 
     for post in posts:
         try:
-            moved = approve_post(post, user, workspace)
+            moved = approve_post(post, user, workspace, channel=channel)
             results.append((str(post.id), bool(moved), None))
         except ValueError as e:
             results.append((str(post.id), False, str(e)))
@@ -445,7 +462,7 @@ def bulk_approve(post_ids, user, workspace):
     return results
 
 
-def bulk_reject(post_ids, user, workspace, comment):
+def bulk_reject(post_ids, user, workspace, comment, *, channel=Channel.WEB):
     """Reject all eligible PlatformPosts under each post (bundled per post)."""
     if not comment.strip():
         raise ValueError("A comment is required for bulk rejection.")
@@ -459,7 +476,7 @@ def bulk_reject(post_ids, user, workspace, comment):
 
     for post in posts:
         try:
-            moved = reject_post(post, user, workspace, comment)
+            moved = reject_post(post, user, workspace, comment, channel=channel)
             results.append((str(post.id), bool(moved), None))
         except ValueError as e:
             results.append((str(post.id), False, str(e)))
@@ -481,6 +498,7 @@ def _notify_reviewers_of_hold(post, workspace, user, comment):
 
 def _notify_clients(post, workspace):
     """Send CLIENT_APPROVAL_REQUESTED notification to all client members."""
+    _ask_in_slack(post, workspace)
     client_memberships = WorkspaceMembership.objects.filter(
         workspace=workspace,
         workspace_role=WorkspaceMembership.WorkspaceRole.CLIENT,

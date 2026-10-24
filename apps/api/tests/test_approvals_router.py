@@ -80,6 +80,7 @@ class TestDecisions:
         assert r.json()["status"] == "approved"
         action = ApprovalAction.objects.get(post=post)
         assert action.action == "approved" and action.comment == "Looks good" and action.user == world.owner
+        assert action.channel == "api" and len(action.fingerprint) == 64
 
     def test_request_changes_and_reject_need_a_comment(self, world):
         post = pending(world)

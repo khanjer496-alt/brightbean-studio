@@ -87,7 +87,9 @@ def post_partially_published(platform_post) -> None:
 
 
 @_never_raises
-def approval_event(event_type: str, post, workspace, user, platform_posts, comment: str = "") -> None:
+def approval_event(
+    event_type: str, post, workspace, user, platform_posts, comment: str = "", channel: str = "web"
+) -> None:
     """Emit ``post.approved`` or ``post.changes_requested`` for the targets that moved."""
     services.emit(
         event_type,
@@ -98,6 +100,7 @@ def approval_event(event_type: str, post, workspace, user, platform_posts, comme
             "social_accounts": [_account_data(pp.social_account) for pp in platform_posts],
             "actor": _user_data(user),
             "comment": comment,
+            "channel": channel,
         },
     )
 

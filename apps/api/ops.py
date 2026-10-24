@@ -89,7 +89,7 @@ from apps.api.schemas import (
 )
 from apps.approvals import comments as comment_service
 from apps.approvals import services as approval_services
-from apps.approvals.models import PostComment
+from apps.approvals.models import Channel, PostComment
 from apps.autonomy import configure as autonomy_configure
 from apps.autonomy import policy as autonomy_policy
 from apps.autonomy import service as autonomy_service
@@ -748,7 +748,7 @@ def decide_approval(actor: Actor, post_id: uuid.UUID, decision: str, comment: st
     if member is None or not member.effective_permissions.get("approve_posts", False):
         raise OpError(403, "Permission denied: approve_posts")
     try:
-        result = service(post, user, actor.workspace, comment)
+        result = service(post, user, actor.workspace, comment, channel=Channel.API)
     except ValueError as exc:
         raise OpError(422, str(exc)) from exc
     if not result:

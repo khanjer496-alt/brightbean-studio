@@ -28,6 +28,7 @@ class EventType(models.TextChoices):
     WEBHOOK_DISABLED = "webhook_disabled", "Webhook endpoint turned off"
     AGENT_ACTION_HELD = "agent_action_held", "Agent action held for review"
     AGENT_ACTION_BLOCKED = "agent_action_blocked", "Agent action blocked"
+    APPROVAL_DIGEST = "approval_digest", "Posts waiting for your approval"
 
 
 class Channel(models.TextChoices):

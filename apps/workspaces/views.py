@@ -6,6 +6,7 @@ from django.http import Http404
 from django.shortcuts import redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
 
+from apps.approvals.slack import settings_context as slack_settings_context
 from apps.billing.entitlements import PlanLimitError, check_can_add_workspace, require_feature
 from apps.billing.plans import Feature
 from apps.composer.models import HashtagSet, Signature
@@ -217,8 +218,14 @@ def approvals_settings(request, workspace_id):
                 messages.error(request, exc.message)
                 return redirect("workspaces:approvals_settings", workspace_id=workspace.id)
 
+        sla_raw = request.POST.get("approval_sla_hours", "").strip()
+        if sla_raw and (not sla_raw.isdigit() or not 1 <= int(sla_raw) <= 24 * 60):
+            messages.error(request, "The approval deadline must be between 1 and 1440 hours.")
+            return redirect("workspaces:approvals_settings", workspace_id=workspace.id)
+
         workspace.approval_workflow_mode = mode
-        workspace.save(update_fields=["approval_workflow_mode", "updated_at"])
+        workspace.approval_sla_hours = int(sla_raw) if sla_raw else None
+        workspace.save(update_fields=["approval_workflow_mode", "approval_sla_hours", "updated_at"])
         messages.success(request, "Approval workflow updated.")
         return redirect("workspaces:approvals_settings", workspace_id=workspace.id)
 
@@ -230,6 +237,7 @@ def approvals_settings(request, workspace_id):
             "settings_active": "approvals",
             "is_owner_or_manager": is_owner_or_manager,
             "approval_modes": Workspace.ApprovalWorkflowMode,
+            "slack": slack_settings_context(workspace),
         },
     )
 

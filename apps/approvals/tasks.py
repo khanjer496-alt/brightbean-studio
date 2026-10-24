@@ -4,6 +4,8 @@ import logging
 from datetime import timedelta
 
 from background_task import background
+from django.conf import settings
+from django.db.models import Exists, OuterRef
 from django.utils import timezone
 
 from apps.composer.models import Post
@@ -11,6 +13,9 @@ from apps.members.models import WorkspaceMembership
 from apps.notifications.engine import notify
 from apps.notifications.models import EventType
 
+from . import decisions
+from .digests import send_review_digest
+from .links import purge_expired
 from .models import ApprovalReminder
 
 logger = logging.getLogger(__name__)
@@ -44,16 +49,25 @@ def check_approval_reminders():
         now=now,
     )
 
+    # 3. Posts with an approval deadline: remind before it, escalate after it
+    _process_deadlines(now)
+
+    # 4. One-tap links that died a while ago
+    purge_expired()
+
 
 def _process_stage(stage, status, threshold_hours, now):
     """Process reminders for a specific approval stage."""
     threshold = now - timedelta(hours=threshold_hours)
 
+    # A post with a deadline is handled by _process_deadlines instead.
+    has_deadline = ApprovalReminder.objects.filter(post=OuterRef("pk"), stage=stage, due_at__isnull=False)
     stalled_posts = (
         Post.objects.filter(
             platform_posts__status=status,
             updated_at__lte=threshold,
         )
+        .exclude(Exists(has_deadline))
         .distinct()
         .select_related("workspace", "author")
     )
@@ -96,6 +110,52 @@ def _process_stage(stage, status, threshold_hours, now):
             post.id,
             stage,
         )
+
+
+def _deadline_lead(workspace):
+    """How long before a deadline reminders start: the configured lead, at most half the SLA window."""
+    lead = timedelta(hours=settings.APPROVAL_DEADLINE_REMINDER_HOURS)
+    if workspace.approval_sla_hours:
+        lead = min(lead, timedelta(hours=workspace.approval_sla_hours) / 2)
+    return lead
+
+
+def _process_deadlines(now):
+    """Remind approvers shortly before a post's deadline, and escalate once it has passed."""
+    due_reminders = (
+        ApprovalReminder.objects.filter(due_at__isnull=False, stage__in=("pending_review", "pending_client"))
+        .annotate(
+            waiting=Exists(
+                Post.objects.filter(pk=OuterRef("post_id"), platform_posts__status=OuterRef("stage")),
+            )
+        )
+        .filter(waiting=True)
+        .select_related("post__workspace", "post__author")
+    )
+    to_remind: dict = {}
+    for reminder in due_reminders:
+        post = reminder.post
+        if reminder.due_at <= now:
+            if not reminder.escalated:
+                _escalate(post, reminder.stage, overdue=True)
+                reminder.escalated = True
+                reminder.save(update_fields=["escalated"])
+        elif reminder.deadline_reminded_at is None and reminder.due_at - _deadline_lead(post.workspace) <= now:
+            to_remind.setdefault((post.workspace, reminder.stage), []).append(reminder)
+
+    for (workspace, stage), reminders in to_remind.items():
+        _remind_deadline(workspace, stage)
+        ApprovalReminder.objects.filter(pk__in=[r.pk for r in reminders]).update(deadline_reminded_at=now)
+
+
+def _remind_deadline(workspace, stage):
+    """Send each approver for ``stage`` one "Review all" digest of what is waiting on them."""
+    memberships = WorkspaceMembership.objects.filter(workspace=workspace).select_related("user", "custom_role")
+    for membership in memberships:
+        if not membership.effective_permissions.get("approve_posts", False):
+            continue
+        if stage in decisions.review_states(membership.user, workspace):
+            send_review_digest(workspace, membership.user)
 
 
 def _remind_reviewers(post):
@@ -141,8 +201,8 @@ def _remind_clients(post):
         )
 
 
-def _escalate(post, stage):
-    """Notify workspace managers that a post is stalled."""
+def _escalate(post, stage, *, overdue=False):
+    """Notify workspace managers that a post is stalled, or (``overdue``) past its approval deadline."""
     workspace = post.workspace
     manager_memberships = WorkspaceMembership.objects.filter(
         workspace=workspace,
@@ -158,8 +218,12 @@ def _escalate(post, stage):
         notify(
             user=membership.user,
             event_type=EventType.APPROVAL_STALLED,
-            title="Stalled post needs attention",
-            body=f'A post in {workspace.name} has been stuck in {stage_label} after multiple reminders: "{post.caption_snippet}"',
+            title="Approval deadline missed" if overdue else "Stalled post needs attention",
+            body=(
+                f'A post in {workspace.name} was not approved in {stage_label} by its deadline: "{post.caption_snippet}"'
+                if overdue
+                else f'A post in {workspace.name} has been stuck in {stage_label} after multiple reminders: "{post.caption_snippet}"'
+            ),
             data={
                 "post_id": str(post.id),
                 "workspace_id": str(workspace.id),

@@ -31,7 +31,8 @@ them.
 The `post.*` events (except approvals) are sent **once per account a post targets**: a post going to
 three accounts sends three `post.published` events, each with its own `platform_post_id` and
 `social_account`. `post.approved` and `post.changes_requested` are sent once per decision and list the
-targets that moved in `platform_post_ids` and `social_accounts`.
+targets that moved in `platform_post_ids` and `social_accounts`. Their payload also carries
+`channel`, where the decision was made: `web`, `email`, `slack`, `portal` or `api`.
 
 ## The request
 
