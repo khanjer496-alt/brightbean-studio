@@ -467,13 +467,19 @@ class YouTubeProvider(SocialProvider):
                 retryable=False,
             )
 
-        title = content.title or content.text or ""
         description = content.description or content.text or ""
+        shorts_suffix = " #Shorts" if content.post_type == PostType.SHORT else ""
+        if content.title:
+            title = content.title
+        else:
+            # No title was written, so one is made from the caption. Shortening that derived
+            # title isn't cutting what the user wrote for this field, so it ends at a word with "…".
+            title = _derived_title(content.text or "", TITLE_MAX_LENGTH - len(shorts_suffix))
 
         # Shorts: add #Shorts tag if not already present
         title_label = "The title"
-        if content.post_type == PostType.SHORT and "#Shorts" not in title:
-            title = f"{title} #Shorts".strip()
+        if shorts_suffix and "#Shorts" not in title:
+            title = f"{title}{shorts_suffix}".strip()
             title_label = "The title with #Shorts added"
 
         privacy_status = content.extra.get("privacy_status", "public")
@@ -1295,3 +1301,12 @@ class YouTubeProvider(SocialProvider):
         except Exception:
             logger.warning("YouTube revocation deferred; retry via encrypted outbox")
             return False
+
+
+def _derived_title(text: str, limit: int) -> str:
+    """The first line of ``text`` as a title of at most ``limit`` characters, ending at a word."""
+    first_line = text.strip().splitlines()[0].strip() if text.strip() else ""
+    if len(first_line) <= limit:
+        return first_line
+    cut = first_line[: limit - 1].rsplit(" ", 1)[0].rstrip(" ,.;:-") or first_line[: limit - 1]
+    return f"{cut}…"

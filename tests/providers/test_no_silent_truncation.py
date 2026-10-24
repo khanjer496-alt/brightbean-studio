@@ -105,3 +105,12 @@ def test_devto_refuses_a_long_title():
     provider = _mocked(DevtoProvider)
     content = PublishContent(text="body", title="t" * 129, post_type=PostType.TEXT)
     assert "title" in _refused(provider, lambda: provider.publish_post("token", content)).lower()
+
+
+def test_youtube_shortens_a_title_made_from_the_caption_at_a_word():
+    from providers.youtube import _derived_title
+
+    caption = "word " * 40 + "\nsecond line"
+    title = _derived_title(caption, 100)
+    assert len(title) <= 100 and title.endswith("…") and "second" not in title
+    assert _derived_title("Short caption\nmore", 92) == "Short caption"
