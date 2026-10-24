@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}Edit - {{ asset.original_filename }}{% endblock %}
+{% block page_title %}Edit · {{ asset.original_filename }}{% endblock %}
 
 {% block extra_head %}
 {% if asset.file_type == 'image' or asset.file_type == 'gif' %}

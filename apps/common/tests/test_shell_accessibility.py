@@ -10,6 +10,10 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import translation
 
+from apps.analytics.tests.helpers import make_member
+from apps.organizations.models import Organization
+from apps.workspaces.models import Workspace
+
 STYLES = Path(settings.BASE_DIR) / "theme" / "static_src" / "src" / "styles.css"
 
 
@@ -123,6 +127,23 @@ def test_signed_in_shell_landmarks_and_labels(client, org_owner):
 def test_settings_layouts_follow_title_convention():
     rendered = render_to_string("layouts/settings.html", {"brand_name": settings.BRAND_NAME})
     assert f"<title>Settings · Settings · {settings.BRAND_NAME}</title>" in rendered
+
+
+def test_no_template_uses_the_legacy_dash_title():
+    """Pages set {% block page_title %}; the layouts add workspace and brand with " · "."""
+    legacy = re.compile(r"\{% block title %\}[^\n]* [-—] \{\{ brand")
+    titles = re.compile(r"<title>[^<]* [-—] \{\{ brand")
+    for path in (Path(settings.BASE_DIR) / "templates").rglob("*.html"):
+        source = path.read_text()
+        assert not legacy.search(source) and not titles.search(source), path
+
+
+@pytest.mark.django_db
+def test_workspace_pages_read_page_workspace_brand(client):
+    workspace = Workspace.objects.create(organization=Organization.objects.create(name="Agency"), name="Acme")
+    client.force_login(make_member(workspace, "owner@example.com"))
+    html = client.get(reverse("calendar:calendar", kwargs={"workspace_id": workspace.id})).content.decode()
+    assert f"<title>Publish · Acme · {settings.BRAND_NAME}</title>" in html
 
 
 # --- RTL / language ----------------------------------------------------------------------------

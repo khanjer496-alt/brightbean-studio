@@ -5,7 +5,7 @@ Shell for the welcome flow: a focused page with no sidebar, a progress list,
 and a way out on every step. Steps fill {% block step %} and may override
 {% block focus_target %} (the element that receives focus on load).
 {% endcomment %}
-{% block title %}Welcome to {{ brand_short_name }}{% endblock %}
+{% block page_title %}Welcome{% endblock %}
 
 {% block focus_content %}
 <a href="#welcome-main" class="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-surface-0 focus:px-4 focus:py-2 focus:text-ink">Skip to content</a>

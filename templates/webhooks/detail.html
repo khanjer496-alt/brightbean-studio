@@ -1,5 +1,5 @@
 {% extends "layouts/workspace_settings.html" %}
-{% block title %}Webhook endpoint - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
+{% block page_title %}Webhook endpoint{% endblock %}
 {% block content %}
 <div class="max-w-3xl">
     <a href="{% url 'webhooks:list' workspace_id=workspace.id %}" class="inline-flex items-center min-h-11 text-sm underline text-[var(--text-secondary)]">&larr; Webhooks</a>

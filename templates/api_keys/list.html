@@ -1,6 +1,6 @@
 {% extends "layouts/settings.html" %}
 {% load static %}
-{% block title %}API Keys - Settings - {{ brand_short_name }}{% endblock %}
+{% block page_title %}API Keys{% endblock %}
 {% block content %}
 <div x-data="{ showIssueModal: false, showRevealModal: {% if reveal_token %}true{% else %}false{% endif %} }">
     <div class="flex flex-wrap items-start justify-between mb-8 gap-4">
