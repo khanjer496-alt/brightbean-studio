@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.api_keys.models import ApiKey, ApiKeyAuditLog, ApiKeyUsageHourly
+from apps.api_keys.models import ApiKey, ApiKeyAuditLog, ApiKeyDailyUsage, ApiKeyUsageHourly
 
 
 @admin.register(ApiKey)
@@ -36,3 +36,13 @@ class ApiKeyUsageHourlyAdmin(admin.ModelAdmin):
     search_fields = ("actor", "api_key__name", "api_key__lookup_prefix")
     date_hierarchy = "hour_start"
     readonly_fields = tuple(f.name for f in ApiKeyUsageHourly._meta.fields)
+
+
+@admin.register(ApiKeyDailyUsage)
+class ApiKeyDailyUsageAdmin(admin.ModelAdmin):
+    """What each token spent of its AI and scheduling budgets, per UTC day."""
+
+    list_display = ("day", "api_key", "ai_calls", "posts_scheduled")
+    search_fields = ("api_key__name", "api_key__lookup_prefix")
+    date_hierarchy = "day"
+    readonly_fields = tuple(f.name for f in ApiKeyDailyUsage._meta.fields)

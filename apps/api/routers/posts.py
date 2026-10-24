@@ -28,6 +28,7 @@ from ninja import Query, Router
 from ninja.errors import HttpError
 
 from apps.api import ops
+from apps.api.auth import require_capability
 from apps.api.limits import check_platform_quota, enforce_http_rate_limits
 from apps.api.middleware import (
     claim_idempotency_slot,
@@ -184,6 +185,7 @@ def create(request, payload: CreatePostRequest):
     # that contract — a key issued with only ``create_posts`` can park
     # drafts but cannot send them into the publisher's poll loop.
     if payload.action == "schedule":
+        require_capability(request, "schedule_posts")
         _require_perm(request, "publish_directly")
 
     # ---- Cheap validation runs BEFORE we touch the idempotency table.

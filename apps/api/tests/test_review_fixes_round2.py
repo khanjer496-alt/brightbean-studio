@@ -662,49 +662,24 @@ class TestHeaderIdempotencyKeyReleasedOnError:
 
 @pytest.mark.django_db
 class TestReverseM2mInvalidation:
-    """Codex flagged that the previous signal handler ran a fresh
-    ``ApiKey.objects.filter(social_accounts=instance)`` after the M2M
-    mutation had already committed — so reverse-direction ``remove``
-    and ``clear`` missed the keys that just lost the relation. The
-    handler now reads ``pk_set`` for remove and snapshots via
-    ``pre_clear`` for clear.
+    """Allowlist changes made from the account side apply on the very next verify.
+
+    ``verify_token`` reads the key row fresh on every call, so there is no cached allowlist to bust.
     """
 
-    def test_reverse_remove_invalidates_cache(self, owner_key, social_account):
-        from django.core.cache import cache
+    def test_reverse_remove_applies_immediately(self, owner_key, social_account):
+        from apps.api_keys.services import verify_token
 
-        from apps.api_keys.services import _active_cache_key, verify_token
-
-        # Prime the cache.
-        assert verify_token(owner_key.plaintext_token) is not None
-        cache_key = _active_cache_key(owner_key.api_key.lookup_prefix)
-        assert cache.get(cache_key) is not None
-
-        # Reverse-direction remove — ``SocialAccount.api_keys.remove(key)``.
+        assert [a.pk for a in verify_token(owner_key.plaintext_token).social_accounts.all()] == [social_account.pk]
         social_account.api_keys.remove(owner_key.api_key)
+        assert list(verify_token(owner_key.plaintext_token).social_accounts.all()) == []
 
-        # Cache must be busted immediately, not REVOCATION_CACHE_TTL later.
-        assert cache.get(cache_key) is None, (
-            "reverse SocialAccount.api_keys.remove() didn't bust the row "
-            "cache; pk_set wasn't used in the post_remove handler"
-        )
-
-    def test_reverse_clear_invalidates_cache(self, owner_key, social_account):
-        from django.core.cache import cache
-
-        from apps.api_keys.services import _active_cache_key, verify_token
+    def test_reverse_clear_applies_immediately(self, owner_key, social_account):
+        from apps.api_keys.services import verify_token
 
         assert verify_token(owner_key.plaintext_token) is not None
-        cache_key = _active_cache_key(owner_key.api_key.lookup_prefix)
-        assert cache.get(cache_key) is not None
-
-        # Reverse-direction clear — strips every ApiKey relation on the
-        # account in one shot.
         social_account.api_keys.clear()
-
-        assert cache.get(cache_key) is None, (
-            "reverse SocialAccount.api_keys.clear() didn't bust the row cache; pre_clear snapshot wasn't used"
-        )
+        assert list(verify_token(owner_key.plaintext_token).social_accounts.all()) == []
 
 
 # ===========================================================================

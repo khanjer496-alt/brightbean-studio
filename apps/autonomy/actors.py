@@ -20,6 +20,8 @@ class ActorInfo:
     name: str
     user: Any = None
     api_key: Any = None
+    # The credential behind an agent, API key or OAuth stand-in: its own limits can only tighten the dial.
+    token: Any = None
 
     @property
     def is_human(self) -> bool:
@@ -50,4 +52,5 @@ def agent(api_key, user=None) -> ActorInfo:
         name=name[:255],
         user=person,
         api_key=api_key if isinstance(api_key, ApiKey) else None,
+        token=api_key,
     )

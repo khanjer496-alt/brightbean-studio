@@ -11,9 +11,11 @@ indexed plaintext column that makes verification O(1) without revealing
 the secret. Verification then constant-time-compares the recomputed HMAC
 against the stored hash.
 
-A 30-second in-process revocation cache piggy-backs on Django's cache
-framework so the next request after a revocation sees 401 quickly
-without paying a DB round-trip on every authenticated call.
+Every request reads the key row fresh. A row cache used to sit here, but the
+default cache is per process (LocMem) unless Redis is configured, so a
+revocation or edit could not reach the other workers and a revoked token kept
+working for up to 30 seconds. Revoking, rotating and editing now take effect on
+the very next request on every worker.
 """
 
 from __future__ import annotations
@@ -22,6 +24,7 @@ import hashlib
 import hmac
 import secrets
 from dataclasses import dataclass
+from typing import Any
 
 from cryptography.hazmat.primitives.hashes import SHA256
 from cryptography.hazmat.primitives.kdf.hkdf import HKDF
@@ -29,6 +32,7 @@ from django.conf import settings
 from django.core.cache import cache
 from django.utils import timezone
 
+from apps.api_keys import capabilities as caps
 from apps.api_keys.models import ApiKey
 
 # Deployment-configurable customer-facing prefix.  Upstream keeps its original
@@ -36,7 +40,10 @@ from apps.api_keys.models import ApiKey
 # entropy, lookup or HMAC-at-rest design.
 TOKEN_PREFIX = settings.API_TOKEN_PREFIX  # compatibility export for existing imports
 LOOKUP_LEN = 8
-REVOCATION_CACHE_TTL = 30  # seconds
+MAX_IP_RANGES = 20
+
+#: Passed for an argument the caller is not changing (``None`` is a real value for most of them).
+UNSET: Any = object()
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +144,44 @@ class IssuedKey:
     plaintext_token: str
 
 
+def normalize_ip_ranges(ranges) -> list[str]:
+    """CIDR ranges (a bare address counts as a /32 or /128) as canonical strings. ValueError on anything else."""
+    import ipaddress
+
+    out: list[str] = []
+    for raw in ranges or ():
+        text = str(raw).strip()
+        if not text:
+            continue
+        try:
+            network = str(ipaddress.ip_network(text, strict=False))
+        except ValueError as exc:
+            raise ValueError(f"'{text}' is not an IP address or CIDR range.") from exc
+        if network not in out:
+            out.append(network)
+    if len(out) > MAX_IP_RANGES:
+        raise ValueError(f"Add at most {MAX_IP_RANGES} IP ranges.")
+    return out
+
+
+def _check_scope(workspace, *, capabilities, daily_request_budget) -> list[str] | None:
+    """Validate the tool-level scope; returns the cleaned capability list (None = not limited)."""
+    cleaned = None
+    if capabilities is not None:
+        cleaned = caps.clean(capabilities)
+        if not cleaned:
+            raise ValueError("Choose at least one capability for the token.")
+    if daily_request_budget is not None:
+        from apps.billing.entitlements import get_entitlements
+
+        plan_cap = get_entitlements(workspace.organization).max_api_calls_per_day
+        if plan_cap is not None and daily_request_budget > plan_cap:
+            raise ValueError(
+                f"The daily request budget must stay within your plan's allowance of {plan_cap} calls a day."
+            )
+    return cleaned
+
+
 def issue_api_key(
     *,
     workspace,
@@ -145,6 +190,13 @@ def issue_api_key(
     name: str,
     permissions: list[str],
     expires_at=None,
+    capabilities: list[str] | None = None,
+    preset: str = "",
+    daily_request_budget: int | None = None,
+    daily_ai_budget: int | None = None,
+    daily_post_budget: int | None = None,
+    allowed_ip_ranges=(),
+    requires_approval: bool = False,
 ) -> IssuedKey:
     """Create a new ``ApiKey`` and return the plaintext token alongside.
 
@@ -164,6 +216,9 @@ def issue_api_key(
       * ``permissions`` must be a subset of the issuer's current
         effective workspace permissions (so an admin can't grant a
         permission they don't transitively hold).
+      * ``capabilities`` limits the token to groups of routes and tools (None = not
+        limited, only for callers that predate scoped tokens); the budgets, IP ranges
+        and ``requires_approval`` can only narrow what the token does.
     """
     from apps.members.models import OrgMembership, WorkspaceMembership, has_org_permission
 
@@ -198,6 +253,9 @@ def issue_api_key(
     if ungrantable:
         raise ValueError(f"Issuer cannot grant permissions they don't hold: {sorted(ungrantable)}")
 
+    cleaned_caps = _check_scope(workspace, capabilities=capabilities, daily_request_budget=daily_request_budget)
+    ip_ranges = normalize_ip_ranges(allowed_ip_ranges)
+
     random_part = secrets.token_urlsafe(32)
     lookup = _make_lookup(random_part)
     token_hash = _hmac_hex(random_part)
@@ -211,12 +269,33 @@ def issue_api_key(
         token_hash=token_hash,
         permissions=sorted(requested),
         expires_at=expires_at,
+        capabilities=cleaned_caps,
+        preset=preset if caps.preset(preset) else "",
+        daily_request_budget=daily_request_budget,
+        daily_ai_budget=daily_ai_budget,
+        daily_post_budget=daily_post_budget,
+        allowed_ip_ranges=ip_ranges,
+        requires_approval=requires_approval,
     )
     api_key.social_accounts.set(sa_list)
     return IssuedKey(api_key=api_key, plaintext_token=plaintext)
 
 
-def update_api_key(api_key: ApiKey, *, editor, permissions: list[str], social_accounts, expires_at=None) -> ApiKey:
+def update_api_key(
+    api_key: ApiKey,
+    *,
+    editor,
+    permissions: list[str],
+    social_accounts,
+    expires_at=None,
+    capabilities: Any = UNSET,
+    preset: Any = UNSET,
+    daily_request_budget: Any = UNSET,
+    daily_ai_budget: Any = UNSET,
+    daily_post_budget: Any = UNSET,
+    allowed_ip_ranges: Any = UNSET,
+    requires_approval: Any = UNSET,
+) -> ApiKey:
     """Edit an existing key's permissions, account allowlist, and expiry in place.
 
     Used by the org UI's "Edit" action so a key's scope can change after
@@ -238,9 +317,9 @@ def update_api_key(api_key: ApiKey, *, editor, permissions: list[str], social_ac
     ``& editor_grantable`` clamp also means a tampered post naming a permission
     the editor lacks is dropped rather than raising.
 
-    Persists via ``save(update_fields=[...])`` + ``social_accounts.set`` so the
-    ``post_save`` and ``m2m_changed`` signals bust the ``verify_token`` row
-    cache immediately — the new scope applies on the very next API request.
+    The tool-level scope (capabilities, preset, budgets, IP ranges, approval mode)
+    is left alone unless passed. Rows are read fresh on every request, so the new
+    scope applies on the very next API request.
     """
     from django.db import transaction
 
@@ -282,54 +361,75 @@ def update_api_key(api_key: ApiKey, *, editor, permissions: list[str], social_ac
     current = set(api_key.permissions or [])
     new_permissions = (set(permissions or []) & editor_grantable) | (current - editor_grantable)
 
+    scope_fields = {
+        "capabilities": capabilities,
+        "preset": preset,
+        "daily_request_budget": daily_request_budget,
+        "daily_ai_budget": daily_ai_budget,
+        "daily_post_budget": daily_post_budget,
+        "allowed_ip_ranges": allowed_ip_ranges,
+        "requires_approval": requires_approval,
+    }
+    changes = {k: v for k, v in scope_fields.items() if v is not UNSET}
+    if "capabilities" in changes or "daily_request_budget" in changes:
+        cleaned = _check_scope(
+            workspace,
+            capabilities=changes.get("capabilities", api_key.capabilities),
+            daily_request_budget=changes.get("daily_request_budget", api_key.daily_request_budget),
+        )
+        if "capabilities" in changes:
+            changes["capabilities"] = cleaned
+    if "preset" in changes and not caps.preset(changes["preset"]):
+        changes["preset"] = ""
+    if "allowed_ip_ranges" in changes:
+        changes["allowed_ip_ranges"] = normalize_ip_ranges(changes["allowed_ip_ranges"])
+
     with transaction.atomic():
         api_key.permissions = sorted(new_permissions)
         api_key.expires_at = expires_at
-        api_key.save(update_fields=["permissions", "expires_at"])  # post_save → cache bust
-        api_key.social_accounts.set(sa_list)  # m2m_changed → cache bust
+        for field, value in changes.items():
+            setattr(api_key, field, value)
+        api_key.save(update_fields=["permissions", "expires_at", *changes])
+        api_key.social_accounts.set(sa_list)
     return api_key
 
 
-def revoke_api_key(api_key: ApiKey) -> None:
-    """Mark a key revoked and bust the in-process cache.
+def rotate_api_key(api_key: ApiKey, *, editor) -> IssuedKey:
+    """Give a key a new secret in place and kill the old one on the spot.
 
-    Worst-case revocation propagation after this returns is bounded by
-    ``REVOCATION_CACHE_TTL`` (30s) — any cache hit on another worker that
-    happened to land before this call will still see the key as active
-    until that worker's cache entry expires. Acceptable for v1.
+    The row, its scope, budgets, history and audit trail stay; only the lookup prefix and hash change,
+    so a request with the old token no longer finds the key. Returns the new plaintext, shown once.
     """
+    from apps.members.models import OrgMembership, has_org_permission
+
+    workspace = api_key.workspace
+    org_membership = OrgMembership.objects.filter(user=editor, organization_id=workspace.organization_id).first()
+    if not has_org_permission(org_membership, "manage_api_keys"):
+        raise ValueError(
+            f"User {editor} lacks the org-level 'manage_api_keys' permission "
+            f"for organization {workspace.organization_id}; cannot rotate API keys."
+        )
+    if not api_key.is_active:
+        raise ValueError("Only an active key can be rotated.")
+    random_part = secrets.token_urlsafe(32)
+    api_key.lookup_prefix = _make_lookup(random_part)
+    api_key.token_hash = _hmac_hex(random_part)
+    api_key.save(update_fields=["lookup_prefix", "token_hash"])
+    return IssuedKey(
+        api_key=api_key, plaintext_token=f"{settings.API_TOKEN_PREFIX}{random_part}_{api_key.lookup_prefix}"
+    )
+
+
+def revoke_api_key(api_key: ApiKey) -> None:
+    """Mark a key revoked. Every worker reads the row fresh, so the next request, anywhere, gets a 401."""
     if api_key.revoked_at is None:
         api_key.revoked_at = timezone.now()
         api_key.save(update_fields=["revoked_at"])
-    invalidate_api_key_cache(api_key)
-
-
-def invalidate_api_key_cache(api_key: ApiKey) -> None:
-    """Bust the cached ``ApiKey`` row immediately.
-
-    Used by:
-      * ``revoke_api_key`` (manual revocation)
-      * The ``m2m_changed`` signal on ``ApiKey.social_accounts`` so an
-        admin who removes an allowlisted account via the Django admin
-        sees that change reflected at the very next API request, not 30s
-        later. Without this, the pickled prefetch cache inside
-        ``verify_token``'s cached row keeps serving the pre-removal
-        allowlist for ``REVOCATION_CACHE_TTL`` seconds, allowing the
-        agent to continue targeting an account the admin just removed.
-      * The ``post_save`` signal when ``permissions`` or ``expires_at``
-        changes — same reasoning, applied to the permissions intersection
-        and expiry check.
-    """
-    cache.delete(_active_cache_key(api_key.lookup_prefix))
 
 
 # ---------------------------------------------------------------------------
 # Verification (read path) — hot path; gets called on every API request.
 # ---------------------------------------------------------------------------
-
-
-def _active_cache_key(lookup_prefix: str) -> str:
-    return f"apikey:active:{lookup_prefix}"
 
 
 def verify_token(raw: str) -> ApiKey | None:
@@ -339,6 +439,9 @@ def verify_token(raw: str) -> ApiKey | None:
     revoked key, expired key, **issuer no longer a member of the key's
     workspace** (or issuer deleted). The caller turns None into 401.
 
+    The row is read from the database on every call (two indexed queries), never from a cache:
+    a process-local cache cannot learn about a revocation made on another worker.
+
     Constant-time compare on the hash defends against timing oracles on
     the secret part.
     """
@@ -346,47 +449,26 @@ def verify_token(raw: str) -> ApiKey | None:
     if parsed is None:
         return None
 
-    # Cache miss-or-hit on the *active row*. A short TTL keeps stale
-    # revocations from lingering more than ``REVOCATION_CACHE_TTL`` seconds.
-    cache_key = _active_cache_key(parsed.lookup_prefix)
-    api_key = cache.get(cache_key)
-    if api_key is None:
-        # ``workspace`` is deliberately not joined into the cached row: its
-        # settings (timezone, approval mode, brand voice…) change in the web
-        # app without touching the key, and a pickled copy would serve them
-        # stale for up to ``REVOCATION_CACHE_TTL``. Left lazy, every request
-        # reads it fresh (each cache hit unpickles a copy without it).
-        try:
-            api_key = (
-                ApiKey.objects.select_related("issued_by")
-                .prefetch_related("social_accounts")
-                .get(lookup_prefix=parsed.lookup_prefix)
-            )
-        except ApiKey.DoesNotExist:
-            return None
-        # Only cache active rows — revocations should not be paper-tigered
-        # by a stale "active" entry.
-        if api_key.is_active:
-            cache.set(cache_key, api_key, REVOCATION_CACHE_TTL)
+    # ``workspace`` is not joined here: it is read lazily, fresh, when a request needs it.
+    try:
+        api_key = (
+            ApiKey.objects.select_related("issued_by")
+            .prefetch_related("social_accounts")
+            .get(lookup_prefix=parsed.lookup_prefix)
+        )
+    except ApiKey.DoesNotExist:
+        return None
 
     if not api_key.is_active:
-        # Re-check (DB-fresh row may have been revoked since cache write)
-        cache.delete(cache_key)
         return None
 
     expected_hash = _hmac_hex(parsed.random_part)
     if not hmac.compare_digest(expected_hash, api_key.token_hash):
         return None
 
-    # Defense in depth: even an unrevoked, unexpired key must die if the
-    # issuer was offboarded, deleted, or moved out of the workspace.
-    # The model docstring promises this; the model property alone can't
-    # express it without a DB hit, so we enforce it here on the auth path.
-    # Indexed (user_id, workspace_id) lookup → single cheap query, run on
-    # every authentication so a freshly offboarded user's key dies on the
-    # very next call regardless of REVOCATION_CACHE_TTL.
+    # Even an unrevoked, unexpired key must die if the issuer was offboarded, deleted, or moved out of the
+    # workspace. The model docstring promises this; the model property alone can't express it without a DB hit.
     if not _issuer_still_authorized(api_key):
-        cache.delete(cache_key)
         return None
 
     return api_key
@@ -429,16 +511,9 @@ def _last_touched_cache_key(api_key_pk) -> str:
 def touch_last_used(api_key: ApiKey, *, ip: str | None) -> None:
     """Update ``last_used_at`` / ``last_used_ip`` at most once per 60s.
 
-    Uses a raw ``UPDATE`` (no signals, no full save).
-
-    The debounce is **cache-keyed**, not state-keyed: we previously gated
-    on ``api_key.last_used_at`` but ``verify_token`` caches the row for
-    ``REVOCATION_CACHE_TTL`` seconds, so the in-memory ``last_used_at``
-    is frozen at cache-set time. Every subsequent request would have seen
-    the stale value and re-issued the UPDATE, defeating the debounce
-    under active use. The cache key (`apikey:last_touched:<pk>`) sidesteps
-    that problem and works correctly across workers, since the cache is
-    shared.
+    Uses a raw ``UPDATE`` (no signals, no full save). The debounce is keyed in the cache
+    (`apikey:last_touched:<pk>`) rather than on ``api_key.last_used_at``, so it does not
+    depend on how fresh the row in hand is.
     """
     debounce_key = _last_touched_cache_key(api_key.pk)
     # `add` is an atomic set-if-not-exists — only the first caller in the

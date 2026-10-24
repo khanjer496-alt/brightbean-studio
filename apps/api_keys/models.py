@@ -70,6 +70,42 @@ class ApiKey(models.Model):
         help_text="List of permission keys the holder is granted (subset of PERMISSION_KEYS).",
     )
 
+    # Tool-level scope, in addition to ``permissions``: which groups of Agent API routes and MCP tools
+    # the token may use (keys of ``apps.api_keys.capabilities``). NULL means not limited at the tool
+    # level, which is what keys issued before scoped tokens carry; new tokens always store a list.
+    capabilities = models.JSONField(
+        null=True,
+        blank=True,
+        default=None,
+        help_text="Capability keys the token may use. Null = not limited at the tool level.",
+    )
+    preset = models.CharField(
+        max_length=32,
+        blank=True,
+        default="",
+        help_text="The preset the token was last set from, for display. Empty = custom.",
+    )
+    # Budgets. A day is a UTC day, like the other call caps. Null = no budget of its own.
+    daily_request_budget = models.PositiveIntegerField(
+        blank=True, null=True, help_text="Calls per UTC day this token may make (REST and MCP together)."
+    )
+    daily_ai_budget = models.PositiveIntegerField(
+        blank=True, null=True, help_text="AI assistant calls per UTC day. 0 = none."
+    )
+    daily_post_budget = models.PositiveIntegerField(
+        blank=True, null=True, help_text="Posts this token may schedule per UTC day. 0 = none."
+    )
+    allowed_ip_ranges = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="CIDR ranges the token may be used from. Empty = any address.",
+    )
+    requires_approval = models.BooleanField(
+        default=False,
+        help_text="Read-only until approved: autonomy is forced to Draft only for this token, "
+        "whatever the workspace allows. Can only tighten.",
+    )
+
     expires_at = models.DateTimeField(blank=True, null=True)
     revoked_at = models.DateTimeField(blank=True, null=True, db_index=True)
     last_used_at = models.DateTimeField(blank=True, null=True)
@@ -122,6 +158,27 @@ class ApiKey(models.Model):
         if self.revoked_at is not None:
             return False
         return not (self.expires_at is not None and self.expires_at <= timezone.now())
+
+
+class ApiKeyDailyUsage(models.Model):
+    """What one token has spent of its AI and scheduling budgets on one UTC day.
+
+    Request counts are not here: they come from ``ApiKeyUsageHourly``, which already counts every call.
+    """
+
+    api_key = models.ForeignKey(ApiKey, on_delete=models.CASCADE, related_name="daily_usage")
+    day = models.DateField(help_text="The UTC day these counts belong to.")
+    ai_calls = models.PositiveIntegerField(default=0)
+    posts_scheduled = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        db_table = "api_keys_daily_usage"
+        constraints = [
+            models.UniqueConstraint(fields=["api_key", "day"], name="uniq_apikey_daily_usage"),
+        ]
+
+    def __str__(self):
+        return f"{self.api_key_id} {self.day}: ai={self.ai_calls} posts={self.posts_scheduled}"
 
 
 class ApiKeyAuditLog(models.Model):

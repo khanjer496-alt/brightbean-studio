@@ -126,9 +126,7 @@ class TestSurface:
 
     def test_revoked_key_is_rejected(self, world):
         from apps.api_keys.models import ApiKey
-        from apps.api_keys.services import invalidate_api_key_cache
 
         for key in ApiKey.objects.all():
             ApiKey.objects.filter(pk=key.pk).update(revoked_at=timezone.now())
-            invalidate_api_key_cache(key)
         assert world.full.get("/api/v1/usage/").status_code == 401

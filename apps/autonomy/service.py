@@ -15,11 +15,16 @@ from dataclasses import dataclass, field
 from django.db import models, transaction
 from django.utils import timezone
 
+from apps.api_keys import budgets
+
 from . import guardrails
 from .models import ActionType, AgentAction, Decision, Level, RecycleLevel
 from .policy import get_policy, resolve_level
 
 logger = logging.getLogger(__name__)
+
+#: ``Verdict.level_source`` when the level was tightened by the calling token rather than read from a policy.
+TOKEN_SOURCE = "token"
 
 EXECUTE = "execute"
 HOLD = "hold"
@@ -33,6 +38,9 @@ _HELD_IN_CRISIS = (ActionType.PUBLISH_POSTS, ActionType.REPLY)
 
 # Actions that reach the public, so an executed one waits out the undo window.
 UNDOABLE_ACTIONS = (ActionType.PUBLISH_POSTS, ActionType.REPLY, ActionType.RECYCLE_EVERGREEN)
+
+# Actions a token in "read-only until approved" mode may only draft.
+_APPROVAL_GATED = (ActionType.PUBLISH_POSTS, ActionType.REPLY, ActionType.RECYCLE_EVERGREEN)
 
 _SAFE_VERSION = {
     ActionType.DRAFT_CONTENT: "It was saved as a draft and flagged for a person to look at.",
@@ -160,6 +168,17 @@ def evaluate(
     when = when or timezone.now()
     delay = undo_delay(policy)
 
+    # A token can only tighten the dial: in read-only-until-approved mode anything that would go out
+    # on its own becomes a draft for a person, whatever the workspace allows. Off stays Off.
+    token = actor.token
+    if (
+        token is not None
+        and getattr(token, "requires_approval", False)
+        and action_type in _APPROVAL_GATED
+        and level not in (Level.OFF, Level.DRAFT_ONLY)
+    ):
+        level, level_source = Level.DRAFT_ONLY, TOKEN_SOURCE
+
     if policy.crisis_paused:
         reason = "crisis pause is on, so every autonomous action is stopped until a person turns it off"
         outcome = HOLD if action_type in _HELD_IN_CRISIS and not drafting_only else BLOCK
@@ -179,7 +198,11 @@ def evaluate(
         flags = [f"flagged: {r.reason}" for r in report.failures()]
         if drafting_only or action_type == ActionType.DRAFT_CONTENT:
             return _verdict(EXECUTE, action_type, level, level_source, flags, report)
-        reason = "its autonomy level is Draft only, so a person has to approve it"
+        reason = (
+            "this token is read-only until approved, so a person has to approve it"
+            if level_source == TOKEN_SOURCE
+            else "its autonomy level is Draft only, so a person has to approve it"
+        )
         report.results.insert(0, guardrails.GuardrailResult("policy", "Autonomy policy", False, reason))
         return _verdict(HOLD, action_type, level, level_source, [reason, *flags], report)
 
@@ -201,6 +224,9 @@ def evaluate(
     )
     failures = report.failures()
     reasons = [r.reason for r in failures]
+    if action_type == ActionType.PUBLISH_POSTS and token is not None and budgets.post_budget_spent(token):
+        reason = f"this token has used its daily limit of {token.daily_post_budget} scheduled posts"
+        return _verdict(BLOCK, action_type, level, level_source, [reason], report)
     if report.blocked:
         reasons = [r.reason for r in failures if r.blocking]
         return _verdict(BLOCK, action_type, level, level_source, reasons, report)
@@ -272,6 +298,8 @@ def record(
         ),
         target_key=target_key,
     )
+    if action_type == ActionType.PUBLISH_POSTS and action.decision == Decision.EXECUTED:
+        budgets.record_scheduled_post(actor.token)
     if notify:
         announce(action)
     return action

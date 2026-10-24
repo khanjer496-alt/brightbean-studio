@@ -11,6 +11,8 @@ Defense-in-depth checks on every request:
 
 * HMAC compare on the secret part (constant-time)
 * Key not revoked, not expired
+* Client IP inside the key's allowed ranges, when it has any
+* The route is inside the key's capabilities (tool-level scope); a miss is a 403 naming the capability
 * Issuer still has a ``WorkspaceMembership`` in the key's workspace
 * Per-request permission intersection of (key.permissions) ∩
   (issuer's current effective workspace permissions) — silently shrinks
@@ -32,9 +34,11 @@ from typing import Any
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.http import HttpRequest
+from ninja.errors import HttpError
 from ninja.security import HttpBearer
 
 from apps.api.limits import is_failed_auth_ip_blocked, record_failed_auth
+from apps.api_keys import capabilities as caps
 from apps.api_keys.models import ApiKey
 from apps.api_keys.services import touch_last_used, verify_token
 
@@ -82,7 +86,8 @@ def _resolve_effective_permissions(api_key: ApiKey) -> dict[str, bool]:
     effective = granted & issuer_perms
     # Return a complete dict so ``perms.get(key, False)`` works for every
     # originally granted key even when the intersection is empty.
-    return {k: (k in effective) for k in granted}
+    # The token's capabilities then withdraw the permissions only capabilities it lacks would use.
+    return caps.narrow_permissions({k: (k in effective) for k in granted}, caps.token_capabilities(api_key))
 
 
 class ApiKeyAuth(HttpBearer):
@@ -170,12 +175,57 @@ class ApiKeyAuth(HttpBearer):
         # AnonymousUser), but mypy can't narrow that across the ternary.
         request.user = user  # type: ignore[assignment]
 
+        # Scope checks come after the request is tagged with the key, so a refusal is audited against it.
+        ip = _client_ip(request)
+        _enforce_ip_ranges(api_key, ip)
+        _enforce_route_capability(request, api_key)
+
         # Best-effort, debounced, single raw UPDATE; safe to run after
         # the response is built but doing it inline keeps the auth path
         # synchronous and easy to reason about.
-        touch_last_used(api_key, ip=_client_ip(request))
+        touch_last_used(api_key, ip=ip)
 
         return api_key
+
+
+def _enforce_ip_ranges(api_key: ApiKey, ip: str | None) -> None:
+    """403 unless the caller's address is in the key's allowed ranges (no ranges = any address).
+
+    ``ip`` comes from the trusted-proxy-aware helper, so a client cannot talk its way in with
+    a forged ``X-Forwarded-For``.
+    """
+    ranges = api_key.allowed_ip_ranges or []
+    if not ranges:
+        return
+    import ipaddress
+
+    try:
+        address = ipaddress.ip_address(ip or "")
+    except ValueError:
+        address = None
+    if address is None or not any(address in ipaddress.ip_network(r, strict=False) for r in ranges):
+        raise HttpError(403, "This token cannot be used from your IP address.")
+
+
+def require_capability(request: HttpRequest, key: str) -> None:
+    """403 naming ``key`` unless the calling token holds it. For checks that depend on the request body."""
+    held = caps.token_capabilities(getattr(request, "api_key", None))
+    if not caps.allows(held, key):
+        raise HttpError(403, f"Missing capability: {key}")
+
+
+def _enforce_route_capability(request: HttpRequest, api_key: Any) -> None:
+    """403 unless the REST route being called is inside the token's capabilities.
+
+    The MCP endpoint is exempt here: it is judged per tool (``tools/list`` and ``tools/call``).
+    A route nobody mapped is refused for a limited token, so a new route is closed until the registry names it.
+    """
+    held = caps.token_capabilities(api_key)
+    if held is None or caps.is_mcp_route(request.method or "", request.path):
+        return
+    needed = caps.capability_for_request(request.method or "", request.path)
+    if needed is None or needed not in held:
+        raise HttpError(403, f"Missing capability: {needed or 'unmapped route'}")
 
 
 def _client_ip(request: HttpRequest) -> str | None:
@@ -240,8 +290,14 @@ class OAuthMcpActor:
     rate_override_reads = None
     rate_override_hourly = None
     rate_override_daily = None
+    # No budgets, IP ranges or approval mode either: those belong to minted keys.
+    daily_request_budget = None
+    daily_ai_budget = None
+    daily_post_budget = None
+    allowed_ip_ranges: list[str] = []
+    requires_approval = False
 
-    def __init__(self, *, user: Any, membership: Any) -> None:
+    def __init__(self, *, user: Any, membership: Any, capabilities: list[str] | None = None) -> None:
         self.issued_by = user
         self.issued_by_id = user.id
         self.workspace = membership.workspace
@@ -252,7 +308,9 @@ class OAuthMcpActor:
         self.social_accounts = _AllWorkspaceAccounts(membership.workspace_id)
         # Read by ``McpAuth`` to build the request's ``VirtualMembership`` — the
         # single source of truth for this caller's permissions.
-        self.effective_permissions = membership.effective_permissions
+        self.effective_permissions = caps.narrow_permissions(membership.effective_permissions, capabilities)
+        # What the person narrowed the connection to on the consent screen; None for a grant made before that existed.
+        self.capabilities = capabilities
 
 
 def _resolve_active_membership(user: Any):
@@ -328,7 +386,7 @@ def _resolve_oauth_actor(token: str) -> OAuthMcpActor | None:
             tok.user_id,
         )
         return None
-    return OAuthMcpActor(user=tok.user, membership=membership)
+    return OAuthMcpActor(user=tok.user, membership=membership, capabilities=caps.from_scope(tok.scope))
 
 
 class McpAuth(ApiKeyAuth):
