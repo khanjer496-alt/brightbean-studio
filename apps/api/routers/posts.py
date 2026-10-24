@@ -585,22 +585,18 @@ def resume_thread_route(request, post_id: uuid.UUID, confirm_unconfirmed: bool =
     _require_perm(request, "publish_directly")
     post = _get_workspace_post(request, post_id)
 
-    from apps.publisher.engine import resume_thread
+    from apps.autonomy.release import resume_stopped_thread
 
     stopped = [pp for pp in post.platform_posts.all() if pp.is_thread_partial]
     if not stopped:
         raise HttpError(409, "No thread on this post is stopped part-way.")
-    refusal = gate_resume(
-        workspace=post.workspace,
-        actor=agent_actor(request.api_key, None if request.user.is_anonymous else request.user),
-        post=post,
-        platform_posts=stopped,
-    )
+    actor = agent_actor(request.api_key, None if request.user.is_anonymous else request.user)
+    refusal = gate_resume(workspace=post.workspace, actor=actor, post=post, platform_posts=stopped)
     if refusal is not None:
         raise HttpError(403, refusal.message)
     for pp in stopped:
         try:
-            resume_thread(pp, confirm_unconfirmed=confirm_unconfirmed)
+            resume_stopped_thread(pp, actor.user, confirm_unconfirmed=confirm_unconfirmed)
         except ValueError as exc:
             raise HttpError(409, str(exc)) from exc
 

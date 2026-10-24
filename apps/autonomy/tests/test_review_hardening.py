@@ -400,6 +400,52 @@ class TestThreadsPauseBetweenParts:
         paused.refresh_from_db()
         assert paused.review_outcome == "approved" and paused.reviewed_by == world.owner and paused.reviewed_at
 
+    def test_resuming_through_the_rest_api_resolves_the_paused_entry(self, world):
+        pp, parts = self.thread(world)
+        set_policy(world.workspace, crisis_paused=True)
+        self.run_part(pp, parts[0])
+        paused = the_action(workspace=world.workspace, operation="thread.paused")
+
+        set_policy(world.workspace, crisis_paused=False)
+        with patch("apps.publisher.engine._publish_thread_part_task"):
+            response = world.full.post(f"/api/v1/posts/{pp.post_id}/resume-thread")
+        assert response.status_code == 200, response.content
+        paused.refresh_from_db()
+        assert paused.review_outcome == "approved" and paused.reviewed_at
+        assert paused.reviewed_by == world.owner  # the person who issued the key
+
+    def test_resuming_through_mcp_resolves_the_paused_entry(self, world):
+        import json
+
+        pp, parts = self.thread(world)
+        set_policy(world.workspace, crisis_paused=True)
+        self.run_part(pp, parts[0])
+        paused = the_action(workspace=world.workspace, operation="thread.paused")
+
+        set_policy(world.workspace, crisis_paused=False)
+        call = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "tools/call",
+            "params": {"name": "resume_thread", "arguments": {"post_id": str(pp.post_id)}},
+        }
+        with patch("apps.publisher.engine._publish_thread_part_task"):
+            response = post_json(world.full, "/api/v1/mcp/", call)
+        assert response.status_code == 200 and "error" not in response.json(), response.content
+        paused.refresh_from_db()
+        assert paused.review_outcome == "approved" and paused.reviewed_by == world.owner
+        assert json.loads(response.json()["result"]["content"][0]["text"])["id"] == str(pp.post_id)
+
+    def test_a_refused_api_resume_leaves_the_paused_entry_waiting(self, world):
+        pp, parts = self.thread(world)
+        set_policy(world.workspace, crisis_paused=True)
+        self.run_part(pp, parts[0])
+        paused = the_action(workspace=world.workspace, operation="thread.paused")
+        # Still in a crisis pause: the agent may not publish, so the gate refuses.
+        assert world.full.post(f"/api/v1/posts/{pp.post_id}/resume-thread").status_code == 403
+        paused.refresh_from_db()
+        assert paused.review_outcome == ""
+
     def test_a_refused_composer_resume_leaves_the_paused_entry_waiting(self, world):
         from django.test import Client
         from django.urls import reverse

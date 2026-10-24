@@ -28,7 +28,7 @@ from django_ratelimit.decorators import ratelimit
 
 from apps.ai_writer.views import composer_context as ai_composer_context
 from apps.autonomy.actors import human as human_actor
-from apps.autonomy.release import resolve_paused_thread
+from apps.autonomy.release import resume_stopped_thread
 from apps.autonomy.service import record_scheduled
 from apps.billing.entitlements import (
     COUNTED_POST_STATUSES,
@@ -2282,8 +2282,6 @@ def resume_thread(request, workspace_id, post_id, platform_post_id):
     Publishes the rest of the thread, so it takes the same ``publish_directly``
     permission as publishing now. The parts already live are never re-sent.
     """
-    from apps.publisher.engine import resume_thread as resume
-
     workspace = _get_workspace(request, workspace_id)
     membership = request.workspace_membership
     perms = membership.effective_permissions if membership else {}
@@ -2296,11 +2294,11 @@ def resume_thread(request, workspace_id, post_id, platform_post_id):
         post__workspace=workspace,
     )
     try:
-        resume(platform_post, confirm_unconfirmed=request.POST.get("confirm_unconfirmed") == "1")
+        resume_stopped_thread(
+            platform_post, request.user, confirm_unconfirmed=request.POST.get("confirm_unconfirmed") == "1"
+        )
     except ValueError as exc:
         return JsonResponse({"errors": {"thread": str(exc)}}, status=400)
-    # The person did what the "thread paused" entry in Activity was waiting for.
-    resolve_paused_thread(platform_post, request.user)
     if request.htmx:
         return HttpResponse(status=204, headers={"HX-Refresh": "true"})
     return redirect("composer:compose_edit", workspace_id=workspace.id, post_id=post_id)
