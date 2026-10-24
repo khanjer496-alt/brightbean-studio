@@ -169,7 +169,7 @@
                         {% csrf_token %}
                         <input type="hidden" name="plan" value="{{ plan.slug }}">
                         <input type="hidden" name="interval" :value="interval" value="{{ current_interval }}">
-                        <button type="submit" class="{% if entry.is_upgrade %}btn-brand{% else %}btn-outline{% endif %}" {% if not stripe_configured %}disabled{% endif %}>
+                        <button type="submit" class="{% if entry.is_upgrade %}btn-brand btn-brand--block{% else %}btn-outline{% endif %}" {% if not stripe_configured %}disabled{% endif %}>
                             {% if subscription.has_paid_subscription %}{% if entry.is_upgrade %}Upgrade{% else %}Downgrade{% endif %} to {{ plan.name }}{% else %}Choose {{ plan.name }}{% endif %}
                         </button>
                     </form>

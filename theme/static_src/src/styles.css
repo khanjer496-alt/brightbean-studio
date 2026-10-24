@@ -516,6 +516,9 @@ img.sidebar-logo-mark {
     background: var(--primary);
     color: var(--text-inverse);
     box-shadow: var(--shadow-primary);
+  }
+  /* Full-width button (auth pages, stacked forms, mobile action bars): the default is auto width. */
+  .btn-brand--block {
     width: 100%;
   }
   .btn-brand:hover {
@@ -525,6 +528,15 @@ img.sidebar-logo-mark {
   }
   .btn-brand:active {
     transform: translateY(0);
+  }
+  .btn-brand--danger {
+    background: var(--error-500);
+    color: var(--surface-page);   /* 7:1 on error-500, as .btn-danger-soft */
+    box-shadow: none;
+  }
+  .btn-brand--danger:hover {
+    background: color-mix(in srgb, var(--error-500) 85%, white);
+    box-shadow: none;
   }
 
   /* Secondary / outline button */
