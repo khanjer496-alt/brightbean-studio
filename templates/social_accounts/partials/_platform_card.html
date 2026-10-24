@@ -32,6 +32,10 @@ welcome flow so both offer the same cards.
             {% elif value == 'slack' %}bg-purple-50 text-purple-800
             {% elif value == 'discord' %}bg-indigo-50 text-indigo-600
             {% elif value == 'telegram' %}bg-sky-50 text-sky-500
+            {% elif value == 'tumblr' %}bg-slate-100 text-slate-900
+            {% elif value == 'lemmy' %}bg-emerald-50 text-emerald-600
+            {% elif value == 'nostr' %}bg-purple-50 text-purple-600
+            {% elif value == 'farcaster' %}bg-violet-50 text-violet-600
             {% endif %}">
             {% include "social_accounts/partials/_platform_icon.html" with platform=value size="5" %}
         </div>
@@ -58,6 +62,10 @@ welcome flow so both offer the same cards.
                 {% elif value == 'slack' %}Workspace channels
                 {% elif value == 'discord' %}Server channels
                 {% elif value == 'telegram' %}Channels &amp; groups
+                {% elif value == 'tumblr' %}Blog posts
+                {% elif value == 'lemmy' %}Federated communities
+                {% elif value == 'nostr' %}Notes &middot; your own key
+                {% elif value == 'farcaster' %}Casts &middot; your own Neynar key
                 {% endif %}
             </p>
         </div>

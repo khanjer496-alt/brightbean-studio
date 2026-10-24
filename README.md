@@ -84,6 +84,10 @@ A free hosted version is available at [brightbean.xyz/studio](https://brightbean
 | <img src="https://cdn.simpleicons.org/slack" width="16" height="16"> Slack | ✓ | — | — | — |
 | <img src="https://cdn.simpleicons.org/reddit" width="16" height="16"> Reddit | ✓ | — | — | — |
 | <img src="https://cdn.simpleicons.org/x" width="16" height="16"> X (Twitter) | ✓ | — | — | — |
+| <img src="https://cdn.simpleicons.org/tumblr" width="16" height="16"> Tumblr | ✓ | — | — | — |
+| Lemmy | ✓ | — | — | — |
+| Nostr | ✓ | — | — | — |
+| Farcaster | ✓ | — | — | — |
 
 ---
 
@@ -792,6 +796,27 @@ An account is a Reddit user. Each post sets its own subreddit (and optionally a 
 No environment variables: since March 2026 X bills API use to the owner of the developer app, so every customer connects through their own app. The in-app guide (Connect, then X) walks them through it: create an app in the [X Developer Console](https://console.x.com), add credits, enable OAuth 2.0 (Web App, read and write), register the callback URL the page shows (`https://<your-domain>/social-accounts/callback/x/`), and paste the app's OAuth 2.0 Client ID and Client Secret. They are stored encrypted as the organization's credentials, and OAuth 2.0 Authorization Code with PKCE runs against that app (scopes `tweet.read tweet.write users.read media.write offline.access`; tokens refresh with a rotating refresh token).
 
 Posts are 280 characters (25,000 for a Premium account, detected when it connects), with up to 4 images or one GIF or video (chunked upload), threads as reply chains of up to 25 posts, a who-can-reply setting, and an optional poll (2-4 options) on posts without media. Quote posts need an Enterprise plan and are not offered. Analytics are not synced because X bills each read. A lost response after a post is never retried automatically; an exhausted API credit balance fails the post with a message to top up. Pricing as documented: [docs.x.com pricing](https://docs.x.com/x-api/getting-started/pricing).
+
+### Tumblr
+
+1. Register an application at [tumblr.com/oauth/apps](https://www.tumblr.com/oauth/apps) with the redirect `https://<your-domain>/social-accounts/callback/tumblr/`
+2. Copy the **OAuth Consumer Key** into `PLATFORM_TUMBLR_CLIENT_ID` and the **Consumer Secret** into `PLATFORM_TUMBLR_CLIENT_SECRET`
+
+OAuth 2.0 with the scopes `basic write offline_access`; tokens refresh. Users pick which of their blogs to connect and each blog is one account. Posts use Tumblr's Neue Post Format: text (with the title as a heading), a link, images and video, tags (comma-separated per post) and a Published / Draft / Private state. Tumblr's API has no comments, analytics or threads. Documented limits: 250 new posts and 250 images a day per user, 20 videos a day, photos 10 MB, video 500 MB and 10 minutes.
+
+### Lemmy
+
+No environment variables. Users enter their instance (for example `lemmy.world`), username and password (and a two-factor code if the account has one). Only the login token the instance returns is kept, encrypted; the password is discarded. The instance address must resolve to a public address. If the instance revokes the login (the user logged out everywhere or changed their password), the account asks to be reconnected.
+
+Each post names one community (`name`, or `name@instance` for another instance) and needs a title (200 characters); the text is the body (10,000 characters, Markdown). A link is shared as the post's URL, otherwise an attached image is. Extra thread parts are comments on the post. Uses the `/api/v3` routes, which Lemmy 0.19 and 1.0 both serve.
+
+### Nostr
+
+No environment variables. Users paste the private key of the identity to post as (`nsec1...` or 64 hex characters) and a list of `wss://` relays (up to 10; defaults are offered). The key is stored encrypted and used only to sign. Connecting reads the identity's profile (name and picture) from the relays. Posts are kind-1 notes signed with BIP-340 (`coincurve`), sent to every relay, and succeed when at least one relay accepts them; media is added as links with NIP-92 `imeta` tags, hashtags become `t` tags, and thread parts are NIP-10 replies. Deleting sends a NIP-09 request, which relays may ignore. Relay addresses are resolved to public addresses only, and the socket connects to the address that was checked.
+
+### Farcaster
+
+No environment variables: Neynar bills API use to the owner of the API key, so each workspace brings its own. The in-app guide asks for a [Neynar](https://neynar.com) API key and the UUID of an approved signer created with that key. The key is stored encrypted as the workspace's credentials; the signer UUID is the account's encrypted token. Casts are 320 bytes with up to two embeds (images or a link), an optional channel, and threads as reply chains; deleting a cast is supported. Neynar's plans decide whether publishing is included, so a 402 is reported as a plan problem. Analytics are not synced.
 
 ## Inbox: Backfill Historical Messages
 

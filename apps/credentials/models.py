@@ -29,6 +29,9 @@ REQUIRED_CREDENTIAL_KEYS = {
     "reddit": (("client_id",), ("client_secret",)),
     # Each customer's own X developer app (X bills API use to the app owner): never set in .env.
     "x": (("client_id",), ("client_secret",)),
+    "tumblr": (("client_id",), ("client_secret",)),
+    # Each customer's own Neynar API key (Neynar bills it to the key's owner): never set in .env.
+    "farcaster": (("api_key",),),
 }
 
 
@@ -65,6 +68,10 @@ class PlatformCredential(models.Model):
         SLACK = "slack", "Slack"
         REDDIT = "reddit", "Reddit"
         X = "x", "X (Twitter)"
+        TUMBLR = "tumblr", "Tumblr"
+        LEMMY = "lemmy", "Lemmy"
+        NOSTR = "nostr", "Nostr"
+        FARCASTER = "farcaster", "Farcaster"
 
     class TestResult(models.TextChoices):
         SUCCESS = "success", "Success"

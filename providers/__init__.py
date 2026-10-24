@@ -13,19 +13,23 @@ from .bluesky import BlueskyProvider
 from .devto import DevtoProvider
 from .discord import DiscordProvider
 from .facebook import FacebookProvider
+from .farcaster import FarcasterProvider
 from .google_business import GoogleBusinessProvider
 from .instagram import InstagramProvider
 from .instagram_login import InstagramLoginProvider
+from .lemmy import LemmyProvider
 from .linkedin import LINKEDIN_RESERVED_CHARS
 from .linkedin_company import LinkedInCompanyProvider
 from .linkedin_personal import LinkedInPersonalProvider
 from .mastodon import MastodonProvider
+from .nostr import NostrProvider
 from .pinterest import PinterestProvider
 from .reddit import RedditProvider
 from .slack import SlackProvider
 from .telegram import TelegramProvider
 from .threads import ThreadsProvider
 from .tiktok import TikTokProvider
+from .tumblr import TumblrProvider
 from .types import MediaRules, PeakWindow, PlugCapability, PostSetting, PostType, ThreadCapability
 from .x import XProvider
 from .youtube import YouTubeProvider
@@ -52,6 +56,10 @@ PROVIDER_REGISTRY: dict[str, type[SocialProvider]] = {
     "slack": SlackProvider,
     "reddit": RedditProvider,
     "x": XProvider,
+    "tumblr": TumblrProvider,
+    "lemmy": LemmyProvider,
+    "nostr": NostrProvider,
+    "farcaster": FarcasterProvider,
 }
 
 # Characters a platform escapes in the caption it publishes. Each one costs two

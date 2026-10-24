@@ -722,6 +722,12 @@ PLATFORM_CREDENTIALS_FROM_ENV = {
         "client_secret": env("PLATFORM_REDDIT_CLIENT_SECRET", default=""),
         "user_agent": env("PLATFORM_REDDIT_USER_AGENT", default=""),
     },
+    # Tumblr - OAuth2 app (consumer key and secret). Lemmy, Nostr and Farcaster need no app-level
+    # credentials: the user brings an instance login, a key, or their own Neynar key when connecting.
+    "tumblr": {
+        "client_id": env("PLATFORM_TUMBLR_CLIENT_ID", default=""),
+        "client_secret": env("PLATFORM_TUMBLR_CLIENT_SECRET", default=""),
+    },
 }
 
 # Publishing engine

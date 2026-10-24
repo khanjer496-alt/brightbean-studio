@@ -17,6 +17,8 @@ _KEY_HINTS = {
     "linkedin_personal": "client_id, client_secret (optional: _oauth_mode = oidc | community_management)",
     "linkedin_company": "client_id, client_secret",
     "slack": "client_id, client_secret (optional: signing_secret, which turns on Slack approval requests)",
+    "tumblr": "client_id, client_secret (the OAuth consumer key and secret of your Tumblr app)",
+    "farcaster": "api_key of the customer's own Neynar account (normally entered by the customer on the connect page)",
     "x": "client_id, client_secret of the customer's own X app (normally entered by the customer on the connect page)",
 }
 

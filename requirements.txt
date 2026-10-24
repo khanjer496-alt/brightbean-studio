@@ -88,3 +88,7 @@ factory-boy>=3.3,<4.0
 
 # Monitoring
 sentry-sdk[django]>=2.13,<3.0
+
+# Nostr publishing (providers/nostr.py): BIP-340 Schnorr signatures and relay websockets.
+coincurve>=21.0,<22.0
+websockets>=15.0,<18.0

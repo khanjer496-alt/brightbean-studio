@@ -34,4 +34,12 @@ Platform SVG icon partial. Usage: {% include "social_accounts/partials/_platform
 <svg class="w-{{ size|default:'5' }} h-{{ size|default:'5' }}" viewBox="0 0 24 24" fill="currentColor" aria-label="x" role="img"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
 {% elif platform == "devto" %}
 <svg class="w-{{ size|default:'5' }} h-{{ size|default:'5' }}" viewBox="0 0 512 512" aria-label="dev.to" role="img"><rect width="512" height="512" rx="15%"/><path fill="#ffffff" d="M140.47 203.94h-17.44v104.47h17.45c10.155-.545 17.358-8.669 17.47-17.41v-69.65c-.696-10.364-7.796-17.272-17.48-17.41zm45.73 87.25c0 18.81-11.61 47.31-48.36 47.25h-46.4V172.98h47.38c35.44 0 47.36 28.46 47.37 47.28zm100.68-88.66H233.6v38.42h32.57v29.57H233.6v38.41h53.29v29.57h-62.18c-11.16.29-20.44-8.53-20.72-19.69V193.7c-.27-11.15 8.56-20.41 19.71-20.69h63.19zm103.64 115.29c-13.2 30.75-36.85 24.63-47.44 0l-38.53-144.8h32.57l29.71 113.72 29.57-113.72h32.58z"/></svg>
+{% elif platform == "tumblr" %}
+<svg class="w-{{ size|default:'5' }} h-{{ size|default:'5' }}" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-label="tumblr" role="img"><path d="M14.563 24c-5.093 0-7.031-3.756-7.031-6.411V9.747H5.116V6.648c3.63-1.313 4.512-4.596 4.71-6.469C9.84.051 9.941 0 9.999 0h3.517v6.114h4.801v3.633h-4.82v7.47c.016 1.001.375 2.371 2.207 2.371h.09c.631-.02 1.486-.205 1.936-.419l1.156 3.425c-.436.636-2.4 1.374-4.156 1.404h-.178l.011.002z"/></svg>
+{% elif platform == "lemmy" %}
+<svg class="w-{{ size|default:'5' }} h-{{ size|default:'5' }}" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-label="lemmy" role="img"><path d="M12 3a7 7 0 0 0-7 7v5.500L3 18h18l-2-2.500V10a7 7 0 0 0-7-7zM9 9.200a1.300 1.300 0 1 0 .001 0zM15 9.200a1.300 1.300 0 1 0 .001 0z"/></svg>
+{% elif platform == "nostr" %}
+<svg class="w-{{ size|default:'5' }} h-{{ size|default:'5' }}" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-label="nostr" role="img"><path d="M6 20V4h2.600l6.800 11V4H18v16h-2.600L8.600 9v11z"/></svg>
+{% elif platform == "farcaster" %}
+<svg class="w-{{ size|default:'5' }} h-{{ size|default:'5' }}" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-label="farcaster" role="img"><path d="M6 3h12v18h-2.400v-9.300a3.600 3.600 0 0 0-7.200 0V21H6z"/></svg>
 {% endif %}
