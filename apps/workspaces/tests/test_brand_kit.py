@@ -264,9 +264,7 @@ class TestSettingsPages:
         response = client.post(
             self.url(workspace), {"section": "colors", "color_name": ["x"], "color_hex": ["nope"]}, follow=True
         )
-        assert (
-            "is not a hex color" in response.content.decode() and not BrandKit.objects.filter(colors__len=1).exists()
-        )
+        assert "is not a hex color" in response.content.decode() and not BrandKit.objects.filter(colors__len=1).exists()
 
     def test_only_owners_and_managers_can_change_it(self, workspace, inbox_owner_for):
         from apps.members.models import WorkspaceMembership
