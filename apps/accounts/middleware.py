@@ -29,6 +29,8 @@ EXEMPT_PATH_PREFIXES = (
     "/health/",
     # Terms and privacy must stay readable before the terms are accepted.
     "/legal/",
+    "/roadmap/",
+    "/.well-known/security.txt",
     "/static/",
     # Uploaded media, served by config/urls.py when SERVE_MEDIA is on. No view
     # backs these URLs, so a redirect here just turns every <img>/<video> on

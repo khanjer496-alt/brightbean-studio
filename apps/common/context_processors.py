@@ -21,6 +21,7 @@ def brand_context(request):
         "brand_favicon_ico_static": settings.BRAND_FAVICON_ICO_STATIC,
         "brand_apple_touch_icon_static": settings.BRAND_APPLE_TOUCH_ICON_STATIC,
         "brand_manifest_static": settings.BRAND_MANIFEST_STATIC,
+        "status_page_url": settings.STATUS_PAGE_URL,
         "source_code_url": settings.SOURCE_CODE_URL,
         "upstream_source_url": settings.UPSTREAM_SOURCE_URL,
         "google_auth_enabled": bool(

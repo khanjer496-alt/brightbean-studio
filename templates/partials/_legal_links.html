@@ -5,4 +5,14 @@
     <a href="{{ brand_privacy_url }}" class="underline underline-offset-2 hover:opacity-80">Privacy</a>
     <span aria-hidden="true">·</span>
     <a href="{% url 'legal:licenses' %}" class="underline underline-offset-2 hover:opacity-80">Licenses</a>
+    <span aria-hidden="true">·</span>
+    <a href="{% url 'legal:security' %}" class="underline underline-offset-2 hover:opacity-80">Security</a>
+    <span aria-hidden="true">·</span>
+    <a href="{% url 'legal:dpa' %}" class="underline underline-offset-2 hover:opacity-80">DPA</a>
+    <span aria-hidden="true">·</span>
+    <a href="{% url 'roadmap:index' %}" class="underline underline-offset-2 hover:opacity-80">Roadmap</a>
+    {% if status_page_url %}
+    <span aria-hidden="true">·</span>
+    <a href="{{ status_page_url }}" rel="noopener noreferrer" class="underline underline-offset-2 hover:opacity-80">Status</a>
+    {% endif %}
 </p>

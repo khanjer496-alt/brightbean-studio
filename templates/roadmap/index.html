@@ -1,0 +1,20 @@
+{% extends "legal/base.html" %}
+{% block page_title %}Roadmap{% endblock %}
+{% block description %}What {{ brand_name }} is working on now, next and later.{% endblock %}
+{% block content %}
+<h1>Roadmap</h1>
+<p class="legal-meta">What we are working on, in rough order</p>
+<p>This is our plan, not a promise. Items move, change or drop as we learn. To suggest something, email <a href="mailto:{{ brand_support_email }}">{{ brand_support_email }}</a>.</p>
+{% for column in columns %}
+<h2>{{ column.label }}</h2>
+{% if column.items %}
+<ul>
+    {% for item in column.items %}
+    <li><strong>{% if item.link_url %}<a href="{{ item.link_url }}" rel="noopener noreferrer">{{ item.title }}</a>{% else %}{{ item.title }}{% endif %}</strong>{% if item.description %}: {{ item.description }}{% endif %}</li>
+    {% endfor %}
+</ul>
+{% else %}
+<p>Nothing listed yet.</p>
+{% endif %}
+{% endfor %}
+{% endblock %}

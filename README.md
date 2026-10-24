@@ -1110,3 +1110,5 @@ To report a security vulnerability, see [SECURITY.md](SECURITY.md). Do not open 
 ## License
 
 [AGPL-3.0](LICENSE) - see LICENSE for details.
+
+Parts of the network integrations and features were ported from [Postiz](https://github.com/gitroomhq/postiz-app) (AGPL-3.0, Copyright (c) Gitroom/Postiz contributors).

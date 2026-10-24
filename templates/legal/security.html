@@ -1,0 +1,65 @@
+{% extends "legal/base.html" %}
+{% block page_title %}Security{% endblock %}
+{% block description %}How {{ brand_name }} protects your data and accounts, and how to report a vulnerability.{% endblock %}
+{% block content %}
+{# DRAFT FOR THE OWNER'S LEGAL REVIEW: not reviewed by a lawyer; do not treat as final legal text. #}
+<h1>Security</h1>
+<p class="legal-meta">How {{ legal_name }} protects {{ brand_name }}</p>
+<p>This page describes what the service does today. Where something is planned and not yet in place, we say so. We do not hold any security certification, such as SOC 2 or ISO 27001.</p>
+
+<h2>Connection security</h2>
+<ul>
+    <li>In production the service redirects all HTTP traffic to HTTPS.</li>
+    <li>HSTS is on for one year, including subdomains, with preload enabled.</li>
+    <li>Session and CSRF cookies are marked Secure. Session cookies are HttpOnly and SameSite=Lax, and sessions last 14 days.</li>
+    <li>A Content Security Policy limits where scripts, styles and other content can load from, and browsers are told not to sniff content types.</li>
+</ul>
+
+<h2>Passwords and sign-in</h2>
+<ul>
+    <li>Passwords are hashed with bcrypt (SHA-256 pre-hash). We never store them in plain text.</li>
+    <li>Two-factor authentication is available to every user. It uses an authenticator app (TOTP) and recovery codes. It is optional. Once you turn it on, every sign-in asks for a code, including Google sign-in and the admin sign-in.</li>
+    <li>Sign-in, sign-up, password reset and two-factor code requests are rate limited to 10 attempts per minute per IP address.</li>
+</ul>
+
+<h2>Encryption of connected-account tokens</h2>
+<p>The access and refresh tokens for your connected social accounts, the app credentials you add, and AI provider keys you supply are encrypted at rest in the database with AES-256-GCM. Each value gets its own random nonce. The key is derived from server secrets that are kept outside the database. The database is also not exposed to the public internet by design, and the data is encrypted in transit as described above.</p>
+
+<h2>API tokens</h2>
+<ul>
+    <li>API keys are tied to one workspace and to a list of connected accounts you choose.</li>
+    <li>Each key carries only the permissions you give it. It can never do more than the person who issued it can do, so removing or demoting that person shrinks the key.</li>
+    <li>We show a key once when you create it. We store only a keyed hash, not the key.</li>
+    <li>Keys have rate limits per minute, hour and day, and organizations have a daily allowance on top.</li>
+</ul>
+
+<h2>MCP and OAuth</h2>
+<p>AI assistants connect to {{ brand_name }} through the Model Context Protocol using OAuth 2.1 with the authorization code flow. PKCE is required and only the S256 method is accepted. Access tokens last one hour. Refresh tokens last 30 days and rotate each time they are used. A consent screen is always shown, and you choose which tool capabilities the assistant gets.</p>
+
+<h2>Controls for AI agents</h2>
+<ul>
+    <li>Each workspace has an autonomy dial for each kind of action: draft content, publish posts, reply to comments and messages, and recycle posts. Each can be Off, Draft only, Auto with guardrails or Full auto. The default is Draft only.</li>
+    <li>Guardrails include blocked phrases, review of links, mentions, prices and sensitive topics, daily limits, quiet hours and an optional AI risk check.</li>
+    <li>Automatic publishing and replies wait in an undo window (five minutes by default) where a person can stop them.</li>
+    <li>A pause switch stops all agent actions at once.</li>
+    <li>Every action by a person, agent or automation is recorded in an activity trail, with the decision (executed, held for review or blocked) and the reason.</li>
+</ul>
+
+<h2>Outbound requests</h2>
+<p>When the service fetches a URL for you, such as a webhook endpoint, a feed or a self-hosted instance address, it only allows http and https and rejects addresses that resolve to private, loopback, link-local (including cloud metadata), multicast or reserved ranges. This guards against server-side request forgery (SSRF). Webhook and AI provider requests pin the checked address.</p>
+
+<h2>Rate limits and abuse protection</h2>
+<p>Sign-in flows, public endpoints and the API are rate limited as described above. Cloudflare sits in front of the service for DNS, CDN and DDoS protection.</p>
+
+<h2>Backups</h2>
+<p>Planned: nightly database backups, encrypted before they leave the server and stored in a separate private Cloudflare R2 bucket, with a tested restore procedure. This is not yet running. We will update this page when it is.</p>
+
+<h2>Hosting</h2>
+<p>The service runs on Hetzner servers. Hosting region: {{ hosting_region }}. See <a href="{% url 'legal:subprocessors' %}">Subprocessors</a> for every provider that handles data.</p>
+
+<h2>Your data</h2>
+<p>You can delete your account and data at any time. See <a href="{% url 'legal:data_deletion' %}">Data deletion</a>. For the terms that apply to customer data, see our <a href="{% url 'legal:dpa' %}">Data Processing Addendum</a>.</p>
+
+<h2>Report a vulnerability</h2>
+<p>If you find a security problem, email <a href="mailto:{{ security_email }}">{{ security_email }}</a>. Please give us enough detail to reproduce it, and give us reasonable time to fix it before you share it. Please do not access other people's data, degrade the service or use social engineering. We will acknowledge your report, keep you updated and not take legal action against good-faith research that follows these rules. Our contact details are also at <a href="/.well-known/security.txt">/.well-known/security.txt</a>.</p>
+{% endblock %}

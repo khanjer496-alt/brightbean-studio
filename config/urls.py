@@ -13,6 +13,7 @@ from django.views.static import serve
 from apps.accounts.views import health_check
 from apps.api.api import api as agent_api
 from apps.connect import views as connect_views
+from apps.legal import views as legal_views
 from apps.oauth_server import views as oauth_views
 
 logger = logging.getLogger(__name__)
@@ -111,6 +112,7 @@ urlpatterns = [
     ),
     # Domain verification for the ChatGPT app directory: serves the token OpenAI issues, as plain text.
     path(".well-known/openai-apps-challenge", connect_views.openai_apps_challenge, name="openai-apps-challenge"),
+    path(".well-known/security.txt", legal_views.security_txt, name="security-txt"),
     path(".well-known/mcp/server-card.json", connect_views.mcp_server_card, name="mcp-server-card"),
     # Approval Workflow (Stream F)
     path("workspace/<uuid:workspace_id>/", include("apps.approvals.urls")),
@@ -125,6 +127,7 @@ urlpatterns = [
     # Client Portal (Stream F)
     path("portal/", include("apps.client_portal.urls")),
     path("legal/", include("apps.legal.urls")),
+    path("roadmap/", include("apps.roadmap.urls")),
     path("connect/", include("apps.connect.urls")),
     path("notifications/", include("apps.notifications.urls")),
     path("onboarding/", include("apps.onboarding.urls")),
