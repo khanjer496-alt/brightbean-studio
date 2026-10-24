@@ -1617,15 +1617,15 @@
                                     </div>
                                 </button>
 
-                                <!-- Prioritise -->
-                                <button type="button" data-mode="add_to_queue_priority" data-label="Prioritise" data-action-label="Prioritise"
+                                <!-- Prioritize -->
+                                <button type="button" data-mode="add_to_queue_priority" data-label="Prioritize" data-action-label="Prioritize"
                                         data-icon="priority"
                                         class="publish-mode-option w-full flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-stone-50 transition-colors text-start cursor-pointer">
                                     <div class="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0 mt-0.5">
                                         <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"/></svg>
                                     </div>
                                     <div>
-                                        <div class="text-sm font-semibold text-stone-800">Prioritise</div>
+                                        <div class="text-sm font-semibold text-stone-800">Prioritize</div>
                                         <div class="text-xs text-stone-400 mt-0.5">Add to top of queue</div>
                                     </div>
                                 </button>
@@ -3590,6 +3590,14 @@ function repeatPanel() {
         });
     });
 
+    // The mode button names the chosen slot (wall-clock in the workspace timezone, as entered),
+    // so the time is visible before Schedule Post is pressed.
+    function scheduleLabel(dateVal, timeVal) {
+        var when = new Date(dateVal + 'T' + timeVal);
+        if (isNaN(when)) return 'Set date and time';
+        return when.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    }
+
     // Schedule sub-view: confirm button sets mode to schedule and closes
     if (scheduleConfirm) {
         scheduleConfirm.addEventListener('click', function(e) {
@@ -3608,7 +3616,7 @@ function repeatPanel() {
                 return;
             }
             if (errEl) { errEl.classList.add('hidden'); }
-            setMode('schedule', 'Set date and time', 'Schedule Post', 'calendar');
+            setMode('schedule', scheduleLabel(dateVal, timeVal), 'Schedule Post', 'calendar');
             hidePopover();
         });
     }
@@ -3636,7 +3644,7 @@ function repeatPanel() {
     var schedDateInput = document.querySelector('input[name="scheduled_date"]');
     var schedTimeInput = document.querySelector('input[name="scheduled_time"]');
     if (schedDateInput && schedDateInput.value && schedTimeInput && schedTimeInput.value && !prefillIsProposed) {
-        setMode('schedule', 'Set date and time', 'Schedule Post', 'calendar');
+        setMode('schedule', scheduleLabel(schedDateInput.value, schedTimeInput.value), 'Schedule Post', 'calendar');
     }
 })();
 </script>

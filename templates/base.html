@@ -766,6 +766,8 @@
                 {% if onboarding.is_sample_workspace %}{% include "onboarding/partials/_sample_banner.html" %}{% endif %}
                 <div class="flex-1 min-h-0 flex flex-col overflow-y-auto overflow-x-hidden">
                 {% block content %}{% endblock %}
+                {% comment %}Room to scroll the page's last row clear of the fixed "Get started" pill (the composer keeps its own layout).{% endcomment %}
+                {% if onboarding and not onboarding.checklist_dismissed and onboarding.checklist_items and not onboarding.checklist_hidden_on_phone %}<div class="h-16 shrink-0" aria-hidden="true"></div>{% endif %}
                 </div>
             </main>
         </div>
