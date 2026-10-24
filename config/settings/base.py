@@ -861,6 +861,11 @@ REPURPOSE_MAX_TOKENS_PER_RUN = env.int("REPURPOSE_MAX_TOKENS_PER_RUN", default=2
 # Uploaded PDFs: bytes and pages read before extraction is refused.
 REPURPOSE_MAX_PDF_BYTES = env.int("REPURPOSE_MAX_PDF_BYTES", default=10 * 1024 * 1024)
 REPURPOSE_MAX_PDF_PAGES = env.int("REPURPOSE_MAX_PDF_PAGES", default=60)
+# Video transcripts read through a platform's API, per deployment per day. A
+# YouTube read costs ~251 units (videos.list 1 + captions.list 50 +
+# captions.download 200) of the project-wide 10,000 the inbox and analytics
+# also live on, so the default keeps it to about a third of the pool.
+REPURPOSE_TRANSCRIPT_READS_PER_DAY = env.int("REPURPOSE_TRANSCRIPT_READS_PER_DAY", default=12)
 
 # ---------------------------------------------------------------------------
 # Intelligence integration (optional hosted SaaS)

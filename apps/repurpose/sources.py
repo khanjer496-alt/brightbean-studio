@@ -30,6 +30,8 @@ from datetime import timedelta
 from html.parser import HTMLParser
 
 from django.conf import settings
+from django.core.cache import cache
+from django.utils import timezone
 
 from apps.ai_writer import services as ai_services
 
@@ -87,46 +89,90 @@ _SKIP_TAGS = frozenset(
 _BLOCK_TAGS = frozenset(
     {"p", "div", "br", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "tr", "section"}
 )
+_VOID_TAGS = frozenset(
+    {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
+)
+# Page furniture marked by role, class or id rather than by tag: share bars,
+# related posts, newsletter boxes, comments, Wikipedia's infoboxes and references.
+_SKIP_ROLES = frozenset({"navigation", "banner", "contentinfo", "complementary", "search", "dialog", "alert"})
+_SKIP_HINT = re.compile(
+    r"(?:^|[\s_-])(?:share|sharing|social|related|newsletter|subscribe|signup|comments?|sidebar|breadcrumbs?|"
+    r"cookie|consent|promo|advert|ads|sponsor|popup|modal|byline-share|infobox|navbox|reflist|references?|"
+    r"mw-editsection|toc|catlinks|printfooter|noprint|author-bio|tags|footnotes?)(?:$|[\s_-])",
+    re.IGNORECASE,
+)
 _MIN_CONTAINER_CHARS = 200
+_CONTENT_ROOTS = frozenset({"html", "body", "main", "article"})
+
+
+def _is_furniture(tag: str, attrs: dict) -> bool:
+    if tag in _CONTENT_ROOTS:
+        return False  # their classes describe the whole page (``vector-toc-available``), not furniture
+    if tag in _SKIP_TAGS or "hidden" in attrs or attrs.get("aria-hidden") == "true":
+        return True
+    if (attrs.get("role") or "").lower() in _SKIP_ROLES:
+        return True
+    hints = f"{attrs.get('class') or ''} {attrs.get('id') or ''}"
+    return bool(hints.strip()) and bool(_SKIP_HINT.search(hints))
 
 
 class _ReadableParser(HTMLParser):
-    """Collects text three ways (article, main, whole body) so the best container can win."""
+    """Collects text three ways (article, main, whole body) so the best container can win.
+
+    Text inside page furniture (menus, share bars, related links, comments) is
+    dropped; whitespace is collapsed the way a browser would, outside ``<pre>``.
+    """
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.title = ""
         self.og_title = ""
         self._in_title = False
+        # Tags opened since a piece of furniture started; empty when the text counts.
         self._skip: list[str] = []
+        self._pre = 0
         self._open: dict[str, int] = {"article": 0, "main": 0}
         self.buffers: dict[str, list[str]] = {"article": [], "main": [], "body": []}
 
     def handle_starttag(self, tag, attrs):
+        values = dict(attrs)
         if tag == "meta":
-            values = dict(attrs)
             if values.get("property") == "og:title":
                 self.og_title = values.get("content") or ""
             return
         if tag == "title":
             self._in_title = True
-        if tag in _SKIP_TAGS:
+            return
+        if tag in _VOID_TAGS:
+            if tag == "br" and not self._skip:
+                self._write("\n")
+            return
+        if self._skip or _is_furniture(tag, values):
             self._skip.append(tag)
             return
+        if tag == "pre":
+            self._pre += 1
         if tag in self._open:
             self._open[tag] += 1
         if tag in _BLOCK_TAGS:
             self._write("\n")
 
+    def handle_startendtag(self, tag, attrs):
+        if tag in _VOID_TAGS or tag == "meta":
+            self.handle_starttag(tag, attrs)
+
     def handle_endtag(self, tag):
         if tag == "title":
             self._in_title = False
-        if tag in _SKIP_TAGS:
+            return
+        if self._skip:
             if tag in self._skip:
                 # Close back to the matching tag, tolerating sloppy markup.
                 while self._skip and self._skip.pop() != tag:
                     pass
             return
+        if tag == "pre" and self._pre:
+            self._pre -= 1
         if tag in self._open and self._open[tag]:
             self._open[tag] -= 1
         if tag in _BLOCK_TAGS:
@@ -137,7 +183,7 @@ class _ReadableParser(HTMLParser):
             self.title += data
             return
         if not self._skip:
-            self._write(data)
+            self._write(data if self._pre else re.sub(r"\s+", " ", data))
 
     def _write(self, text):
         self.buffers["body"].append(text)
@@ -359,13 +405,36 @@ def from_video(url: str, *, transcript: str = "", accounts=()) -> Source:
     )
 
 
+TRANSCRIPT_CACHE_SECONDS = 24 * 60 * 60
+
+
+def _transcript_read_allowed() -> bool:
+    """Count one API transcript read against the deployment's daily budget; False once it is spent."""
+    key = f"repurpose:transcript-reads:{timezone.now():%Y-%m-%d}"
+    if cache.add(key, 1, TRANSCRIPT_CACHE_SECONDS + 3600):
+        return True
+    try:
+        return cache.incr(key) <= settings.REPURPOSE_TRANSCRIPT_READS_PER_DAY
+    except ValueError:  # expired between add and incr
+        return cache.add(key, 1, TRANSCRIPT_CACHE_SECONDS + 3600)
+
+
 def _read_owned_transcript(account, video_id: str) -> str | None:
+    """The transcript of a video on ``account``'s channel; cached a day, since a read spends real API quota."""
     from apps.publisher.engine import _resolve_publish_credentials
     from providers import get_provider
     from providers.exceptions import ProviderError, QuotaExceededError
 
     if account.connection_status != account.ConnectionStatus.CONNECTED:
         return None
+    cache_key = f"repurpose:transcript:{account.pk}:{video_id}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached or None
+    if not _transcript_read_allowed():
+        raise TranscriptNeededError(
+            "Today's allowance for reading video captions is used up. Paste the transcript instead."
+        )
     try:
         provider = get_provider(account.platform, _resolve_publish_credentials(account))
         access_token = account.oauth_access_token
@@ -381,4 +450,6 @@ def _read_owned_transcript(account, video_id: str) -> str | None:
     except ProviderError:
         logger.info("Transcript fetch failed for account %s", account.pk, exc_info=True)
         return None
-    return srt_to_text(srt) if srt else None
+    text = srt_to_text(srt) if srt else ""
+    cache.set(cache_key, text, TRANSCRIPT_CACHE_SECONDS)  # "" too: no captions isn't worth asking again today
+    return text or None

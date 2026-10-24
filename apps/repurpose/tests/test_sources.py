@@ -53,6 +53,28 @@ class TestUrl:
         assert "Copyright" not in source.text
         assert "secret" not in source.text
 
+    def test_furniture_marked_by_class_role_or_hidden_is_dropped(self):
+        body = (
+            '<html class="vector-toc-available"><body><article>'
+            + "<p>Slow roasting keeps the sweetness in the bean, so every batch roasts for eighteen minutes.</p>" * 3
+            + '<div class="share-bar"><div><span>Share on X</span></div></div>'
+            + '<section class="related-posts"><h3>Related</h3><p>Ten other posts</p></section>'
+            + '<div role="complementary">Sidebar promo</div><p hidden>Hidden note</p>'
+            + "<p>The last paragraph\n   wraps\n   oddly.</p></article></body></html>"
+        )
+        text = sources.readable_text(body)[1]
+        assert "eighteen minutes" in text and "The last paragraph wraps oddly." in text
+        for junk in ("Share on X", "Ten other posts", "Sidebar promo", "Hidden note"):
+            assert junk not in text
+
+    def test_arabic_text_is_kept_as_is(self):
+        body = (
+            '<html dir="rtl"><body><main>'
+            + "<p>القهوة مشروب يحضر من بذور البن المحمصة والمطحونة.</p>" * 6
+            + "</main></body></html>"
+        )
+        assert "القهوة مشروب يحضر من بذور البن" in sources.readable_text(body)[1]
+
     def test_page_without_an_article_falls_back_to_the_body(self):
         body = "<html><body><div>" + "A plain page with enough words to be worth reading. " * 3 + "</div></body></html>"
         with patch("apps.composer.views._safe_fetch_feed", return_value=(_response(body), None)):
@@ -227,6 +249,26 @@ class TestVideo:
             pytest.raises(sources.TranscriptNeededError, match="quota"),
         ):
             sources.from_video("https://youtu.be/dQw4w9WgXcQ", accounts=[youtube])
+
+    def test_a_transcript_is_read_once_a_day_per_video(self, youtube):
+        with (
+            patch("apps.publisher.engine._resolve_publish_credentials", return_value={}),
+            patch.object(YouTubeProvider, "fetch_owned_video_transcript", return_value=SRT) as fetch,
+        ):
+            first = sources.from_video("https://youtu.be/dQw4w9WgXcQ", accounts=[youtube])
+            again = sources.from_video("https://www.youtube.com/watch?v=dQw4w9WgXcQ", accounts=[youtube])
+        assert fetch.call_count == 1 and first.text == again.text
+
+    def test_the_daily_caption_budget_stops_api_reads(self, youtube, settings):
+        settings.REPURPOSE_TRANSCRIPT_READS_PER_DAY = 1
+        with (
+            patch("apps.publisher.engine._resolve_publish_credentials", return_value={}),
+            patch.object(YouTubeProvider, "fetch_owned_video_transcript", return_value=SRT) as fetch,
+        ):
+            sources.from_video("https://youtu.be/dQw4w9WgXcQ", accounts=[youtube])
+            with pytest.raises(sources.TranscriptNeededError, match="allowance"):
+                sources.from_video("https://youtu.be/aaaaaaaaaaa", accounts=[youtube])
+        assert fetch.call_count == 1
 
     def test_other_links_are_not_videos(self):
         with pytest.raises(ValueError, match="supported video"):
