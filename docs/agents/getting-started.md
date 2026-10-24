@@ -4,9 +4,9 @@ PostDelegate's BrightBean workspace exposes MCP and REST over the same workspace
 
 ## Connect
 
-Open **Settings → API Keys** for the deployment's MCP URL and API reference. The endpoint is `<workspace-origin>/api/v1/mcp` (no trailing slash). A remote OAuth-capable MCP client can sign in and request authorization. OAuth acts with the signed-in user's permissions; it is not automatically a limited draft-only account.
+Open **Settings → API Keys** for the deployment's MCP URL and API reference. The endpoint is `<workspace-origin>/api/v1/mcp` (no trailing slash). A remote OAuth-capable MCP client can sign in and request authorization. OAuth acts with the signed-in user's permissions, narrowed to the capabilities the user leaves ticked on the consent screen; it is not automatically a limited draft-only account.
 
-For a Bearer-token client, issue an API key for the intended workspace and connected-account allowlist. Begin with `create_posts`; add `upload_media` or `view_analytics` only when needed. Leaving `publish_directly` disabled prevents the key from scheduling posts. Store the token in the client's credential settings, not in the brief or shared chat.
+For a Bearer-token client, issue a token for the intended workspace and connected-account allowlist and start from the **Drafting assistant** preset: it can read, write drafts and use the AI assistant, and a person approves everything. Add capabilities (media, analytics, scheduling) only when needed; the token cannot use a tool outside its capabilities. See [scoped-tokens.md](scoped-tokens.md) for presets, daily budgets, expiry, IP ranges and example client config. Store the token in the client's credential settings, not in the brief or shared chat.
 
 The app supports these protocols; exact connector setup depends on the client. A public connector directory listing or certification is not claimed.
 

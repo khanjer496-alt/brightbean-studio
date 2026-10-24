@@ -74,3 +74,7 @@ the guardrail results and a diff against the source text. Held and blocked actio
 managers and send `agent.action.held` / `agent.action.blocked` webhooks. The trail can't be edited or
 deleted from the app, the admin or the API; entries are kept for `AUTONOMY_AUDIT_RETENTION_DAYS`
 (400 by default), except ones still waiting for a person.
+
+## A token can tighten the dial, never loosen it
+
+An API key can be set to **Read-only until approved**. For that token, anything that would go out on its own (a scheduled post, a sent reply) is held as a draft for a person, even where the workspace is at Auto with guardrails or Full auto. An action the workspace has set to Off stays Off. A token can also have a daily limit on scheduled posts; past it, schedules are refused and the refusal is recorded. Each token's trail is in Activity, filtered to that token from the API Keys page. See [scoped-tokens.md](scoped-tokens.md).
