@@ -184,6 +184,12 @@ def test_licenses_page_lists_new_fonts_and_swagger(client):
     assert "jsdelivr" not in html
 
 
+def test_favicon_ico_redirects_to_the_brand_icon(client):
+    # Browsers request /favicon.ico whatever the page links; a 404 there is a console error on every page.
+    response = client.get("/favicon.ico")
+    assert response.status_code == 302 and response["Location"].endswith(settings.BRAND_FAVICON_ICO_STATIC)
+
+
 # --- CSP and self-hosted API docs ---------------------------------------------------------------
 
 
