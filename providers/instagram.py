@@ -13,6 +13,7 @@ from urllib.parse import urlencode
 
 from .base import SocialProvider
 from .exceptions import APIError, MessagingError, OAuthError, ProviderError, PublishError, WebhookChannelError
+from .instagram_discovery import business_discovery_metrics
 from .meta_accounts import fetch_me_accounts, page_can_publish
 from .meta_comments import (
     fetch_instagram_comments,
@@ -44,6 +45,7 @@ from .types import (
     PeakWindow,
     PostMetrics,
     PostType,
+    PublicProfileMetrics,
     PublishContent,
     PublishResult,
     RateLimitConfig,
@@ -160,6 +162,10 @@ class InstagramProvider(SocialProvider):
     profile_url_template = "https://www.instagram.com/{handle}/"
 
     media_rules = INSTAGRAM_MEDIA_RULES
+
+    supports_public_profile_metrics = True
+    competitor_handle_hint = "username (business or creator accounts only)"
+    competitor_handle_pattern = r"[A-Za-z0-9._]{1,30}"
     # Instagram comments share the caption's 2,200-character limit.
     thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=2200)
 
@@ -629,6 +635,16 @@ class InstagramProvider(SocialProvider):
                 "raw_insights": values,
                 "insight_errors": errors,
             },
+        )
+
+    def public_profile_metrics(self, handle: str, using_account, access_token: str = "") -> PublicProfileMetrics:
+        """Another professional account's public numbers through Business Discovery (see ``instagram_discovery``)."""
+        return business_discovery_metrics(
+            self,
+            base_url=BASE_URL,
+            ig_user_id=str(self.credentials.get("ig_user_id") or getattr(using_account, "account_platform_id", "")),
+            access_token=access_token,
+            handle=handle,
         )
 
     def get_account_metrics(self, access_token: str, date_range: tuple[datetime, datetime]) -> AccountMetrics:

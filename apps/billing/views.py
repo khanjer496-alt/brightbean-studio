@@ -44,6 +44,9 @@ def _limit_lines(plan) -> list[str]:
         if plan.max_ai_requests_per_day is None
         else f"{plan.max_ai_requests_per_day:,} AI requests / day",
         "Unlimited team members",
+        "No competitor tracking"
+        if plan.max_competitors_per_network == 0
+        else count(plan.max_competitors_per_network, "tracked competitor") + " per network",
     ]
 
 

@@ -39,6 +39,7 @@ ignore = [
 "apps/api/routers/best_times.py" = ["B008"]
 "apps/api/routers/evergreen.py" = ["B008"]
 "apps/api/routers/autonomy.py" = ["B008"]
+"apps/api/routers/competitors.py" = ["B008"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["apps", "config"]

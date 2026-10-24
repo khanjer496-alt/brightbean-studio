@@ -59,11 +59,17 @@ class Entitlements:
     features: frozenset[str]
     max_bio_pages: int | None = None
     shows_bio_badge: bool = False
+    # Per network; 0 = benchmarking is off for the plan.
+    max_competitors_per_network: int | None = 0
+    max_visibility_prompts: int = 0
     unlimited: bool = False
 
     def has(self, feature: Feature | str) -> bool:
         return self.unlimited or str(feature) in self.features
 
+
+# Self-hosted installs are not plan-limited, but a report still needs a sane ceiling on what it asks the model.
+UNLIMITED_VISIBILITY_PROMPTS = 15
 
 UNLIMITED = Entitlements(
     plan=None,
@@ -73,6 +79,8 @@ UNLIMITED = Entitlements(
     max_api_calls_per_day=None,
     max_ai_requests_per_day=None,
     features=frozenset(),
+    max_competitors_per_network=None,
+    max_visibility_prompts=UNLIMITED_VISIBILITY_PROMPTS,
     unlimited=True,
 )
 
@@ -110,6 +118,8 @@ def get_entitlements(org) -> Entitlements:
         features=frozenset(str(f) for f in plan.features),
         max_bio_pages=plan.max_bio_pages,
         shows_bio_badge=plan.bio_badge,
+        max_competitors_per_network=plan.max_competitors_per_network,
+        max_visibility_prompts=plan.max_visibility_prompts,
     )
 
 
@@ -264,6 +274,34 @@ def check_can_add_bio_page(org) -> None:
         f"page{'s' if ent.max_bio_pages != 1 else ''} and this organization has {used}. "
         f"{_remove_hint(used, ent.max_bio_pages, 'page', 'Delete')} or upgrade your plan to add more.",
         code="bio_page_limit",
+    )
+
+
+def competitor_count(workspace, platform: str) -> int:
+    from apps.competitors.models import Competitor
+
+    return Competitor.objects.filter(workspace=workspace, platform=platform).count()
+
+
+def check_can_add_competitor(workspace, platform: str) -> None:
+    """Refuse when the workspace already tracks its plan's limit of competitors on ``platform``."""
+    ent = get_entitlements(workspace.organization)
+    if ent.max_competitors_per_network is None:
+        return
+    limit = ent.max_competitors_per_network
+    plan_name = ent.plan.name if ent.plan else "current"
+    if limit == 0:
+        raise PlanLimitError(
+            f"Competitor benchmarking isn't included in your {plan_name} plan. Upgrade to Creator or higher to track competitors.",
+            code="competitor_limit",
+        )
+    used = competitor_count(workspace, platform)
+    if used < limit:
+        return
+    raise PlanLimitError(
+        f"Your {plan_name} plan includes {limit} competitor{'s' if limit != 1 else ''} per network and this "
+        f"workspace tracks {used} here. {_remove_hint(used, limit, 'competitor', 'Remove')} or upgrade your plan to add more.",
+        code="competitor_limit",
     )
 
 

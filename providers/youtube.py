@@ -11,7 +11,15 @@ from urllib.parse import urlencode, urlsplit
 import httpx
 
 from .base import SocialProvider
-from .exceptions import APIError, OAuthError, ProviderError, PublishError, QuotaExceededError, TokenExpiredError
+from .exceptions import (
+    APIError,
+    OAuthError,
+    ProviderError,
+    PublicProfileNotFoundError,
+    PublishError,
+    QuotaExceededError,
+    TokenExpiredError,
+)
 from .google_errors import (
     AUTH_REASONS,
     QUOTA_REASONS,
@@ -30,6 +38,7 @@ from .types import (
     OAuthTokens,
     PostMetrics,
     PostType,
+    PublicProfileMetrics,
     PublishContent,
     PublishResult,
     RateLimitConfig,
@@ -151,12 +160,40 @@ YOUTUBE_MEDIA_RULES = {
 }
 
 
+_CHANNEL_ID = re.compile(r"UC[A-Za-z0-9_-]{22}")
+
+
+def _int_or_none(value) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
 class YouTubeProvider(SocialProvider):
     """YouTube Data API v3 provider using Google OAuth 2.0."""
 
     profile_url_template = "https://www.youtube.com/@{handle}"
 
     media_rules = YOUTUBE_MEDIA_RULES
+
+    supports_public_profile_metrics = True
+    competitor_handle_hint = "@channelhandle"
+    # A channel id, or a handle: 3-30 characters, letters in any script (Arabic handles are common).
+    competitor_handle_pattern = r"UC[A-Za-z0-9_-]{22}|[\w.·-]{3,30}"
+
+    @classmethod
+    def _competitor_handle_from_url(cls, host, segments):
+        # youtube.com/channel/<id>[/videos] or youtube.com/@<handle>[/videos]
+        if "channel" in segments[:-1]:
+            return segments[segments.index("channel") + 1]
+        return super()._competitor_handle_from_url(host, segments)
+
+    @classmethod
+    def _canonical_competitor_handle(cls, value):
+        # Channel ids are case-sensitive; handles are not.
+        return value if _CHANNEL_ID.fullmatch(value) else value.lower()
+
     # Top-level comments on the video carry up to 10,000 characters.
     thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=10000)
 
@@ -924,6 +961,70 @@ class YouTubeProvider(SocialProvider):
 
     def get_channel_period_metrics(self, access_token, channel_id, start, end):
         return self._channel_report(access_token, channel_id, start, end)
+
+    def public_profile_metrics(self, handle: str, using_account, access_token: str = "") -> PublicProfileMetrics:
+        """A channel's public statistics from ``channels.list`` with the connected account's token.
+
+        The newest uploads (``playlistItems.list`` on the channel's uploads
+        playlist, then ``videos.list``) give the engagement average and posting
+        rate. Three quota units in all, added to ``last_call_quota_units``.
+        A channel that hides its subscriber count reports no followers.
+        """
+        lookup = {"id": handle} if _CHANNEL_ID.fullmatch(handle) else {"forHandle": f"@{handle}"}
+        self.last_call_quota_units += 1
+        items = (
+            self._request(
+                "GET",
+                f"{API_BASE}/channels",
+                access_token=access_token,
+                params={"part": "snippet,statistics,contentDetails", **lookup},
+            )
+            .json()
+            .get("items", [])
+        )
+        if not items:
+            raise PublicProfileNotFoundError(f"No YouTube channel found for {handle}.", platform="YouTube")
+        channel = items[0]
+        stats = channel.get("statistics") or {}
+        followers = None if stats.get("hiddenSubscriberCount") else _int_or_none(stats.get("subscriberCount"))
+        engagement, stamps = [], []
+        uploads = ((channel.get("contentDetails") or {}).get("relatedPlaylists") or {}).get("uploads")
+        if uploads:
+            self.last_call_quota_units += 1
+            playlist = self._request(
+                "GET",
+                f"{API_BASE}/playlistItems",
+                access_token=access_token,
+                params={"part": "contentDetails", "playlistId": uploads, "maxResults": 25},
+            ).json()
+            video_ids = [i["contentDetails"]["videoId"] for i in playlist.get("items", []) if i.get("contentDetails")]
+            if video_ids:
+                self.last_call_quota_units += 1
+                videos = self._request(
+                    "GET",
+                    f"{API_BASE}/videos",
+                    access_token=access_token,
+                    params={"part": "snippet,statistics", "id": ",".join(video_ids)},
+                ).json()
+                for video in videos.get("items", []):
+                    v = video.get("statistics") or {}
+                    engagement.append(int(v.get("likeCount") or 0) + int(v.get("commentCount") or 0))
+                    try:
+                        stamps.append(datetime.fromisoformat(video["snippet"]["publishedAt"].replace("Z", "+00:00")))
+                    except (KeyError, ValueError):
+                        continue
+        snippet = channel.get("snippet") or {}
+        custom = snippet.get("customUrl") or ""
+        return PublicProfileMetrics(
+            handle=custom.lstrip("@") or handle,
+            display_name=snippet.get("title") or "",
+            followers=followers,
+            posts_count=_int_or_none(stats.get("videoCount")),
+            avg_engagement=round(sum(engagement) / len(engagement), 2) if engagement else None,
+            posts_per_week=self._posts_per_week(stamps),
+            sampled_posts=len(engagement),
+            profile_url=f"https://www.youtube.com/{custom if custom.startswith('@') else 'channel/' + channel['id']}",
+        )
 
     def get_account_metrics(self, access_token: str, date_range: tuple[datetime, datetime]) -> AccountMetrics:
         """Channel-level metrics from the YouTube Analytics API.

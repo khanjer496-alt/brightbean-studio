@@ -40,8 +40,10 @@ class TestPlans:
         assert (creator.max_channels, creator.max_workspaces, creator.max_scheduled_posts_per_month) == (10, 2, None)
         assert (team.max_channels, team.max_workspaces) == (25, 5)
         assert (agency.max_channels, agency.max_workspaces) == (100, None)
-        assert team.features == {Feature.APPROVALS, Feature.INBOX, Feature.ANALYTICS}
-        assert {Feature.CLIENT_PORTAL, Feature.BRANDED_REPORTS} <= agency.features
+        assert team.features == {Feature.APPROVALS, Feature.INBOX, Feature.ANALYTICS, Feature.AI_VISIBILITY}
+        assert {Feature.CLIENT_PORTAL, Feature.BRANDED_REPORTS, Feature.AI_VISIBILITY} <= agency.features
+        assert [p.max_competitors_per_network for p in (free, creator, team, agency)] == [0, 3, 10, 25]
+        assert [p.max_visibility_prompts for p in (free, creator, team, agency)] == [0, 0, 5, 15]
         assert not free.features and not creator.features
         # Agent access is on every plan; only the daily volume differs.
         assert [p.max_api_calls_per_day for p in (free, creator, team, agency)] == [100, 1_000, 10_000, 100_000]

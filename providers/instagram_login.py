@@ -105,6 +105,13 @@ class InstagramLoginProvider(SocialProvider):
     profile_url_template = "https://www.instagram.com/{handle}/"
 
     media_rules = INSTAGRAM_MEDIA_RULES
+
+    # Business Discovery is documented only for the Facebook Login API, so an account
+    # connected this way cannot read other accounts (see ``providers.instagram_discovery``).
+    public_profile_unavailable_reason = (
+        "Instagram accounts connected with Instagram login can't read other accounts' public numbers. "
+        "Connect the account through Facebook (Instagram Business) to track Instagram competitors."
+    )
     # Instagram comments share the caption's 2,200-character limit.
     thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=2200)
 

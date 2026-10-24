@@ -1484,6 +1484,122 @@ class ReportsListResponse(Schema):
 
 
 # ---------------------------------------------------------------------------
+# /competitors — public competitor benchmarking
+# ---------------------------------------------------------------------------
+
+
+class CompetitorResponse(Schema):
+    id: uuid.UUID
+    platform: str
+    handle: str
+    display_name: str
+    profile_url: str
+    followers: int | None = Field(None, description="Latest public follower count; null when hidden or not read yet.")
+    posts_count: int | None = None
+    posts_per_week: float | None = Field(None, description="Posting rate over the profile's recent public posts.")
+    avg_engagement: float | None = Field(
+        None, description="Mean likes + replies + shares per recent public post, as the network reports them."
+    )
+    last_synced_at: dt.datetime | None = None
+    last_error: str = ""
+
+    @field_serializer("last_synced_at")
+    def _serialize_dt(self, value: dt.datetime | None) -> str | None:
+        return _serialize_utc_z(value)
+
+
+class CompetitorNetworkResponse(Schema):
+    platform: str
+    name: str
+    supported: bool = Field(..., description="False when the network has no official way to read other profiles.")
+    reason: str = Field("", description="Why a network is not available.")
+    tracked: int = 0
+    limit: int | None = Field(None, description="Competitors the plan allows per network; null is unlimited.")
+
+
+class CompetitorsListResponse(Schema):
+    competitors: list[CompetitorResponse]
+    networks: list[CompetitorNetworkResponse]
+
+
+class AddCompetitorRequest(Schema):
+    platform: str = Field(..., description="A network from ``GET /competitors`` with ``supported`` true.")
+    handle: str = Field(..., max_length=300, description="Handle or profile link, e.g. ``name.bsky.social``.")
+
+
+class CompetitorComparisonRow(Schema):
+    kind: Literal["you", "competitor"]
+    id: str
+    label: str
+    handle: str
+    followers: int | None = None
+    growth_pct: float | None = Field(None, description="Follower change over the range, in percent.")
+    posts_per_week: float | None = None
+    avg_engagement_per_post: float | None = None
+    last_read: dt.date | None = None
+
+
+class CompetitorComparisonGroup(Schema):
+    platform: str
+    name: str
+    you: list[CompetitorComparisonRow]
+    competitors: list[CompetitorComparisonRow]
+
+
+class CompetitorComparisonResponse(Schema):
+    start: dt.date
+    end: dt.date
+    networks: list[CompetitorComparisonGroup]
+
+
+# ---------------------------------------------------------------------------
+# /ai-visibility — how AI assistants describe the brand
+# ---------------------------------------------------------------------------
+
+
+class AIVisibilityAnswerResponse(Schema):
+    kind: str = Field(..., description="``category`` (a prompt) or ``brand`` (what do you know about the brand).")
+    question: str
+    engine: str
+    model: str
+    answered: bool
+    mentioned: bool
+    position: int | None = None
+    sentiment: str = ""
+    competitors: list[str]
+    cited_urls: list[str]
+    cites_brand_site: bool
+    answer: str
+
+
+class AIVisibilityIdeaResponse(Schema):
+    text: str
+    saved: bool
+
+
+class AIVisibilityResponse(Schema):
+    note: str = Field(..., description="What these figures are: model answers on one day, not search rankings.")
+    brand_name: str
+    website: str
+    run_id: uuid.UUID
+    status: str
+    created_at: dt.datetime
+    engines: dict[str, str]
+    mention_rate: float | None = Field(None, description="Percent of answered prompts that named the brand.")
+    previous_mention_rate: float | None = None
+    prompts_total: int
+    prompts_mentioned: int
+    gaps: list[str] = Field(..., description="Prompts that were answered without naming the brand.")
+    others_named: list[str]
+    answers: list[AIVisibilityAnswerResponse]
+    suggested_ideas: list[AIVisibilityIdeaResponse]
+
+    @field_serializer("created_at")
+    def _serialize_dt(self, value: dt.datetime | None) -> str | None:
+        return _serialize_utc_z(value)
+
+
+# ---------------------------------------------------------------------------
 # Shared list / delete envelopes
 # ---------------------------------------------------------------------------
 

@@ -29,6 +29,7 @@ class Feature(StrEnum):
     ANALYTICS = "analytics"  # channel and post analytics
     CLIENT_PORTAL = "client_portal"  # inviting clients to review posts
     BRANDED_REPORTS = "branded_reports"  # scheduled, white-label client reports (apps.reports)
+    AI_VISIBILITY = "ai_visibility"  # weekly "how AI describes your brand" report (apps.ai_visibility)
 
 
 FEATURE_LABELS = {
@@ -37,6 +38,7 @@ FEATURE_LABELS = {
     Feature.ANALYTICS: "Analytics",
     Feature.CLIENT_PORTAL: "Client portal",
     Feature.BRANDED_REPORTS: "Branded reports",
+    Feature.AI_VISIBILITY: "AI visibility report",
 }
 
 
@@ -70,6 +72,12 @@ class Plan:
     # its public pages carry the product's badge. Free: one badged page; paid plans: more, unbranded.
     max_bio_pages: int | None = 1
     bio_badge: bool = False
+    # Public competitor profiles a workspace may track on each network that
+    # supports it (apps.competitors); 0 turns benchmarking off.
+    max_competitors_per_network: int | None = 0
+    # Category prompts a workspace may have the AI visibility report ask about
+    # (apps.ai_visibility); only meaningful on a plan with Feature.AI_VISIBILITY.
+    max_visibility_prompts: int = 0
 
     @property
     def is_free(self) -> bool:
@@ -105,6 +113,7 @@ PLANS: dict[str, Plan] = {
         max_ai_requests_per_day=20,
         max_bio_pages=1,
         bio_badge=True,
+        max_competitors_per_network=0,
     ),
     CREATOR: Plan(
         slug=CREATOR,
@@ -117,6 +126,7 @@ PLANS: dict[str, Plan] = {
         max_api_calls_per_day=1_000,
         max_ai_requests_per_day=200,
         max_bio_pages=3,
+        max_competitors_per_network=3,
     ),
     TEAM: Plan(
         slug=TEAM,
@@ -128,8 +138,10 @@ PLANS: dict[str, Plan] = {
         max_scheduled_posts_per_month=None,
         max_api_calls_per_day=10_000,
         max_ai_requests_per_day=1_000,
-        features=frozenset({Feature.APPROVALS, Feature.INBOX, Feature.ANALYTICS}),
+        features=frozenset({Feature.APPROVALS, Feature.INBOX, Feature.ANALYTICS, Feature.AI_VISIBILITY}),
         max_bio_pages=10,
+        max_competitors_per_network=10,
+        max_visibility_prompts=5,
     ),
     AGENCY: Plan(
         slug=AGENCY,
@@ -148,9 +160,12 @@ PLANS: dict[str, Plan] = {
                 Feature.ANALYTICS,
                 Feature.CLIENT_PORTAL,
                 Feature.BRANDED_REPORTS,
+                Feature.AI_VISIBILITY,
             }
         ),
         max_bio_pages=None,
+        max_competitors_per_network=25,
+        max_visibility_prompts=15,
     ),
 }
 

@@ -61,11 +61,15 @@
         fill: single && !dataset.muted,
         borderDash: dataset.muted ? [5, 4] : [],
         borderWidth: 2,
-        tension: 0.25,
+        // Monotone: the curve never swings past a reading (a 50% rate must not draw as 52%).
+        cubicInterpolationMode: 'monotone',
         spanGaps: false,
-        // A reported day with gaps on both sides would vanish without a dot.
+        // A reported day with gaps on both sides would vanish without a dot; a short series
+        // (a handful of weekly reports) shows every reading as one.
         pointRadius: values.map(function (v, i) {
-          return v !== null && (i === 0 || values[i - 1] === null) && (i === values.length - 1 || values[i + 1] === null) ? 3 : 0;
+          if (v === null) return 0;
+          if (values.length <= 12) return 3;
+          return (i === 0 || values[i - 1] === null) && (i === values.length - 1 || values[i + 1] === null) ? 3 : 0;
         }),
         pointHoverRadius: 4,
         pointHoverBackgroundColor: color,

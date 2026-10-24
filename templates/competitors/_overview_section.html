@@ -1,0 +1,39 @@
+{% load analytics_extras %}
+{# Competitors vs you, one line per network. Needs competitors and competitors_url. #}
+{% if competitors.enabled %}
+<section class="rounded-xl border border-line bg-surface-1" aria-labelledby="competitors-heading">
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-line px-5 py-4">
+        <h2 id="competitors-heading" class="m-0 text-[15px] font-semibold text-ink">Competitors</h2>
+        <a href="{{ competitors_url }}" class="text-[13px] font-semibold text-accent no-underline hover:underline">{% if competitors.tracking %}Open benchmarking{% else %}Track your first competitor{% endif %}</a>
+    </div>
+    {% if competitors.rows %}
+    <div class="overflow-x-auto">
+        <table class="w-full border-collapse text-[13px]">
+            <caption class="sr-only">Your followers against the competitors you track, by network</caption>
+            <thead>
+                <tr class="text-[11px] uppercase tracking-wider text-ink-3">
+                    <th scope="col" class="px-4 py-2.5 text-left font-semibold">Network</th>
+                    <th scope="col" class="px-4 py-2.5 text-right font-semibold">Your followers</th>
+                    <th scope="col" class="px-4 py-2.5 text-left font-semibold">Largest competitor</th>
+                    <th scope="col" class="px-4 py-2.5 text-right font-semibold">Your growth</th>
+                    <th scope="col" class="px-4 py-2.5 text-right font-semibold">Competitors' avg growth</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in competitors.rows %}
+                <tr class="border-t border-line">
+                    <th scope="row" class="whitespace-nowrap px-4 py-2.5 text-left font-medium text-ink">{{ r.network.name }}<span class="ml-2 text-xs font-normal text-ink-3">{{ r.competitors }} tracked</span></th>
+                    <td class="px-4 py-2.5 text-right font-mono text-ink-2">{% include "analytics/_figure.html" with value=r.your_followers kind="count" %}</td>
+                    <td class="px-4 py-2.5 text-ink-2">{% if r.top %}<bdi>{{ r.top.label }}</bdi> <span class="font-mono text-ink-3">{{ r.top.followers|fmt_metric:"count" }}</span>{% else %}<span class="text-ink-3">—</span>{% endif %}</td>
+                    <td class="px-4 py-2.5 text-right font-mono text-ink-2">{% if r.your_growth is None %}<span class="text-ink-3">—</span>{% else %}{{ r.your_growth|fmt_signed }}{% endif %}</td>
+                    <td class="px-4 py-2.5 text-right font-mono text-ink-2">{% if r.avg_growth is None %}<span class="text-ink-3">—</span>{% else %}{{ r.avg_growth|fmt_signed }}{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <p class="m-0 px-5 py-6 text-[13px] text-ink-3">Add public profiles to compare your followers and growth against theirs.</p>
+    {% endif %}
+</section>
+{% endif %}
