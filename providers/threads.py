@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 
 from .base import SocialProvider
 from .exceptions import OAuthError, PublishError
+from .meta_errors import MetaGraphErrors
 from .types import (
     AccountProfile,
     AuthType,
@@ -64,7 +65,7 @@ THREADS_MEDIA_RULES = {
 }
 
 
-class ThreadsProvider(SocialProvider):
+class ThreadsProvider(MetaGraphErrors, SocialProvider):
     """Threads API provider using OAuth 2.0."""
 
     profile_url_template = "https://www.threads.net/@{handle}"
@@ -340,6 +341,7 @@ class ThreadsProvider(SocialProvider):
             f"{API_BASE}/{user_id}/threads",
             access_token=access_token,
             data=container_payload,
+            ambiguous_on_failure=False,
         )
         create_body = create_resp.json()
         creation_id = create_body.get("id")
@@ -435,6 +437,7 @@ class ThreadsProvider(SocialProvider):
                     key: url,
                     "is_carousel_item": "true",
                 },
+                ambiguous_on_failure=False,
             )
             item_body = item_resp.json()
             item_id = item_body.get("id")
@@ -463,6 +466,7 @@ class ThreadsProvider(SocialProvider):
                 # carrying several images joins its thread.
                 **({"reply_to_id": content.extra["reply_to_id"]} if content.extra.get("reply_to_id") else {}),
             },
+            ambiguous_on_failure=False,
         )
         carousel_body = carousel_resp.json()
         creation_id = carousel_body.get("id")
@@ -531,6 +535,7 @@ class ThreadsProvider(SocialProvider):
                 "text": text[: self.max_caption_length],
                 "reply_to_id": post_id,
             },
+            ambiguous_on_failure=False,
         )
         creation_id = create_resp.json().get("id")
         if not creation_id:

@@ -14,19 +14,20 @@ Docs: https://developers.facebook.com/docs/instagram-platform/instagram-api-with
 from __future__ import annotations
 
 import logging
-import time
 from datetime import datetime
 from urllib.parse import urlencode
 
 from .base import SocialProvider
 from .exceptions import APIError, OAuthError, ProviderError, PublishError
 from .instagram import INSTAGRAM_MEDIA_RULES
+from .instagram_containers import InstagramContainers
 from .instagram_options import INSTAGRAM_POST_SETTINGS, container_options, validate_instagram_settings
 from .meta_comments import (
     fetch_instagram_comments,
     find_own_instagram_comment,
     resolve_comment_reply_target,
 )
+from .meta_errors import MetaGraphErrors
 from .meta_insights import fetch_insights_safe
 from .meta_messaging import (
     build_send_payload,
@@ -95,7 +96,7 @@ CONTAINER_POLL_INTERVAL = 2  # seconds
 CONTAINER_POLL_TIMEOUT = 120  # seconds
 
 
-class InstagramLoginProvider(SocialProvider):
+class InstagramLoginProvider(MetaGraphErrors, InstagramContainers, SocialProvider):
     """Instagram API provider using Instagram Login (OAuth 2.0).
 
     Authenticates Professional (Business or Creator) Instagram accounts
@@ -384,8 +385,14 @@ class InstagramLoginProvider(SocialProvider):
             container_options(content.extra, content.post_type, is_video=is_video, platform=self.platform_name)
         )
 
-        container_id = self._create_container(access_token, payload)
-        self._wait_for_container(access_token, container_id)
+        container_id = self._prepare_container(
+            access_token,
+            content,
+            "single",
+            payload,
+            lambda: self._create_container(access_token, payload),
+            is_video=is_video,
+        )
         return self._publish_container(access_token, container_id)
 
     def _publish_carousel(self, access_token: str, content: PublishContent) -> PublishResult:
@@ -399,8 +406,14 @@ class InstagramLoginProvider(SocialProvider):
             else:
                 child_payload["image_url"] = url
 
-            child_id = self._create_container(access_token, child_payload)
-            self._wait_for_container(access_token, child_id)
+            child_id = self._prepare_container(
+                access_token,
+                content,
+                f"child-{index}",
+                child_payload,
+                lambda payload=child_payload: self._create_container(access_token, payload),
+                is_video=content.is_video(index),
+            )
             child_ids.append(child_id)
 
         carousel_payload: dict = {
@@ -413,8 +426,14 @@ class InstagramLoginProvider(SocialProvider):
             container_options(content.extra, content.post_type, is_video=False, platform=self.platform_name)
         )
 
-        carousel_id = self._create_container(access_token, carousel_payload)
-        self._wait_for_container(access_token, carousel_id)
+        carousel_id = self._prepare_container(
+            access_token,
+            content,
+            "carousel",
+            carousel_payload,
+            lambda: self._create_container(access_token, carousel_payload),
+            is_video=any(content.is_video(i) for i in range(len(content.media_urls))),
+        )
         return self._publish_container(access_token, carousel_id)
 
     def _create_container(self, access_token: str, payload: dict) -> str:
@@ -423,6 +442,7 @@ class InstagramLoginProvider(SocialProvider):
             f"{API_BASE}/me/media",
             access_token=access_token,
             json=payload,
+            ambiguous_on_failure=False,
         )
         data = resp.json()
         container_id = data.get("id")
@@ -434,32 +454,8 @@ class InstagramLoginProvider(SocialProvider):
             )
         return container_id
 
-    def _wait_for_container(self, access_token: str, container_id: str) -> None:
-        """Poll container status until FINISHED or error."""
-
-        def finished() -> bool:
-            resp = self._request(
-                "GET",
-                f"{API_BASE}/{container_id}",
-                access_token=access_token,
-                params={"fields": "status_code,status"},
-            )
-            data = resp.json()
-            status = data.get("status_code", "")
-            if status == "ERROR":
-                raise PublishError(
-                    f"Instagram container failed: {data.get('status', 'unknown error')}",
-                    platform=self.platform_name,
-                    raw_response=data,
-                )
-            return status == "FINISHED"
-
-        self._poll_until(
-            finished,
-            deadline=time.monotonic() + CONTAINER_POLL_TIMEOUT,
-            interval=CONTAINER_POLL_INTERVAL,
-            on_timeout=lambda: PublishError("Instagram container processing timed out", platform=self.platform_name),
-        )
+    def _container_status_url(self, container_id: str) -> str:
+        return f"{API_BASE}/{container_id}"
 
     def _publish_container(self, access_token: str, container_id: str) -> PublishResult:
         resp = self._request(

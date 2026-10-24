@@ -276,6 +276,7 @@ class GoogleBusinessProvider(SocialProvider):
                 "refresh_token": refresh_token,
                 "grant_type": "refresh_token",
             },
+            ambiguous_on_failure=False,
         )
         data = resp.json()
         if "error" in data:

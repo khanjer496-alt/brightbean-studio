@@ -275,6 +275,7 @@ class LinkedInProvider(SocialProvider):
             access_token=data["access_token"],
             refresh_token=data.get("refresh_token"),
             expires_in=data.get("expires_in"),
+            refresh_expires_in=data.get("refresh_token_expires_in"),
             token_type=data.get("token_type", "Bearer"),
             scope=data.get("scope"),
             raw_response=data,
@@ -291,6 +292,7 @@ class LinkedInProvider(SocialProvider):
                 "client_secret": self.credentials["client_secret"],
             },
             headers={"Content-Type": "application/x-www-form-urlencoded"},
+            ambiguous_on_failure=False,
         )
         data = resp.json()
         if "access_token" not in data:
@@ -303,6 +305,7 @@ class LinkedInProvider(SocialProvider):
             access_token=data["access_token"],
             refresh_token=data.get("refresh_token"),
             expires_in=data.get("expires_in"),
+            refresh_expires_in=data.get("refresh_token_expires_in"),
             token_type=data.get("token_type", "Bearer"),
             scope=data.get("scope"),
             raw_response=data,
@@ -405,6 +408,7 @@ class LinkedInProvider(SocialProvider):
                     "owner": author,
                 }
             },
+            ambiguous_on_failure=False,
         )
         init_data = init_resp.json().get("value", {})
         upload_url = init_data.get("uploadUrl", "")
@@ -459,6 +463,7 @@ class LinkedInProvider(SocialProvider):
             headers=LINKEDIN_HEADERS,
             params={"action": "initializeUpload"},
             json={"initializeUploadRequest": {"owner": author}},
+            ambiguous_on_failure=False,
         )
         init_data = init_resp.json().get("value", {})
         upload_url = init_data.get("uploadUrl", "")
@@ -565,6 +570,7 @@ class LinkedInProvider(SocialProvider):
                         "fileSizeBytes": file_size,
                     }
                 },
+                ambiguous_on_failure=False,
             )
             init_data = init_resp.json().get("value", {})
             video_urn = init_data.get("video", "")
@@ -612,6 +618,7 @@ class LinkedInProvider(SocialProvider):
                         "uploadedPartIds": uploaded_part_ids,
                     }
                 },
+                ambiguous_on_failure=False,
             )
 
             # Step 4: wait for processing — posting before status=AVAILABLE returns

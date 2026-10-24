@@ -234,6 +234,7 @@ class BlueskyProvider(SocialProvider):
             "POST",
             f"{self.pds_url}/xrpc/com.atproto.server.refreshSession",
             access_token=refresh_token,
+            ambiguous_on_failure=False,
         )
         data = resp.json()
         return OAuthTokens(
@@ -648,6 +649,7 @@ class BlueskyProvider(SocialProvider):
                     "Content-Length": str(os.path.getsize(media_path)),
                 },
                 data=f,
+                ambiguous_on_failure=False,
             )
         data = resp.json()
         return data.get("blob", data)

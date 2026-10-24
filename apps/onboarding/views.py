@@ -567,6 +567,7 @@ def connection_oauth_callback(request, platform):
             access_token=tokens.access_token,
             refresh_token=tokens.refresh_token,
             expires_in=tokens.expires_in,
+            refresh_expires_in=tokens.refresh_expires_in,
             instance_url=extra_creds.get("instance_url", ""),
         )
         ConnectionLinkUsage.objects.get_or_create(

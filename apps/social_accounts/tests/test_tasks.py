@@ -8,7 +8,7 @@ from django.utils import timezone
 
 from apps.social_accounts.models import SocialAccount
 from apps.social_accounts.tasks import check_social_account_health
-from providers.exceptions import QuotaExceededError
+from providers.exceptions import APIError, QuotaExceededError, TokenExpiredError
 from providers.types import AccountProfile, OAuthTokens
 
 
@@ -119,7 +119,7 @@ class TestCheckSocialAccountHealth:
     @patch("providers.get_provider")
     def test_failed_health_check_sets_error(self, mock_get_provider, connected_account):
         mock_provider = MagicMock()
-        mock_provider.get_profile.side_effect = Exception("Token expired")
+        mock_provider.get_profile.side_effect = APIError("rejected", status_code=400, platform="facebook")
         mock_get_provider.return_value = mock_provider
 
         check_social_account_health.now(str(connected_account.id))
@@ -302,7 +302,7 @@ class TestCheckSocialAccountHealth:
         connected_account.save()
 
         mock_provider = MagicMock()
-        mock_provider.get_profile.side_effect = Exception("Token expired")
+        mock_provider.get_profile.side_effect = APIError("rejected", status_code=400, platform="facebook")
         mock_get_provider.return_value = mock_provider
 
         check_social_account_health.now(str(connected_account.id))
@@ -489,7 +489,7 @@ class TestWebhookResubscription:
     def test_a_broken_connection_is_not_retried(self, mock_get_provider, connected_account):
         """The token check just failed; a subscription call would fail too."""
         mock_get_provider.return_value = MagicMock(
-            get_profile=MagicMock(side_effect=RuntimeError("bad token")),
+            get_profile=MagicMock(side_effect=TokenExpiredError("bad token", status_code=401)),
         )
         SocialAccount.objects.filter(pk=connected_account.pk).update(webhooks_active=False)
 

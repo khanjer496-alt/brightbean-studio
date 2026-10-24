@@ -514,7 +514,9 @@ class XProvider(SocialProvider):
 
     def _token_request(self, data: dict) -> dict:
         try:
-            body = self._request("POST", TOKEN_URL, headers=self._client_auth(), data=data).json()
+            body = self._request(
+                "POST", TOKEN_URL, headers=self._client_auth(), data=data, ambiguous_on_failure=False
+            ).json()
         except RateLimitError:
             raise
         except ProviderError as exc:

@@ -493,6 +493,7 @@ class MastodonProvider(SocialProvider):
                 f"{self.instance_url}/api/v2/media",
                 access_token=access_token,
                 files={"file": f},
+                ambiguous_on_failure=False,
             )
         data = resp.json()
         return str(data["id"]), resp.status_code == 200

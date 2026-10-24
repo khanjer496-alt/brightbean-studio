@@ -347,7 +347,9 @@ class RedditProvider(SocialProvider):
         return f"{AUTH_URL}?{urlencode(params)}"
 
     def _token_request(self, data: dict) -> dict:
-        body = self._request("POST", TOKEN_URL, headers=self._client_auth(), data=data).json()
+        body = self._request(
+            "POST", TOKEN_URL, headers=self._client_auth(), data=data, ambiguous_on_failure=False
+        ).json()
         if "access_token" not in body:
             raise OAuthError(
                 f"Reddit token request failed ({body.get('error', 'unknown')})",

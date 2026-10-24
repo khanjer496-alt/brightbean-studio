@@ -1,6 +1,7 @@
 """Background tasks for social account health checks."""
 
 import logging
+from datetime import timedelta
 
 from background_task import background
 from django.utils import timezone
@@ -16,6 +17,12 @@ logger = logging.getLogger(__name__)
 # refresh credential is the token itself, so an account with no recorded
 # expiry must still be refreshed. See the bootstrap in check_social_account_health.
 EXPIRY_BOOTSTRAP_PLATFORMS = ("bluesky", "threads")
+
+# How long every health check may fail for a reason that says nothing about the grant (the platform is
+# down) before the card says so. The status stays what it was.
+UNREACHABLE_WARNING_AFTER = timedelta(days=3)
+# How far ahead of a refresh token's end the owner is told to reconnect.
+REFRESH_TOKEN_WARNING_WINDOW = timedelta(days=14)
 
 
 @background(schedule=0)
@@ -37,8 +44,15 @@ def _check_social_account_health(account_id: str):
     """
     from providers import get_provider
 
-    from .error_messages import friendly_health_check_error, quota_blocked_message
+    from .error_messages import (
+        UNREACHABLE_MESSAGE,
+        friendly_health_check_error,
+        is_account_failure,
+        is_transient_failure,
+        quota_blocked_message,
+    )
     from .models import SocialAccount
+    from .reconnect import warn_refresh_token_expiring
 
     try:
         account = SocialAccount.objects.get(id=account_id)
@@ -84,8 +98,11 @@ def _check_social_account_health(account_id: str):
             logger.info("Health check: refreshed token for %s", account)
         except Exception as e:
             logger.warning("Health check: token refresh failed for %s: %s", account, e)
-            account.connection_status = SocialAccount.ConnectionStatus.TOKEN_EXPIRING
-            account.last_error = friendly_health_check_error(e)
+            # A refresh that failed because the platform was down says nothing about the token; the next
+            # sweep tries it again.
+            if not is_transient_failure(e):
+                account.connection_status = SocialAccount.ConnectionStatus.TOKEN_EXPIRING
+                account.last_error = friendly_health_check_error(e)
 
     # A block already recorded means the platform has told us it will refuse
     # until the window rolls over. Probing anyway spends a unit from the very
@@ -135,6 +152,7 @@ def _check_social_account_health(account_id: str):
             if account.connection_status != SocialAccount.ConnectionStatus.TOKEN_EXPIRING:
                 account.connection_status = SocialAccount.ConnectionStatus.CONNECTED
             account.last_error = ""
+            account.health_failing_since = None
         except QuotaExceededError as e:
             # YouTube reports a spent daily quota as a 403. It says nothing about
             # the OAuth grant, so do not turn a recoverable platform budget window
@@ -154,8 +172,22 @@ def _check_social_account_health(account_id: str):
             account.last_error = friendly_health_check_error(e)
         except Exception as e:
             logger.warning("Health check: profile fetch failed for %s: %s", account, e)
-            account.connection_status = SocialAccount.ConnectionStatus.ERROR
-            account.last_error = friendly_health_check_error(e)
+            now = timezone.now()
+            if is_account_failure(e):
+                account.connection_status = SocialAccount.ConnectionStatus.ERROR
+                account.last_error = friendly_health_check_error(e)
+                account.health_failing_since = None
+            else:
+                # A 5xx, a timeout or a rate limit is the platform's trouble, not the grant's: marking the
+                # account ERROR would drop it from the sweep and from scheduling until someone reconnects it
+                # by hand. Leave it as it was and look again next time; only a long run of failures is
+                # worth saying out loud, and even then it is a warning.
+                account.health_failing_since = account.health_failing_since or now
+                if now - account.health_failing_since >= UNREACHABLE_WARNING_AFTER:
+                    account.last_error = UNREACHABLE_MESSAGE
+
+    if account.refresh_token_expires_within(REFRESH_TOKEN_WARNING_WINDOW):
+        warn_refresh_token_expiring(account)
 
     account.last_health_check_at = timezone.now()
     fields = [
@@ -166,6 +198,7 @@ def _check_social_account_health(account_id: str):
         "connection_status",
         "last_error",
         "last_health_check_at",
+        "health_failing_since",
         "updated_at",
     ]
     # Tokens were saved inside the shared refresh lock. Saving only metadata
@@ -188,9 +221,12 @@ def schedule_all_health_checks():
     from .models import SocialAccount
 
     accounts = SocialAccount.objects.filter(
+        # ERROR is included: it is set by a rejected credential, and an account that came back on its own (a
+        # token refreshed elsewhere, a false alarm from an earlier release) should not wait for a manual reconnect.
         connection_status__in=[
             SocialAccount.ConnectionStatus.CONNECTED,
             SocialAccount.ConnectionStatus.TOKEN_EXPIRING,
+            SocialAccount.ConnectionStatus.ERROR,
         ]
     ).values_list("id", flat=True)
 

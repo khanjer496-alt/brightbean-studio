@@ -300,6 +300,8 @@ class WordPressProvider(BlogProvider):
                 access_token,
                 headers={"Content-Disposition": f'attachment; filename="{filename}"', "Content-Type": mime},
                 data=handle,
+                # A media-library item is not a post; a lost response only costs a duplicate upload.
+                ambiguous_on_failure=False,
             )
         if not data.get("id"):
             raise PublishError(
@@ -322,7 +324,9 @@ class WordPressProvider(BlogProvider):
                 )
                 match = next((t for t in found if t["name"].lower() == name.lower()), None)
                 if match is None:
-                    match = self._wp("POST", "/wp/v2/tags", access_token, json={"name": name})
+                    match = self._wp(
+                        "POST", "/wp/v2/tags", access_token, json={"name": name}, ambiguous_on_failure=False
+                    )
                 ids.append(int(match["id"]))
             except (APIError, PublishError, KeyError, ValueError):
                 logger.warning("Could not resolve WordPress tag %r", name)

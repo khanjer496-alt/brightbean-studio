@@ -4,7 +4,7 @@ import zoneinfo
 from datetime import datetime, time, timedelta
 
 from django.db import transaction
-from django.db.models import F
+from django.db.models import Count, F
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 
@@ -832,6 +832,18 @@ def overdue_held_posts(social_account):
     )
 
 
+def _move_to(platform_post, when):
+    """Give ``platform_post`` a new send time, keeping its queue entry and its post's own time in step."""
+    from apps.composer.services import sync_post_scheduled_at
+
+    platform_post.scheduled_at = when
+    platform_post.save(update_fields=["scheduled_at", "updated_at"])
+    QueueEntry.objects.filter(post=platform_post.post, queue__social_account_id=platform_post.social_account_id).update(
+        assigned_slot_datetime=when
+    )
+    sync_post_scheduled_at(platform_post.post)
+
+
 def resume_publishing(social_account, held_posts=DEFAULT_HELD_POSTS, *, by=None):
     """Resume a paused channel, handling the posts that came due while it was paused.
 
@@ -841,7 +853,7 @@ def resume_publishing(social_account, held_posts=DEFAULT_HELD_POSTS, *, by=None)
     drafts. Nothing is deleted. The posts are settled before the pause is lifted, so the publisher never
     sees them as overdue. Returns ``{"requeued", "published_now", "skipped"}`` counts.
     """
-    from apps.composer.services import sync_post_scheduled_at, transition_platform_post
+    from apps.composer.services import transition_platform_post
     from apps.social_accounts.models import SocialAccount
 
     if held_posts not in HELD_POSTS_CHOICES:
@@ -862,12 +874,58 @@ def resume_publishing(social_account, held_posts=DEFAULT_HELD_POSTS, *, by=None)
                     outcome["skipped"] += 1
                 continue
             when = slots[index] if held_posts == "requeue" else now + timedelta(minutes=index)
-            pp.scheduled_at = when
-            pp.save(update_fields=["scheduled_at", "updated_at"])
-            QueueEntry.objects.filter(post=pp.post, queue__social_account=social_account).update(
-                assigned_slot_datetime=when
-            )
-            sync_post_scheduled_at(pp.post)
+            _move_to(pp, when)
             outcome["requeued" if held_posts == "requeue" else "published_now"] += 1
         social_account.set_paused(False, by=by)
     return outcome
+
+
+#: How late a scheduled post must be before it counts as backlog rather than a publisher that is a tick behind.
+BACKLOG_GRACE = timedelta(minutes=15)
+#: How many posts one channel may have overdue before they are spread out rather than sent together.
+BACKLOG_THRESHOLD = 3
+
+
+def stagger_overdue_backlog(*, now=None, grace=BACKLOG_GRACE, threshold=BACKLOG_THRESHOLD):
+    """Spread the posts a channel has overdue after an outage over the next few minutes, a minute apart.
+
+    A worker that was down for hours comes back to every post it missed. Sent at once they hit the
+    platform in a burst (rate limits, a flagged account) and read as spam on the channel, so a channel with
+    more than ``threshold`` posts later than ``grace`` gets them sent in the order they were due, the way
+    "resume and publish now" sends held posts. A channel with only a few overdue posts, or posts that are
+    only seconds late, is left to the publisher. Returns the number of posts moved.
+    """
+    from apps.composer.models import PlatformPost
+
+    now = now or timezone.now()
+    overdue = (
+        PlatformPost.objects.filter(
+            status=PlatformPost.Status.SCHEDULED, retry_count=0, social_account__paused_at__isnull=True
+        )
+        .annotate(effective_at=Coalesce("scheduled_at", "post__scheduled_at"))
+        .filter(effective_at__lte=now - grace)
+    )
+    crowded = (
+        overdue.order_by()
+        .values("social_account_id")
+        .annotate(n=Count("id"))
+        .filter(n__gt=threshold)
+        .values_list("social_account_id", flat=True)
+    )
+    moved = 0
+    for account_id in list(crowded):
+        with transaction.atomic():
+            # Locked and re-read so a second worker, or a post that was published or cancelled since the
+            # count, is not moved from under its owner.
+            rows = list(
+                overdue.filter(social_account_id=account_id)
+                .select_related("post")
+                .select_for_update(of=("self",))
+                .order_by(F("effective_at").asc(), "post__created_at", "id")
+            )
+            if len(rows) <= threshold:
+                continue
+            for index, pp in enumerate(rows):
+                _move_to(pp, now + timedelta(minutes=index))
+            moved += len(rows)
+    return moved

@@ -30,6 +30,12 @@ RATE_LIMIT_MESSAGE = "Rate limit reached. We'll retry this check shortly."
 QUOTA_EXHAUSTED_MESSAGE = "The platform's daily API limit is used up."
 PLATFORM_UNAVAILABLE_MESSAGE = "The platform is temporarily unavailable. We'll retry shortly."
 GENERIC_MESSAGE = "Connection check failed. Please try reconnecting."
+# Shown once every health check for days has failed for reasons that say nothing about the grant.
+# A warning, not a verdict: the account stays connected and is checked again on the next sweep.
+UNREACHABLE_MESSAGE = (
+    "We haven't been able to check this account for a few days because the platform keeps failing to answer. "
+    "Posts will still be attempted. If it doesn't clear up, try reconnecting."
+)
 
 FIRST_COMMENT_RECONNECT_MESSAGE = (
     "The account connection expired, so the first comment wasn't added. "
@@ -152,6 +158,8 @@ def _classify(exc: Exception) -> str:
         return _RATE_LIMITED
 
     if isinstance(exc, APIError):
+        if exc.transient:
+            return _UNAVAILABLE
         if exc.status_code in (401, 403):
             return _RECONNECT
         if _has_expired_token_code(exc):
@@ -240,6 +248,13 @@ def _friendly(exc: Exception, copy: dict[str, str], fallback: str) -> str:
     ``OAuthError`` interpolates a token-exchange body on some providers, and an
     auth failure maps to better advice than its own wording anyway.
     """
+    # A provider that read its own error body and wrote the sentence for it
+    # (Meta's container errors) is better placed to say what happened than the
+    # generic copy for its failure shape.
+    provider_message = (getattr(exc, "user_message", None) or "").strip()
+    if provider_message and _is_user_safe(provider_message):
+        return provider_message
+
     if type(exc) is PublishError:
         message = str(exc).strip()
         if _is_user_safe(message):
@@ -393,6 +408,28 @@ def is_credential_rejection(exc: Exception) -> bool:
     if isinstance(exc, APIError):
         return exc.status_code == 401 or _has_expired_token_code(exc)
     return False
+
+
+def is_transient_failure(exc: Exception) -> bool:
+    """Whether a failure says nothing about the account: the platform was down, slow, or throttling us.
+
+    No response at all (a timeout, a dropped connection) counts, as do a 5xx and
+    every flavour of rate limit. The health check leaves an account's status
+    alone for these, and tries again on its next sweep.
+    """
+    if isinstance(exc, APIError) and exc.status_code is None:
+        return True
+    return _classify(exc) in (_RATE_LIMITED, _QUOTA_EXHAUSTED, _UNAVAILABLE)
+
+
+def is_account_failure(exc: Exception) -> bool:
+    """Whether a failure is the platform turning this account's credentials down.
+
+    A 401/403, an expired or revoked token, or a request it refused outright (a
+    4xx). Anything else - a transient failure, or an error of our own that is not
+    a platform verdict at all - leaves the account's status alone.
+    """
+    return not is_transient_failure(exc) and _classify(exc) in (_RECONNECT, _REJECTED)
 
 
 # What gives way to PUBLISH_EXHAUSTED_MESSAGE when the retry budget runs out:

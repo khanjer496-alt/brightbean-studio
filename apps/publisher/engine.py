@@ -67,7 +67,7 @@ from apps.social_accounts.error_messages import (
 )
 from apps.webhooks import events as webhook_events
 from providers import PROVIDER_REGISTRY, VIDEO_POST_TYPES, get_provider
-from providers.exceptions import APIError, ProviderError, PublishError, RateLimitError
+from providers.exceptions import APIError, ProviderError, PublishError, RateLimitError, ReconnectRequiredError
 from providers.types import PostType, PublishContent, PublishResult, PublishState
 
 from .models import PublishLog, RateLimitState
@@ -342,7 +342,7 @@ def _first_comment_delay(workspace_id) -> int:
 _PUBLISH_REFRESH_WINDOW = timedelta(days=7)
 
 
-def _provider_and_access_token(account):
+def _provider_and_access_token(account, *, raise_on_rejected_refresh=False):
     """Build the provider for ``account`` and return a usably-fresh token.
 
     Shared by the publish path and the first-comment task: the comment fires
@@ -350,7 +350,12 @@ def _provider_and_access_token(account):
     at publish time to have gone stale.
 
     Best-effort refresh — on failure we keep the old token and let the API call
-    surface the real error rather than masking it with a refresh error.
+    surface the real error rather than masking it with a refresh error. The
+    exception is a refresh the platform *refused* (a revoked or expired refresh
+    token): that is not going to work on a retry either, so the account is
+    flagged for reconnection, and ``raise_on_rejected_refresh`` makes the caller
+    stop there when the stored token has lapsed too, since nothing is left to
+    publish with.
     """
     provider = get_provider(account.platform, _resolve_publish_credentials(account))
 
@@ -359,10 +364,39 @@ def _provider_and_access_token(account):
         try:
             access_token = account.refresh_oauth_token(provider, enqueue_backfill=False)
             logger.info("Refreshed token for %s", account)
-        except Exception:
+        except Exception as exc:
             logger.exception("Token refresh failed for %s", account)
+            if is_credential_rejection(exc) and _record_rejected_refresh(account) and raise_on_rejected_refresh:
+                raise ReconnectRequiredError(
+                    "The platform rejected the token refresh and the stored token has expired",
+                    platform=account.platform,
+                    retryable=False,
+                ) from exc
 
     return provider, access_token
+
+
+def _record_rejected_refresh(account) -> bool:
+    """Note on the account that its token can't be renewed. True when the stored token has lapsed as well.
+
+    A token that still has days on it keeps working, so the account is only
+    marked as expiring, and stays schedulable; a lapsed one flags it for
+    reconnection and tells the people who can do that.
+    """
+    from apps.social_accounts.error_messages import RECONNECT_MESSAGE
+    from apps.social_accounts.reconnect import mark_reconnect_required, mark_token_expiring
+
+    try:
+        lapsed = account.token_expires_at is not None and account.token_expires_at <= timezone.now()
+        if lapsed:
+            mark_reconnect_required(account)
+        else:
+            mark_token_expiring(account, RECONNECT_MESSAGE)
+        return lapsed
+    except Exception:
+        # Recording is an aid: failing to write it must not change how the publish proceeds.
+        logger.exception("Could not record the rejected token refresh for %s", account)
+        return False
 
 
 class _ProviderUploadCache:
@@ -464,6 +498,7 @@ class PublishEngine:
         Called every ~15 seconds by the background worker. Groups due
         PlatformPosts by parent Post and publishes each group.
         """
+        self._stagger_backlog()
         due_pps = self._get_due_platform_posts()
 
         # Group by parent post_id
@@ -539,6 +574,24 @@ class PublishEngine:
             .select_related("post__workspace", "social_account")
             .order_by("effective_at")[: _max_concurrent_publishes()]
         )
+
+    @staticmethod
+    def _stagger_backlog():
+        """Spread out what piled up while the worker was down, so recovery isn't a burst of posts.
+
+        Best-effort: a failure here must not stop the posts that are simply due.
+        """
+        try:
+            from apps.calendar.services import stagger_overdue_backlog
+
+            moved = stagger_overdue_backlog(
+                grace=timedelta(minutes=_bounded_setting("PUBLISHER_BACKLOG_GRACE_MINUTES", 15)),
+                threshold=_bounded_setting("PUBLISHER_BACKLOG_THRESHOLD", 3),
+            )
+            if moved:
+                logger.warning("Spread %d overdue posts over the next few minutes after a publishing backlog", moved)
+        except Exception:
+            logger.exception("Could not spread the overdue backlog")
 
     def _publish_post_group(self, post, due_pps, platform_pool=None):
         """Publish a group of due PlatformPosts belonging to the same Post.
@@ -927,7 +980,13 @@ class PublishEngine:
             )
 
             user_message = friendly_publish_error(e)
-            if isinstance(e, APIError) and getattr(e, "ambiguous_write", False):
+            # A platform that says the credential itself is dead rejected the call
+            # before it wrote anything, so it is never an ambiguous outcome.
+            if (
+                isinstance(e, APIError)
+                and getattr(e, "ambiguous_write", False)
+                and not isinstance(e, ReconnectRequiredError)
+            ):
                 # A mutating request timed out or returned 5xx. The platform
                 # may have accepted the post before the response was lost, so
                 # blindly retrying can create a duplicate. Park it as failed
@@ -943,11 +1002,25 @@ class PublishEngine:
                     platform_post,
                     error_msg,
                     user_message=user_message,
-                    retry_at=getattr(e, "resets_at", None),
+                    retry_at=_retry_deadline(e, platform_post.retry_count),
                 )
             else:
                 self._fail_permanently(platform_post, error_msg, user_message=user_message)
+                if isinstance(e, ReconnectRequiredError):
+                    # The retries are saved; the person who can reconnect hears about it now rather
+                    # than when the next post fails the same way.
+                    self._flag_account_for_reconnect(platform_post.social_account)
             return {"success": False, "error": error_msg}
+
+    @staticmethod
+    def _flag_account_for_reconnect(account):
+        """Best-effort: the post is already failed, and a bookkeeping error must not unwind that."""
+        from apps.social_accounts.reconnect import mark_reconnect_required
+
+        try:
+            mark_reconnect_required(account)
+        except Exception:
+            logger.exception("Could not flag %s for reconnection", account)
 
     @staticmethod
     def _drop_queue_entry(platform_post):
@@ -1001,7 +1074,7 @@ class PublishEngine:
         # Refreshes an expiring token first — covers OAuth2 providers *and*
         # session providers like Bluesky, whose accessJwt expires after only a
         # few hours and must be renewed before each publish.
-        provider, access_token = _provider_and_access_token(account)
+        provider, access_token = _provider_and_access_token(account, raise_on_rejected_refresh=True)
 
         # Download media from storage (S3/cloud) to temp files for upload
         # and collect public URLs (presigned R2 / absolute) for providers
@@ -1689,6 +1762,23 @@ class PublishEngine:
             post.save(update_fields=["published_at", "updated_at"])
 
 
+def _retry_deadline(exc, retry_count):
+    """When a failed attempt should next run, if the platform said; None for the ordinary backoff ladder.
+
+    ``resets_at`` is an absolute time (YouTube's quota boundary). ``retry_after``
+    is a delay in seconds (a rate limit's hint), and is never allowed to bring
+    the retry in sooner than the ladder would have.
+    """
+    resets_at = getattr(exc, "resets_at", None)
+    if resets_at is not None:
+        return resets_at
+    retry_after = getattr(exc, "retry_after", None)
+    if isinstance(retry_after, int | float) and retry_after > 0:
+        ladder = RETRY_BACKOFF[min(retry_count, len(RETRY_BACKOFF) - 1)]
+        return timezone.now() + timedelta(seconds=max(retry_after, ladder))
+    return None
+
+
 def _refused_a_live_token(account, exc) -> bool:
     """Whether the platform refused a token we know has not expired.
 
@@ -1722,6 +1812,10 @@ def _refused_a_live_token(account, exc) -> bool:
     token, expires_at = stored
     if token != account.oauth_access_token:
         return False
+    if isinstance(exc, ReconnectRequiredError):
+        # The platform called the credential dead (or refused its renewal), whatever
+        # expiry we have on record.
+        return True
     return expires_at is not None and expires_at > timezone.now()
 
 
@@ -1757,7 +1851,7 @@ def _is_retryable_first_comment_failure(exc) -> bool:
     403 is not — Meta uses it for missing scopes and revoked grants, which need
     a reconnect rather than a backoff.
     """
-    if not getattr(exc, "retryable", True):
+    if not getattr(exc, "retryable", True) or isinstance(exc, ReconnectRequiredError):
         return False
     if isinstance(exc, RateLimitError):
         return True

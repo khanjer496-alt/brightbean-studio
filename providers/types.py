@@ -68,6 +68,9 @@ class OAuthTokens:
     token_type: str = "Bearer"
     scope: str | None = None
     raw_response: dict = field(default_factory=dict)
+    # Seconds until the *refresh* token itself lapses, for the platforms that
+    # say (TikTok, Pinterest, LinkedIn). None means the platform doesn't tell us.
+    refresh_expires_in: int | None = None
 
 
 @dataclass(frozen=True)

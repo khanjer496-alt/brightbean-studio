@@ -141,6 +141,7 @@ class TwitchProvider(SocialProvider):
                 "client_id": self.credentials["client_id"],
                 "client_secret": self.credentials["client_secret"],
             },
+            ambiguous_on_failure=False,
         ).json()
         if "access_token" not in body:
             raise OAuthError(f"Twitch {what} failed", platform=self.platform_name, raw_response=body)
