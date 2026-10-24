@@ -1,0 +1,46 @@
+{% comment %}
+Under a network's preview card, for whoever has to approve it: the parts of what will be published that the
+mockup can't show. Context: p (from composer.previews.platform_post_preview), media_items.
+{% endcomment %}
+{% if p.title or p.first_comment or p.settings or media_items %}
+<dl class="border-t border-stone-100 bg-stone-50 px-3.5 py-3 text-[12px] text-stone-700 space-y-2" data-preview-details>
+    {% if p.title and p.needs_title %}
+    <div>
+        <dt class="text-[10px] font-semibold uppercase tracking-wider text-stone-400">Title</dt>
+        <dd class="break-words">{{ p.title }}</dd>
+    </div>
+    {% endif %}
+    {% if p.first_comment %}
+    <div>
+        <dt class="text-[10px] font-semibold uppercase tracking-wider text-stone-400">First comment</dt>
+        <dd class="whitespace-pre-wrap break-words">{{ p.first_comment }}</dd>
+    </div>
+    {% endif %}
+    {% for row in p.settings %}
+    <div class="flex flex-wrap gap-x-2">
+        <dt class="text-[10px] font-semibold uppercase tracking-wider text-stone-400 self-center">{{ row.label }}</dt>
+        <dd class="font-medium">{{ row.value }}</dd>
+    </div>
+    {% endfor %}
+    {% if media_items %}
+    <div>
+        <dt class="text-[10px] font-semibold uppercase tracking-wider text-stone-400">Media, in order</dt>
+        <dd>
+            <ol class="mt-1 flex flex-wrap gap-2">
+                {% for m in media_items %}
+                <li class="flex items-center gap-1.5 rounded-lg border border-stone-200 bg-white p-1 pr-2">
+                    <span class="flex h-5 w-5 items-center justify-center rounded-full bg-stone-800 text-[10px] font-bold text-white" aria-hidden="true">{{ forloop.counter }}</span>
+                    {% if m.is_video %}
+                    <span class="text-[11px] text-stone-600">Video</span>
+                    {% else %}
+                    <img src="{{ m.url }}" alt="Media {{ forloop.counter }}: {{ m.filename }}" class="h-8 w-8 rounded object-cover">
+                    {% endif %}
+                    <span class="sr-only">{{ m.filename }}</span>
+                </li>
+                {% endfor %}
+            </ol>
+        </dd>
+    </div>
+    {% endif %}
+</dl>
+{% endif %}
