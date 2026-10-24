@@ -12,13 +12,13 @@
             <span class="column-count inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-semibold bg-stone-200/70 text-stone-500">{{ col.ideas|length }}</span>
         </div>
         <div class="flex items-center gap-0.5">
-            <button @click="showCreateModal = true; createGroupId = '{{ col.id }}'; createSelectedGroup = '{{ col.id }}'"
+            <button aria-label="Add idea" @click="showCreateModal = true; createGroupId = '{{ col.id }}'; createSelectedGroup = '{{ col.id }}'"
                     class="w-6 h-6 rounded-md text-stone-500 hover:text-stone-600 hover:bg-white/80 flex items-center justify-center transition-colors cursor-pointer"
                     title="Add idea">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             </button>
             <div class="relative" x-data="{ menuOpen: false }">
-                <button @click="menuOpen = !menuOpen"
+                <button aria-label="Column options" @click="menuOpen = !menuOpen"
                         class="w-6 h-6 rounded-md text-stone-500 hover:text-stone-600 hover:bg-white/80 flex items-center justify-center transition-colors cursor-pointer">
                     <svg class="w-4 h-4" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="18" r="1.5"/></svg>
                 </button>

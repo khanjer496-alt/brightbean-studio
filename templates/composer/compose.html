@@ -298,7 +298,7 @@
 
     <!-- Page header -->
     <div class="flex items-center gap-3 px-4 sm:px-6 py-3 border-b border-stone-100 flex-shrink-0">
-        <button @click="if (document.referrer && document.referrer.startsWith(location.origin)) { history.back(); } else { location.href='{% url 'composer:create_landing' workspace_id=workspace.id %}'; }"
+        <button aria-label="Go back" @click="if (document.referrer && document.referrer.startsWith(location.origin)) { history.back(); } else { location.href='{% url 'composer:create_landing' workspace_id=workspace.id %}'; }"
                 class="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-stone-200 text-stone-400 hover:text-stone-700 hover:border-stone-300 hover:bg-stone-50 transition-all duration-150 cursor-pointer">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
         </button>
@@ -593,7 +593,7 @@
                                 <span class="text-[11px] text-stone-400 leading-tight">Drag & drop or <span class="text-orange-500 font-medium">select files</span></span>
                             </div>
                             {% if unsplash_enabled %}
-                            <button type="button" class="media-unsplash-btn" title="Search Unsplash"
+                            <button aria-label="Search Unsplash" type="button" class="media-unsplash-btn" title="Search Unsplash"
                                     @click="openUnsplashModal()">
                                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7.5 6.75V0h9v6.75h-9zm9 3.75H24V24H0V10.5h7.5v6.75h9V10.5z"/></svg>
                             </button>
@@ -899,7 +899,7 @@
                                     <div class="relative flex-shrink-0">
                                         <img :src="platformExtras[accId].thumbnail_url"
                                              class="h-[104px] w-auto max-w-[480px] object-cover rounded-lg border border-stone-200">
-                                        <button type="button" @click="clearThumbnail(accId)"
+                                        <button aria-label="Remove thumbnail" type="button" @click="clearThumbnail(accId)"
                                                 title="Remove thumbnail"
                                                 class="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/55 hover:bg-red-500 text-white flex items-center justify-center transition-colors cursor-pointer">
                                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -1145,7 +1145,7 @@
                                     <div class="relative flex-shrink-0">
                                         <img :src="tiktokCoverPreview[accId]"
                                              class="h-[104px] w-auto max-w-[480px] object-cover rounded-lg border border-stone-200">
-                                        <button type="button" @click="clearTiktokCover(accId)"
+                                        <button aria-label="Reset to default cover" type="button" @click="clearTiktokCover(accId)"
                                                 title="Reset to default cover"
                                                 class="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/55 hover:bg-red-500 text-white flex items-center justify-center transition-colors cursor-pointer">
                                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -1156,7 +1156,7 @@
                                     <div class="relative flex-1 max-w-[480px] rounded-lg border border-stone-200 bg-stone-50 flex items-center justify-center min-h-[104px]">
                                         <span class="text-xs text-stone-500 font-medium tabular-nums"
                                               x-text="'Cover at ' + formatTimecode((platformExtras[accId]?.video_cover_timestamp_ms || 0) / 1000)"></span>
-                                        <button type="button" @click="clearTiktokCover(accId)"
+                                        <button aria-label="Reset to default cover" type="button" @click="clearTiktokCover(accId)"
                                                 title="Reset to default cover"
                                                 class="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/55 hover:bg-red-500 text-white flex items-center justify-center transition-colors cursor-pointer">
                                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -1425,7 +1425,7 @@
                         <template x-for="(tag, idx) in tags" :key="tag">
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-stone-100 text-stone-700">
                                 <span x-text="tag"></span>
-                                <button type="button" @click.stop="removeTag(idx)" class="w-3.5 h-3.5 rounded-full flex items-center justify-center text-stone-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                                <button aria-label="Remove tag" type="button" @click.stop="removeTag(idx)" class="w-3.5 h-3.5 rounded-full flex items-center justify-center text-stone-400 hover:text-red-500 hover:bg-red-50 transition-colors">
                                     <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                                 </button>
                             </span>
@@ -1486,7 +1486,7 @@
 
                     <!-- Create Tag Modal (teleported to body to escape stacking contexts) -->
                     <template x-teleport="body">
-                        <div x-show="showCreateTagModal" x-cloak class="fixed inset-0 z-[200] flex items-center justify-center" @keydown.escape.window="showCreateTagModal = false">
+                        <div x-show="showCreateTagModal" x-cloak class="fixed inset-0 z-[200] flex items-center justify-center" @keydown.escape.window="showCreateTagModal = false" role="dialog" aria-modal="true" aria-label="Create new tag" x-a11y-modal="showCreateTagModal">
                             <div class="fixed inset-0 bg-black/30" @click="showCreateTagModal = false"></div>
                             <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6" @click.stop>
                                 <h3 class="text-base font-semibold text-stone-800 mb-4">Create new tag</h3>
@@ -1656,7 +1656,7 @@
                             <!-- Schedule sub-view -->
                             <div id="publish-schedule-view" class="hidden p-4 max-h-[75vh] overflow-y-auto">
                                 <div class="flex items-center gap-2 mb-4">
-                                    <button type="button" id="publish-schedule-back" class="w-6 h-6 rounded-md hover:bg-stone-100 flex items-center justify-center transition-colors">
+                                    <button aria-label="Back" type="button" id="publish-schedule-back" class="w-6 h-6 rounded-md hover:bg-stone-100 flex items-center justify-center transition-colors">
                                         <svg class="w-4 h-4 text-stone-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
                                     </button>
                                     <span class="text-sm font-semibold text-stone-800">Schedule Post</span>
@@ -1838,7 +1838,7 @@
                       x-show="selectedAccounts.length > 0"
                       x-text="selectedAccounts.length + (selectedAccounts.length === 1 ? ' platform' : ' platforms')">
                 </span>
-                <button type="button" @click="showPreviewPanel = false"
+                <button aria-label="Close preview" type="button" @click="showPreviewPanel = false"
                         class="lg:hidden w-7 h-7 rounded-md text-stone-400 hover:text-stone-600 hover:bg-stone-100 flex items-center justify-center transition-colors cursor-pointer">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
@@ -1866,7 +1866,7 @@
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0">
+         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Media library" x-a11y-modal="showMediaPicker">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="showMediaPicker = false"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[640px] mx-2 sm:mx-0 max-h-[85vh] sm:max-h-[70vh] overflow-hidden"
              x-transition:enter="transition ease-out duration-200"
@@ -1874,7 +1874,7 @@
              x-transition:enter-end="opacity-100 scale-100">
             <div class="px-4 sm:px-6 py-4 border-b border-stone-100 flex items-center justify-between">
                 <h2 class="text-base font-semibold text-stone-900">Media Library</h2>
-                <button @click="showMediaPicker = false"
+                <button aria-label="Close media library" @click="showMediaPicker = false"
                         class="w-8 h-8 rounded-lg border border-stone-200 text-stone-400 hover:text-stone-600 hover:border-stone-300 flex items-center justify-center transition-all duration-150 cursor-pointer">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
@@ -1900,12 +1900,12 @@
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0">
+         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Select thumbnail" x-a11y-modal="showThumbnailPicker">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="showThumbnailPicker = false"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[640px] mx-2 sm:mx-0 max-h-[85vh] sm:max-h-[70vh] overflow-hidden">
             <div class="px-4 sm:px-6 py-4 border-b border-stone-100 flex items-center justify-between">
                 <h2 class="text-base font-semibold text-stone-900">Select Thumbnail</h2>
-                <button @click="showThumbnailPicker = false"
+                <button aria-label="Close thumbnail picker" @click="showThumbnailPicker = false"
                         class="w-8 h-8 rounded-lg border border-stone-200 text-stone-400 hover:text-stone-600 hover:border-stone-300 flex items-center justify-center transition-all duration-150 cursor-pointer">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
@@ -1931,7 +1931,7 @@
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0">
+         x-transition:leave-end="opacity-0" x-a11y-modal="showThreadMediaPicker">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="showThreadMediaPicker = false"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[640px] mx-2 sm:mx-0 max-h-[85vh] sm:max-h-[70vh] overflow-hidden">
             <div class="px-4 sm:px-6 py-4 border-b border-stone-100 flex items-center justify-between">
@@ -1963,7 +1963,7 @@
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0">
+         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Search Unsplash photos" x-a11y-modal="showUnsplashModal" data-close="closeUnsplashModal()">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="closeUnsplashModal()"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[760px] mx-2 sm:mx-0 h-[640px] max-h-[85vh] flex flex-col overflow-hidden"
              x-transition:enter="transition ease-out duration-200"
@@ -1977,7 +1977,7 @@
                     <h2 class="text-base font-semibold text-stone-900">Search Unsplash</h2>
                     <p class="text-xs text-stone-400 truncate">Free high-resolution photos &middot; add one or many</p>
                 </div>
-                <button @click="closeUnsplashModal()"
+                <button aria-label="Close Unsplash search" @click="closeUnsplashModal()"
                         class="ml-auto w-8 h-8 rounded-lg border border-stone-200 text-stone-400 hover:text-stone-600 hover:border-stone-300 flex items-center justify-center transition-all duration-150 cursor-pointer flex-shrink-0">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
@@ -2054,7 +2054,7 @@
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0">
+         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Choose a video frame" x-a11y-modal="showFramePicker" data-close="closeFramePicker()">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="closeFramePicker()"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[720px] mx-2 sm:mx-0 max-h-[90vh] flex flex-col overflow-hidden"
              x-transition:enter="transition ease-out duration-200"
@@ -2065,7 +2065,7 @@
                     <h2 class="text-base font-semibold text-stone-900">Choose thumbnail from video</h2>
                     <p class="text-xs text-stone-400">Scrub to the frame you want, then grab it</p>
                 </div>
-                <button @click="closeFramePicker()"
+                <button aria-label="Close frame picker" @click="closeFramePicker()"
                         class="w-8 h-8 rounded-lg border border-stone-200 text-stone-400 hover:text-stone-600 hover:border-stone-300 flex items-center justify-center transition-all duration-150 cursor-pointer flex-shrink-0">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
@@ -2155,7 +2155,7 @@
     <div x-data="{ showDeleteModal: false, deleting: false, deleteError: '' }" style="display: contents;"
          @open-delete-modal.window="showDeleteModal = true; deleteError = ''">
         <div x-show="showDeleteModal" x-cloak class="fixed inset-0 z-[60] flex items-center justify-center"
-             @keydown.escape.window="showDeleteModal = false">
+             @keydown.escape.window="showDeleteModal = false" role="dialog" aria-modal="true" aria-label="Delete post" x-a11y-modal="showDeleteModal">
             <div class="fixed inset-0 bg-black/30 backdrop-blur-sm" @click="showDeleteModal = false"
                  x-show="showDeleteModal"
                  x-transition:enter="transition ease-out duration-150"
@@ -2216,6 +2216,7 @@
 {% endblock %}
 
 {% block extra_js %}
+{% include "composer/partials/modal_a11y.html" %}
 <script nonce="{{ request.csp_nonce }}">
   // Reviewer approve / request-changes return 204 + toast + approvalAction. Let the
   // toast show, then reload so the status banner and history reflect the new state.
@@ -3413,7 +3414,7 @@ function composerApp() {
             });
             // Add remove button
             thumb.insertAdjacentHTML('beforeend', `
-                <button type="button" class="remove-btn" style="z-index:4;">
+                <button type="button" class="remove-btn" style="z-index:4;" aria-label="Remove media">
                     <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>`);
             thumb.querySelector('.remove-btn').addEventListener('click', function(e) {

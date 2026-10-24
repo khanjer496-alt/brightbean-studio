@@ -2,7 +2,7 @@
 <template x-teleport="body">
     <div x-show="showInviteModal" x-transition.opacity
          class="fixed inset-0 z-50 flex items-center justify-center"
-         style="background: rgba(0,0,0,0.4);">
+         style="background: rgba(0,0,0,0.4);" role="dialog" aria-modal="true" aria-label="Invite client" x-a11y-modal="showInviteModal">
         <div @click.outside="showInviteModal = false"
              x-show="showInviteModal"
              x-transition
@@ -12,7 +12,7 @@
             <!-- Header -->
             <div class="flex items-center justify-between px-6 py-4 flex-shrink-0" style="border-bottom: 1px solid var(--border);">
                 <h3 class="text-base font-semibold" style="color: var(--text-primary);">Invite Client</h3>
-                <button @click="showInviteModal = false" class="cursor-pointer" style="color: var(--text-tertiary);">
+                <button aria-label="Close" @click="showInviteModal = false" class="cursor-pointer" style="color: var(--text-tertiary);">
                     <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
             </div>

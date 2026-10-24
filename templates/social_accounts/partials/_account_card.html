@@ -50,7 +50,7 @@ Usage: {% include "social_accounts/partials/_account_card.html" with account=acc
             {% endif %}
 
             <!-- Disconnect -->
-            <button @click="confirmDisconnect = true" class="inline-flex items-center p-1.5 text-stone-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors cursor-pointer" title="Disconnect">
+            <button aria-label="Disconnect account" @click="confirmDisconnect = true" class="inline-flex items-center p-1.5 text-stone-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors cursor-pointer" title="Disconnect">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
 

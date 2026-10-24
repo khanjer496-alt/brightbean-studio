@@ -63,7 +63,7 @@
                 <template x-teleport="body">
                     <div x-show="showEditModal" x-cloak x-transition.opacity @keydown.escape.window="showEditModal = false"
                          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-                         role="dialog" aria-modal="true" aria-labelledby="conn-edit-{{ row.id }}-title">
+                         role="dialog" aria-modal="true" aria-labelledby="conn-edit-{{ row.id }}-title" x-a11y-modal="showEditModal">
                         <div @click.outside="showEditModal = false" x-show="showEditModal" x-transition
                              class="w-full max-w-xl mx-4 max-h-[90vh] rounded-xl flex flex-col bg-[var(--surface-0)] border border-stone-200 shadow-2xl">
                             <form method="POST" action="{% url 'api_keys:edit_connection' row.id %}" data-token-scope class="flex flex-col min-h-0">

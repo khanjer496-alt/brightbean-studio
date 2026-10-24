@@ -103,5 +103,6 @@
         {% include "api_keys/_token_reveal.html" with token=reveal_token key_name=reveal_key_name %}
     {% endif %}
 </div>
+{% include "composer/partials/modal_a11y.html" %}
 <script src="{% static 'js/token-scope.js' %}"></script>
 {% endblock %}

@@ -4,7 +4,7 @@
   <!-- Header -->
   <div class="flex items-center justify-between px-5 py-4 border-b" style="border-color: var(--border, #E7E5E4);">
     <h2 class="text-sm font-bold truncate pr-4" style="color: var(--text-primary, #1C1917);">{{ asset.original_filename }}</h2>
-    <button @click="detailOpen = false"
+    <button aria-label="Close details" @click="detailOpen = false"
             class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors btn-surface-2"
             style="color: var(--text-tertiary, #78716C);">
       <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -75,7 +75,7 @@
     <!-- Delete confirmation modal -->
     <div x-show="showDeleteConfirm" x-cloak
          class="fixed inset-0 z-[60] flex items-center justify-center"
-         @keydown.escape.window="showDeleteConfirm = false">
+         @keydown.escape.window="showDeleteConfirm = false" role="dialog" aria-modal="true" aria-label="Delete asset" x-a11y-modal="showDeleteConfirm">
       <div class="absolute inset-0 bg-black/30 backdrop-blur-sm" @click="showDeleteConfirm = false"></div>
       <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6" @click.stop>
         <div class="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-3"

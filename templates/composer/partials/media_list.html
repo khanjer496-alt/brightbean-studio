@@ -22,7 +22,7 @@ Context: media_attachments, post, workspace.
     </div>
     {% endif %}
     {% if post %}
-    <button type="button" class="remove-btn"
+    <button aria-label="Remove media" type="button" class="remove-btn"
             hx-post="{% url 'composer:remove_media' workspace_id=workspace.id post_id=post.id media_id=attachment.id %}"
             hx-target="#media-list"
             hx-swap="innerHTML">

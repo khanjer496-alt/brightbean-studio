@@ -58,7 +58,7 @@ Context: account (with prefetched posting_slots), workspace_id.
                                           hx-swap="none" class="inline">
                                         {% csrf_token %}
                                         <input type="hidden" name="social_account_id" value="{{ account.id }}">
-                                        <button type="submit"
+                                        <button aria-label="Remove slot" type="submit"
                                                 x-show="hovered" x-transition.opacity
                                                 class="w-4 h-4 flex items-center justify-center text-stone-300 hover:text-red-500 transition-all cursor-pointer"
                                                 title="Remove slot">
@@ -77,12 +77,12 @@ Context: account (with prefetched posting_slots), workspace_id.
                                     <input type="time" name="time" value="{{ slot.time|time:'H:i' }}"
                                            class="w-[90px] text-xs px-1.5 py-1 rounded border border-stone-200 outline-none focus:border-orange-400"
                                            @keydown.escape="editing = false">
-                                    <button type="submit"
+                                    <button aria-label="Save slot" type="submit"
                                             class="w-5 h-5 flex items-center justify-center text-green-600 hover:text-green-700 cursor-pointer"
                                             title="Save">
                                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                                     </button>
-                                    <button type="button" @click="editing = false"
+                                    <button aria-label="Cancel" type="button" @click="editing = false"
                                             class="w-5 h-5 flex items-center justify-center text-stone-400 hover:text-stone-600 cursor-pointer"
                                             title="Cancel">
                                         <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
@@ -111,12 +111,12 @@ Context: account (with prefetched posting_slots), workspace_id.
                                        x-ref="timeInput_{{ day.value }}"
                                        @keydown.escape="adding = false"
                                        class="w-[90px] text-xs px-1.5 py-1 rounded border border-stone-200 outline-none focus:border-orange-400">
-                                <button type="submit"
+                                <button aria-label="Add slot" type="submit"
                                         class="w-5 h-5 flex items-center justify-center text-green-600 hover:text-green-700 cursor-pointer"
                                         title="Add">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                                 </button>
-                                <button type="button" @click="adding = false"
+                                <button aria-label="Cancel" type="button" @click="adding = false"
                                         class="w-5 h-5 flex items-center justify-center text-stone-400 hover:text-stone-600 cursor-pointer"
                                         title="Cancel">
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>

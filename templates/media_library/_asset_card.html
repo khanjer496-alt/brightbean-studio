@@ -52,7 +52,7 @@
     {% endif %}
 
     <!-- Star button -->
-    <button @click.stop
+    <button @click.stop type="button" aria-pressed="{% if asset.is_starred %}true{% else %}false{% endif %}" aria-label="{% if asset.is_starred %}Unstar{% else %}Star{% endif %} {{ asset.original_filename }}"
             class="absolute bottom-2 right-2 w-7 h-7 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
             style="background: rgba(255,255,255,0.9); box-shadow: var(--shadow-sm);"
             hx-post="{% url 'media_library:asset_star' workspace_id=workspace.id asset_id=asset.id %}"

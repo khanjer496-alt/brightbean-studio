@@ -1,0 +1,68 @@
+{% comment %}
+Accessible-dialog behaviour for Alpine overlays: `x-a11y-modal="openState"`.
+
+Put it (with role="dialog" aria-modal="true" and an aria-label or
+aria-labelledby) on the overlay element that carries x-show. While the state is
+truthy it moves focus into the dialog, keeps Tab inside it, closes on Escape
+and hands focus back to the control that opened it. When closing means more
+than `state = false`, say how with data-close="expression".
+
+Registered once per page (the guard makes repeat includes harmless). Swap for
+the shared dialog component once templates/components/ has one.
+{% endcomment %}
+<script nonce="{{ request.csp_nonce }}">
+document.addEventListener('alpine:init', function () {
+    if (window.__a11yModalRegistered) return;
+    window.__a11yModalRegistered = true;
+    var FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+    Alpine.directive('a11y-modal', function (el, ref, utils) {
+        var isOpen = utils.evaluateLater(ref.expression);
+        var close = utils.evaluateLater(el.dataset.close || (ref.expression + ' = false'));
+        var opener = null;
+        var active = false;
+        function visible(node) { return node.getClientRects().length > 0; }
+        function focusables() { return Array.prototype.filter.call(el.querySelectorAll(FOCUSABLE), visible); }
+        function onKey(e) {
+            if (e.key === 'Escape') {
+                close();
+            } else if (e.key === 'Tab') {
+                var items = focusables();
+                if (!items.length) { e.preventDefault(); return; }
+                var first = items[0], last = items[items.length - 1];
+                if (e.shiftKey && (document.activeElement === first || !el.contains(document.activeElement))) {
+                    e.preventDefault(); last.focus();
+                } else if (!e.shiftKey && (document.activeElement === last || !el.contains(document.activeElement))) {
+                    e.preventDefault(); first.focus();
+                }
+            }
+        }
+        utils.effect(function () {
+            isOpen(function (value) {
+                var open = !!value;
+                if (open === active) return;
+                active = open;
+                if (open) {
+                    opener = document.activeElement;
+                    el.addEventListener('keydown', onKey);
+                    setTimeout(function () {
+                        if (el.contains(document.activeElement)) return;
+                        var target = el.querySelector('[autofocus]') || focusables()[0];
+                        if (!target) { el.tabIndex = -1; target = el; }
+                        target.focus({ preventScroll: true });
+                    }, 60);
+                } else {
+                    el.removeEventListener('keydown', onKey);
+                    var back = opener;
+                    opener = null;
+                    if (back && document.contains(back) && typeof back.focus === 'function') back.focus({ preventScroll: true });
+                }
+            });
+        });
+        utils.cleanup(function () {
+            el.removeEventListener('keydown', onKey);
+            // Removed from the DOM while open (x-if): still hand focus back.
+            if (active && opener && document.contains(opener) && typeof opener.focus === 'function') opener.focus({ preventScroll: true });
+        });
+    });
+});
+</script>

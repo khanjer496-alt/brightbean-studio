@@ -66,7 +66,7 @@
             </div>
 
             <div class="relative flex-shrink-0">
-                <button type="button"
+                <button aria-label="Feed options" type="button"
                         @click="openFeedMenu = !openFeedMenu"
                         class="w-8 h-8 inline-flex items-center justify-center rounded-full text-stone-500 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
@@ -84,7 +84,7 @@
 
         <div x-show="showDeleteFeedModal" x-cloak
              class="fixed inset-0 z-[230] flex items-center justify-center"
-             @keydown.escape.window="showDeleteFeedModal = false">
+             @keydown.escape.window="showDeleteFeedModal = false" role="dialog" aria-modal="true" aria-label="Delete feed" x-a11y-modal="showDeleteFeedModal">
             <div class="fixed inset-0 bg-black/30" @click="showDeleteFeedModal = false"></div>
             <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-[420px] mx-4 p-6" @click.stop>
                 <h3 class="text-lg font-semibold text-stone-800 mb-2">Delete Feed</h3>
@@ -149,10 +149,10 @@
 <!-- Add Feed Modal -->
 <div x-show="showAddModal" x-cloak
      class="fixed inset-0 z-[220] flex items-center justify-center"
-     @keydown.escape.window="showAddModal = false">
+     @keydown.escape.window="showAddModal = false" role="dialog" aria-modal="true" aria-label="Add feed" x-a11y-modal="showAddModal">
     <div class="fixed inset-0 bg-black/30" @click="showAddModal = false"></div>
     <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-[560px] mx-4 p-6" @click.stop>
-        <button type="button"
+        <button aria-label="Close" type="button"
                 @click="showAddModal = false"
                 class="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-stone-400 hover:text-stone-600 hover:bg-stone-100 rounded-full transition-all cursor-pointer">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>

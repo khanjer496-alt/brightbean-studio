@@ -1,6 +1,6 @@
 {% comment %}Modal for creating a new folder. Expects: workspace{% endcomment %}
 
-<div class="fixed inset-0 z-50 flex items-center justify-center" @keydown.escape.window="showNewFolder = false">
+<div class="fixed inset-0 z-50 flex items-center justify-center" role="dialog" aria-modal="true" aria-label="New folder" x-a11y-modal="showNewFolder" @keydown.escape.window="showNewFolder = false">
   <!-- Backdrop -->
   <div class="absolute inset-0 bg-black/30 backdrop-blur-sm" @click="showNewFolder = false"></div>
 
