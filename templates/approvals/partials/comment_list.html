@@ -3,8 +3,7 @@
     <div class="flex gap-2.5 {% if comment.visibility == 'internal' %}bg-amber-50/50 -mx-2 px-2 py-2 rounded-lg border border-amber-100/60{% endif %}"
          id="comment-{{ comment.id }}">
         <!-- Author avatar -->
-        <div class="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 mt-0.5"
-             style="background: var(--primary);">
+        <div class="w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0 mt-0.5 bg-accent">
             {{ comment.author.display_name|make_list|first|upper }}
         </div>
         <div class="flex-1 min-w-0">
@@ -29,8 +28,7 @@
             {% for reply in comment.replies.all %}
             {% if not reply.is_deleted %}
             <div class="flex gap-2 mt-2 pl-2 border-l-2 border-stone-200">
-                <div class="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0"
-                     style="background: var(--primary); opacity: 0.7;">
+                <div class="w-5 h-5 rounded-full flex items-center justify-center text-[8px] font-bold text-white flex-shrink-0 bg-accent opacity-70">
                     {{ reply.author.display_name|make_list|first|upper }}
                 </div>
                 <div>

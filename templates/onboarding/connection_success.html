@@ -3,25 +3,19 @@
 {% block title %}Accounts Connected - {{ org.name }}{% endblock %}
 
 {% block auth_content %}
-<div style="width: 100%; max-width: 440px; padding: 0 16px; text-align: center;">
+<div class="w-full max-w-[440px] px-4 text-center">
 
     <!-- Success icon -->
-    <div style="
-        width: 64px; height: 64px;
-        background: var(--success-50);
-        border-radius: var(--radius-full);
-        display: inline-flex; align-items: center; justify-content: center;
-        margin-bottom: 24px;
-    ">
-        <svg width="28" height="28" fill="none" stroke="var(--success-500)" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <div class="inline-flex size-16 items-center justify-center rounded-full bg-good-soft mb-6">
+        <svg width="28" height="28" aria-hidden="true" class="text-[var(--success-500)]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M22 11.08V12a10 10 0 11-5.93-9.14"/>
             <polyline points="22 4 12 14.01 9 11.01"/>
         </svg>
     </div>
 
-    <h1 class="text-ink" style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; letter-spacing: -0.015em; margin-bottom: 8px;">All done!</h1>
+    <h1 class="text-ink font-[family-name:var(--font-display)] text-2xl font-bold tracking-[-0.015em] mb-2">All done!</h1>
 
-    <p class="text-ink-2" style="font-size: 0.9375rem; line-height: 1.6; margin-bottom: 8px;">
+    <p class="text-ink-2 text-[0.9375rem] leading-relaxed mb-2">
         {% if connected_count %}
             {{ connected_count }} account{{ connected_count|pluralize }} connected to <strong class="text-ink">{{ workspace.name }}</strong>.
         {% else %}
@@ -29,19 +23,11 @@
         {% endif %}
     </p>
 
-    <p class="text-ink-3" style="font-size: 0.875rem; line-height: 1.6; margin-bottom: 28px;">
+    <p class="text-ink-3 text-sm leading-relaxed mb-7">
         <strong class="text-ink-2">{{ org.name }}</strong> has been notified and will take it from here.
     </p>
 
-    <div style="
-        padding: 16px;
-        background: var(--primary-soft);
-        border: 1px solid var(--primary-muted);
-        border-radius: var(--radius-lg);
-        font-size: 0.8125rem;
-        color: var(--brand-800);
-        line-height: 1.6;
-    ">
+    <div class="p-4 bg-accent-soft border border-[var(--primary-muted)] rounded-lg text-[0.8125rem] text-[var(--brand-800)] leading-relaxed">
         You can close this page. Your agency team will be in touch soon.
     </div>
 </div>

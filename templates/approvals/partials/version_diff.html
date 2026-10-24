@@ -3,11 +3,11 @@
     <div>
         <h4 class="text-[0.8125rem] font-semibold text-stone-700 mb-2">Caption Changes</h4>
         <div class="flex items-center gap-3 mb-2 text-[0.6875rem] font-medium">
-            <span class="inline-flex items-center gap-1 text-emerald-700"><span class="w-3 h-3 rounded" style="background:#DCFCE7;"></span> Added</span>
-            <span class="inline-flex items-center gap-1 text-red-700"><span class="w-3 h-3 rounded" style="background:#FEE2E2;"></span> Removed</span>
+            <span class="inline-flex items-center gap-1 text-good"><span class="w-3 h-3 rounded bg-good-soft border border-good"></span> Added</span>
+            <span class="inline-flex items-center gap-1 text-bad"><span class="w-3 h-3 rounded bg-bad-soft border border-bad"></span> Removed</span>
         </div>
         <div class="rounded-xl border border-stone-200 bg-stone-50 p-4 max-h-[360px] overflow-y-auto">
-            <p class="text-[0.875rem] leading-relaxed whitespace-pre-wrap">{% for tok in diff_data.caption_diff %}{% if tok.k == 'same' %}<span class="text-stone-600">{{ tok.t }}</span>{% elif tok.k == 'add' %}<span class="rounded px-0.5" style="background:#DCFCE7;color:#15803D;">{{ tok.t }}</span>{% else %}<span class="rounded px-0.5 line-through" style="background:#FEE2E2;color:#B91C1C;">{{ tok.t }}</span>{% endif %}{% endfor %}</p>
+            <p class="text-[0.875rem] leading-relaxed whitespace-pre-wrap">{% for tok in diff_data.caption_diff %}{% if tok.k == 'same' %}<span class="text-stone-600">{{ tok.t }}</span>{% elif tok.k == 'add' %}<span class="rounded px-0.5 bg-good-soft text-good">{{ tok.t }}</span>{% else %}<span class="rounded px-0.5 line-through bg-bad-soft text-bad">{{ tok.t }}</span>{% endif %}{% endfor %}</p>
         </div>
     </div>
     {% else %}

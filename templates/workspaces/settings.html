@@ -97,7 +97,7 @@
             </form>
             {% elif can_archive %}
             <button type="button" @click="showArchiveModal = true"
-                    class="btn-amber px-5 py-2 text-sm font-medium rounded-full cursor-pointer whitespace-nowrap shrink-0 bg-warn-soft text-warn focus-visible:ring-2 focus-visible:ring-accent">
+                    class="px-5 py-2 text-sm font-medium rounded-full cursor-pointer whitespace-nowrap shrink-0 bg-warn-soft text-warn transition-colors hover:bg-warn hover:text-surface-0 focus-visible:ring-2 focus-visible:ring-accent">
                 Archive Workspace
             </button>
 
@@ -198,7 +198,7 @@
                         {% csrf_token %}
                         <input type="hidden" name="action" value="delete_workspace">
                         <button type="submit"
-                                class="btn-opacity px-5 py-2 text-sm font-semibold rounded-full cursor-pointer whitespace-nowrap bg-bad text-surface-0 focus-visible:ring-2 focus-visible:ring-accent">
+                                class="px-5 py-2 text-sm font-semibold rounded-full cursor-pointer whitespace-nowrap bg-red-600 text-white hover:bg-red-700 transition-colors focus-visible:ring-2 focus-visible:ring-accent">
                             Yes, delete this workspace
                         </button>
                     </form>

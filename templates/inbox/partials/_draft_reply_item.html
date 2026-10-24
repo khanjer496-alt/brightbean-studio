@@ -3,9 +3,9 @@
 <div class="rounded-lg border px-3 py-2.5 {% if draft.status == 'failed' %}border-red-200 bg-red-50{% else %}border-stone-200 bg-stone-50{% endif %}">
     <div class="flex items-center gap-2 mb-1">
         {% if draft.status == 'failed' %}
-        <span class="badge-pill" style="background: #fee2e2; color: #b91c1c;">Failed</span>
+        <span class="badge-pill bg-bad-soft text-bad">Failed</span>
         {% else %}
-        <span class="badge-pill" style="background: var(--surface-2); color: var(--stone-600, #57534e);">Draft</span>
+        <span class="badge-pill bg-surface-2 text-ink-2">Draft</span>
         {% endif %}
         <span class="text-[11px] text-stone-500">{{ draft.author.get_short_name|default:draft.author.email|default:"—" }}</span>
         <span class="text-[11px] text-stone-400 ml-auto">{{ draft.created_at|timesince }} ago</span>
@@ -19,8 +19,7 @@
                 {% if not reply_eligibility.can_send %}disabled{% endif %}
                 hx-target="#inbox-detail-panel"
                 hx-swap="innerHTML"
-                class="inline-flex items-center gap-1 px-3 py-1 text-[11px] font-semibold text-white rounded-full transition-all"
-                style="background: var(--primary); box-shadow: var(--shadow-primary);">
+                class="inline-flex items-center gap-1 px-3 py-1 text-[11px] font-semibold text-white rounded-full transition-all bg-accent shadow-[var(--shadow-primary)]">
             {% if draft.status == 'failed' %}Retry send{% else %}Send{% endif %}
         </button>
         <button hx-post="{% url 'inbox:discard_reply_draft' workspace_id=workspace.id reply_id=draft.id %}"

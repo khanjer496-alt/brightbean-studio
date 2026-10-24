@@ -253,6 +253,11 @@
     .chip-row { position: relative; display: flex; align-items: center; gap: 4px; margin-bottom: 2px; max-width: 100%; }
     .chip-row > .post-chip { flex: 1 1 0; min-width: 0; margin-bottom: 0; }
     .chip-row .post-chip { padding-inline-end: 6px; }
+    /* The select box sits over the chip's platform icon and shows on hover / focus / selection, so
+       every chip in a cell lines up and none loses title width to an invisible box. Touch screens
+       always show it, so there the chip makes room for it instead. */
+    .chip-row > .cal-select-box { position: absolute; inset-inline-start: 6px; top: 50%; transform: translateY(-50%); z-index: 1; }
+    @media (hover: none) { .chip-row--selectable > .post-chip { padding-inline-start: 26px; } }
     .chip-resched {
         position: absolute; inset-inline-end: 3px; top: 50%; transform: translateY(-50%);
         width: 24px; height: 24px; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center;
@@ -260,7 +265,7 @@
         opacity: 0; transition: opacity 120ms ease; cursor: pointer;
     }
     .chip-row:hover .chip-resched, .chip-row:focus-within .chip-resched, .chip-resched:focus-visible { opacity: 1; }
-    @media (hover: none) { .chip-resched { opacity: 1; } }
+    @media (hover: none) { .chip-resched { opacity: 1; } .chip-row.is-draggable .post-chip { padding-inline-end: 30px; } }
 
     .calendar-channel-slot {
         display: inline-flex;
