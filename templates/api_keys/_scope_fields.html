@@ -1,0 +1,93 @@
+{% comment %}
+Tool-level scope fields shared by the issue and edit token forms.
+Context: scope_form (see views._scope_form_context), uid (unique id prefix for this form).
+The enclosing <form> carries data-token-scope; static/js/token-scope.js fills the fields from a preset.
+{% endcomment %}
+<input type="hidden" name="scoped" value="1">
+
+{% if scope_form.legacy %}
+<p class="text-xs rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900" role="note">
+    This key was made before tool-level scopes, so it can use every tool today. Saving applies the choices below.
+</p>
+{% endif %}
+
+<fieldset>
+    <legend class="text-sm font-semibold text-[var(--text-primary)]">What should this token be?</legend>
+    <p class="text-xs mt-1 mb-2 text-[var(--text-tertiary)]">Pick a starting point. You can change anything below, and edit it again later.</p>
+    <div class="grid gap-2">
+        {% for item in scope_form.presets %}
+        <label class="flex items-start gap-3 rounded-lg border border-stone-200 p-3 cursor-pointer has-[:checked]:border-[var(--primary)] has-[:checked]:bg-[var(--primary-soft)] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--primary)]">
+            <input type="radio" name="preset" value="{{ item.preset.key }}" class="mt-1"
+                   data-capabilities="{{ item.capabilities }}"
+                   data-requests="{{ item.preset.daily_requests|default_if_none:'' }}"
+                   data-ai="{{ item.preset.daily_ai_calls|default_if_none:'' }}"
+                   data-posts="{{ item.preset.daily_posts|default_if_none:'' }}"
+                   data-approval="{{ item.approval }}"
+                   {% if item.selected %}checked{% endif %}>
+            <span>
+                <span class="block text-sm font-medium text-[var(--text-primary)]">{{ item.preset.label }}</span>
+                <span class="block text-xs text-[var(--text-secondary)]">{{ item.preset.summary }}</span>
+            </span>
+        </label>
+        {% endfor %}
+        <label class="flex items-start gap-3 rounded-lg border border-stone-200 p-3 cursor-pointer has-[:checked]:border-[var(--primary)] has-[:checked]:bg-[var(--primary-soft)] has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--primary)]">
+            <input type="radio" name="preset" value="" class="mt-1" {% if scope_form.custom_selected %}checked{% endif %}>
+            <span>
+                <span class="block text-sm font-medium text-[var(--text-primary)]">Custom</span>
+                <span class="block text-xs text-[var(--text-secondary)]">Choose each capability yourself.</span>
+            </span>
+        </label>
+    </div>
+</fieldset>
+
+<fieldset>
+    <legend class="text-sm font-semibold text-[var(--text-primary)]">What it may do</legend>
+    <p class="text-xs mt-1 mb-2 text-[var(--text-tertiary)]">The token can use only what is ticked, and only within the workspace permissions you grant it.</p>
+    <div class="space-y-4">
+        {% for group, items in scope_form.groups %}
+        <div>
+            <p class="text-[11px] font-semibold uppercase tracking-wide mb-1.5 text-[var(--text-tertiary)]">{{ group }}</p>
+            <div class="grid gap-1.5">
+                {% for item in items %}
+                <label class="flex items-start gap-3 rounded-lg border border-stone-200 px-3 py-2 cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--primary)]">
+                    <input type="checkbox" name="capabilities" value="{{ item.cap.key }}" class="mt-0.5 h-4 w-4 flex-none" {% if item.checked %}checked{% endif %}>
+                    <span class="min-w-0">
+                        <span class="block text-sm font-medium text-[var(--text-primary)]">{{ item.cap.label }}{% if item.cap.risk == "high" %} <span class="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">Affects what people see</span>{% endif %}</span>
+                        <span class="block text-xs text-[var(--text-secondary)]">{{ item.cap.summary }}</span>
+                    </span>
+                </label>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</fieldset>
+
+<div>
+    <label class="flex items-start gap-3 rounded-lg border border-stone-200 p-3 cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--primary)]">
+        <input type="checkbox" name="requires_approval" class="mt-0.5 h-4 w-4 flex-none" {% if scope_form.requires_approval %}checked{% endif %}>
+        <span>
+            <span class="block text-sm font-medium text-[var(--text-primary)]">Read-only until approved</span>
+            <span class="block text-xs text-[var(--text-secondary)]">Whatever your autonomy settings say, this token can only leave drafts. Anything it would schedule or send waits for a person to approve it in Activity.</span>
+        </span>
+    </label>
+</div>
+
+<fieldset>
+    <legend class="text-sm font-semibold text-[var(--text-primary)]">Daily limits</legend>
+    <p class="text-xs mt-1 mb-2 text-[var(--text-tertiary)]">Counted per UTC day, on top of your plan's limits. Leave empty for no limit of its own.</p>
+    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        {% for name, label, value in scope_form.budget_fields %}
+        <div>
+            <label for="{{ uid }}-{{ name }}" class="block text-xs font-medium mb-1 text-[var(--text-secondary)]">{{ label }}</label>
+            <input type="number" min="0" max="1000000" inputmode="numeric" id="{{ uid }}-{{ name }}" name="{{ name }}" value="{{ value|default_if_none:'' }}" class="form-input text-sm w-full">
+        </div>
+        {% endfor %}
+    </div>
+</fieldset>
+
+<div>
+    <label for="{{ uid }}-ips" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Allowed IP ranges <span class="font-normal text-[var(--text-tertiary)]">(optional)</span></label>
+    <textarea id="{{ uid }}-ips" name="allowed_ip_ranges" rows="2" spellcheck="false" autocomplete="off" aria-describedby="{{ uid }}-ips-help" placeholder="203.0.113.0/24" class="form-input text-sm w-full font-mono">{{ scope_form.ip_ranges_text }}</textarea>
+    <p id="{{ uid }}-ips-help" class="text-xs mt-1 text-[var(--text-tertiary)]">One CIDR range or address per line. Requests from anywhere else are refused. Empty means any address.</p>
+</div>

@@ -1,13 +1,14 @@
 """Org-level API key management views.
 
-Three responsibilities:
+Responsibilities:
 
-1. **List** every ``ApiKey`` in the org with enough metadata that an
-   admin can decide which to revoke.
+1. **List** every ``ApiKey`` in the org with its capabilities, today's usage
+   against its budgets, last use and expiry.
 2. **Issue** a new key via a two-step HTMX-driven modal: workspace
    dropdown → (cascading) social-account multi-select + permission
-   checkboxes scoped to what the issuer can grant in that workspace.
-3. **Revoke** an existing key.
+   checkboxes scoped to what the issuer can grant in that workspace, plus a
+   preset, capabilities, budgets, IP ranges and expiry.
+3. **Edit**, **rotate** (a new secret for the same token) and **revoke** a key.
 
 Every mutation re-validates inputs server-side against the same
 ``services.issue_api_key`` enforcement layer the Phase 1 service tests
@@ -19,6 +20,7 @@ out-of-org account, or an unbacked permission gets the same
 from __future__ import annotations
 
 import functools
+import re
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -30,10 +32,12 @@ from django.core.exceptions import (
 )
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
-from apps.api_keys import services
+from apps.api_keys import budgets, services
+from apps.api_keys import capabilities as caps
 from apps.api_keys.models import ApiKey
 from apps.members.models import (
     PERMISSION_KEYS,
@@ -108,7 +112,9 @@ def list_keys(request):
     # permissions + connected accounts are computed once per workspace, not
     # once per key.
     memo: dict = {"grantable": {}, "accounts": {}}
-    rows = [_row_context(k, user=request.user, memo=memo) for k in qs]
+    keys = list(qs)
+    usage = budgets.snapshots(k for k in keys if k.revoked_at is None)
+    rows = [_row_context(k, user=request.user, memo=memo, usage=usage.get(k.pk)) for k in keys]
     # Surface a "Show N revoked" toggle only when there's actually something
     # behind it — avoids a noisy control on an org that's never revoked a key.
     revoked_count = ApiKey.objects.filter(workspace__organization=org, revoked_at__isnull=False).count()
@@ -125,13 +131,14 @@ def list_keys(request):
         # Empty issuance form context — the modal renders inside the
         # same page so we don't need a separate route.
         "issuance": _initial_issuance_context(org, request.user),
+        "scope_form": _scope_form_context(None),
         "reveal_token": reveal_token,
         "reveal_key_name": reveal_key_name,
     }
     return render(request, "api_keys/list.html", context)
 
 
-def _row_context(api_key: ApiKey, *, user, memo: dict) -> dict:
+def _row_context(api_key: ApiKey, *, user, memo: dict, usage: dict | None = None) -> dict:
     """Adapt an ``ApiKey`` row into the dict the list template expects.
 
     ``memo`` is a per-request cache (``{"grantable": {ws_id: ...},
@@ -199,11 +206,140 @@ def _row_context(api_key: ApiKey, *, user, memo: dict) -> dict:
         "created_at": api_key.created_at,
         "expires_at": api_key.expires_at,
         "status": status,
+        "limited": api_key.capabilities is not None,
+        "capability_labels": (
+            [caps.label_for(k) for k in caps.token_capabilities(api_key) or []]
+            if api_key.capabilities is not None
+            else []
+        ),
+        "preset": caps.preset(api_key.preset),
+        "requires_approval": api_key.requires_approval,
+        "ip_ranges": list(api_key.allowed_ip_ranges or []),
+        "budgets": _budget_rows(usage),
+        "activity_url": f"{reverse('autonomy:activity', kwargs={'workspace_id': api_key.workspace_id})}?key={api_key.id}",
+        "scope_form": _scope_form_context(api_key) if status == "active" else None,
         # Edit-modal context (empty for non-active rows).
         "editable_permissions": editable_permissions,  # [(key, label, checked)]
         "locked_permissions": locked_permissions,  # [str]
         "editable_accounts": editable_accounts,  # [(SocialAccount, checked)]
     }
+
+
+_BUDGET_LABELS = (
+    ("requests", "Calls today"),
+    ("ai", "AI calls today"),
+    ("posts", "Posts scheduled today"),
+)
+
+#: Daily budgets: form field, label, and the shorter label the error message uses.
+_BUDGET_FIELDS = (
+    ("daily_request_budget", "Calls a day"),
+    ("daily_ai_budget", "AI calls a day"),
+    ("daily_post_budget", "Scheduled posts a day"),
+)
+_MAX_BUDGET = 1_000_000
+
+
+def _budget_rows(usage: dict | None) -> list[dict]:
+    """Today's spend per budget for the list, with the share used so the bar can warn as a token nears its limit."""
+    rows = []
+    for kind, label in _BUDGET_LABELS:
+        used, limit = (usage or {}).get(kind, (0, None))
+        if limit is None and kind != "requests":
+            continue
+        percent = 100 if limit == 0 else min(100, round(used * 100 / limit)) if limit else 0
+        rows.append(
+            {
+                "label": label,
+                "used": used,
+                "limit": limit,
+                "percent": percent,
+                "state": "over" if limit is not None and used >= limit else "near" if percent >= 80 else "ok",
+            }
+        )
+    return rows
+
+
+def _scope_form_context(api_key: ApiKey | None) -> dict:
+    """What the token form shows: presets, capabilities grouped and ticked, budgets, IP ranges, approval mode.
+
+    A new token starts from the Drafting assistant preset, which can only write drafts a person approves.
+    A key from before scoped tokens (no capability limit) shows everything ticked, and saving applies the form.
+    """
+    if api_key is None:
+        start = caps.preset("drafting_assistant")
+        held = set(start.capabilities)
+        selected = start.key
+        values = {
+            "daily_request_budget": start.daily_requests,
+            "daily_ai_budget": start.daily_ai_calls,
+            "daily_post_budget": start.daily_posts,
+        }
+        requires_approval, ip_text, legacy = start.requires_approval, "", False
+    else:
+        held = set(caps.CAPABILITY_KEYS if api_key.capabilities is None else caps.clean(api_key.capabilities))
+        selected = api_key.preset
+        values = {name: getattr(api_key, name) for name, _ in _BUDGET_FIELDS}
+        requires_approval, ip_text = api_key.requires_approval, "\n".join(api_key.allowed_ip_ranges or [])
+        legacy = api_key.capabilities is None
+    groups: dict[str, list] = {}
+    for cap in caps.CAPABILITIES:
+        groups.setdefault(cap.group, []).append({"cap": cap, "checked": cap.key in held})
+    return {
+        "presets": [
+            {
+                "preset": p,
+                "selected": p.key == selected,
+                "capabilities": ",".join(p.capabilities),
+                "approval": "1" if p.requires_approval else "0",
+            }
+            for p in caps.PRESETS
+        ],
+        "custom_selected": not selected,
+        "groups": list(groups.items()),
+        "budget_fields": [(name, label, values.get(name)) for name, label in _BUDGET_FIELDS],
+        "requires_approval": requires_approval,
+        "ip_ranges_text": ip_text,
+        "legacy": legacy,
+    }
+
+
+def _scope_from_post(post) -> tuple[dict, list[str]]:
+    """The tool-level scope posted by the token form, as ``(service kwargs, errors)``.
+
+    A post without the form's ``scoped`` marker is an older client posting only permissions, and gets no scope
+    arguments, so the key stays as it was. The preset is stored only when the capabilities still match it.
+    """
+    if not post.get("scoped"):
+        return {}, []
+    errors: list[str] = []
+    chosen = caps.clean(post.getlist("capabilities"))
+    if not chosen:
+        errors.append("Choose at least one capability.")
+    preset = caps.preset(post.get("preset", ""))
+    kwargs: dict = {
+        "capabilities": chosen,
+        "preset": preset.key if preset and set(preset.capabilities) == set(chosen) else "",
+        "requires_approval": post.get("requires_approval") == "on",
+    }
+    for name, label in _BUDGET_FIELDS:
+        raw = (post.get(name) or "").strip()
+        if not raw:
+            kwargs[name] = None
+        elif not raw.isdigit() or int(raw) > _MAX_BUDGET:
+            errors.append(f"{label} must be a whole number up to {_MAX_BUDGET:,}, or empty for no limit.")
+        else:
+            kwargs[name] = int(raw)
+    kwargs["allowed_ip_ranges"] = [part for part in re.split(r"[\s,]+", post.get("allowed_ip_ranges", "")) if part]
+    return kwargs, errors
+
+
+def _permissions_for_scope(posted: list[str], scope: dict, user, workspace) -> list[str]:
+    """Posted permissions plus what the chosen capabilities need, limited to what the issuer holds."""
+    if "capabilities" not in scope:
+        return posted
+    grantable = {k for k, _ in _grantable_permissions(user, workspace, include_hidden=True)}
+    return sorted(set(posted) | (set(caps.permissions_for(scope["capabilities"])) & grantable))
 
 
 def _initial_issuance_context(org, user) -> dict:
@@ -381,8 +517,9 @@ def issue_key(request):
     account_ids = request.POST.getlist("social_account_ids")
     permission_keys = request.POST.getlist("permissions")
     expires_at_str = (request.POST.get("expires_at") or "").strip()
+    scope, scope_errors = _scope_from_post(request.POST)
 
-    errors: list[str] = []
+    errors: list[str] = list(scope_errors)
     if not name:
         errors.append("Name is required.")
     if not workspace_id:
@@ -421,8 +558,9 @@ def issue_key(request):
             social_accounts=accounts,
             issued_by=request.user,
             name=name,
-            permissions=permission_keys,
+            permissions=_permissions_for_scope(permission_keys, scope, request.user, workspace),
             expires_at=expires_at,
+            **scope,
         )
     except ValueError as exc:
         messages.error(request, str(exc))
@@ -455,10 +593,9 @@ def revoke_key(request, key_id):
     """Soft-revoke a key.
 
     The actual delete is deferred to the background sweep (or a future
-    admin action) — we only set ``revoked_at`` so the verify_token path
-    rejects subsequent uses immediately. The cache is busted inside
-    ``services.revoke_api_key`` via the signal handler, so propagation
-    is immediate even across workers.
+    admin action) — we only set ``revoked_at``. ``verify_token`` reads the
+    row fresh on every request, so every worker rejects the key from its
+    very next call.
     """
     key = get_object_or_404(
         ApiKey.objects.select_related("workspace", "workspace__organization"),
@@ -506,8 +643,9 @@ def edit_key(request, key_id):
     account_ids = request.POST.getlist("social_account_ids")
     permission_keys = request.POST.getlist("permissions")
     expires_at, exp_err = _parse_expires_at((request.POST.get("expires_at") or "").strip())
+    scope, scope_errors = _scope_from_post(request.POST)
 
-    errors: list[str] = []
+    errors: list[str] = list(scope_errors)
     if not account_ids:
         errors.append("Select at least one connected account.")
     accounts, acct_err = _resolve_account_allowlist(account_ids, key.workspace)
@@ -525,13 +663,42 @@ def edit_key(request, key_id):
         services.update_api_key(
             key,
             editor=request.user,
-            permissions=permission_keys,
+            permissions=_permissions_for_scope(permission_keys, scope, request.user, key.workspace),
             social_accounts=accounts,
             expires_at=expires_at,
+            **scope,
         )
     except ValueError as exc:
         messages.error(request, str(exc))
         return redirect("api_keys:list")
 
     messages.success(request, f"Updated “{key.name}”.")
+    return redirect("api_keys:list")
+
+
+# ---------------------------------------------------------------------------
+# Rotate
+# ---------------------------------------------------------------------------
+
+
+@_require_manage_api_keys
+@require_http_methods(["POST"])
+def rotate_key(request, key_id):
+    """Give a key a new secret and show it once; the old secret stops working on the next request.
+
+    Scope, budgets and history stay with the key, so an agent only needs its new token pasted in.
+    """
+    key = get_object_or_404(
+        ApiKey.objects.select_related("workspace", "workspace__organization"),
+        id=key_id,
+    )
+    if key.workspace.organization_id != request.org.id:
+        raise Http404()
+    try:
+        issued = services.rotate_api_key(key, editor=request.user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect("api_keys:list")
+    request.session["reveal_token"] = issued.plaintext_token
+    request.session["reveal_key_name"] = key.name
     return redirect("api_keys:list")
