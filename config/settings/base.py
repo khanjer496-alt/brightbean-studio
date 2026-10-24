@@ -121,6 +121,7 @@ LOCAL_APPS = [
     "apps.ai_writer",
     "apps.repurpose",
     "apps.webhooks",
+    "apps.autonomy",
     "apps.legal",
     "theme",
 ]
@@ -933,6 +934,24 @@ if INTELLIGENCE_ENABLED:
 # many days after it was issued; the emailed link is issued when the report is
 # sent, so recipients get the full window.
 REPORT_LINK_MAX_AGE_DAYS = env.int("REPORT_LINK_MAX_AGE_DAYS", default=30)
+
+
+# Autonomy dial (apps.autonomy): the levels a workspace gets until someone sets them.
+# Conservative on purpose: agents may write drafts, a person approves everything
+# that goes out, and evergreen items keep their own approval setting. Tests run
+# against these same defaults; a test that needs agents to act on their own sets
+# that up explicitly (the ``autonomous_agents`` fixture in conftest.py).
+AUTONOMY_DEFAULT_LEVELS = {
+    "draft_level": "draft_only",
+    "publish_level": "draft_only",
+    "reply_level": "draft_only",
+    "recycle_level": "per_item",
+}
+# How long an autonomous publish or reply waits where a person can undo it.
+AUTONOMY_DEFAULT_UNDO_MINUTES = 5
+# How long the agent activity trail (apps.autonomy AgentAction) is kept. Entries still
+# waiting for a person (an unreviewed hold, a held send) are kept past it.
+AUTONOMY_AUDIT_RETENTION_DAYS = env.int("AUTONOMY_AUDIT_RETENTION_DAYS", default=400)
 
 # Link-in-bio pages (apps.linkinbio). Every page is served at /l/<slug>/. A page may also name a custom
 # domain; requests for that host are only routed to it when this is on (the operator must also allow the

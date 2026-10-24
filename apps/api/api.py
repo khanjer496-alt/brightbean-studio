@@ -22,6 +22,7 @@ from apps.api.routers.accounts import router as accounts_router
 from apps.api.routers.ai import router as ai_router
 from apps.api.routers.analytics import router as analytics_router
 from apps.api.routers.approvals import router as approvals_router
+from apps.api.routers.autonomy import router as autonomy_router
 from apps.api.routers.best_times import router as best_times_router
 from apps.api.routers.bio import router as bio_router
 from apps.api.routers.brand_kit import router as brand_kit_router
@@ -184,6 +185,7 @@ api.add_router("/tags", tags_router)
 api.add_router("/categories", categories_router)
 api.add_router("/events", events_router)
 api.add_router("/brand-voice", brand_voice_router)
+api.add_router("/autonomy", autonomy_router)
 api.add_router("/brand-kit", brand_kit_router)
 api.add_router("/usage", usage_router)
 api.add_router("/members", members_router)

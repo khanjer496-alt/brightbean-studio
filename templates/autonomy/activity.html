@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% load tz %}
+
+{% block title %}Activity - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
+
+{% block page_header %}
+<div class="flex flex-wrap items-center justify-between gap-2 mb-6">
+    <div>
+        <h1 class="text-base font-semibold text-stone-900">Activity</h1>
+        <p class="text-sm text-stone-500 mt-1">Everything people, agents and automations did here, what the autonomy policy decided, and why.</p>
+    </div>
+    <a href="{% url 'autonomy:settings' workspace_id=workspace.id %}" class="text-sm text-stone-500 hover:text-stone-700">Autonomy settings</a>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-5xl">
+    {% if messages %}
+    <div class="mb-4 space-y-2" role="status">
+        {% for message in messages %}<p class="text-sm rounded-lg border px-3 py-2 {% if message.tags == 'error' %}border-red-200 bg-red-50 text-red-800{% else %}border-emerald-200 bg-emerald-50 text-emerald-800{% endif %}">{{ message }}</p>{% endfor %}
+    </div>
+    {% endif %}
+
+    {% if policy.crisis_paused %}
+    <div class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 flex flex-wrap items-center justify-between gap-3" role="alert">
+        <div>
+            <p class="text-sm font-semibold text-red-900">Crisis pause is on</p>
+            <p class="text-sm text-red-800">Every autonomous action is stopped and queued ones are held. Posts people scheduled are not affected.</p>
+        </div>
+        <form method="post" action="{% url 'autonomy:crisis_toggle' workspace_id=workspace.id %}">
+            {% csrf_token %}
+            <input type="hidden" name="crisis_paused" value="0">
+            <button type="submit" class="px-4 py-2 text-sm font-semibold text-red-900 border border-red-300 bg-white rounded-full hover:bg-red-100 cursor-pointer">Resume autonomous actions</button>
+        </form>
+    </div>
+    {% else %}
+    <div class="mb-6 flex justify-end">
+        <form method="post" action="{% url 'autonomy:crisis_toggle' workspace_id=workspace.id %}" x-data @submit="if (!confirm('Pause every autonomous action now? Queued automated posts and replies will be held until you resume.')) $event.preventDefault()">
+            {% csrf_token %}
+            <input type="hidden" name="crisis_paused" value="1">
+            <button type="submit" class="px-4 py-2 text-sm font-semibold text-red-700 border border-red-300 rounded-full hover:bg-red-50 cursor-pointer">Pause all autonomous actions</button>
+        </form>
+    </div>
+    {% endif %}
+
+    {% include "autonomy/partials/tray.html" %}
+
+    <form method="get" class="mb-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 items-end" aria-label="Filter activity">
+        <div>
+            <label for="f-actor" class="block text-xs font-medium text-stone-600 mb-1">Who</label>
+            <select id="f-actor" name="actor" class="form-input text-sm w-full">
+                <option value="">Anyone</option>
+                {% for value, label in actor_types %}<option value="{{ value }}" {% if chosen.actor == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="f-decision" class="block text-xs font-medium text-stone-600 mb-1">Outcome</label>
+            <select id="f-decision" name="decision" class="form-input text-sm w-full">
+                <option value="">Any outcome</option>
+                {% for value, label in decisions %}<option value="{{ value }}" {% if chosen.decision == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="f-action" class="block text-xs font-medium text-stone-600 mb-1">Action</label>
+            <select id="f-action" name="action" class="form-input text-sm w-full">
+                <option value="">Any action</option>
+                {% for value, label in action_types %}<option value="{{ value }}" {% if chosen.action == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="f-account" class="block text-xs font-medium text-stone-600 mb-1">Channel</label>
+            <select id="f-account" name="account" class="form-input text-sm w-full">
+                <option value="">All channels</option>
+                {% for account in accounts %}<option value="{{ account.id }}" {% if chosen.account == account.id|stringformat:"s" %}selected{% endif %}>{{ account.account_name|default:account.account_handle }}</option>{% endfor %}
+            </select>
+        </div>
+        <div>
+            <label for="f-from" class="block text-xs font-medium text-stone-600 mb-1">From</label>
+            <input id="f-from" type="date" name="date_from" value="{{ chosen.date_from }}" class="form-input text-sm w-full">
+        </div>
+        <div>
+            <label for="f-to" class="block text-xs font-medium text-stone-600 mb-1">To</label>
+            <input id="f-to" type="date" name="date_to" value="{{ chosen.date_to }}" class="form-input text-sm w-full">
+        </div>
+        <div class="col-span-2 sm:col-span-3 lg:col-span-6">
+            <button type="submit" class="btn-brand text-sm py-2 px-4">Filter</button>
+            {% if filter_params %}<a href="{% url 'autonomy:activity' workspace_id=workspace.id %}" class="ml-3 text-sm text-stone-500 hover:text-stone-700">Clear filters</a>{% endif %}
+        </div>
+    </form>
+
+    {% if page.object_list %}
+    <ul class="space-y-3">
+        {% for action in page.object_list %}
+        <li class="bg-white border border-stone-200 rounded-xl p-4">
+            <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0 flex-1">
+                    <a href="{% url 'autonomy:action_detail' workspace_id=workspace.id action_id=action.id %}" class="text-sm font-semibold text-stone-800 hover:text-stone-900 break-words">{{ action.actor_name }} · {{ action.get_action_type_display }}</a>
+                    <div class="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-stone-500">
+                        {% include "autonomy/partials/decision_badge.html" %}
+                        <span class="inline-flex items-center rounded-full border border-stone-200 px-2 py-0.5">{{ action.get_actor_type_display }}</span>
+                        {% if action.account_label %}<span>{{ action.account_label }}</span>{% endif %}
+                        {% if action.undone_at %}<span class="inline-flex items-center rounded-full bg-stone-100 px-2 py-0.5 font-medium text-stone-700">Undone</span>{% endif %}
+                        {% if action.platform_deleted_at %}<span class="inline-flex items-center rounded-full bg-stone-100 px-2 py-0.5 font-medium text-stone-700">Deleted from platform</span>{% endif %}
+                    </div>
+                    {% if action.summary %}<p class="mt-2 text-sm text-stone-600 break-words">{{ action.summary }}</p>{% endif %}
+                    {% if action.final_text %}<p class="mt-1 text-xs text-stone-400 break-words">{{ action.final_text|truncatechars:160 }}</p>{% endif %}
+                </div>
+                <time class="text-xs text-stone-400" datetime="{{ action.created_at|date:'c' }}">{{ action.created_at|timezone:workspace.effective_timezone|date:"M j, H:i" }}</time>
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% if page.has_other_pages %}
+    <nav class="mt-5 flex items-center justify-between text-sm" aria-label="Pages">
+        {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}{% if filter_params %}&{{ filter_params }}{% endif %}" class="text-stone-600 hover:text-stone-900">Newer</a>{% else %}<span></span>{% endif %}
+        <span class="text-stone-400">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+        {% if page.has_next %}<a href="?page={{ page.next_page_number }}{% if filter_params %}&{{ filter_params }}{% endif %}" class="text-stone-600 hover:text-stone-900">Older</a>{% else %}<span></span>{% endif %}
+    </nav>
+    {% endif %}
+    {% else %}
+    <div class="text-center py-16 px-6 bg-white border border-stone-200 rounded-xl">
+        <p class="text-sm font-medium text-stone-600 mb-1">No activity yet</p>
+        <p class="text-xs text-stone-400 max-w-sm mx-auto">Scheduling, replies, approvals and recycling show up here with the reason behind every decision.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

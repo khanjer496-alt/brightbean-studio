@@ -8,6 +8,9 @@ from django.http import FileResponse, Http404, HttpResponse
 from django.shortcuts import get_object_or_404, render
 from django.views.decorators.http import require_GET, require_POST
 
+from apps.autonomy import service as autonomy_service
+from apps.autonomy.actors import human as human_actor
+from apps.autonomy.models import ActionType, Decision
 from apps.common.htmx import toast_response
 from apps.composer.models import Post, PostVersion
 from apps.members.decorators import require_permission, require_workspace_role
@@ -63,6 +66,16 @@ def approve(request, workspace_id, post_id):
     if not moved:
         return _toast_response(tone="warn", title="Nothing to update", body="This post was already actioned.")
 
+    autonomy_service.record(
+        workspace=workspace,
+        actor=human_actor(request.user),
+        action_type=ActionType.APPROVAL,
+        operation="approval.approve",
+        decision=Decision.EXECUTED,
+        post=post,
+        summary="Approved a post.",
+        final_text=post.caption,
+    )
     if post.platform_posts.filter(status="pending_client").exists():
         return _toast_response(
             tone="success", title="Approved internally", body="Sent for client sign-off", refresh="approvalAction"

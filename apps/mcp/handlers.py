@@ -39,6 +39,20 @@ from apps.api.schemas import (
     WebhookEndpointResponse,
     WebhookEndpointWithSecretResponse,
 )
+from apps.autonomy.actors import agent as agent_actor
+from apps.autonomy.gate import (
+    AutonomyRefusalError,
+    content_text,
+    deliver_reply,
+    gate_existing,
+    gate_post,
+    gate_reply,
+    gate_reply_edit,
+    gate_resume,
+    record_all,
+    refusal_for,
+    requeue_edited_reply,
+)
 from apps.calendar.services import clean_recurrence, save_recurrence
 from apps.composer.models import PlatformPost, Post
 from apps.composer.services import create_post, transition_platform_post
@@ -47,7 +61,6 @@ from apps.inbox.services import (
     ReplyStateError,
     create_reply_draft,
     discard_reply_draft,
-    send_reply_now,
     update_reply_draft,
 )
 from apps.mcp.protocol import INVALID_PARAMS, JsonRpcError
@@ -129,8 +142,11 @@ def _idempotent(name: str, handler):
             with transaction.atomic():
                 result = handler(args, context)
                 finalize_idempotent_response(api_key=api_key, idempotency_key=key, status_code=200, body=result)
-        except Exception:
+        except Exception as exc:
             release_idempotent_claim(api_key=api_key, idempotency_key=key)
+            refusal = getattr(exc, "autonomy_refusal", None)
+            if refusal is not None:
+                refusal.log()  # the rollback above took the first entry with it
             raise
         return result
 
@@ -146,8 +162,23 @@ def _run_op(op, context: dict[str, Any], *args: Any, **kwargs: Any):
     try:
         result = op(ops.Actor.from_context(context), *args, **kwargs)
     except ops.OpError as exc:
+        if exc.refusal is not None:
+            exc.refusal.log()
         raise JsonRpcError(INVALID_PARAMS, exc.message) from exc
     return result.model_dump(mode="json")
+
+
+def _agent(context: dict[str, Any]):
+    """The audit-trail actor for this MCP call: the API key, or the OAuth session."""
+    api_key = context["api_key"]
+    return agent_actor(api_key, api_key.issued_by if api_key.issued_by_id else None)
+
+
+def _autonomy_error(refusal) -> JsonRpcError:
+    """The error for an action the autonomy policy refuses; keeps the refusal so it is logged after a rollback."""
+    error = JsonRpcError(INVALID_PARAMS, refusal.message)
+    error.autonomy_refusal = refusal
+    return error
 
 
 def _require_perm(context: dict[str, Any], permission_key: str) -> None:
@@ -415,6 +446,17 @@ def _create_draft(args: dict, context: dict[str, Any]) -> dict:
     proposed_publish_at = None
     if args.get("proposed_publish_at") is not None:
         proposed_publish_at = _parse_iso_datetime(args["proposed_publish_at"], "proposed_publish_at")
+    gate = gate_post(
+        workspace=api_key.workspace,
+        actor=_agent(context),
+        account=sa,
+        text=content_text(args["caption"], args.get("title", ""), args.get("first_comment", ""), parts=parts),
+        schedule=False,
+        operation="post.create.draft",
+        source="mcp",
+    )
+    if gate.blocked:
+        raise _autonomy_error(gate.refuse())
     try:
         post = create_post(
             workspace=api_key.workspace,
@@ -433,7 +475,8 @@ def _create_draft(args: dict, context: dict[str, Any]) -> dict:
     except ValueError as exc:
         raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
     _apply_post_taxonomy(post, tags, category_id, context)
-    return _wrap_text(_serialize_post(post, context))
+    _, note = gate.record_with_notice(post=post, platform_post=post.platform_posts.first())
+    return _wrap_text({**_serialize_post(post, context), "autonomy": note})
 
 
 register_tool(
@@ -574,11 +617,29 @@ def _schedule_post(args: dict, context: dict[str, Any]) -> dict:
     repeat = _parse_recurrence(args, workspace=api_key.workspace, scheduled_at=scheduled_at)
     parts = _parse_parts(args)
     tags, category_id = _post_taxonomy(args, context)
+    # The workspace's autonomy policy: schedule as asked, save as a draft for a
+    # person to approve, or refuse. The answer goes back to the agent.
+    gate = gate_post(
+        workspace=api_key.workspace,
+        actor=_agent(context),
+        account=sa,
+        text=content_text(args["caption"], args.get("title", ""), args.get("first_comment", ""), parts=parts),
+        schedule=True,
+        scheduled_at=scheduled_at,
+        operation="post.create.schedule",
+        source="mcp",
+    )
+    if gate.blocked:
+        raise _autonomy_error(gate.refuse())
+    # A held schedule keeps its repeat setting: the rule is saved against the
+    # proposed time and the series starts once a person approves the post.
+    schedule_now = gate.schedule
     # Platform quota is shared with REST; ``check_platform_quota``
     # raises ``HttpError(429,...)`` which we re-shape into a JSON-RPC
     # error so MCP clients see structured feedback rather than HTTP.
     try:
-        check_platform_quota(sa)
+        if schedule_now:
+            check_platform_quota(sa)
     except HttpError as exc:
         raise JsonRpcError(
             INVALID_PARAMS,
@@ -596,18 +657,20 @@ def _schedule_post(args: dict, context: dict[str, Any]) -> dict:
                 first_comment=args.get("first_comment", ""),
                 internal_notes=args.get("internal_notes", ""),
                 media_asset_ids=args.get("media_asset_ids") or [],
-                scheduled_at=scheduled_at,
+                scheduled_at=scheduled_at if schedule_now else None,
+                proposed_publish_at=None if schedule_now else scheduled_at,
                 author=api_key.issued_by if api_key.issued_by_id else None,
-                status="scheduled",
+                status="scheduled" if schedule_now else "draft",
                 parts=parts,
                 post_settings=args.get("post_settings"),
             )
             _apply_post_taxonomy(post, tags, category_id, context)
             if repeat is not None:
                 save_recurrence(post, **repeat.rule_fields())
+            _, note = gate.record_with_notice(post=post, platform_post=post.platform_posts.first())
     except ValueError as exc:
         raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
-    return _wrap_text(_serialize_post(post, context))
+    return _wrap_text({**_serialize_post(post, context), "autonomy": note})
 
 
 register_tool(
@@ -876,6 +939,21 @@ def _schedule_draft(args: dict, context: dict[str, Any]) -> dict:
             f"This post is a copy in a repeating series; change the series on post {post.recurrence_source_id}.",
         )
 
+    # The autonomy policy decides, per account, whether each child is scheduled
+    # as asked or stays a draft for a person to approve; a refusal stops the call.
+    pairs = gate_existing(
+        workspace=post.workspace,
+        actor=_agent(context),
+        platform_posts=schedulable,
+        scheduled_at=scheduled_at,
+        operation="post.schedule",
+        source="mcp",
+    )
+    refusal = refusal_for(pairs, post)
+    if refusal is not None:
+        raise _autonomy_error(refusal)
+    schedulable = [pp for pp, gate in pairs if gate.schedule]
+
     # Per-platform 24h quota check, one per child, BEFORE we mutate
     # anything — over-quota fails the whole call with no partial commit.
     for pp in schedulable:
@@ -898,11 +976,16 @@ def _schedule_draft(args: dict, context: dict[str, Any]) -> dict:
                 transition_platform_post(pp, "scheduled", scheduled_at=scheduled_at)
             except ValueError as exc:
                 raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
+        if not schedulable:
+            # Everything was held: keep the asked-for time as the proposal a person approves.
+            post.proposed_publish_at = scheduled_at
+            post.save(update_fields=["proposed_publish_at", "updated_at"])
         if repeat is not None:
+            # A held schedule keeps its repeat setting; the series starts once a person approves it.
             post.refresh_from_db()
             save_recurrence(post, **repeat.rule_fields(), refresh=True)
     post.refresh_from_db()
-    return _wrap_text(_serialize_post(post, context))
+    return _wrap_text({**_serialize_post(post, context), "autonomy": record_all(pairs, post)})
 
 
 register_tool(
@@ -955,6 +1038,11 @@ def _resume_thread(args: dict, context: dict[str, Any]) -> dict:
     stopped = [pp for pp in post.platform_posts.all() if pp.is_thread_partial]
     if not stopped:
         raise JsonRpcError(INVALID_PARAMS, "No thread on this post is stopped part-way")
+    refusal = gate_resume(
+        workspace=post.workspace, actor=_agent(context), post=post, platform_posts=stopped, source="mcp"
+    )
+    if refusal is not None:
+        raise _autonomy_error(refusal)
     for pp in stopped:
         try:
             resume_thread(pp, confirm_unconfirmed=args.get("confirm_unconfirmed") is True)
@@ -1870,6 +1958,17 @@ def _create_reply_draft(args: dict, context: dict[str, Any]) -> dict:
     if not args.get("body"):
         raise JsonRpcError(INVALID_PARAMS, "body is required")
     message = _get_inbox_message_for_key(api_key, args["message_id"])
+    gate = gate_reply(
+        workspace=message.workspace,
+        actor=_agent(context),
+        account=message.social_account,
+        text=args["body"],
+        send=False,
+        operation="reply.draft",
+        source="mcp",
+    )
+    if gate.blocked:
+        raise _autonomy_error(gate.refuse())
     try:
         reply = create_reply_draft(
             message=message,
@@ -1878,7 +1977,8 @@ def _create_reply_draft(args: dict, context: dict[str, Any]) -> dict:
         )
     except ValueError as exc:
         raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
-    return _wrap_text(_serialize_inbox_reply(reply))
+    _, note = gate.record_with_notice(reply=reply)
+    return _wrap_text({**_serialize_inbox_reply(reply), "autonomy": note})
 
 
 register_tool(
@@ -1915,11 +2015,28 @@ def _update_reply_draft(args: dict, context: dict[str, Any]) -> dict:
     if not args.get("body"):
         raise JsonRpcError(INVALID_PARAMS, "body is required")
     reply = _get_inbox_reply_for_key(context["api_key"], args["reply_id"])
+    message = reply.inbox_message
     try:
-        update_reply_draft(reply, body=args["body"])
+        gate = gate_reply_edit(
+            workspace=message.workspace,
+            actor=_agent(context),
+            account=message.social_account,
+            reply=reply,
+            text=args["body"],
+            source="mcp",
+        )
+    except AutonomyRefusalError as exc:
+        raise _autonomy_error(exc) from exc
+    from django.db import transaction
+
+    try:
+        with transaction.atomic():
+            update_reply_draft(reply, body=args["body"])
+            note = requeue_edited_reply(gate, reply)
     except (ReplyStateError, ValueError) as exc:
         raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
-    return _wrap_text(_serialize_inbox_reply(reply))
+    out = _serialize_inbox_reply(reply)
+    return _wrap_text({**out, "autonomy": note} if note else out)
 
 
 register_tool(
@@ -2007,14 +2124,29 @@ def _send_reply(args: dict, context: dict[str, Any]) -> dict:
         except ValueError as exc:
             raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
 
+    message = reply.inbox_message
+    gate = gate_reply(
+        workspace=message.workspace,
+        actor=_agent(context),
+        account=message.social_account,
+        text=reply.body,
+        send=True,
+        operation="reply.send",
+        source="mcp",
+    )
+    if gate.blocked:
+        # A reply made just for this call is not kept when the policy refuses it.
+        if "reply_id" not in args:
+            reply.delete()
+        raise _autonomy_error(gate.refuse())
     try:
-        send_reply_now(reply, actor=actor)
+        note = deliver_reply(gate, reply, actor)
     except ReplyStateError as exc:
         raise JsonRpcError(INVALID_PARAMS, str(exc)) from exc
     except Exception as exc:  # platform refused it — reply is left in "failed"
         raise JsonRpcError(INVALID_PARAMS, f"Reply not sent: {reply.send_error or 'Please try again later.'}") from exc
 
-    return _wrap_text(_serialize_inbox_reply(reply))
+    return _wrap_text({**_serialize_inbox_reply(reply), "autonomy": note})
 
 
 register_tool(

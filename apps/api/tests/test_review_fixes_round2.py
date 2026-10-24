@@ -26,6 +26,9 @@ from apps.members.models import (
     WorkspaceMembership,
 )
 
+# These tests drive an agent the workspace trusts to publish and reply on its own.
+pytestmark = pytest.mark.usefixtures("autonomous_agents")
+
 
 class _SecureClient(Client):
     def generic(self, method, path, *args, **kwargs):

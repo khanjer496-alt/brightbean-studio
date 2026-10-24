@@ -12,6 +12,9 @@ from apps.calendar.models import PostingSlot, Queue
 from apps.composer.models import ContentCategory, Idea, IdeaGroup, Post, PostTemplate, Tag
 from apps.mcp.tools import all_tools, get_tool
 
+# These tests drive an agent the workspace trusts to publish and reply on its own.
+pytestmark = pytest.mark.usefixtures("autonomous_agents")
+
 NO_UUID = "00000000-0000-4000-8000-000000000000"
 
 

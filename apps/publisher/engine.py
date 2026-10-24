@@ -34,6 +34,10 @@ from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from apps.approvals.policy import approval_allows_publish
+from apps.autonomy.release import hold_at_send as autonomy_hold_at_send
+from apps.autonomy.release import hold_exclusion as autonomy_hold_exclusion
+from apps.autonomy.release import is_platform_post_held as is_autonomy_held
+from apps.autonomy.release import send_blocker as autonomy_send_blocker
 from apps.common.db import in_worker_thread, release_idle_connection
 from apps.common.worker import SHUTDOWN_REQUESTED
 from apps.composer.models import PlatformPost, PlatformPostPart
@@ -517,6 +521,9 @@ class PublishEngine:
             # parks the whole post out of the publish path even if a sibling
             # platform is already scheduled.
             .exclude(post__platform_posts__status=PlatformPost.Status.ON_HOLD)
+            # An autonomous post waits out its undo window, and stays put while
+            # a person holds it or the workspace is in a crisis pause.
+            .exclude(autonomy_hold_exclusion(now))
             # The example workspace holds sample drafts that must never go out.
             .exclude(post__workspace__sample_marker__isnull=False)
             .select_related("post__workspace", "social_account")
@@ -559,6 +566,7 @@ class PublishEngine:
                 for pp in locked
                 if pp.id in due_ids
                 and pp.status == PlatformPost.Status.SCHEDULED
+                and not is_autonomy_held(pp, now)
                 and (
                     (
                         pp.retry_count == 0
@@ -570,6 +578,18 @@ class PublishEngine:
                     or (0 < pp.retry_count <= MAX_RETRIES and (pp.next_retry_at is None or pp.next_retry_at <= now))
                 )
             ]
+
+            # The autonomy policy is asked again at the moment of sending: a crisis pause or a
+            # level lowered since an agent (or an agent's repeating series) queued this holds it
+            # back as a draft for a person, rather than letting an old decision send it.
+            for pp in list(platform_posts):
+                reason = autonomy_send_blocker(pp)
+                if reason:
+                    from apps.composer.services import transition_platform_post
+
+                    autonomy_hold_at_send(pp, reason)
+                    transition_platform_post(pp, "draft")
+                    platform_posts.remove(pp)
 
             if not platform_posts:
                 return False
@@ -1391,6 +1411,7 @@ class PublishEngine:
                 next_retry_at__lte=now,
             )
             .exclude(post__platform_posts__status=PlatformPost.Status.ON_HOLD)
+            .exclude(autonomy_hold_exclusion(now))
             .select_related("social_account", "post")
         )
 
@@ -1402,12 +1423,17 @@ class PublishEngine:
                 # predicate under the database's row lock, so a competing worker
                 # (or a stale snapshot of a row whose backoff was since pushed
                 # out) cannot dispatch the same retry twice.
-                claimed = PlatformPost.objects.filter(
-                    pk=pp.pk,
-                    status=PlatformPost.Status.SCHEDULED,
-                    retry_count=pp.retry_count,
-                    next_retry_at__lte=timezone.now(),
-                ).update(status=PlatformPost.Status.PUBLISHING, updated_at=timezone.now())
+                claimed = (
+                    PlatformPost.objects.filter(
+                        pk=pp.pk,
+                        status=PlatformPost.Status.SCHEDULED,
+                        retry_count=pp.retry_count,
+                        next_retry_at__lte=timezone.now(),
+                    )
+                    # Re-checked at claim time: a crisis pause or hold placed since the query wins.
+                    .exclude(autonomy_hold_exclusion(timezone.now()))
+                    .update(status=PlatformPost.Status.PUBLISHING, updated_at=timezone.now())
+                )
                 if not claimed:
                     continue
                 pp.status = PlatformPost.Status.PUBLISHING
@@ -2195,6 +2221,13 @@ def _publish_thread_part_task(platform_post_id, part_id):
         logger.info("Skipping thread part %s: an earlier part is not live.", part.id)
         return
     state = states[part.id]
+    # A thread an automation started stops between parts when crisis pause is switched on or
+    # its publishing level is lowered: the live parts stay, the rest wait for a person to resume.
+    reason = autonomy_send_blocker(platform_post) if state.status == PartStatus.PENDING else ""
+    if reason:
+        autonomy_hold_at_send(platform_post, reason, what="thread")
+        _stop_thread(platform_post, part, f"It was paused because {reason}. Resume it when you're ready.")
+        return
     claimed = PlatformPostPart.objects.filter(pk=state.pk, status=PartStatus.PENDING).update(
         status=PartStatus.POSTING, updated_at=timezone.now()
     )

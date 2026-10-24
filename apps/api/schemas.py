@@ -536,6 +536,17 @@ class ThreadPartResponse(Schema):
     is_finisher: bool
 
 
+class AutonomyNotice(Schema):
+    """What the workspace's autonomy policy did with an agent's write, and what happens next."""
+
+    decision: str = Field(description="`executed`, `held` (saved as a draft for review) or `blocked`.")
+    level: str = Field(description="The autonomy level the decision was made under.")
+    reasons: list[str] = Field(default_factory=list, description="Why it was held or blocked.")
+    message: str = Field(description="A sentence you can act on or relay to the user.")
+    action_id: uuid.UUID | None = Field(None, description="The audit trail entry (see `/autonomy/actions`).")
+    undo_until: str | None = Field(None, description="Until when a person can still undo it, if it can be undone.")
+
+
 class PostResponse(Schema):
     id: uuid.UUID
     workspace_id: uuid.UUID
@@ -561,10 +572,18 @@ class PostResponse(Schema):
     category_id: uuid.UUID | None = Field(None, description="The post's content category (see ``/categories``).")
     created_at: dt.datetime
     updated_at: dt.datetime
+    autonomy: AutonomyNotice | None = Field(
+        None,
+        description="Set on writes by an agent: whether the autonomy policy executed, held or blocked it, and why.",
+    )
 
     @field_serializer("scheduled_at", "published_at", "proposed_publish_at", "created_at", "updated_at")
     def _serialize_dt(self, value: dt.datetime | None) -> str | None:
         return _serialize_utc_z(value)
+
+    def with_autonomy(self, note: dict | None) -> PostResponse:
+        self.autonomy = AutonomyNotice(**note) if note else None
+        return self
 
     @classmethod
     def from_post(cls, post: Post, *, include_internal_notes: bool = False) -> PostResponse:
@@ -1081,10 +1100,18 @@ class InboxReplyResponse(Schema):
     created_at: dt.datetime
     updated_at: dt.datetime
     sent_at: dt.datetime | None = None
+    autonomy: AutonomyNotice | None = Field(
+        None,
+        description="Set on writes by an agent: whether the autonomy policy executed, held or blocked it, and why.",
+    )
 
     @field_serializer("created_at", "updated_at", "sent_at")
     def _serialize_dt(self, value: dt.datetime | None) -> str | None:
         return _serialize_utc_z(value)
+
+    def with_autonomy(self, note: dict | None) -> InboxReplyResponse:
+        self.autonomy = AutonomyNotice(**note) if note else None
+        return self
 
     @classmethod
     def from_reply(cls, reply) -> InboxReplyResponse:
@@ -2064,6 +2091,149 @@ class UsageResponse(Schema):
     plan_name: str | None = None
     features: list[str] = Field(default_factory=list)
     usage: list[UsageMeterResponse]
+
+
+# ---------------------------------------------------------------------------
+# /autonomy
+# ---------------------------------------------------------------------------
+
+
+class AccountAutonomyResponse(Schema):
+    social_account_id: uuid.UUID
+    draft_level: str = Field("", description="Blank: the workspace's level applies.")
+    publish_level: str = ""
+    reply_level: str = ""
+    recycle_level: str = ""
+    max_posts_per_day: int | None = None
+
+
+class AutonomyPolicyResponse(Schema):
+    """The workspace's autonomy dial and guardrails: what an agent may do on its own here."""
+
+    draft_level: str = Field(description="`off`, `draft_only`, `auto_guardrails` or `full_auto`.")
+    publish_level: str
+    reply_level: str
+    recycle_level: str = Field(description="As the others, or `per_item` (each evergreen item's own setting).")
+    account_overrides: list[AccountAutonomyResponse] = Field(default_factory=list)
+    blocked_phrases: list[str] = Field(default_factory=list)
+    review_links: bool
+    review_mentions: bool
+    review_prices: bool
+    review_sensitive: bool
+    max_posts_per_day: int
+    max_replies_per_day: int
+    quiet_hours_enabled: bool
+    quiet_start: str | None = Field(None, description="HH:MM in the workspace timezone.")
+    quiet_end: str | None = None
+    ai_risk_check: bool
+    ai_risk_threshold: float
+    ai_voice_check: bool
+    ai_voice_threshold: float
+    undo_delay_minutes: int
+    crisis_paused: bool = Field(description="While true every autonomous action is stopped and queued ones are held.")
+    client_visible: bool
+
+
+class AccountOverrideRequest(Schema):
+    social_account_id: uuid.UUID
+    draft_level: str | None = Field(None, description="Blank or null clears the override.")
+    publish_level: str | None = None
+    reply_level: str | None = None
+    recycle_level: str | None = None
+    max_posts_per_day: int | None = None
+
+
+class UpdateAutonomyPolicyRequest(Schema):
+    """Fields you leave out are unchanged. Keys can only tighten the policy (lower a level, pause, add phrases)."""
+
+    draft_level: str | None = None
+    publish_level: str | None = None
+    reply_level: str | None = None
+    recycle_level: str | None = None
+    blocked_phrases: list[str] | None = None
+    review_links: bool | None = None
+    review_mentions: bool | None = None
+    review_prices: bool | None = None
+    review_sensitive: bool | None = None
+    max_posts_per_day: int | None = None
+    max_replies_per_day: int | None = None
+    quiet_hours_enabled: bool | None = None
+    quiet_start: str | None = None
+    quiet_end: str | None = None
+    ai_risk_check: bool | None = None
+    ai_risk_threshold: float | None = None
+    ai_voice_check: bool | None = None
+    ai_voice_threshold: float | None = None
+    undo_delay_minutes: int | None = None
+    crisis_paused: bool | None = None
+    client_visible: bool | None = None
+    account_overrides: list[AccountOverrideRequest] | None = None
+
+
+class AgentActionResponse(Schema):
+    id: uuid.UUID
+    actor_type: str = Field(description="`human`, `agent` or `system`.")
+    actor_name: str
+    action_type: str
+    operation: str
+    decision: str = Field(description="`executed`, `held` or `blocked`.")
+    level: str
+    summary: str
+    guardrail_results: list[dict] = Field(default_factory=list)
+    ai_used: bool
+    risk_score: float | None = None
+    social_account_id: uuid.UUID | None = None
+    post_id: uuid.UUID | None = None
+    platform_post_id: uuid.UUID | None = None
+    reply_id: uuid.UUID | None = None
+    source_text: str = ""
+    final_text: str = ""
+    requested_at: dt.datetime | None = None
+    release_at: dt.datetime | None = None
+    undone_at: dt.datetime | None = None
+    review_outcome: str = ""
+    platform_deleted_at: dt.datetime | None = None
+    platform_delete_result: str = ""
+    created_at: dt.datetime
+
+    @field_serializer("requested_at", "release_at", "undone_at", "platform_deleted_at", "created_at")
+    def _serialize_dt(self, value: dt.datetime | None) -> str | None:
+        return _serialize_utc_z(value)
+
+    @classmethod
+    def from_action(cls, action) -> AgentActionResponse:
+        return cls(
+            id=action.id,
+            actor_type=action.actor_type,
+            actor_name=action.actor_name,
+            action_type=action.action_type,
+            operation=action.operation,
+            decision=action.decision,
+            level=action.level,
+            summary=action.summary,
+            guardrail_results=action.guardrail_results or [],
+            ai_used=action.ai_used,
+            risk_score=action.risk_score,
+            social_account_id=action.social_account_id,
+            post_id=action.post_id,
+            platform_post_id=action.platform_post_id,
+            reply_id=action.reply_id,
+            source_text=action.source_text,
+            final_text=action.final_text,
+            requested_at=action.requested_at,
+            release_at=action.release_at,
+            undone_at=action.undone_at,
+            review_outcome=action.review_outcome,
+            platform_deleted_at=action.platform_deleted_at,
+            platform_delete_result=action.platform_delete_result,
+            created_at=action.created_at,
+        )
+
+
+class AgentActionsListResponse(Schema):
+    actions: list[AgentActionResponse]
+    limit: int
+    next_cursor: str | None = Field(None, description="Pass back as ``cursor`` for the next page; null on the last.")
 
 
 # ---------------------------------------------------------------------------

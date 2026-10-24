@@ -11,6 +11,9 @@ from apps.api.tests.world import make_post
 from apps.calendar.models import PostingSlot, Queue, QueueEntry
 from apps.composer.models import PlatformPost
 
+# These tests drive an agent the workspace trusts to publish and reply on its own.
+pytestmark = pytest.mark.usefixtures("autonomous_agents")
+
 QUEUES = "/api/v1/queues/"
 SLOTS = "/api/v1/slots/"
 
