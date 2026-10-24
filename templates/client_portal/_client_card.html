@@ -87,16 +87,16 @@ already-approved posts get "Put on hold"; held posts show their state.
                       :placeholder="panel === 'hold' ? 'e.g. Legal wants to double-check the figures…' : 'Add a note…'"
                       class="w-full px-3 py-2 text-[0.875rem] rounded-lg resize-none focus:outline-none focus:ring-2 focus:ring-orange-200 border-[1.5px] border-stone-200"></textarea>
             <div class="flex gap-2 mt-3">
-                <button x-show="panel === 'changes'" hx-post="{% url 'client_portal:request_changes' post_id=post.id %}" hx-include="#client-comment-{{ post.id }}" hx-swap="none"
+                <button x-show="panel === 'changes'" x-cloak hx-post="{% url 'client_portal:request_changes' post_id=post.id %}" hx-include="#client-comment-{{ post.id }}" hx-swap="none"
                         :disabled="!comment.trim()" :class="!comment.trim() && 'opacity-50 cursor-not-allowed'"
                         class="px-4 py-2 text-[0.8125rem] font-semibold rounded-full" style="background:var(--warning-500);color:var(--surface-page);">Submit feedback</button>
-                <button x-show="panel === 'reject'" hx-post="{% url 'client_portal:reject' post_id=post.id %}" hx-include="#client-comment-{{ post.id }}" hx-swap="none"
+                <button x-show="panel === 'reject'" x-cloak hx-post="{% url 'client_portal:reject' post_id=post.id %}" hx-include="#client-comment-{{ post.id }}" hx-swap="none"
                         :disabled="!comment.trim()" :class="!comment.trim() && 'opacity-50 cursor-not-allowed'"
                         class="px-4 py-2 text-[0.8125rem] font-semibold rounded-full" style="background:var(--error-500);color:var(--surface-page);">Reject post</button>
-                <button x-show="panel === 'comment'" hx-post="{% url 'client_portal:comment' post_id=post.id %}" hx-include="#client-comment-{{ post.id }}" hx-swap="none"
+                <button x-show="panel === 'comment'" x-cloak hx-post="{% url 'client_portal:comment' post_id=post.id %}" hx-include="#client-comment-{{ post.id }}" hx-swap="none"
                         :disabled="!comment.trim()" :class="!comment.trim() && 'opacity-50 cursor-not-allowed'"
                         class="px-4 py-2 text-[0.8125rem] font-semibold rounded-full text-white" style="background:var(--primary);">Send comment</button>
-                <button x-show="panel === 'hold'" hx-post="{% url 'client_portal:request_hold' post_id=post.id %}" hx-include="#client-comment-{{ post.id }}" hx-swap="none"
+                <button x-show="panel === 'hold'" x-cloak hx-post="{% url 'client_portal:request_hold' post_id=post.id %}" hx-include="#client-comment-{{ post.id }}" hx-swap="none"
                         :disabled="!comment.trim()" :class="!comment.trim() && 'opacity-50 cursor-not-allowed'"
                         class="px-4 py-2 text-[0.8125rem] font-semibold rounded-full text-white" style="background:var(--primary);">Request hold</button>
                 <button @click="panel = null; comment = ''" class="px-4 py-2 text-[0.8125rem] font-medium rounded-full text-stone-500 hover:bg-stone-100">Cancel</button>

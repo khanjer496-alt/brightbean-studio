@@ -59,7 +59,7 @@ Context: account (with prefetched posting_slots), workspace_id.
                                         {% csrf_token %}
                                         <input type="hidden" name="social_account_id" value="{{ account.id }}">
                                         <button aria-label="Remove slot" type="submit"
-                                                x-show="hovered" x-transition.opacity
+                                                x-show="hovered" x-cloak x-transition.opacity
                                                 class="w-4 h-4 flex items-center justify-center text-stone-300 hover:text-red-500 transition-all cursor-pointer"
                                                 title="Remove slot">
                                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>

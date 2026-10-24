@@ -94,7 +94,7 @@
                 {% if not attachment.url %}
                 <p class="text-sm text-stone-500">{{ attachment.type|title }} attachment unavailable.</p>
                 {% elif attachment.type == 'image' %}
-                <a href="{{ attachment.url }}" target="_blank" rel="noopener noreferrer"><img src="{{ attachment.url }}" loading="lazy" referrerpolicy="no-referrer" alt="Incoming image attachment" class="max-h-64 rounded-lg"></a>
+                <a href="{{ attachment.url }}" target="_blank" rel="noopener noreferrer"><img src="{{ attachment.url }}" loading="lazy" referrerpolicy="no-referrer" alt="Incoming image attachment" width="320" height="256" class="max-h-64 rounded-lg"></a>
                 {% elif attachment.type == 'video' %}
                 <video controls preload="none" class="max-h-64 rounded-lg" src="{{ attachment.url }}">Video attachment unavailable.</video>
                 {% elif attachment.type == 'audio' %}

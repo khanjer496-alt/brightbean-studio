@@ -138,19 +138,19 @@ can_approve, display_timezone, and the parent Alpine scope (selectedPosts, diffO
                       class="w-full px-3 py-2 text-[0.8125rem] border border-stone-200 rounded-lg resize-none"></textarea>
             <div class="flex items-center gap-2 mt-2">
                 {% if can_approve %}
-                <button type="button" x-show="panel === 'changes'"
+                <button type="button" x-show="panel === 'changes'" x-cloak
                         hx-post="{% url 'approvals:request_changes' workspace_id=workspace.id post_id=post.id %}"
                         hx-include="#review-comment-{{ post.id }}" hx-swap="none" :disabled="!comment.trim()"
                         class="px-3.5 py-1.5 text-[0.75rem] font-semibold rounded-full text-white transition-colors"
                         :class="comment.trim() ? 'bg-amber-700 hover:bg-amber-600' : 'bg-stone-500 cursor-not-allowed'">Send back for changes</button>
-                <button type="button" x-show="panel === 'reject'"
+                <button type="button" x-show="panel === 'reject'" x-cloak
                         hx-post="{% url 'approvals:reject' workspace_id=workspace.id post_id=post.id %}"
                         hx-include="#review-comment-{{ post.id }}" hx-swap="none" :disabled="!comment.trim()"
                         class="px-3.5 py-1.5 text-[0.75rem] font-semibold rounded-full text-white transition-colors"
                         :class="comment.trim() ? 'bg-red-700 hover:bg-red-600' : 'bg-stone-500 cursor-not-allowed'">Reject post</button>
                 {% endif %}
                 {% if can_comment %}
-                    <div class="flex items-center gap-2" x-show="panel === 'comment'">
+                    <div class="flex items-center gap-2" x-show="panel === 'comment'" x-cloak>
                         <button type="button"
                                 hx-post="{% url 'approvals:comment_only' workspace_id=workspace.id post_id=post.id %}"
                                 hx-include="#review-comment-{{ post.id }}, #review-visibility-{{ post.id }}" hx-swap="none" :disabled="!comment.trim()"

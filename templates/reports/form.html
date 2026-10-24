@@ -100,7 +100,7 @@
                 <span id="preview-loading" class="htmx-indicator text-xs text-ink-3" role="status">Updating&hellip;</span>
             </div>
             <p class="m-0 mb-3 text-xs text-ink-3">Updates as you change the form. The AI summary is written when the report is generated.</p>
-            <div id="report-preview" hx-post="{% url 'reports:preview' workspace_id=workspace.id %}" hx-include="#report-form" hx-trigger="load" hx-swap="innerHTML"></div>
+            <div id="report-preview" hx-post="{% url 'reports:preview' workspace_id=workspace.id %}" hx-include="#report-form" hx-trigger="load" hx-sync="this:replace" hx-swap="innerHTML"></div>
         </section>
     </div>
     {% if definition %}

@@ -67,7 +67,7 @@
                     <div x-show="showEditModal" x-cloak x-transition.opacity
                          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
                          role="dialog" aria-modal="true" aria-labelledby="edit-{{ row.id }}-title" x-pd-dialog="showEditModal">
-                        <div @click.outside="showEditModal = false" x-show="showEditModal" x-transition
+                        <div @click.outside="showEditModal = false" x-show="showEditModal" x-cloak x-transition
                              class="w-full max-w-xl mx-4 max-h-[90vh] rounded-xl flex flex-col bg-[var(--surface-0)] border border-stone-200 shadow-2xl">
                             <form method="POST" action="{% url 'api_keys:edit' row.id %}" data-token-scope class="flex flex-col min-h-0">
                                 {% csrf_token %}
@@ -147,7 +147,7 @@
                     <div x-show="showRotateModal" x-cloak x-transition.opacity
                          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
                          role="dialog" aria-modal="true" aria-labelledby="rotate-{{ row.id }}-title" x-pd-dialog="showRotateModal">
-                        <div @click.outside="showRotateModal = false" x-show="showRotateModal" x-transition
+                        <div @click.outside="showRotateModal = false" x-show="showRotateModal" x-cloak x-transition
                              class="w-full max-w-md mx-4 rounded-xl flex flex-col bg-[var(--surface-0)] border border-stone-200 shadow-2xl">
                             <div class="px-6 pt-6 pb-2">
                                 <h3 id="rotate-{{ row.id }}-title" class="text-lg font-semibold text-[var(--text-primary)]">Rotate token</h3>
@@ -172,7 +172,7 @@
                     <div x-show="showRevokeModal" x-cloak x-transition.opacity
                          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
                          role="dialog" aria-modal="true" aria-labelledby="revoke-{{ row.id }}-title" x-pd-dialog="showRevokeModal">
-                        <div @click.outside="showRevokeModal = false" x-show="showRevokeModal" x-transition
+                        <div @click.outside="showRevokeModal = false" x-show="showRevokeModal" x-cloak x-transition
                              class="w-full max-w-md mx-4 rounded-xl flex flex-col bg-[var(--surface-0)] border border-stone-200 shadow-2xl">
                             <div class="px-6 pt-6 pb-2">
                                 <h3 id="revoke-{{ row.id }}-title" class="text-lg font-semibold text-[var(--text-primary)]">Revoke API key</h3>

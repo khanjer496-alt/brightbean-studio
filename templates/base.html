@@ -31,6 +31,7 @@
     {% block extra_head %}{% endblock %}
     <link rel="stylesheet" href="{% static 'css/postdelegate.css' %}">
     <link rel="stylesheet" href="{% static 'css/platforms.css' %}">
+    <link rel="stylesheet" href="{% static 'css/stability.css' %}">
 </head>
 <body class="min-h-screen{% if impersonation %} pd-impersonating{% endif %}">
     <a href="#main-content" class="pd-skip-link">Skip to main content</a>
@@ -1206,5 +1207,6 @@
         {% endmodal %}
     </div>
     {% endif %}
+<script src="{% static 'js/form-guard.js' %}" defer></script>
 </body>
 </html>

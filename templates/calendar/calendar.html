@@ -351,6 +351,9 @@
         margin-left: auto;
     }
 
+    /* A dropped chip waiting for the server: dimmed and not draggable. */
+    .chip-row.is-saving { opacity: .6; pointer-events: none; }
+
     /* Drag-and-drop (SortableJS) feedback */
     .chip-row.is-draggable, .chip-row.is-draggable .post-chip { cursor: grab; }
     .chip-row.is-draggable:active, .chip-row.is-draggable:active .post-chip { cursor: grabbing; }
@@ -437,8 +440,8 @@ ticked (see the `sel` Alpine store).{% endcomment %}
         <div class="p-6 text-center">
             <div class="w-11 h-11 mx-auto rounded-full flex items-center justify-center mb-3"
                  :class="confirmAction === 'delete' ? 'bg-bad-soft text-bad' : 'bg-good-soft text-good'">
-                <svg x-show="confirmAction === 'delete'" class="w-5 h-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                <svg x-show="confirmAction === 'publish'" class="w-5 h-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
+                <svg x-show="confirmAction === 'delete'" x-cloak class="w-5 h-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                <svg x-show="confirmAction === 'publish'" x-cloak class="w-5 h-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
             </div>
             <h2 id="bulk-confirm-title" class="text-base font-bold text-ink" x-text="confirmAction === 'delete' ? 'Delete posts?' : 'Publish now?'"></h2>
             <p id="bulk-confirm-body" class="text-sm text-ink-3 mt-1 leading-relaxed"
@@ -567,7 +570,40 @@ function calendarApp() {
             const params = this.filterParams();
             params.set('date', '{{ target_date|date:"Y-m-d" }}');
             const url = '{% url "calendar:calendar" workspace_id=workspace.id %}?' + params.toString();
-            htmx.ajax('GET', url, {target: '#calendar-content', swap: 'innerHTML'});
+            this._rememberScroll();
+            htmx.ajax('GET', url, {target: '#calendar-content', swap: 'innerHTML show:none'});
+        },
+
+        // A redraw after a reschedule or filter change must not throw the user back to the top: remember where the
+        // page and each scrollable calendar region (matched by its aria-label) were, and put them back once settled.
+        // window.__calKeepScroll also tells the week grid not to jump to the first busy hour again.
+        _rememberScroll() {
+            const panes = {};
+            document.querySelectorAll('#calendar-content [role="region"][aria-label]').forEach((el) => {
+                panes[el.getAttribute('aria-label')] = [el.scrollLeft, el.scrollTop];
+            });
+            const host = document.getElementById('calendar-content');
+            this._scrollSnap = { x: window.scrollX, y: window.scrollY, host: host ? host.scrollTop : 0, panes };
+            window.__calKeepScroll = true;
+            // If the redraw never arrives, do not leave the week grid permanently refusing to scroll to its first busy hour.
+            setTimeout(() => { this._scrollSnap = null; window.__calKeepScroll = false; }, 8000);
+        },
+
+        _restoreScroll() {
+            const snap = this._scrollSnap;
+            this._scrollSnap = null;
+            if (!snap) return;
+            const apply = () => {
+                const host = document.getElementById('calendar-content');
+                if (host) host.scrollTop = snap.host;
+                document.querySelectorAll('#calendar-content [role="region"][aria-label]').forEach((el) => {
+                    const pos = snap.panes[el.getAttribute('aria-label')];
+                    if (pos) { el.scrollLeft = pos[0]; el.scrollTop = pos[1]; }
+                });
+                window.scrollTo(snap.x, snap.y);
+                window.__calKeepScroll = false;
+            };
+            this.$nextTick(() => requestAnimationFrame(apply));
         },
 
         init() {
@@ -581,6 +617,7 @@ function calendarApp() {
                 if (t && (t.id === 'calendar-content' || (t.querySelector && t.querySelector('.cal-drop')))) {
                     this.$nextTick(() => this.initCalendarDnD());
                 }
+                if (t && t.id === 'calendar-content') this._restoreScroll();
             });
             // A drag on an <a> chip would otherwise fire a trailing click and
             // navigate to the editor. Swallow that click while a drag is in
@@ -645,13 +682,26 @@ function calendarApp() {
                         const date = evt.to.getAttribute('data-date');
                         const time = evt.to.getAttribute('data-time') || '09:00';
                         if (!ppId || !date) return;
-                        this.rescheduleChip(ppId, date + 'T' + time + ':00');
+                        // Put the chip back where it was if the move fails (rejected, offline, server error).
+                        const revert = () => {
+                            const siblings = Array.from(evt.from.children).filter((el) => el !== evt.item && el.matches('.chip-row.is-draggable'));
+                            evt.from.insertBefore(evt.item, siblings[evt.oldDraggableIndex] || null);
+                        };
+                        this.rescheduleChip(ppId, date + 'T' + time + ':00', evt.item, revert);
                     },
                 }));
             });
         },
 
-        rescheduleChip(platformPostId, newDatetime) {
+        rescheduleChip(platformPostId, newDatetime, chip, revert) {
+            // The chip stays where it was dropped (optimistic) but cannot be dragged again until the server answers.
+            if (chip) { chip.classList.add('is-saving'); chip.setAttribute('aria-busy', 'true'); }
+            const settle = () => { if (chip) { chip.classList.remove('is-saving'); chip.removeAttribute('aria-busy'); } };
+            const failed = (message) => {
+                settle();
+                if (revert) revert();
+                document.body.dispatchEvent(new CustomEvent('showToast', { detail: { tone: 'error', title: message } }));
+            };
             // newDatetime is the target cell's workspace-tz wall date/time (see
             // _cell_compose_params); reschedule_post interprets the naive value
             // in the workspace timezone, so the drop lands on the right instant.
@@ -675,10 +725,13 @@ function calendarApp() {
                     // Snap the grid back to the server truth, and say why — a
                     // drop rejected by the publish gate would otherwise look
                     // like the chip just sprang back for no reason.
+                    settle();
+                    if (revert) revert();
                     this.reloadCalendar();
                     bbFailureToast(res, 'Could not reschedule that post.');
                     return;
                 }
+                settle();
                 // Re-render on success too. SortableJS drops the chip at the
                 // cursor's index, so the target cell is left out of time order
                 // and — in month view, which renders only the first three posts
@@ -686,7 +739,7 @@ function calendarApp() {
                 // rendered with. It's a partial swap of #calendar-content, not
                 // a page load.
                 this.reloadCalendar();
-            }).catch(() => this.reloadCalendar());
+            }).catch(() => failed('Could not reschedule that post. Check your connection and try again.'));
         }
     };
 }

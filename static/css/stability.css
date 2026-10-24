@@ -1,0 +1,72 @@
+/* UI stability helpers: loading skeletons, in-flight buttons, reduced motion.
+   Loaded after the main stylesheet; uses tokens from styles.css with safe fallbacks. */
+
+/* Skeleton placeholder for content that is still loading. Add .skeleton to a sized block. */
+.skeleton {
+  background: var(--surface-2, #1b1f2b);
+  border-radius: var(--radius-lg, 0.5rem);
+  color: transparent;
+  animation: pd-skeleton-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  pointer-events: none;
+  user-select: none;
+}
+.skeleton > * { visibility: hidden; }
+@keyframes pd-skeleton-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* In-flight controls (see static/js/form-guard.js): not clickable, dimmed, spinner after a short delay. */
+[data-pd-busy] { cursor: progress; }
+button[data-pd-busy], input[data-pd-busy], a[data-pd-busy] { pointer-events: none; opacity: 0.7; }
+
+.btn-loading {
+  position: relative;
+  color: transparent !important;
+  text-shadow: none !important;
+}
+.btn-loading > * { visibility: hidden; }
+.btn-loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 1rem;
+  height: 1rem;
+  border-radius: 9999px;
+  border: 2px solid var(--text-primary, #f8f7f2);
+  border-top-color: transparent;
+  animation: pd-spin 0.8s linear infinite;
+}
+@keyframes pd-spin { to { transform: rotate(360deg); } }
+
+/* Focus ring for borderless text editors whose own rules remove the outline (composer caption, idea modal).
+   Same ring as the global :focus-visible rule in postdelegate.css. */
+.caption-editor:focus-visible,
+.idea-modal-body input.idea-title-input:focus-visible,
+.idea-modal-body textarea.idea-desc-input:focus-visible {
+  outline: 2px solid var(--brand-green-500);
+  outline-offset: 2px;
+}
+
+/* HTMX's own request class: a primary button cannot be clicked again while its request runs. */
+.htmx-request.btn-brand, .htmx-request .btn-brand { pointer-events: none; }
+
+/* Elements hidden until Alpine boots. Also declared inline in base.html; repeated so it never depends on it. */
+[x-cloak] { display: none !important; }
+
+/* Reduced motion (spec section A): nothing animates for longer than a frame; Alpine x-transition classes are
+   plain CSS transitions, so this covers them too. Spinners stay: they are status, not decoration. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .skeleton, .animate-pulse { animation: none !important; opacity: 0.7; }
+  .animate-spin, .btn-loading::after { animation-duration: 2s !important; animation-iteration-count: infinite !important; }
+}
+
+/* Calendar: keep room for the grid while an HTMX swap is loading so the toolbar and page below do not jump. */
+#calendar-content { min-height: min(32rem, 60dvh); }

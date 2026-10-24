@@ -60,14 +60,14 @@
         </div>
 
         <!-- Write with AI -->
-        <div x-show="aiTab === 'write'" role="tabpanel" id="ai-tabpanel-write" aria-labelledby="ai-tab-write">
+        <div x-show="aiTab === 'write'" x-cloak role="tabpanel" id="ai-tabpanel-write" aria-labelledby="ai-tab-write">
             <label for="ai-prompt" class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1">What should the post say?</label>
             <textarea id="ai-prompt" name="ai_prompt" x-ref="aiPrompt" rows="3" maxlength="2000"
                       class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all resize-none"
                       placeholder="e.g. Announce our spring sale: 20% off everything this weekend"></textarea>
             <button type="button" class="btn-brand text-xs py-1.5 px-3 mt-2"
                     :disabled="aiBusy"
-                    hx-post="{% url 'ai_writer:write' workspace_id=workspace.id %}"
+                    hx-post="{% url 'ai_writer:write' workspace_id=workspace.id %}" hx-sync="#ai-panel:drop"
                     hx-target="#ai-result" hx-swap="innerHTML">
                 Write with AI
             </button>
@@ -89,7 +89,7 @@
             </div>
             <button type="button" class="btn-brand text-xs py-1.5 px-3 mt-2"
                     :disabled="aiBusy || !caption.trim()"
-                    hx-post="{% url 'ai_writer:improve' workspace_id=workspace.id %}"
+                    hx-post="{% url 'ai_writer:improve' workspace_id=workspace.id %}" hx-sync="#ai-panel:drop"
                     hx-target="#ai-result" hx-swap="innerHTML">
                 Improve caption
             </button>
@@ -100,11 +100,11 @@
             <p class="text-xs text-stone-500 mb-2">Write a version of the caption for each selected account, in that network's style and within its character limit. You can review each one before it fills the account's custom caption.</p>
             <button type="button" class="btn-brand text-xs py-1.5 px-3"
                     :disabled="aiBusy || !caption.trim() || selectedAccounts.length === 0"
-                    hx-post="{% url 'ai_writer:adapt' workspace_id=workspace.id %}"
+                    hx-post="{% url 'ai_writer:adapt' workspace_id=workspace.id %}" hx-sync="#ai-panel:drop"
                     hx-target="#ai-result" hx-swap="innerHTML">
                 Adapt for each network
             </button>
-            <p x-show="selectedAccounts.length === 0" class="text-[11px] text-stone-400 mt-1">Select at least one account first.</p>
+            <p x-show="selectedAccounts.length === 0" x-cloak class="text-[11px] text-stone-400 mt-1">Select at least one account first.</p>
         </div>
 
         <!-- Hashtags -->
@@ -112,7 +112,7 @@
             <p class="text-xs text-stone-500 mb-2">Suggest hashtags that fit the caption. Pick the ones you want.</p>
             <button type="button" class="btn-brand text-xs py-1.5 px-3"
                     :disabled="aiBusy || !caption.trim()"
-                    hx-post="{% url 'ai_writer:hashtags' workspace_id=workspace.id %}"
+                    hx-post="{% url 'ai_writer:hashtags' workspace_id=workspace.id %}" hx-sync="#ai-panel:drop"
                     hx-target="#ai-result" hx-swap="innerHTML">
                 Suggest hashtags
             </button>
@@ -132,7 +132,7 @@
             </select>
             <button type="button" class="btn-brand text-xs py-1.5 px-3 mt-2"
                     :disabled="aiBusy"
-                    hx-post="{% url 'ai_writer:link' workspace_id=workspace.id %}"
+                    hx-post="{% url 'ai_writer:link' workspace_id=workspace.id %}" hx-sync="#ai-panel:drop"
                     hx-target="#ai-result" hx-swap="innerHTML">
                 Turn into posts
             </button>

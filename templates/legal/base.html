@@ -18,7 +18,7 @@
 <a class="legal-skip" href="#legal-content">Skip to content</a>
 <header class="legal-header">
     <a class="legal-brand" href="{% url 'dashboard' %}">
-        <img src="{% if brand_name == 'PostDelegate' %}{% static 'img/postdelegate-mark.svg' %}{% else %}{% static brand_logo_static %}{% endif %}" alt="">
+        <img src="{% if brand_name == 'PostDelegate' %}{% static 'img/postdelegate-mark.svg' %}{% else %}{% static brand_logo_static %}{% endif %}" alt="" width="28" height="28">
         <span>{{ brand_name }}</span>
     </a>
     <nav aria-label="Legal">

@@ -34,7 +34,7 @@
         {% if idea.cover_media.media_type == 'video' %}
         <video src="{{ idea.cover_media.file.url }}" class="max-h-full max-w-full object-contain" muted playsinline preload="metadata"></video>
         {% else %}
-        <img src="{{ idea.cover_media.file.url }}" alt="" class="max-h-full max-w-full object-contain">
+        <img src="{{ idea.cover_media.file.url }}" alt="" width="160" height="160" class="max-h-full max-w-full object-contain">
         {% endif %}
     </div>
     {% endif %}

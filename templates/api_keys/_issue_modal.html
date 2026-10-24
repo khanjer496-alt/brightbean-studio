@@ -9,7 +9,7 @@ everything the user entered and shows each error next to its field (_issue_error
          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
          role="dialog" aria-modal="true" aria-labelledby="issue-key-title" x-pd-dialog="showIssueModal">
         <div @click.outside="showIssueModal = false"
-             x-show="showIssueModal" x-transition
+             x-show="showIssueModal" x-cloak x-transition
              class="w-full max-w-xl mx-4 max-h-[90vh] rounded-xl flex flex-col bg-[var(--surface-0)] border border-stone-200 shadow-2xl">
             <form method="POST" action="{% url 'api_keys:issue' %}" data-token-scope class="flex flex-col min-h-0"
                   hx-post="{% url 'api_keys:issue' %}" hx-target="#issue-errors" hx-swap="innerHTML" hx-disabled-elt="#issue-submit"

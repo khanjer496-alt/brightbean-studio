@@ -1,7 +1,7 @@
 {% load static %}
 
 {% if page.object_list %}
-<div x-show="viewMode === 'grid'" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
+<div x-show="viewMode === 'grid'" x-cloak class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3"
      hx-get="{% url 'media_library:index' workspace_id=workspace.id %}?page=1&q={{ query|urlencode }}&sort={{ current_sort|urlencode }}"
      hx-trigger="uploadsComplete from:body"
      hx-target="#asset-grid"

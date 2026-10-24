@@ -43,7 +43,7 @@ Disabled (so not submitted) while the publish button is set to a queue action: a
             <span class="text-xs text-stone-500" x-text="unitLabel"></span>
         </div>
 
-        <div x-show="frequency === 'weekly'" role="group" aria-labelledby="recurrence-weekdays-label">
+        <div x-show="frequency === 'weekly'" x-cloak role="group" aria-labelledby="recurrence-weekdays-label">
             <span id="recurrence-weekdays-label" class="block text-xs font-medium text-stone-500 mb-1">On</span>
             <div class="flex flex-wrap gap-1">
                 {% for day in weekday_names %}
@@ -92,7 +92,7 @@ Disabled (so not submitted) while the publish button is set to a queue action: a
     {% if series_rule %}
     <div class="text-xs text-stone-400 leading-relaxed">
         <p>Changing the repeat replaces the upcoming copies that haven't published yet.</p>
-        <button type="button" x-show="frequency !== 'never'" @click="frequency = 'never'"
+        <button type="button" x-show="frequency !== 'never'" x-cloak @click="frequency = 'never'"
                 class="mt-1 font-semibold text-red-600 hover:text-red-700 cursor-pointer">
             Stop repeating
         </button>

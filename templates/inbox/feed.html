@@ -295,7 +295,7 @@
                 <input type="hidden" name="value" :value="bulk.value">
 
                 <span x-show="!allMatching" x-text="selectedCount + ' selected'"></span>
-                <span x-show="allMatching" x-text="'All ' + matchCount + ' matching messages selected'"></span>
+                <span x-show="allMatching" x-cloak x-text="'All ' + matchCount + ' matching messages selected'"></span>
                 <button type="button" x-show="!allMatching" @click="selectAllMatching()">Select all matching filter</button>
 
                 <button type="button" @click="request('mark_read')">Mark Read</button>

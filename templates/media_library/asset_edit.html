@@ -69,7 +69,7 @@
   <!-- Canvas -->
   <div class="ml-edit-canvas">
     <div class="max-h-[500px] overflow-hidden">
-      <img x-ref="image" src="{{ asset.file.url }}" alt="{{ asset.original_filename }}"
+      <img x-ref="image" src="{{ asset.file.url }}" alt="{{ asset.original_filename }}" width="{{ asset.width|default:640 }}" height="{{ asset.height|default:360 }}"
            class="max-w-full" style="display: block;">
     </div>
   </div>

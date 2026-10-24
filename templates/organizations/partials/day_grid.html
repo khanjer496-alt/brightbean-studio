@@ -3,7 +3,7 @@ Org calendar day view - single-day timeline with hourly divisions.
 Context: day_slots, target_date, default_workspace.
 {% endcomment %}
 
-<div class="bg-surface-1 mx-auto overflow-y-auto max-h-[calc(100vh-260px)] [animation:slideUp_200ms_cubic-bezier(0.16,1,0.3,1)_both]">
+<div class="bg-surface-1 mx-auto overflow-y-auto max-h-[calc(100dvh-260px)] [animation:slideUp_200ms_cubic-bezier(0.16,1,0.3,1)_both]">
     {% for hour, hour_posts in day_slots %}
     <div class="flex border-b border-line min-h-[64px] cal-add-cell relative {% if is_today and hour == current_hour %}bg-accent-soft{% endif %}">
         <!-- Time label -->

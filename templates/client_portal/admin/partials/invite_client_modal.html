@@ -1,10 +1,10 @@
 <!-- Invite Client Modal -->
 <template x-teleport="body">
-    <div x-show="showInviteModal" x-transition.opacity
+    <div x-show="showInviteModal" x-cloak x-transition.opacity
          class="fixed inset-0 z-50 flex items-center justify-center"
          style="background: rgba(0,0,0,0.4);" role="dialog" aria-modal="true" aria-label="Invite client" x-pd-dialog="showInviteModal">
         <div @click.outside="showInviteModal = false"
-             x-show="showInviteModal"
+             x-show="showInviteModal" x-cloak
              x-transition
              class="w-full max-w-md rounded-xl shadow-xl flex flex-col bg-[color:var(--surface-0)]"
             >

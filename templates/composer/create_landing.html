@@ -31,7 +31,7 @@
         background: var(--surface-2);
         border-radius: 12px;
         min-height: 50vh;
-        max-height: calc(100vh - 200px);
+        max-height: calc(100dvh - 200px);
     }
     .kanban-cards {
         flex: 1;
@@ -127,7 +127,7 @@
         box-shadow: 0 20px 60px rgba(0,0,0,0.15);
         display: flex;
         flex-direction: column;
-        max-height: calc(100vh - 80px);
+        max-height: calc(100dvh - 80px);
         position: relative;
     }
     .idea-modal-close {
@@ -437,7 +437,7 @@
             </div>
             {% endif %}
 
-            <div class="relative" x-show="activeTab === 'ideas'" x-data="{ tagFilterOpen: false, tagFilterSearch: '', showCreateTagModal: false, newTagName: '' }">
+            <div class="relative" x-show="activeTab === 'ideas'" x-cloak x-data="{ tagFilterOpen: false, tagFilterSearch: '', showCreateTagModal: false, newTagName: '' }">
                 <button @click="tagFilterOpen = !tagFilterOpen; if(tagFilterOpen) $nextTick(() => $refs.tagFilterSearchInput.focus())"
                         class="flex items-center gap-1.5 px-3 py-1.5 mb-2 text-xs font-semibold text-stone-500 border border-stone-200 rounded-lg hover:bg-stone-50 transition-all duration-150 cursor-pointer">
                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
@@ -510,7 +510,7 @@
     <!-- Tab content -->
     <div class="p-6">
         <!-- Ideas tab -->
-        <div x-show="activeTab === 'ideas'">
+        <div x-show="activeTab === 'ideas'" x-cloak>
             <div id="kanban-board">
                 {% include "composer/partials/kanban_board.html" %}
             </div>
@@ -519,13 +519,13 @@
         <!-- Templates tab -->
         <div x-show="activeTab === 'templates'" x-cloak
              class="overflow-y-auto -mx-6 -mb-6 px-6 pb-6"
-             style="max-height: calc(100vh - 160px);">
+             style="max-height: calc(100dvh - 160px);">
             {% include "composer/partials/template_gallery.html" %}
         </div>
 
         <!-- Feeds tab -->
         <div x-show="activeTab === 'feeds'" x-cloak
-             class="h-[calc(100vh-160px)] overflow-hidden"
+             class="h-[calc(100dvh-160px)] overflow-hidden"
              @open-explore.window="showExploreModal = true; $nextTick(() => htmx.trigger(document.getElementById('explore-feeds-content'), 'load'))">
             <div id="feeds-tab-content"
                  class="h-full"
@@ -596,7 +596,7 @@
                                         @click="createSelectedGroup = '{{ col.id }}'; createGroupDropdownOpen = false"
                                         :class="createSelectedGroup === '{{ col.id }}' && 'font-semibold'">
                                     <span>{{ col.label }}</span>
-                                    <svg x-show="createSelectedGroup === '{{ col.id }}'" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" class="ms-auto text-[color:var(--primary)]"><polyline points="20 6 9 17 4 12"/></svg>
+                                    <svg x-show="createSelectedGroup === '{{ col.id }}'" x-cloak width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" class="ms-auto text-[color:var(--primary)]"><polyline points="20 6 9 17 4 12"/></svg>
                                 </button>
                                 {% endfor %}
                             </div>
@@ -607,7 +607,7 @@
                             <button type="button" class="idea-pill-btn" @click="createTagDropdownOpen = !createTagDropdownOpen; createGroupDropdownOpen = false; if(createTagDropdownOpen) $nextTick(() => $refs.createTagSearchInput.focus())">
                                 <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
                                 <span>Tags</span>
-                                <span x-show="createSelectedTags.length" class="inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold text-white bg-[color:var(--primary)]" x-text="createSelectedTags.length"></span>
+                                <span x-show="createSelectedTags.length" x-cloak class="inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold text-white bg-[color:var(--primary)]" x-text="createSelectedTags.length"></span>
                                 <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
                             </button>
                             <div x-show="createTagDropdownOpen" x-cloak x-transition class="idea-pill-dropdown">
@@ -615,7 +615,7 @@
                                 <div class="border-b border-[color:var(--border)]" style="padding: 4px 6px">
                                     <input aria-label="Search or create tag" type="text" x-ref="createTagSearchInput" x-model="createTagSearch"
                                            @keydown.enter.prevent="if (createTagSearch.trim() && !filteredCreateTags.includes(createTagSearch.trim())) { persistAndToggleCreateTag(createTagSearch.trim()); } else if (filteredCreateTags.length === 1) { toggleCreateTag(filteredCreateTags[0]); createTagSearch = ''; }"
-                                           class="w-full text-xs px-2 py-1.5 rounded border outline-none border-[color:var(--border)]"
+                                           class="w-full text-xs px-2 py-1.5 rounded border outline-none focus-visible:ring-2 focus-visible:ring-accent border-[color:var(--border)]"
                                           
                                            placeholder="Search or create tag...">
                                 </div>
@@ -681,7 +681,7 @@
                                     <video :src="media.url" muted playsinline preload="metadata"></video>
                                 </template>
                                 <template x-if="media.media_type !== 'video'">
-                                    <img :src="media.url" alt="Preview">
+                                    <img :src="media.url" alt="Preview" width="160" height="160">
                                 </template>
                                 <button aria-label="Remove media" type="button" class="remove-btn" @click="_removeCreateMedia(index)" title="Remove">
                                     <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -696,7 +696,7 @@
                              @drop.prevent="_mediaDragOver = false; _handleMediaDrop($event)">
                             <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                             <span x-show="!createMediaAssets.length">Drag &amp; drop</span>
-                            <span x-show="createMediaAssets.length">Add another file</span>
+                            <span x-show="createMediaAssets.length" x-cloak>Add another file</span>
                             <span>or <strong class="text-[color:var(--primary)]" style="cursor: pointer">select a file</strong></span>
                         </div>
                     </div>
@@ -717,7 +717,7 @@
                                  class="emoji-picker-popup">
                                 <div class="emoji-picker-search">
                                     <input aria-label="Search emoji" type="text" placeholder="Search emoji..." x-model="_emojiSearch"
-                                           class="w-full px-2 py-1.5 text-xs rounded border outline-none border-[color:var(--border)]"
+                                           class="w-full px-2 py-1.5 text-xs rounded border outline-none focus-visible:ring-2 focus-visible:ring-accent border-[color:var(--border)]"
                                           
                                            @click.stop>
                                 </div>
@@ -792,7 +792,7 @@
                                         @click="editSelectedGroup = '{{ col.id }}'; editGroupDropdownOpen = false"
                                         :class="editSelectedGroup === '{{ col.id }}' && 'font-semibold'">
                                     <span>{{ col.label }}</span>
-                                    <svg x-show="editSelectedGroup === '{{ col.id }}'" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" class="ms-auto text-[color:var(--primary)]"><polyline points="20 6 9 17 4 12"/></svg>
+                                    <svg x-show="editSelectedGroup === '{{ col.id }}'" x-cloak width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" class="ms-auto text-[color:var(--primary)]"><polyline points="20 6 9 17 4 12"/></svg>
                                 </button>
                                 {% endfor %}
                             </div>
@@ -803,7 +803,7 @@
                             <button type="button" class="idea-pill-btn" @click="editTagDropdownOpen = !editTagDropdownOpen; editGroupDropdownOpen = false; if(editTagDropdownOpen) $nextTick(() => $refs.editTagSearchInput.focus())">
                                 <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
                                 <span>Tags</span>
-                                <span x-show="editSelectedTags.length" class="inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold text-white bg-[color:var(--primary)]" x-text="editSelectedTags.length"></span>
+                                <span x-show="editSelectedTags.length" x-cloak class="inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold text-white bg-[color:var(--primary)]" x-text="editSelectedTags.length"></span>
                                 <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
                             </button>
                             <div x-show="editTagDropdownOpen" x-cloak x-transition class="idea-pill-dropdown">
@@ -811,7 +811,7 @@
                                 <div class="border-b border-[color:var(--border)]" style="padding: 4px 6px">
                                     <input aria-label="Search or create tag" type="text" x-ref="editTagSearchInput" x-model="editTagSearch"
                                            @keydown.enter.prevent="if (editTagSearch.trim() && !filteredEditTags.includes(editTagSearch.trim())) { persistAndToggleEditTag(editTagSearch.trim()); } else if (filteredEditTags.length === 1) { toggleEditTag(filteredEditTags[0]); editTagSearch = ''; }"
-                                           class="w-full text-xs px-2 py-1.5 rounded border outline-none border-[color:var(--border)]"
+                                           class="w-full text-xs px-2 py-1.5 rounded border outline-none focus-visible:ring-2 focus-visible:ring-accent border-[color:var(--border)]"
                                           
                                            placeholder="Search or create tag...">
                                 </div>
@@ -880,7 +880,7 @@
                                     <video :src="media.url" muted playsinline preload="metadata"></video>
                                 </template>
                                 <template x-if="media.media_type !== 'video'">
-                                    <img :src="media.url" alt="Preview">
+                                    <img :src="media.url" alt="Preview" width="160" height="160">
                                 </template>
                                 <button aria-label="Remove media" type="button" class="remove-btn" @click="_removeEditMedia(index)" title="Remove">
                                     <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -895,7 +895,7 @@
                              @drop.prevent="_editMediaDragOver = false; _handleEditMediaDrop($event)">
                             <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                             <span x-show="!editMediaAssets.length">Drag &amp; drop</span>
-                            <span x-show="editMediaAssets.length">Add another file</span>
+                            <span x-show="editMediaAssets.length" x-cloak>Add another file</span>
                             <span>or <strong class="text-[color:var(--primary)]" style="cursor: pointer">select a file</strong></span>
                         </div>
                     </div>
@@ -935,7 +935,7 @@
              style="display: none;" role="dialog" aria-modal="true" aria-label="Delete idea" x-pd-dialog="showDeleteIdeaConfirm">
             <!-- Backdrop -->
             <div class="fixed inset-0 bg-black/30 backdrop-blur-sm"
-                 x-show="showDeleteIdeaConfirm"
+                 x-show="showDeleteIdeaConfirm" x-cloak
                  x-transition:enter="transition ease-out duration-200"
                  x-transition:enter-start="opacity-0"
                  x-transition:enter-end="opacity-100"
@@ -945,7 +945,7 @@
                  @click="showDeleteIdeaConfirm = false"></div>
             <!-- Dialog -->
             <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6 text-center"
-                 x-show="showDeleteIdeaConfirm"
+                 x-show="showDeleteIdeaConfirm" x-cloak
                  x-transition:enter="transition ease-out duration-200"
                  x-transition:enter-start="opacity-0 scale-95"
                  x-transition:enter-end="opacity-100 scale-100"
@@ -981,7 +981,7 @@
                             :class="deletingIdea && 'opacity-50 cursor-not-allowed'"
                             class="flex-1 px-4 py-2.5 text-sm font-medium rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors cursor-pointer">
                         <span x-show="!deletingIdea">Delete</span>
-                        <span x-show="deletingIdea">Deleting…</span>
+                        <span x-show="deletingIdea" x-cloak>Deleting…</span>
                     </button>
                 </div>
             </div>

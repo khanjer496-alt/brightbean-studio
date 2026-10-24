@@ -45,7 +45,7 @@ panel ("composer" to swap the composer panel), uid (unique id prefix).
     <div x-show="needsReposter()" x-cloak>
         <label for="{{ uid }}-actor" class="block text-xs font-semibold text-ink-3">Done by</label>
         <select id="{{ uid }}-actor" name="actor_account" :disabled="!needsReposter()" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-white px-3 text-sm">
-            <option value="" x-show="canOwn()">The same account</option>
+            <option value="" x-show="canOwn()" x-cloak>The same account</option>
             <template x-for="r in current().reposters" :key="r.id"><option :value="r.id" x-text="r.name"></option></template>
         </select>
         <p class="m-0 mt-1 text-xs text-ink-3">Only accounts in this workspace on the same network.</p>

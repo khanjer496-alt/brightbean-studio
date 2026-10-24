@@ -85,7 +85,7 @@ Reorder by dragging the handle or with the up/down buttons; the finisher stays l
                     {% include "composer/partials/insert_toolbar.html" with target_id="'thread-part-' + part.key" mention_accounts="mentionAccountIds()" label="'part ' + (index + 2)" panel_position="below" %}
 
                     <!-- Part media -->
-                    <div class="flex flex-wrap items-center gap-2" x-show="part.media.length > 0 || threadMediaAllowed">
+                    <div class="flex flex-wrap items-center gap-2" x-show="part.media.length > 0 || threadMediaAllowed" x-cloak>
                         <template x-for="(m, mIndex) in part.media" :key="m.id">
                             <div class="relative w-14 h-14 rounded-lg overflow-hidden border border-stone-200 bg-stone-100">
                                 <template x-if="m.is_video">
@@ -102,7 +102,7 @@ Reorder by dragging the handle or with the up/down buttons; the finisher stays l
                                 </button>
                             </div>
                         </template>
-                        <button type="button" x-show="threadMediaAllowed"
+                        <button type="button" x-show="threadMediaAllowed" x-cloak
                                 class="text-xs font-medium text-stone-400 hover:text-orange-600 transition-colors flex items-center gap-1.5 cursor-pointer"
                                 @click="openThreadMediaPicker(index)">
                             <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
