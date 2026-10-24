@@ -350,6 +350,10 @@ class PostSetting:
     depends_on: str = ""
     # For a checkbox, the value used when the setting was never saved.
     default: bool = False
+    # Shows the field only while another setting has a value: ``"post_type=reel"``
+    # (one of several values: ``"post_type=reel|story"``). The composer hides it
+    # otherwise; the provider still validates what it receives.
+    show_when: str = ""
 
     def as_dict(self) -> dict:
         return {
@@ -364,6 +368,7 @@ class PostSetting:
             "options_from_provider": self.options_from_provider,
             "depends_on": self.depends_on,
             "default": self.default,
+            "show_when": self.show_when,
         }
 
 

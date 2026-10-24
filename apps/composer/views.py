@@ -726,6 +726,11 @@ def _composer_platform_extras(request, accounts, post=None) -> dict:
         hint = request.POST.get(f"{account.platform}_post_type_{account.id}", "").strip()
         if hint:
             extra["post_type"] = hint
+        if post_settings_for(account.platform) and f"ps_panel_{account.id}" in request.POST:
+            # The platform's own fields decide too (a declared ``post_type`` picks Story or Reel).
+            extra = replace_post_settings(
+                account.platform, extra, parse_post_settings(account.platform, request.POST.get, account.id)
+            )
         extras[account.id] = extra
     return extras
 
