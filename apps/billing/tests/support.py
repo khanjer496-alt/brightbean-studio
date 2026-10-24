@@ -16,9 +16,10 @@ from apps.social_accounts.models import SocialAccount
 
 WEBHOOK_SECRET = "whsec_test_secret"
 PRICE_IDS = {
-    "creator": {"month": "price_creator_m", "year": "price_creator_y"},
+    "starter": {"month": "price_starter_m", "year": "price_starter_y"},
     "team": {"month": "price_team_m", "year": "price_team_y"},
-    "agency": {"month": "price_agency_m", "year": "price_agency_y"},
+    "pro": {"month": "price_pro_m", "year": "price_pro_y"},
+    "ultimate": {"month": "price_ultimate_m", "year": "price_ultimate_y"},
 }
 
 

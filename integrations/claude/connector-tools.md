@@ -70,7 +70,7 @@ Generated from the tool registry (`apps/mcp`). Annotations come from the capabil
 | `get_queue` | read_calendar | yes | no | no | Read one queue with its entries (post, position and the publish time each was given), earliest first. |
 | `get_repurpose_job` | use_ai_assistant | yes | no | no | Read a repurposing job: status (queued, running, succeeded, failed, cancelled), AI requests used, and its outputs with text, parts, per-network character counts and warnings. |
 | `get_template` | read_calendar | yes | no | no | Read one post template by id (caption, first comment, tags, category, target accounts and media); find ids with list_templates. |
-| `get_usage` | read_calendar | yes | no | no | Read the organization's plan, its limits and current usage (channels, workspaces, scheduled posts this month, API & MCP calls today, AI requests today; limit null = unlimited). |
+| `get_usage` | read_calendar | yes | no | no | Read the organization's plan, its limits and current usage (channels, workspaces, team members, scheduled posts this month, API & MCP calls today; limit null = unlimited). |
 | `get_workspace_analytics` | read_analytics | yes | no | no | Read analytics across every channel this API key can see, over a date range: headline totals (followers, new followers, views/impressions, engagements, engagement rate, posts published), a per-network and per-account breakdown, daily totals |
 | `list_account_sets` | read_calendar | yes | no | no | List the workspace's saved account sets (groups such as 'Client A: all channels') with the members this key can use. |
 | `list_accounts` | read_calendar | yes | no | no | List the social media accounts this API key is allowed to act on. |

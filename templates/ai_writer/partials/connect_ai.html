@@ -1,0 +1,24 @@
+{% comment %}
+  Shown wherever an AI feature would be, when the organization has no AI
+  connection of its own (apps.ai_writer.client.resolve_ai returned None).
+  Pass compact=True for a one-line link inside a toolbar.
+{% endcomment %}
+{% with is_admin=request.org_membership.org_role %}
+{% if compact %}
+{% if is_admin == "owner" or is_admin == "admin" %}
+<a href="{% url 'ai_writer_org:settings' %}"
+   title="AI runs on your own connection: your own API key or your ChatGPT plan. Unlimited, no markup."
+   class="text-xs font-semibold py-1.5 px-3 rounded-full border border-stone-200 text-stone-500 hover:border-stone-300 hover:text-stone-700 transition-colors inline-flex items-center gap-1">Connect your AI</a>
+{% endif %}
+{% else %}
+<div class="rounded-xl border border-line bg-surface-1 p-4 text-sm text-ink-2" role="status">
+    <p class="m-0 font-semibold text-ink">Connect your AI</p>
+    <p class="m-0 mt-1">AI features run on your organization's own AI connection: your own AI provider API key, or your ChatGPT plan (coming soon). Unlimited, with no markup from us.</p>
+    {% if is_admin == "owner" or is_admin == "admin" %}
+    <a href="{% url 'ai_writer_org:settings' %}" class="btn-outline mt-3 inline-flex">Connect your AI</a>
+    {% else %}
+    <p class="m-0 mt-2 text-ink-3">Ask an organization admin to connect it under Organization settings &rarr; AI.</p>
+    {% endif %}
+</div>
+{% endif %}
+{% endwith %}

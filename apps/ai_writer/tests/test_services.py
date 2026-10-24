@@ -11,7 +11,6 @@ from apps.ai_writer import services
 from apps.ai_writer.client import AINotConfiguredError, AIRateLimitError
 from apps.ai_writer.models import AIRequestLog, OrganizationAIKey
 from apps.ai_writer.services import AIContext
-from apps.billing.entitlements import PlanLimitError
 from apps.billing.tests.support import set_plan
 from apps.composer.models import Idea, Post
 
@@ -285,19 +284,30 @@ class TestAllowanceAndAudit:
             for _ in range(n)
         )
 
-    def test_daily_allowance_when_billing(self, ctx, settings, fake_claude):
+    def _own_key(self, ctx, settings, cap):
+        settings.AI_ORGANIZATION_KEY_DAILY_CAP = cap
+        OrganizationAIKey.objects.create(organization=ctx.organization, api_key="sk-ant-own-key-000000")
+
+    def test_hosted_mode_runs_only_on_the_organizations_own_key(self, ctx, settings, fake_claude):
+        settings.AI_PLATFORM_KEY_FOR_CUSTOMERS = False
+        settings.ANTHROPIC_API_KEY = "sk-ant-platform-000000"
+        with pytest.raises(AINotConfiguredError, match="Connect your AI"):
+            services.write_caption(ctx, "hello")
+        assert fake_claude.calls == []
+
+        OrganizationAIKey.objects.create(organization=ctx.organization, api_key="sk-ant-own-key-000000")
+        fake_claude.queue({"text": "Hi"})
+        assert services.write_caption(ctx, "hello") == "Hi"
+        assert AIRequestLog.objects.get().used_organization_key is True
+
+    def test_no_plan_limits_ai(self, ctx, settings, fake_claude):
         settings.BILLING_ENABLED = True
         set_plan(ctx.organization, "free")
-        self._use_allowance(ctx, 19)
-        self._use_allowance(ctx, 5, status=AIRequestLog.Status.FAILED)  # failures don't count
+        self._use_allowance(ctx, 500)
         fake_claude.queue({"text": "Hi"})
-        services.write_caption(ctx, "hello")  # the 20th
-        with pytest.raises(PlanLimitError) as exc_info:
-            services.write_caption(ctx, "hello")
-        assert exc_info.value.code == "ai_request_limit"
-        assert len(fake_claude.calls) == 1
+        assert services.write_caption(ctx, "hello") == "Hi"
 
-    def test_own_key_is_not_counted(self, ctx, settings, fake_claude):
+    def test_own_key_is_counted_only_against_the_safety_cap(self, ctx, settings, fake_claude):
         settings.BILLING_ENABLED = True
         set_plan(ctx.organization, "free")
         self._use_allowance(ctx, 20)
@@ -307,29 +317,29 @@ class TestAllowanceAndAudit:
         assert AIRequestLog.objects.filter(used_organization_key=True).count() == 1
 
     def test_adapt_reserves_a_call_per_account_up_front(self, ctx, settings, bluesky, linkedin, facebook, fake_claude):
-        settings.BILLING_ENABLED = True
-        set_plan(ctx.organization, "free")
-        self._use_allowance(ctx, 17)  # 3 left; adapting for 3 accounts can take 4
-        with pytest.raises(PlanLimitError) as exc_info:
+        from apps.ai_writer.client import AIDailyCapError
+
+        self._own_key(ctx, settings, cap=20)
+        self._use_allowance(ctx, 17, used_organization_key=True)  # 3 left; adapting for 3 accounts can take 4
+        with pytest.raises(AIDailyCapError):
             services.adapt_for_networks(ctx, "Launch", [bluesky, linkedin, facebook])
-        assert "up to 4 AI requests" in str(exc_info.value) and "3 left" in str(exc_info.value)
         assert fake_claude.calls == []
 
     def test_link_reserves_its_shorten_passes(self, ctx, settings, bluesky, fake_claude):
-        settings.BILLING_ENABLED = True
-        set_plan(ctx.organization, "free")
-        self._use_allowance(ctx, 17)
+        from apps.ai_writer.client import AIDailyCapError
+
+        self._own_key(ctx, settings, cap=20)
+        self._use_allowance(ctx, 17, used_organization_key=True)
         with (
             patch("apps.composer.views._safe_fetch_feed") as fetch,
-            pytest.raises(PlanLimitError),
+            pytest.raises(AIDailyCapError),
         ):
             services.link_to_posts(ctx, "https://example.com/a", count=3, accounts=[bluesky])
         fetch.assert_not_called()
 
     def test_shorten_pass_is_skipped_rather_than_overshooting(self, ctx, settings, bluesky, fake_claude):
-        settings.BILLING_ENABLED = True
-        set_plan(ctx.organization, "free")
-        self._use_allowance(ctx, 19)  # the last one
+        self._own_key(ctx, settings, cap=20)
+        self._use_allowance(ctx, 19, used_organization_key=True)  # the last one
         fake_claude.queue({"text": _long(500)})
         text = services.write_caption(ctx, "launch", [bluesky])
         assert len(text) <= 300 and len(fake_claude.calls) == 1

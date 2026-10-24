@@ -10,6 +10,7 @@ from django.db.models import F, Q
 from django.template.loader import render_to_string
 from django.utils import timezone
 
+from apps.billing.entitlements import check_can_add_member
 from apps.common.mail import EmailNotSentError, send_or_raise, transactional
 from apps.workspaces.models import Workspace
 
@@ -93,6 +94,7 @@ def create_invitation(org, email, org_role, workspace_assignments, invited_by, *
     Raises:
         ValueError: If the email already belongs to a member or has a pending invite,
             or SIGNUP_MODE is closed and the email has no account.
+        PlanLimitError: If the organization's plan has no room for another member.
     """
     email = email.strip().lower()
 
@@ -164,6 +166,7 @@ def create_invitation(org, email, org_role, workspace_assignments, invited_by, *
             f"this organization. Check the address with them directly rather than sending it again."
         )
 
+    check_can_add_member(org)
     _check_org_invite_budget(org)
 
     invitation = Invitation.objects.create(
@@ -267,6 +270,10 @@ def accept_invitation(invitation, user):
 
     if user.email.lower() != invitation.email.lower():
         raise ValueError("This invitation was sent to a different email address.")
+
+    # The organization may have downgraded since the invitation was sent.
+    if not OrgMembership.objects.filter(user=user, organization=invitation.organization).exists():
+        check_can_add_member(invitation.organization, pending_invitation=invitation)
 
     # Create org membership (skip if exists, e.g. user was already added)
     org_membership, created = OrgMembership.objects.get_or_create(

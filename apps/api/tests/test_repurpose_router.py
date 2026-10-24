@@ -269,20 +269,13 @@ def test_needs_create_posts(platform_key, user, workspace, bluesky):
     assert r.status_code == 403
 
 
-def test_ai_off_is_404_and_allowance_is_402(client, workspace, settings, platform_key):
+def test_ai_off_is_404_and_hosted_mode_ignores_the_platform_key(client, workspace, settings, platform_key):
     settings.ANTHROPIC_API_KEY = ""
     assert _create(client, source_type="text", text=TEXT, outputs=[{"kind": "newsletter"}]).status_code == 404
     settings.ANTHROPIC_API_KEY = "sk-ant-platform-key-for-tests"
-    from apps.billing.tests.support import set_plan
-
-    settings.BILLING_ENABLED = True
-    set_plan(workspace.organization, "free")
-    AIRequestLog.objects.bulk_create(
-        AIRequestLog(organization=workspace.organization, action="write", provider="anthropic", model="m")
-        for _ in range(20)
-    )
+    settings.AI_PLATFORM_KEY_FOR_CUSTOMERS = False
     r = _create(client, source_type="text", text=TEXT, outputs=[{"kind": "newsletter"}])
-    assert r.status_code == 402 and RepurposeJob.objects.count() == 0
+    assert r.status_code == 404 and RepurposeJob.objects.count() == 0
 
 
 def test_video_without_transcript_says_so(platform_key, client):

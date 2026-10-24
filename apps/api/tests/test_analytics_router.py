@@ -552,11 +552,11 @@ class TestWorkspaceOverview:
         r = client_with_token.get(f"/api/v1/analytics/overview?start={timezone.now().date()}")
         assert r.status_code == 422
 
-    def test_plan_without_analytics_gets_402(self, settings, client_with_token, organization):
+    def test_free_plan_without_analytics_gets_402(self, settings, client_with_token, organization):
         from apps.billing.tests.support import set_plan
 
         settings.BILLING_ENABLED = True
-        set_plan(organization, "creator")
+        set_plan(organization, "free")
         r = client_with_token.get("/api/v1/analytics/overview")
         assert r.status_code == 402
         assert "upgrade_url" in r.json()

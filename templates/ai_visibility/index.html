@@ -12,15 +12,13 @@
         {% if not enabled %}
         <section class="rounded-xl border border-line bg-surface-1 p-8 text-center" aria-labelledby="plan-heading">
             <h2 id="plan-heading" class="m-0 text-lg font-semibold text-ink">AI visibility isn't in your plan</h2>
-            <p class="mx-auto mt-2 max-w-md text-[13px] text-ink-3">See whether AI assistants name your brand for the questions your customers ask. Included from the Team plan.</p>
+            <p class="mx-auto mt-2 max-w-md text-[13px] text-ink-3">See whether AI assistants name your brand for the questions your customers ask. Included in every paid plan, from Starter up.</p>
             {% if billing_enabled %}<a href="{% url 'billing:overview' %}" class="btn-brand mt-4 inline-flex min-h-11 w-auto items-center px-5 py-2">See plans</a>{% endif %}
         </section>
         {% else %}
 
         {% if not ai_configured %}
-        <div class="rounded-xl border border-warn bg-warn-soft px-5 py-4 text-[13px] text-ink-2" role="status">
-            <strong class="text-warn">AI isn't set up.</strong> Reports need an AI provider: ask the platform admin to configure one, or add your own key under Organization settings.
-        </div>
+        {% include "ai_writer/partials/connect_ai.html" %}
         {% endif %}
         {% if profile.skip_reason %}
         <div class="rounded-xl border border-line bg-surface-1 px-5 py-4 text-[13px] text-ink-2" role="status">The last scheduled report didn't run: {{ profile.skip_reason }}</div>

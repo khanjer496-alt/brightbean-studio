@@ -864,9 +864,9 @@ STRIPE_PRICE_IDS = {
         "month": env(f"STRIPE_PRICE_{plan.upper()}_MONTHLY", default=""),
         "year": env(f"STRIPE_PRICE_{plan.upper()}_ANNUAL", default=""),
     }
-    for plan in ("creator", "team", "agency")
+    for plan in ("starter", "team", "pro", "ultimate")
 }
-# New organizations get the trial plan's entitlements for this long, no card.
+# New organizations get the trial plan's (Ultimate's) entitlements for this long, no card.
 BILLING_TRIAL_DAYS = env.int("BILLING_TRIAL_DAYS", default=14)
 # How long a subscription whose renewal failed keeps its paid plan while Stripe
 # retries the card, before the organization falls back to Free.
@@ -875,13 +875,18 @@ BILLING_GRACE_PERIOD_DAYS = env.int("BILLING_GRACE_PERIOD_DAYS", default=7)
 # ---------------------------------------------------------------------------
 # AI writing assistant (apps.ai_writer)
 # ---------------------------------------------------------------------------
-# Off unless a provider key is configured: with ANTHROPIC_API_KEY empty the
-# composer shows no AI actions, except to an organization that has saved its
-# own key under Organization → AI assistant. Independent of the hosted
+# Off for an organization until it saves its own key under Organization → AI
+# (or, with AI_PLATFORM_KEY_FOR_CUSTOMERS on, ANTHROPIC_API_KEY is set). Independent of the hosted
 # Intelligence integration below, which stays optional and off.
 AI_PROVIDER = env("AI_PROVIDER", default="anthropic")
 AI_MODEL = env("AI_MODEL", default="claude-opus-5-5")
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+# Whether an organization without its own AI connection may use the platform
+# key above. Off by default: on the hosted service every AI feature runs only on
+# the organization's own connection (its own provider key), so no plan includes
+# AI and nothing is resold. Self-hosted and dev installs that want one shared key
+# for everyone set this to true.
+AI_PLATFORM_KEY_FOR_CUSTOMERS = env.bool("AI_PLATFORM_KEY_FOR_CUSTOMERS", default=False)
 # Seconds per provider call. The composer waits on it, so keep it short; the
 # SDK retries once on a timeout or 5xx before the user sees an error.
 AI_REQUEST_TIMEOUT = env.int("AI_REQUEST_TIMEOUT", default=45)
@@ -892,9 +897,9 @@ COMPETITOR_SHARED_QUOTA_UNITS_PER_DAY = env.int("COMPETITOR_SHARED_QUOTA_UNITS_P
 # Which answer engines the "how AI describes your brand" report asks (see
 # apps.ai_visibility.engines). Names are registered engines; only "anthropic" exists today.
 AI_VISIBILITY_ENGINES = env.list("AI_VISIBILITY_ENGINES", default=["anthropic"])
-# Requests on an organization's own key don't count against the plan's daily
-# allowance, but this many a UTC day (answered or not) is a hard safety stop
-# for a runaway script or loop.
+# No plan includes or limits AI, but this many requests a UTC day on an
+# organization's own key (answered or not) is a hard safety stop for a runaway
+# script or loop.
 AI_ORGANIZATION_KEY_DAILY_CAP = env.int("AI_ORGANIZATION_KEY_DAILY_CAP", default=10_000)
 
 # Content repurposing (apps.repurpose): one run turns one source into several

@@ -24,6 +24,17 @@ class TestComposerPanel:
         assert response.status_code == 200
         assert b"AI Assist" not in response.content
         assert b'id="ai-panel"' not in response.content
+        # Admins get a way to connect their own AI instead.
+        assert b"Connect your AI" in response.content
+        assert reverse("ai_writer_org:settings").encode() in response.content
+
+    def test_hosted_mode_ignores_the_platform_key(self, platform_key, owner_client, workspace, settings):
+        settings.AI_PLATFORM_KEY_FOR_CUSTOMERS = False
+        response = owner_client.get(reverse("composer:compose", kwargs={"workspace_id": workspace.id}))
+        assert b'id="ai-panel"' not in response.content
+        assert b"Connect your AI" in response.content
+        settings_page = owner_client.get(reverse("ai_writer_org:settings")).content.decode()
+        assert "Connect your AI to turn it on" in settings_page and "no markup" in settings_page
 
     def test_shown_with_the_platform_key(self, platform_key, owner_client, workspace):
         response = owner_client.get(reverse("composer:compose", kwargs={"workspace_id": workspace.id}))
@@ -125,17 +136,18 @@ class TestActions:
         assert response["Content-Type"].startswith("text/plain")
         assert b"Write a caption first" in response.content
 
-    def test_plan_limit_is_402(self, platform_key, owner_client, workspace, organization, settings):
-        from apps.billing.tests.support import set_plan
-
-        settings.BILLING_ENABLED = True
-        set_plan(organization, "free")
+    def test_own_key_safety_cap_is_429(self, owner_client, workspace, organization, settings):
+        settings.AI_ORGANIZATION_KEY_DAILY_CAP = 20
+        OrganizationAIKey.objects.create(organization=organization, api_key="sk-ant-own-key-000000")
         AIRequestLog.objects.bulk_create(
-            AIRequestLog(organization=organization, action="write", provider="anthropic", model="m") for _ in range(20)
+            AIRequestLog(
+                organization=organization, action="write", provider="anthropic", model="m", used_organization_key=True
+            )
+            for _ in range(20)
         )
         response = owner_client.post(_url("write", workspace), {"ai_prompt": "hello"})
-        assert response.status_code == 402
-        assert b"20 AI requests a day" in response.content
+        assert response.status_code == 429
+        assert b"safety limit" in response.content
 
     def test_other_workspaces_accounts_are_ignored(
         self, platform_key, owner_client, workspace, organization, fake_claude

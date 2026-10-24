@@ -27,6 +27,10 @@ def _require_billing_enabled():
         raise Http404
 
 
+# No plan includes or limits AI: every AI feature runs on the organization's own connection.
+AI_LINE = "AI: bring your own key or connect your ChatGPT plan — unlimited, no markup"
+
+
 def _limit_lines(plan) -> list[str]:
     def count(limit, noun):
         return f"Unlimited {noun}s" if limit is None else f"{limit} {noun}{pluralize(limit)}"
@@ -40,13 +44,13 @@ def _limit_lines(plan) -> list[str]:
         "Unlimited API & MCP calls"
         if plan.max_api_calls_per_day is None
         else f"{plan.max_api_calls_per_day:,} API & MCP calls / day",
-        "Unlimited AI requests"
-        if plan.max_ai_requests_per_day is None
-        else f"{plan.max_ai_requests_per_day:,} AI requests / day",
-        "Unlimited team members",
+        "Unlimited team members"
+        if plan.max_members is None
+        else f"Owner + {plan.max_members - 1} member{pluralize(plan.max_members - 1)}",
         "No competitor tracking"
         if plan.max_competitors_per_network == 0
         else count(plan.max_competitors_per_network, "tracked competitor") + " per network",
+        AI_LINE,
     ]
 
 
@@ -74,8 +78,10 @@ def overview(request):
                 "plan": plan,
                 "monthly_price": plan.price_cents(Interval.MONTH) // 100,
                 "annual_price": plan.price_cents(Interval.YEAR) // 100,
+                "annual_monthly_price": plan.annual_monthly_price_cents // 100,
                 "limits": _limit_lines(plan),
                 "features": [label for feature, label in FEATURE_LABELS.items() if plan.has(feature)],
+                "has_every_feature": all(plan.has(feature) for feature in FEATURE_LABELS),
                 "is_current": plan.slug == current.slug,
                 "is_upgrade": rank > current_rank,
             }
@@ -91,6 +97,7 @@ def overview(request):
         "over_limit": any(row["over_by"] for row in usage),
         "current_interval": sub.interval or Interval.MONTH,
         "stripe_configured": services.stripe_configured(),
+        "trial_days": settings.BILLING_TRIAL_DAYS,
     }
     return render(request, "billing/overview.html", context)
 

@@ -121,20 +121,12 @@ class TestDraft:
         assert "Short and sweet." in response.content.decode()
         assert len(fake_claude.calls) == 2
 
-    def test_plan_limit_is_402_and_no_call_is_made(
-        self, platform_key, inbox_client, inbox_workspace, inbox_message, organization, settings, fake_claude
+    def test_hosted_mode_needs_the_organizations_own_ai_and_no_call_is_made(
+        self, platform_key, inbox_client, inbox_workspace, inbox_message, settings, fake_claude
     ):
-        from apps.billing.tests.support import set_plan
-
-        settings.BILLING_ENABLED = True
-        set_plan(organization, "team")  # the cheapest plan with an inbox: 1,000 AI requests a day
-        AIRequestLog.objects.bulk_create(
-            AIRequestLog(organization=organization, action="write", provider="anthropic", model="m")
-            for _ in range(1000)
-        )
+        settings.AI_PLATFORM_KEY_FOR_CUSTOMERS = False
         response = inbox_client.post(_draft_url(inbox_workspace, inbox_message))
-        assert response.status_code == 402
-        assert b"1,000 AI requests a day" in response.content
+        assert response.status_code == 404
         assert fake_claude.calls == []
 
     def test_provider_failure_is_a_plain_text_error(

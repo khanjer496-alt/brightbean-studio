@@ -21,14 +21,14 @@ from django.shortcuts import redirect, render
 from django.views.decorators.http import require_http_methods, require_POST
 from django_ratelimit.decorators import ratelimit
 
-from apps.billing.entitlements import PlanLimitError, billing_enabled, get_entitlements
+from apps.billing.entitlements import PlanLimitError
 from apps.common.htmx import trigger_response
 from apps.members.decorators import require_org_role, require_permission
 from apps.members.models import OrgMembership
 from apps.social_accounts.models import SocialAccount
 
 from . import services
-from .client import AI_PROVIDERS, PROVIDER_CHOICES, AIError, ai_available, platform_key_configured
+from .client import AI_PROVIDERS, PROVIDER_CHOICES, AIError, ai_available, platform_key_for_customers
 from .models import OrganizationAIKey
 from .services import AIContext
 
@@ -231,7 +231,6 @@ def org_settings(request):
             messages.success(request, "Saved. The AI assistant now uses your organization's key.")
         return redirect("ai_writer_org:settings")
 
-    ent = get_entitlements(org)
     return render(
         request,
         "ai_writer/org_settings.html",
@@ -240,9 +239,8 @@ def org_settings(request):
             "settings_active": "ai",
             "org_key": org_key,
             "provider_choices": PROVIDER_CHOICES,
-            "platform_key_configured": platform_key_configured(),
+            "platform_key_configured": platform_key_for_customers(),
             "ai_enabled": ai_available(org),
-            "daily_limit": ent.max_ai_requests_per_day if billing_enabled() else None,
         },
     )
 

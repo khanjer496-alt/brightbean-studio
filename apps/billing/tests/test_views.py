@@ -40,11 +40,14 @@ class TestOverview:
         response = owner_client.get(reverse("billing:overview"))
         assert response.status_code == 200
         body = response.content.decode()
-        assert "14 days left in your Team trial" in body
-        for name in ("Free", "Creator", "Team", "Agency"):
+        assert "14 days left in your 14-day free trial of Ultimate" in body and "No card required" in body
+        for name in ("Free", "Starter", "Team", "Pro", "Ultimate"):
             assert name in body
-        assert "Unlimited team members" in body
-        assert 'max="25"' in body and 'value="2"' in body  # channel meter
+        assert "Unlimited team members" in body and "Owner + 1 member" in body
+        # Yearly prices are shown per month, with the yearly total under them.
+        assert "$15" in body and "Billed $180 yearly" in body and "Billed $756 yearly" in body
+        assert "bring your own key or connect your ChatGPT plan" in body
+        assert 'max="100"' in body and 'value="2"' in body  # channel meter
         assert "Plan &amp; billing" in body  # settings sidebar link
 
     def test_over_limit_explains_what_to_remove(self, billing, owner_client, organization, workspace):
@@ -100,36 +103,36 @@ class TestStripeRedirects:
         Subscription.objects.filter(organization=organization).update(stripe_customer_id="cus_old")
         with mock.patch("apps.billing.services.stripe") as stripe_mock:
             stripe_mock.checkout.Session.create.return_value = {"url": "https://checkout.stripe.com/x"}
-            owner_client.post(reverse("billing:checkout"), {"plan": "creator", "interval": "month"})
+            owner_client.post(reverse("billing:checkout"), {"plan": "starter", "interval": "month"})
         stripe_mock.Customer.create.assert_not_called()
         params = stripe_mock.checkout.Session.create.call_args.kwargs
         assert params["customer"] == "cus_old"
         assert "trial_end" not in params["subscription_data"]
 
     def test_existing_subscription_changes_plan_with_proration(self, billing, owner_client, organization):
-        set_plan(organization, "creator", interval="month", stripe_customer_id="cus_1", stripe_subscription_id="sub_1")
+        set_plan(organization, "starter", interval="month", stripe_customer_id="cus_1", stripe_subscription_id="sub_1")
         updated = {
             "id": "sub_1",
             "customer": "cus_1",
             "status": "active",
-            "items": {"data": [{"id": "si_1", "price": {"id": "price_agency_m"}}]},
+            "items": {"data": [{"id": "si_1", "price": {"id": "price_ultimate_m"}}]},
         }
         with mock.patch("apps.billing.services.stripe") as stripe_mock:
             stripe_mock.Subscription.retrieve.return_value = {"items": {"data": [{"id": "si_1"}]}}
             stripe_mock.Subscription.modify.return_value = updated
-            response = owner_client.post(reverse("billing:checkout"), {"plan": "agency", "interval": "month"})
+            response = owner_client.post(reverse("billing:checkout"), {"plan": "ultimate", "interval": "month"})
         assert response["Location"] == reverse("billing:overview")
         stripe_mock.checkout.Session.create.assert_not_called()
         kwargs = stripe_mock.Subscription.modify.call_args.kwargs
-        assert kwargs["items"] == [{"id": "si_1", "price": "price_agency_m"}]
+        assert kwargs["items"] == [{"id": "si_1", "price": "price_ultimate_m"}]
         assert kwargs["proration_behavior"] == "create_prorations"
-        assert Subscription.objects.get(organization=organization).plan == "agency"
+        assert Subscription.objects.get(organization=organization).plan == "ultimate"
 
     @pytest.mark.parametrize("status", [Subscription.Status.UNPAID, Subscription.Status.PAUSED])
     def test_unpaid_or_paused_subscription_goes_to_the_portal_not_a_second_checkout(
         self, billing, owner_client, organization, status
     ):
-        set_plan(organization, "creator", status=status, stripe_customer_id="cus_1", stripe_subscription_id="sub_1")
+        set_plan(organization, "starter", status=status, stripe_customer_id="cus_1", stripe_subscription_id="sub_1")
         with mock.patch("apps.billing.services.stripe") as stripe_mock:
             stripe_mock.billing_portal.Session.create.return_value = {"url": "https://billing.stripe.com/p/1"}
             response = owner_client.post(reverse("billing:checkout"), {"plan": "team", "interval": "month"})
@@ -185,7 +188,7 @@ class TestUiEnforcement:
         assert "Archive 1 workspace" in " ".join(_messages(response))
         assert Workspace.objects.filter(organization=organization).count() == 1
 
-        set_plan(organization, "creator")
+        set_plan(organization, "starter")
         owner_client.post(reverse("workspaces:create"), {"name": "Second"})
         assert Workspace.objects.filter(organization=organization).count() == 2
 
@@ -251,44 +254,45 @@ class TestUiEnforcement:
         assert PlatformPost.objects.filter(social_account=account).count() == 30
 
     @pytest.mark.parametrize("url_name", ["inbox:feed", "analytics:index"])
-    def test_team_sections_are_locked_below_team(self, billing, owner_client, organization, workspace, url_name):
-        set_plan(organization, "creator")
+    def test_paid_sections_are_locked_on_free(self, billing, owner_client, organization, workspace, url_name):
+        set_plan(organization, "free")
         response = owner_client.get(reverse(url_name, args=[workspace.id]))
         assert response.status_code == 402
-        assert "Upgrade to Team or higher" in response.content.decode()
+        assert "Upgrade to Starter or higher" in response.content.decode()
 
-        set_plan(organization, "team")
+        set_plan(organization, "starter")
         assert owner_client.get(reverse(url_name, args=[workspace.id])).status_code != 402
 
-    def test_client_portal_admin_needs_agency(self, billing, owner_client, organization, workspace):
-        set_plan(organization, "team")
+    def test_client_portal_admin_needs_a_paid_plan(self, billing, owner_client, organization, workspace):
+        set_plan(organization, "free")
         url = reverse("client_portal_admin:client_list", args=[workspace.id])
         assert owner_client.get(url).status_code == 402
-        set_plan(organization, "agency")
+        set_plan(organization, "starter")
         assert owner_client.get(url).status_code == 200
 
     def test_locked_page_tells_members_to_ask_an_admin(self, billing, member_client, organization, workspace):
-        set_plan(organization, "creator")
+        set_plan(organization, "free")
         body = member_client.get(reverse("analytics:index", args=[workspace.id])).content.decode()
         assert "Ask an organization admin" in body
 
-    def test_approval_workflow_needs_team(self, billing, owner_client, organization, workspace):
+    def test_approval_workflow_needs_a_paid_plan(self, billing, owner_client, organization, workspace):
         url = reverse("workspaces:approvals_settings", args=[workspace.id])
-        set_plan(organization, "creator")
+        set_plan(organization, "free")
         owner_client.post(url, {"approval_workflow_mode": "required_internal"})
         workspace.refresh_from_db()
         assert workspace.approval_workflow_mode == "none"
 
-        set_plan(organization, "team")
+        # Starter includes client sign-off too: every paid plan has every feature.
+        set_plan(organization, "starter")
         owner_client.post(url, {"approval_workflow_mode": "required_internal_and_client"})
         workspace.refresh_from_db()
-        assert workspace.approval_workflow_mode == "none"  # client sign-off needs the portal (Agency)
+        assert workspace.approval_workflow_mode == "required_internal_and_client"
         owner_client.post(url, {"approval_workflow_mode": "required_internal"})
         workspace.refresh_from_db()
         assert workspace.approval_workflow_mode == "required_internal"
 
         # After a downgrade the existing workflow stays, and can be turned off.
-        set_plan(organization, "creator")
+        set_plan(organization, "free")
         owner_client.post(url, {"approval_workflow_mode": "required_internal"})
         owner_client.post(url, {"approval_workflow_mode": "none"})
         workspace.refresh_from_db()

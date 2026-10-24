@@ -69,3 +69,24 @@ Connecting or disconnecting accounts (it needs the platform's OAuth screen), edi
 - Retries: create routes accept an `Idempotency-Key` header and create-like MCP tools an `idempotency_key` argument; the same key with the same body returns the first result for 24 hours, a different body is refused (`422`).
 - Rate limits and audit: every call counts against the per-key, per-workspace and plan limits. Writes, and any failed call, leave an audit row.
 - A planning loop: `get_brand_voice` and `list_calendar_events`, draft with `create_draft` (`tags`, `category_id`), `list_approvals` and `review_post`, then `add_post_to_queue` (or `find_next_free_slot` and `schedule_draft`), and `get_usage` before large batches.
+
+## Plan allowances (hosted PostDelegate)
+
+Self-hosted installs have no plans and no limits. On the hosted service every paid plan includes every tool above; plans differ only in how much. A limit an agent hits answers `402` with the upgrade message (the daily API cap answers `429`). `get_usage` / `GET /usage` returns the organization's current limits and usage.
+
+| | Free | Starter | Team | Pro | Ultimate |
+|---|---|---|---|---|---|
+| Price (monthly / yearly) | $0 | $19 / $180 | $29 / $276 | $39 / $372 | $79 / $756 |
+| Channels | 3 | 5 | 10 | 30 | 100 |
+| Workspaces | 1 | 2 | 5 | 15 | Unlimited |
+| Team members (owner included, clients count) | 2 | 2 | Unlimited | Unlimited | Unlimited |
+| Scheduled posts a month | 30 | Unlimited | Unlimited | Unlimited | Unlimited |
+| API & MCP calls a day | 100 | 2,000 | 4,000 | 10,000 | 20,000 |
+| AI | Own connection | Own connection | Own connection | Own connection | Own connection |
+| Short links a month | 100 | 2,000 | 4,000 | 10,000 | 20,000 |
+| Link-in-bio pages | 1 (badged) | 3 | 6 | 15 | 30 |
+| Competitors per network | none | 3 | 6 | 15 | 30 |
+| AI visibility prompts | none | 3 | 5 | 10 | 15 |
+| Saved account sets | 2 | 10 | 20 | 50 | 100 |
+
+Free has no approvals, inbox, analytics, client portal, white-label reports, competitors or AI visibility. AI is never part of a plan: every AI tool runs on the organization's own AI connection (its own provider key, or its ChatGPT plan once that ships), unlimited and with no markup, behind a daily safety cap of 10,000 requests for runaway loops; scoped tokens can set their own AI budget. Without a connection, AI tools answer `404` `ai_not_configured`. New organizations get a 14-day free trial with Ultimate's allowances, no card required; without a subscription at the end they move to Free. Nothing is deleted on a downgrade: anything over the new limits keeps working, but no more can be added until it is back under.

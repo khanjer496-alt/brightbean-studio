@@ -55,7 +55,7 @@ class TestScheduling:
 
     def test_lost_plan_skips_scheduling(self, scheduled, settings, workspace):
         settings.BILLING_ENABLED = True
-        set_plan(workspace.organization, "team")
+        set_plan(workspace.organization, "free")
         assert services.schedule_due_runs(MONDAY_10) == 0
 
     def test_duplicate_slot_is_refused_by_the_database(self, scheduled):
@@ -173,7 +173,7 @@ class TestExecution:
 
     def test_plan_without_reports_fails_permanently(self, definition, seeded, settings, workspace):
         settings.BILLING_ENABLED = True
-        set_plan(workspace.organization, "team")
+        set_plan(workspace.organization, "free")
         run = self.make_run(definition)
         services.execute_run(run.id)
         run.refresh_from_db()
@@ -202,7 +202,7 @@ class TestExecution:
 
     def test_run_now_refused_without_plan(self, definition, owner, settings, workspace):
         settings.BILLING_ENABLED = True
-        set_plan(workspace.organization, "team")
+        set_plan(workspace.organization, "free")
         with pytest.raises(PlanLimitError):
             services.queue_manual_run(definition, owner)
 
@@ -297,5 +297,5 @@ class TestShareLinks:
     def test_link_stops_when_plan_lapses(self, client, ready, settings, workspace):
         token = services.make_token(ready)
         settings.BILLING_ENABLED = True
-        set_plan(workspace.organization, "team")
+        set_plan(workspace.organization, "free")
         assert client.get(f"/reports/share/{token}/").status_code == 410

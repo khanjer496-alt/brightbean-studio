@@ -102,6 +102,8 @@
                     Draft reply
                 </button>
             </div>
+            {% else %}
+            <div class="mt-2">{% include "ai_writer/partials/connect_ai.html" with compact=True %}</div>
             {% endif %}
             <div class="flex {% if message.social_account.platform == 'youtube' %}flex-col sm:flex-row gap-2{% endif %} items-center justify-between mt-2">
                 <p class="text-[10px] text-stone-400">Reply will be posted on {% if message.social_account.platform == "youtube" %}YouTube{% else %}{{ message.social_account.get_platform_display|default:message.social_account.platform|title }}{% endif %}</p>

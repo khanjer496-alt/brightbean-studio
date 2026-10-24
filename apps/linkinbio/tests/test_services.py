@@ -96,7 +96,7 @@ class TestSlugs:
 
     def test_slug_is_lowercased_and_unique_across_workspaces(self, workspace, page):
         other = type(workspace).objects.create(organization=workspace.organization, name="Other")
-        set_plan(workspace.organization, "agency")
+        set_plan(workspace.organization, "ultimate")
         with pytest.raises(services.BioError):
             services.create_page(other, title="Dup", slug="ACME")
 
@@ -198,16 +198,16 @@ class TestEntitlements:
 
     def test_paid_plans_have_more_pages_and_no_badge(self, settings, workspace):
         settings.BILLING_ENABLED = True
-        set_plan(workspace.organization, "creator")
+        set_plan(workspace.organization, "starter")
         pages = [services.create_page(workspace, title=f"P{i}", slug=f"page-{i}") for i in range(3)]
         assert not services.shows_badge(pages[0])
         with pytest.raises(PlanLimitError):
             services.create_page(workspace, title="Four", slug="page-4")
-        set_plan(workspace.organization, "agency")
+        set_plan(workspace.organization, "ultimate")
         services.create_page(workspace, title="Four", slug="page-4")
 
     def test_downgrade_keeps_existing_pages(self, settings, workspace):
-        set_plan(workspace.organization, "agency")
+        set_plan(workspace.organization, "ultimate")
         settings.BILLING_ENABLED = True
         for i in range(3):
             services.create_page(workspace, title=f"P{i}", slug=f"page-{i}")

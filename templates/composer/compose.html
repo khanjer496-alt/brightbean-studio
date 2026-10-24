@@ -574,6 +574,8 @@
                             {% endif %}
                             {% if ai_enabled %}
                             {% include "ai_writer/partials/composer_panel.html" %}
+                            {% else %}
+                            {% include "ai_writer/partials/connect_ai.html" with compact=True %}
                             {% endif %}
                             <button type="button"
                                     @click="showTemplatePicker = !showTemplatePicker; if (showTemplatePicker) $nextTick(() => htmx.trigger($refs.templatePicker, 'load-picker'))"

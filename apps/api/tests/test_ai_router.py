@@ -126,18 +126,22 @@ class TestGenerateCaption:
         r = c.post("/api/v1/ai/caption", data={"prompt": "x"}, content_type="application/json")
         assert r.status_code == 403
 
-    def test_daily_allowance_is_402(self, platform_key, client, workspace, settings):
+    def test_no_plan_allowance_and_hosted_mode_needs_own_ai(
+        self, platform_key, client, workspace, settings, fake_claude
+    ):
         from apps.billing.tests.support import set_plan
 
         settings.BILLING_ENABLED = True
         set_plan(workspace.organization, "free")
         AIRequestLog.objects.bulk_create(
             AIRequestLog(organization=workspace.organization, action="write", provider="anthropic", model="m")
-            for _ in range(20)
+            for _ in range(500)
         )
+        settings.AI_PLATFORM_KEY_FOR_CUSTOMERS = False
         r = client.post("/api/v1/ai/caption", data={"prompt": "x"}, content_type="application/json")
-        assert r.status_code == 402
-        assert r.json()["code"] == "ai_request_limit"
+        assert r.status_code == 404
+        assert "Connect your AI" in str(r.json())
+        assert fake_claude.calls == []
 
     def test_provider_busy_is_503_not_our_429(self, platform_key, client, fake_claude):
         import anthropic

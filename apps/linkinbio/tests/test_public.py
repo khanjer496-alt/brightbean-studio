@@ -74,7 +74,7 @@ class TestRender:
         set_plan(workspace.organization, "free")
         services.invalidate("acme")
         assert "Made with PostDelegate" in get().content.decode()
-        set_plan(workspace.organization, "creator")
+        set_plan(workspace.organization, "starter")
         services.invalidate("acme")
         assert "Made with PostDelegate" not in get().content.decode()
 
@@ -244,7 +244,7 @@ class TestCustomDomains:
                 services.update_page(page, custom_domain=bad)
         services.update_page(page, custom_domain="Links.Example.com.")
         assert page.custom_domain == "links.example.com"
-        set_plan(workspace.organization, "agency")
+        set_plan(workspace.organization, "ultimate")
         second = services.create_page(workspace, title="Two", slug="two")
         with pytest.raises(services.BioError):
             services.update_page(second, custom_domain="links.example.com")

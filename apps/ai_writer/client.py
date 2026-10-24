@@ -47,7 +47,10 @@ class AIError(Exception):
 class AINotConfiguredError(AIError):
     code = "ai_not_configured"
     status_code = 404
-    default_message = "The AI assistant isn't set up for this organization."
+    default_message = (
+        "Connect your AI to use this: an organization admin can add your own AI provider key under "
+        "Organization settings → AI."
+    )
 
 
 class AIAuthenticationError(AIError):
@@ -236,12 +239,23 @@ def platform_key_configured() -> bool:
     return bool(provider_cls and getattr(settings, provider_cls.platform_key_setting, "").strip())
 
 
+def platform_key_for_customers() -> bool:
+    """Whether organizations without their own AI connection fall back to the platform key.
+
+    Off on the hosted service (``AI_PLATFORM_KEY_FOR_CUSTOMERS``): every AI
+    feature runs on the organization's own connection, never on ours.
+    Self-hosted and dev installs turn it on to share one key.
+    """
+    return settings.AI_PLATFORM_KEY_FOR_CUSTOMERS and platform_key_configured()
+
+
 def resolve_ai(organization) -> AIConfig | None:
     """The provider an organization's AI requests go to, or None when AI is off.
 
-    The organization's own key wins over the platform key, so an organization
-    that brings a key is billed by its provider and not counted against the
-    plan's allowance.
+    The organization's own key always wins. The platform key is used only
+    where ``AI_PLATFORM_KEY_FOR_CUSTOMERS`` allows it; otherwise an
+    organization without its own connection has no AI, and every AI surface
+    shows "Connect your AI" and every AI job falls back or skips.
     """
     from .models import OrganizationAIKey
 
@@ -260,7 +274,7 @@ def resolve_ai(organization) -> AIConfig | None:
                 uses_organization_key=True,
             )
 
-    if not platform_key_configured():
+    if not platform_key_for_customers():
         return None
     provider_cls = platform_provider_class()
     return AIConfig(

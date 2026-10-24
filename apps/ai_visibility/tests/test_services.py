@@ -9,7 +9,7 @@ from django.utils import timezone
 
 from apps.ai_visibility import services
 from apps.ai_visibility.models import VisibilityAnswer, VisibilityProfile, VisibilityRun
-from apps.ai_writer.client import AIAuthenticationError, AINotConfiguredError, AIRateLimitError
+from apps.ai_writer.client import AIAuthenticationError, AIDailyCapError, AINotConfiguredError, AIRateLimitError
 from apps.ai_writer.models import AIRequestLog, OrganizationAIKey
 from apps.billing.entitlements import PlanLimitError
 from apps.billing.tests.support import set_plan
@@ -259,14 +259,14 @@ def test_the_model_that_actually_answered_is_recorded(profile, fake_claude, read
 
 class TestLimits:
     def test_plan_without_the_feature(self, workspace, profile):
-        set_plan(workspace.organization, "creator")
+        set_plan(workspace.organization, "free")
         with pytest.raises(PlanLimitError) as exc:
             services.start_run(profile, trigger="manual")
         assert exc.value.code == "feature_not_in_plan"
         with pytest.raises(PlanLimitError):
             services.save_profile(workspace, brand_name="X", website="", aliases=[], prompts=["a"])
 
-    @pytest.mark.parametrize("plan,limit", [("team", 5), ("agency", 15)])
+    @pytest.mark.parametrize("plan,limit", [("team", 5), ("ultimate", 15)])
     def test_prompt_cap_per_plan(self, workspace, plan, limit):
         set_plan(workspace.organization, plan)
         services.save_profile(
@@ -307,28 +307,32 @@ class TestLimits:
             services.start_run(profile, trigger="manual")
         assert exc.value.code == "visibility_no_prompts"
 
-    def test_refused_up_front_when_the_allowance_cannot_cover_the_report(self, workspace, profile, fake_claude, reader):
+    def test_refused_up_front_when_the_safety_cap_cannot_cover_the_report(
+        self, workspace, profile, fake_claude, reader, settings
+    ):
         org = workspace.organization
+        settings.AI_ORGANIZATION_KEY_DAILY_CAP = 1_000
+        OrganizationAIKey.objects.create(organization=org, provider="anthropic", api_key="sk-own")
         AIRequestLog.objects.bulk_create(
-            AIRequestLog(organization=org, action="x", provider="anthropic", model="m", status="ok") for _ in range(998)
+            AIRequestLog(organization=org, action="x", provider="anthropic", model="m", used_organization_key=True)
+            for _ in range(998)
         )
-        with pytest.raises(PlanLimitError) as exc:
+        with pytest.raises(AIDailyCapError) as exc:
             services.start_run(profile, trigger="manual")  # needs 2 prompts + 3 = 5, 2 left of 1,000
-        assert exc.value.code == "ai_request_limit"
+        assert exc.value.code == "ai_daily_cap"
         assert not VisibilityRun.objects.exists() and fake_claude.calls == []
 
     def test_reservation_matches_the_calls_a_report_can_make(self):
         assert services.calls_needed(5) == 8 and services.calls_needed(2) == 5 and services.calls_needed(5, 2) == 14
 
-    def test_own_key_runs_are_not_counted_against_the_plan(self, workspace, profile, fake_claude, settings, reader):
-        settings.ANTHROPIC_API_KEY = ""
+    def test_hosted_mode_runs_on_the_organizations_own_key(self, workspace, profile, fake_claude, settings, reader):
+        settings.AI_PLATFORM_KEY_FOR_CUSTOMERS = False
+        with pytest.raises(AINotConfiguredError):
+            services.start_run(profile, trigger="manual")
         OrganizationAIKey.objects.create(organization=workspace.organization, provider="anthropic", api_key="sk-own")
         fake_claude.queue(answer("x"), answer("y"), answer("z"), {"items": []})
         services.execute_run(services.start_run(profile, trigger="manual"))
-        from apps.billing.entitlements import ai_request_count
-
-        assert ai_request_count(workspace.organization) == 0
-        assert AIRequestLog.objects.filter(used_organization_key=True).count() == 5
+        assert AIRequestLog.objects.count() == AIRequestLog.objects.filter(used_organization_key=True).count() == 5
 
     def test_manual_runs_are_limited_to_one_a_day_and_one_at_a_time(self, profile, fake_claude, reader):
         run = services.start_run(profile, trigger="manual")
@@ -428,15 +432,18 @@ class TestWeeklySweep:
     def test_skips_and_says_why_when_ai_is_not_configured(self, profile, settings, fake_claude, reader):
         settings.ANTHROPIC_API_KEY = ""
         assert services.run_due() == {"ran": 0, "skipped": 1}
-        assert "isn't set up" in VisibilityProfile.objects.get().skip_reason
+        assert "Connect your AI" in VisibilityProfile.objects.get().skip_reason
         assert not VisibilityRun.objects.exists() and fake_claude.calls == []
 
-    def test_skips_when_the_allowance_is_spent_and_clears_the_reason_after_a_run(
-        self, profile, workspace, fake_claude, reader
+    def test_skips_when_the_safety_cap_is_spent_and_clears_the_reason_after_a_run(
+        self, profile, workspace, fake_claude, reader, settings
     ):
         org = workspace.organization
+        settings.AI_ORGANIZATION_KEY_DAILY_CAP = 1_000
+        OrganizationAIKey.objects.create(organization=org, provider="anthropic", api_key="sk-own")
         logs = [
-            AIRequestLog(organization=org, action="x", provider="anthropic", model="m", status="ok") for _ in range(999)
+            AIRequestLog(organization=org, action="x", provider="anthropic", model="m", used_organization_key=True)
+            for _ in range(999)
         ]
         AIRequestLog.objects.bulk_create(logs)
         assert services.run_due()["skipped"] == 1
@@ -453,7 +460,7 @@ class TestWeeklySweep:
         VisibilityProfile.objects.update(is_active=False)
         assert services.run_due() == {"ran": 0, "skipped": 0}
         VisibilityProfile.objects.update(is_active=True)
-        set_plan(workspace.organization, "creator")
+        set_plan(workspace.organization, "free")
         assert services.run_due() == {"ran": 0, "skipped": 0}
         assert fake_claude.calls == []
 

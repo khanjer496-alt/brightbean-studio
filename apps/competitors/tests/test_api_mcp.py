@@ -70,7 +70,7 @@ class TestRest:
         [item] = data["competitors"]
         assert (item["handle"], item["followers"], item["posts_per_week"]) == ("rival.bsky.social", 120, 2.5)
         nets = {n["platform"]: n for n in data["networks"]}
-        assert nets["bluesky"]["supported"] and nets["bluesky"]["limit"] == 10 and nets["bluesky"]["tracked"] == 1
+        assert nets["bluesky"]["supported"] and nets["bluesky"]["limit"] == 6 and nets["bluesky"]["tracked"] == 1
         assert not nets["linkedin_personal"]["supported"] and nets["linkedin_personal"]["reason"]
 
     def test_comparison(self, api, tracked):
@@ -100,7 +100,7 @@ class TestRest:
         assert gone.status_code == 200 and not Competitor.objects.exists()
 
     def test_add_over_the_plan_limit_is_403(self, api, workspace, read):
-        set_plan(workspace.organization, "creator")
+        set_plan(workspace.organization, "starter")
         for i in range(3):
             assert (
                 api.post(

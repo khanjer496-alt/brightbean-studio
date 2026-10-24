@@ -7,6 +7,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 from django_ratelimit.decorators import ratelimit
 
+from apps.billing.entitlements import PlanLimitError
 from apps.workspaces.models import Workspace
 
 from . import services
@@ -143,7 +144,7 @@ def invite_member(request):
             invited_by=request.user,
             inviter=request.user,
         )
-    except ValueError as e:
+    except (ValueError, PlanLimitError) as e:
         return HttpResponse(
             f'<div class="text-red-600 text-sm p-3">{e}</div>',
             status=422,
@@ -236,7 +237,7 @@ def accept_invite(request, token):
 
         try:
             services.accept_invitation(invitation, request.user)
-        except ValueError as e:
+        except (ValueError, PlanLimitError) as e:
             return render(
                 request,
                 "members/accept_invite.html",

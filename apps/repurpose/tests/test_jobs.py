@@ -11,8 +11,6 @@ from pypdf import PdfReader
 from apps.ai_writer.client import AINotConfiguredError
 from apps.ai_writer.models import AIRequestLog
 from apps.approvals.models import ApprovalAction
-from apps.billing.entitlements import PlanLimitError
-from apps.billing.tests.support import set_plan
 from apps.composer.models import HashtagSet, Idea, PlatformPost, Post
 from apps.repurpose import outputs, services, sources
 from apps.repurpose.models import RepurposeJob
@@ -197,8 +195,12 @@ class TestReservationAndCaps:
         assert RepurposeJob.objects.count() == 0
 
     def test_allowance_is_reserved_before_the_source_is_read(self, workspace, owner, bluesky, settings):
-        settings.BILLING_ENABLED = True
-        set_plan(workspace.organization, "free")  # 20 requests a day
+        from apps.ai_writer.client import AIDailyCapError
+        from apps.ai_writer.models import OrganizationAIKey
+
+        # The own-key daily safety cap; no plan includes or limits AI.
+        settings.AI_ORGANIZATION_KEY_DAILY_CAP = 20
+        OrganizationAIKey.objects.create(organization=workspace.organization, api_key="sk-ant-own-key-000000")
         reads = []
 
         def read():
@@ -208,11 +210,17 @@ class TestReservationAndCaps:
         requests = _requests(workspace, {"kind": "standalone", "account_ids": [bluesky.id], "count": 3})
         AIRequestLog.objects.bulk_create(
             [
-                AIRequestLog(organization=workspace.organization, provider="anthropic", model="m", action="write")
+                AIRequestLog(
+                    organization=workspace.organization,
+                    provider="anthropic",
+                    model="m",
+                    action="write",
+                    used_organization_key=True,
+                )
                 for _ in range(19)
             ]
         )
-        with pytest.raises(PlanLimitError):  # needs 1 call; 19 of 20 used -> 1 left. Two outputs need more.
+        with pytest.raises(AIDailyCapError):  # needs 1 call; 19 of 20 used -> 1 left. Two outputs need more.
             services.create_job(
                 workspace,
                 owner,

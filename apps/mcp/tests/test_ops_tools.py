@@ -546,7 +546,7 @@ class TestEventBrandVoiceUsageTools:
 
     def test_usage_and_read_only_lists(self, world):
         usage = tool_result(world.bare, "get_usage")
-        assert {m["key"] for m in usage["usage"]} == {"channels", "workspaces", "posts", "api_calls", "ai_requests"}
+        assert {m["key"] for m in usage["usage"]} == {"channels", "workspaces", "members", "posts", "api_calls"}
         from apps.composer.models import HashtagSet, Signature
 
         HashtagSet.objects.create(workspace=world.workspace, name="Coffee", hashtags=["#coffee"])

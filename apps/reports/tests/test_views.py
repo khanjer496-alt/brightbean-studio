@@ -77,11 +77,11 @@ class TestPermissions:
 
     def test_plan_without_reports(self, client, workspace, owner, definition, settings):
         settings.BILLING_ENABLED = True
-        set_plan(workspace.organization, "team")
+        set_plan(workspace.organization, "free")
         client.force_login(owner)
         assert client.get(url("list", workspace)).status_code == 402
         assert client.post(url("run", workspace, report_id=definition.id)).status_code == 402
-        set_plan(workspace.organization, "agency")
+        set_plan(workspace.organization, "starter")
         assert client.get(url("list", workspace)).status_code == 200
 
 
@@ -251,7 +251,7 @@ class TestClientPortal:
         definition.visible_to_clients = True
         definition.save()
         settings.BILLING_ENABLED = True
-        set_plan(workspace.organization, "team")
+        set_plan(workspace.organization, "free")
         assert b"No reports shared yet" in portal.get(reverse("client_portal:reports")).content
 
     def test_staff_session_without_portal_flag_is_turned_away(self, client, owner, definition, ready_run):

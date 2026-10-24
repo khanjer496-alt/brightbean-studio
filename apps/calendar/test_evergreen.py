@@ -397,16 +397,11 @@ class TestAiVariation:
             pytest.fail("a failing provider must not stop recycling")
         assert EvergreenRepeat.objects.get(item=item).wording == "original"
 
-    def test_falls_back_when_the_plan_has_no_ai_requests_left(self, workspace, account, queue, author, monkeypatch):
+    def test_falls_back_without_the_organizations_own_ai(self, workspace, account, queue, author, settings):
+        # Hosted mode: the platform key never powers customer AI, so the wording stays.
+        settings.ANTHROPIC_API_KEY = "sk-ant-platform-key-for-tests"
+        settings.AI_PLATFORM_KEY_FOR_CUSTOMERS = False
         item = add(published_post(workspace, account, author=author), account, author, vary_with_ai=True)
-
-        def refuse(*args, **kwargs):
-            raise PlanLimitError("no AI left", code="ai_request_limit")
-
-        monkeypatch.setattr("apps.ai_writer.services.check_can_use_ai", refuse)
-        monkeypatch.setattr(
-            "apps.ai_writer.services.resolve_ai", lambda org: type("C", (), {"uses_organization_key": False})()
-        )
         evergreen.fill_account(account, now=NOW)
         assert EvergreenRepeat.objects.get(item=item).wording == "original"
 

@@ -1036,8 +1036,8 @@ _tool(
 _tool(
     "get_usage",
     (
-        "Read the organization's plan, its limits and current usage (channels, workspaces, scheduled posts this "
-        "month, API & MCP calls today, AI requests today; limit null = unlimited). Read-only; check it before a big "
+        "Read the organization's plan, its limits and current usage (channels, workspaces, team members, scheduled "
+        "posts this month, API & MCP calls today; limit null = unlimited). Read-only; check it before a big "
         "batch of scheduling. Self-hosted installs report billing_enabled false."
     ),
     ops.get_usage,
