@@ -142,6 +142,9 @@ BACKFILL_DAYS_PER_PLATFORM: dict[str, int] = {
     "lemmy": 0,
     "nostr": 0,
     "farcaster": 0,
+    "twitch": 0,
+    "kick": 0,
+    "dribbble": 0,
 }
 DEFAULT_BACKFILL_DAYS = 90
 

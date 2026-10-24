@@ -38,6 +38,9 @@ class TestProviderRegistry:
             "lemmy",
             "nostr",
             "farcaster",
+            "twitch",
+            "kick",
+            "dribbble",
         }
         assert set(PROVIDER_REGISTRY.keys()) == expected
 

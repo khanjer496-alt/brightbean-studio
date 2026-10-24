@@ -95,6 +95,11 @@ PLATFORM_DAILY_POST_LIMIT: dict[str, int] = {
     "nostr": 100,
     # Casts are billed to the customer's own Neynar plan.
     "farcaster": 100,
+    # Chat messages: the cap is about what a channel's viewers will tolerate.
+    "twitch": 100,
+    "kick": 100,
+    # Shots are curated work; Dribbble throttles uploads per account.
+    "dribbble": 10,
 }
 
 _DEFAULT_FALLBACK = 50

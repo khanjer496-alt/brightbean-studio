@@ -205,6 +205,9 @@ _CONNECT_SUGGESTION_ORDER: tuple[str, ...] = (
     "lemmy",
     "nostr",
     "farcaster",
+    "twitch",
+    "kick",
+    "dribbble",
 )
 
 

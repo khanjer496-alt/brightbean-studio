@@ -12,11 +12,13 @@ from typing import TYPE_CHECKING
 from .bluesky import BlueskyProvider
 from .devto import DevtoProvider
 from .discord import DiscordProvider
+from .dribbble import DribbbleProvider
 from .facebook import FacebookProvider
 from .farcaster import FarcasterProvider
 from .google_business import GoogleBusinessProvider
 from .instagram import InstagramProvider
 from .instagram_login import InstagramLoginProvider
+from .kick import KickProvider
 from .lemmy import LemmyProvider
 from .linkedin import LINKEDIN_RESERVED_CHARS
 from .linkedin_company import LinkedInCompanyProvider
@@ -30,6 +32,7 @@ from .telegram import TelegramProvider
 from .threads import ThreadsProvider
 from .tiktok import TikTokProvider
 from .tumblr import TumblrProvider
+from .twitch import TwitchProvider
 from .types import MediaRules, PeakWindow, PlugCapability, PostSetting, PostType, ThreadCapability
 from .x import XProvider
 from .youtube import YouTubeProvider
@@ -60,6 +63,9 @@ PROVIDER_REGISTRY: dict[str, type[SocialProvider]] = {
     "lemmy": LemmyProvider,
     "nostr": NostrProvider,
     "farcaster": FarcasterProvider,
+    "twitch": TwitchProvider,
+    "kick": KickProvider,
+    "dribbble": DribbbleProvider,
 }
 
 # Characters a platform escapes in the caption it publishes. Each one costs two

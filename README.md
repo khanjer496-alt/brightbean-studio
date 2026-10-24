@@ -88,6 +88,9 @@ A free hosted version is available at [brightbean.xyz/studio](https://brightbean
 | Lemmy | ✓ | — | — | — |
 | Nostr | ✓ | — | — | — |
 | Farcaster | ✓ | — | — | — |
+| <img src="https://cdn.simpleicons.org/twitch" width="16" height="16"> Twitch | ✓ | — | — | — |
+| <img src="https://cdn.simpleicons.org/kick" width="16" height="16"> Kick | ✓ | — | — | — |
+| <img src="https://cdn.simpleicons.org/dribbble" width="16" height="16"> Dribbble | ✓ | — | — | — |
 
 ---
 
@@ -817,6 +820,27 @@ No environment variables. Users paste the private key of the identity to post as
 ### Farcaster
 
 No environment variables: Neynar bills API use to the owner of the API key, so each workspace brings its own. The in-app guide asks for a [Neynar](https://neynar.com) API key and the UUID of an approved signer created with that key. The key is stored encrypted as the workspace's credentials; the signer UUID is the account's encrypted token. Casts are 320 bytes with up to two embeds (images or a link), an optional channel, and threads as reply chains; deleting a cast is supported. Neynar's plans decide whether publishing is included, so a 402 is reported as a plan problem. Analytics are not synced.
+
+### Twitch
+
+1. Register an application in the [Twitch Developer Console](https://dev.twitch.tv/console) with the redirect `https://<your-domain>/social-accounts/callback/twitch/` and client type **Confidential**
+2. Copy the **Client ID** into `PLATFORM_TWITCH_CLIENT_ID` and a **Client Secret** into `PLATFORM_TWITCH_CLIENT_SECRET`
+
+Twitch has no feed to post to, so an account is the user's own channel and a post is a message to that channel's chat: a plain chat message or a highlighted announcement (with a colour), up to 500 characters, text only. Scopes `user:write:chat` and `moderator:manage:announcements`; tokens refresh. There are no threads, comments or analytics.
+
+### Kick
+
+1. Create an app in your Kick account's developer settings with the redirect `https://<your-domain>/social-accounts/callback/kick/`
+2. Copy the **Client ID** and **Client Secret** into `PLATFORM_KICK_CLIENT_ID` and `PLATFORM_KICK_CLIENT_SECRET`
+
+Kick's public API publishes only chat, so an account is the user's own channel and a post is a chat message (500 characters and at most 2048 bytes, text only). OAuth 2.1 with PKCE, scopes `user:read chat:write`; tokens refresh.
+
+### Dribbble
+
+1. Register an application at [dribbble.com/account/applications/new](https://dribbble.com/account/applications/new) with the callback `https://<your-domain>/social-accounts/callback/dribbble/`
+2. Copy the **Client ID** and **Client Secret** into `PLATFORM_DRIBBBLE_CLIENT_ID` and `PLATFORM_DRIBBBLE_CLIENT_SECRET`
+
+A post is one shot: a title, a description, up to 12 tags and exactly one image of **400x300 or 800x600 pixels** (GIF, JPG or PNG, 8 MB); video shots are not supported by Dribbble's API. The connected account must be allowed to upload shots (a player or team). Dribbble processes shots asynchronously, so a post stays "publishing" until the shot exists. Scopes `public upload`; Dribbble issues no refresh token.
 
 ## Inbox: Backfill Historical Messages
 

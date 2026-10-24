@@ -88,7 +88,6 @@ def normalize_community(raw) -> str:
 class LemmyProvider(SocialProvider):
     """Lemmy provider (API v3) on the instance named in the credentials' ``instance_url``."""
 
-    works_without_platform_app = True
     connect_url_name = "connect_lemmy"
     accepts_media = True
     needs_local_media = False

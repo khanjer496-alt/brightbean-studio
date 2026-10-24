@@ -578,6 +578,18 @@ class SocialAccount(models.Model):
         "farcaster": {
             "supports_first_comment": False,
         },
+        "twitch": {
+            "supports_first_comment": False,
+        },
+        "kick": {
+            "supports_first_comment": False,
+        },
+        "dribbble": {
+            "needs_title": True,
+            "title_label": "Shot Title",
+            "caption_label": "Description",
+            "supports_first_comment": False,
+        },
     }
 
     PLATFORM_FIELD_DEFAULTS = {
@@ -707,6 +719,9 @@ class SocialAccount(models.Model):
             "lemmy": "le",
             "nostr": "no",
             "farcaster": "fc",
+            "twitch": "tw",
+            "kick": "ki",
+            "dribbble": "dr",
         }
         return icons.get(self.platform, self.platform[:2])
 

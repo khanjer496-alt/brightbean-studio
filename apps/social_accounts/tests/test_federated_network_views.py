@@ -1,6 +1,7 @@
 """Connecting Tumblr, Lemmy, Nostr and Farcaster: the views, the connect page and publish-time credentials."""
 
 from unittest.mock import patch
+from urllib.parse import unquote, urlparse
 
 import pytest
 from django.urls import reverse
@@ -57,6 +58,36 @@ class TestConnectPage:
             "tumblr": {"client_id": "key", "client_secret": "secret"},
         }
         assert 'value="tumblr"' in authenticated_client.get(url("connect", workspace)).content.decode()
+
+    @pytest.mark.parametrize("platform", ["twitch", "kick", "dribbble"])
+    def test_oauth_networks_are_offered_only_when_their_app_is_configured(
+        self, authenticated_client, workspace, settings, platform
+    ):
+        settings.PLATFORM_CREDENTIALS_FROM_ENV = {
+            **settings.PLATFORM_CREDENTIALS_FROM_ENV,
+            platform: {"client_id": "", "client_secret": ""},
+        }
+        assert f'value="{platform}"' not in authenticated_client.get(url("connect", workspace)).content.decode()
+        settings.PLATFORM_CREDENTIALS_FROM_ENV = {
+            **settings.PLATFORM_CREDENTIALS_FROM_ENV,
+            platform: {"client_id": "cid", "client_secret": "sec"},
+        }
+        assert f'value="{platform}"' in authenticated_client.get(url("connect", workspace)).content.decode()
+
+    @pytest.mark.parametrize("platform", ["twitch", "kick", "dribbble", "tumblr"])
+    def test_the_connect_button_starts_oauth_with_the_networks_own_authorize_page(
+        self, authenticated_client, workspace, settings, platform
+    ):
+        settings.PLATFORM_CREDENTIALS_FROM_ENV = {
+            **settings.PLATFORM_CREDENTIALS_FROM_ENV,
+            platform: {"client_id": "cid", "client_secret": "sec"},
+        }
+        response = authenticated_client.post(url("connect", workspace), {"platform": platform})
+        assert response.status_code == 302
+        assert urlparse(response.url).hostname in {"id.twitch.tv", "id.kick.com", "dribbble.com", "www.tumblr.com"}
+        assert f"/callback/{platform}/" in unquote(response.url)
+        if platform == "kick":
+            assert "code_challenge_method=S256" in response.url
 
     @pytest.mark.parametrize("platform", ["lemmy", "nostr", "farcaster"])
     def test_connect_button_goes_to_the_form_not_oauth(self, authenticated_client, workspace, platform):

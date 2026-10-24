@@ -285,7 +285,6 @@ def _fetch_profile(relays: list[str], pubkey: str) -> dict:
 class NostrProvider(SocialProvider):
     """Nostr provider: kind-1 notes signed locally and sent to the account's relays."""
 
-    works_without_platform_app = True
     connect_url_name = "connect_nostr"
     needs_local_media = False
     media_rules = NOSTR_MEDIA_RULES

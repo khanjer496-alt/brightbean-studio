@@ -728,6 +728,19 @@ PLATFORM_CREDENTIALS_FROM_ENV = {
         "client_id": env("PLATFORM_TUMBLR_CLIENT_ID", default=""),
         "client_secret": env("PLATFORM_TUMBLR_CLIENT_SECRET", default=""),
     },
+    # Twitch, Kick and Dribbble - OAuth2 apps registered by the operator.
+    "twitch": {
+        "client_id": env("PLATFORM_TWITCH_CLIENT_ID", default=""),
+        "client_secret": env("PLATFORM_TWITCH_CLIENT_SECRET", default=""),
+    },
+    "kick": {
+        "client_id": env("PLATFORM_KICK_CLIENT_ID", default=""),
+        "client_secret": env("PLATFORM_KICK_CLIENT_SECRET", default=""),
+    },
+    "dribbble": {
+        "client_id": env("PLATFORM_DRIBBBLE_CLIENT_ID", default=""),
+        "client_secret": env("PLATFORM_DRIBBBLE_CLIENT_SECRET", default=""),
+    },
 }
 
 # Publishing engine
