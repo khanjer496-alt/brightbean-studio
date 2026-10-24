@@ -13,7 +13,9 @@ def test_no_native_confirm_dialogs():
     offenders += [
         str(p.relative_to(ROOT))
         for p in (ROOT / "static" / "js").glob("*.js")
-        if not p.name.endswith(".min.js") and p.name != "confirm-dialog.js" and re.search(r"(?<![\w.-])confirm\s*\(", p.read_text())
+        if not p.name.endswith(".min.js")
+        and p.name != "confirm-dialog.js"
+        and re.search(r"(?<![\w.-])confirm\s*\(", p.read_text())
     ]
     assert offenders == []
 

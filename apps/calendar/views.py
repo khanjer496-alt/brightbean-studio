@@ -872,6 +872,7 @@ def _month_view_data(request, workspace, target_date, context):
                     "is_today": day == today,
                     "is_past": day < today,
                     "posts": day_posts[:3],
+                    "agenda_posts": day_posts,  # every post of the day, for the phone agenda
                     "total_posts": len(day_posts),
                     "overflow": max(0, len(day_posts) - 3),
                     "holidays": day_holidays,
@@ -891,6 +892,10 @@ def _month_view_data(request, workspace, target_date, context):
             "prev_date": prev_month.isoformat(),
             "next_date": next_month.isoformat(),
             "unscheduled_drafts": drafts,
+            # The day the phone month view opens on: today when it is in this month, else the 1st.
+            "month_agenda_default": (
+                today if (today.year, today.month) == (year, month) else date(year, month, 1)
+            ).isoformat(),
             "day_names": ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
         }
     )

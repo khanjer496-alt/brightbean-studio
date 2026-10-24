@@ -357,7 +357,9 @@ class TestIssue:
         assert r.status_code == 422
         assert ApiKey.objects.count() == 0
         assert re.search(r'id="issue-error-name"[^>]*>\s*<p>Name is required\.</p>', body)
-        assert re.search(r'id="issue-error-social_account_ids"[^>]*>\s*<p>Select at least one connected account\.</p>', body)
+        assert re.search(
+            r'id="issue-error-social_account_ids"[^>]*>\s*<p>Select at least one connected account\.</p>', body
+        )
         assert re.search(r'id="issue-error-workspace_id"[^>]*>\s*</div>', body)  # fine fields are cleared
 
     def test_htmx_success_redirects_to_the_list(self, admin_client, workspace, social_account):
