@@ -147,3 +147,41 @@ class TestStructuredContent:
         envelope = rpc(world.clients["full"], "tools/call", {"name": "list_posts", "arguments": {}})["result"]
         assert envelope["structuredContent"] == json.loads(envelope["content"][0]["text"])
         assert "posts" in envelope["structuredContent"]
+
+    def test_widget_tools_return_the_shape_their_widget_reads(self, world):
+        client = world.clients["full"]
+
+        def call(name, arguments):
+            body = rpc(client, "tools/call", {"name": name, "arguments": arguments})
+            assert "result" in body, body
+            return body["result"]["structuredContent"]
+
+        draft = call("create_draft", {"social_account_id": str(world.account1.id), "caption": "Hello"})
+        assert draft["id"] and draft["caption"] == "Hello" and "platform_posts" in draft
+        assert call("get_post", {"post_id": draft["id"]})["id"] == draft["id"]
+        assert "posts" in call("list_approvals", {})
+        listed = call("list_posts", {})
+        assert {"id", "status"} <= set(listed["posts"][0])
+
+
+def test_connector_tool_list_matches_the_registry():
+    """integrations/claude/connector-tools.md is what directory reviewers read; it must not drift from the code."""
+    import re
+    from pathlib import Path
+
+    from django.conf import settings
+
+    doc = Path(settings.BASE_DIR) / "integrations" / "claude" / "connector-tools.md"
+    row = re.compile(r"\| `(\w+)` \| (\w+) \| (yes|no) \| (yes|no) \| (yes|no) \|")
+    rows = {m[1]: m.groups()[1:] for m in map(row.match, doc.read_text().splitlines()) if m}
+    assert set(rows) == {t.name for t in all_tools()}
+    yn = {True: "yes", False: "no"}
+    for name, documented in rows.items():
+        hints = caps.tool_annotations(name)
+        expected = (
+            caps.tool_capability(name),
+            yn[hints["readOnlyHint"]],
+            yn[hints["destructiveHint"]],
+            yn[hints["openWorldHint"]],
+        )
+        assert documented == expected, name

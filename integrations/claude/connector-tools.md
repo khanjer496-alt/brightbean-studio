@@ -11,7 +11,7 @@ Generated from the tool registry (`apps/mcp`). Annotations come from the capabil
 | `add_feed` | schedule_posts | no | no | yes | Follow an RSS or Atom feed (its address is fetched and checked first; an address already followed is returned as is). |
 | `add_post_comment` | manage_approvals | no | no | no | Comment on a post, optionally replying to a top-level comment (parent_id). |
 | `add_post_to_queue` | schedule_posts | no | no | yes | Schedule an existing draft or approved post into a queue's next free posting slot — the way to keep an account posting on its usual rhythm without choosing times yourself. |
-| `add_to_evergreen` | schedule_posts | no | no | no | Add content to the evergreen library so it is re-posted into empty queue slots: give exactly one of post_id (a published post; one item per published channel, or only social_account_id), template_id or idea_id (both need social_account_id). |
+| `add_to_evergreen` | schedule_posts | no | no | yes | Add content to the evergreen library so it is re-posted into empty queue slots: give exactly one of post_id (a published post; one item per published channel, or only social_account_id), template_id or idea_id (both need social_account_id). |
 | `apply_best_times` | schedule_posts | no | yes | no | Make an account's best times its weekly posting slots. |
 | `cancel_post` | schedule_posts | no | yes | no | Cancel a scheduled post, transitioning it back to draft. |
 | `cancel_repurpose_job` | use_ai_assistant | no | yes | no | Stop a queued repurposing job at once, or a running one before its next AI request. |
@@ -30,7 +30,7 @@ Generated from the tool registry (`apps/mcp`). Annotations come from the capabil
 | `create_short_link` | draft_posts | no | no | no | Make a short link to an http(s) address with the workspace's link service (built in by default; the workspace may have set up its own Dub, Short.io or Kutt account). |
 | `create_tag` | draft_posts | no | no | no | Create a tag, or return the existing one with that name. |
 | `create_template` | draft_posts | no | no | no | Save a reusable post template. |
-| `create_webhook_endpoint` | write_settings | no | no | no | Create an outbound webhook endpoint. |
+| `create_webhook_endpoint` | write_settings | no | no | yes | Create an outbound webhook endpoint. |
 | `delete_account_set` | write_settings | no | yes | no | Delete a saved account set; its accounts stay connected. |
 | `delete_bio_link` | write_settings | no | yes | no | Remove a link from a link-in-bio page (its past click counts stay in the stats). |
 | `delete_calendar_event` | draft_posts | no | yes | no | Delete a custom calendar event (find its id with list_calendar_events). |
@@ -107,7 +107,7 @@ Generated from the tool registry (`apps/mcp`). Annotations come from the capabil
 | `request_media_upload` | upload_media | no | no | no | Step 1 of uploading large media (video, or any file >1 MB) over MCP — no REST API key required. |
 | `resend_webhook_delivery` | write_settings | no | no | yes | Send a delivery again: same payload, same delivery id, fresh retry schedule. |
 | `resume_thread` | schedule_posts | no | no | yes | Resume a thread that stopped part-way (a platform post whose thread_status is 'partial'). |
-| `review_post` | manage_approvals | no | yes | no | Decide a post that is waiting for review, as the person behind this key (find them with list_approvals). |
+| `review_post` | manage_approvals | no | yes | yes | Decide a post that is waiting for review, as the person behind this key (find them with list_approvals). |
 | `rotate_webhook_secret` | write_settings | no | yes | no | Replace a webhook endpoint's signing secret. |
 | `run_report` | write_settings | no | no | yes | Build a report now. |
 | `schedule_draft` | schedule_posts | no | no | yes | Schedule an EXISTING draft or approved post — transitions eligible children to scheduled at the given UTC timestamp. |
@@ -130,5 +130,5 @@ Generated from the tool registry (`apps/mcp`). Annotations come from the capabil
 | `update_posting_slot` | schedule_posts | no | yes | no | Change a posting slot's time and/or switch it on or off (inactive slots are skipped by queues). |
 | `update_reply_draft` | reply_inbox | no | yes | no | Replace the body of an existing draft (or failed) reply. |
 | `update_template` | draft_posts | no | yes | no | Edit a post template; omitted fields are unchanged and platform_account_ids replaces the target accounts (all must be in the key's allowlist). |
-| `update_webhook_endpoint` | write_settings | no | yes | no | Change a webhook endpoint's url, event_types, description or is_enabled. |
+| `update_webhook_endpoint` | write_settings | no | yes | yes | Change a webhook endpoint's url, event_types, description or is_enabled. |
 | `upload_media` | upload_media | no | no | yes | Upload a small media file (≤1 MB raw / ~1.3 MB base64) via base64. |

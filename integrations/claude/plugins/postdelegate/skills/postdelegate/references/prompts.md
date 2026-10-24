@@ -8,3 +8,5 @@
 - "Add a link to the webinar on our link-in-bio page from the 3rd to the 10th."
 - "What is waiting for approval? Walk me through each one."
 - "Put our three best posts into evergreen so they refill empty slots."
+- "Follow our blog's RSS feed and turn each new article into a LinkedIn draft."
+- "When today's launch post gets 100 likes, reply under it with the signup link."
