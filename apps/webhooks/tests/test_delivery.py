@@ -1,16 +1,20 @@
 import datetime as dt
 import json
+import time
 from unittest.mock import patch
 
 import httpx
 import pytest
 from django.utils import timezone
 
+from apps.members.models import WorkspaceMembership
 from apps.notifications.models import EventType as NotificationEventType
 from apps.notifications.models import Notification
 from apps.webhooks import services
 from apps.webhooks.models import DeliveryStatus, EventType, WebhookDelivery, WebhookEndpoint
 from apps.webhooks.tasks import LOG_RETENTION_DAYS, prune_webhook_deliveries, retry_due_webhook_deliveries
+
+from .conftest import add_member, make_user
 
 pytestmark = pytest.mark.django_db
 
@@ -102,7 +106,7 @@ def test_redirects_and_network_errors_are_failures(endpoint):
     with patch.object(services, "_send_request", side_effect=httpx.ConnectTimeout("slow")):
         services.attempt_delivery(delivery.id)
     delivery.refresh_from_db()
-    assert delivery.last_status_code is None and "10 seconds" in delivery.last_error
+    assert delivery.last_status_code is None and "20 seconds" in delivery.last_error
     assert delivery.attempts == 2
 
 
@@ -231,7 +235,7 @@ def test_first_attempt_is_queued_when_the_transaction_commits(endpoint, workspac
         task.assert_called_once_with(str(delivery.id))
 
 
-def test_endpoint_is_disabled_after_repeated_failures_and_owners_are_told(endpoint, owner, manager):
+def test_endpoint_is_disabled_after_repeated_failures_and_managers_are_told(endpoint, owner, manager, workspace, org):
     endpoint.consecutive_failures = services.AUTO_DISABLE_THRESHOLD - 1
     endpoint.save(update_fields=["consecutive_failures"])
     delivery = _queue(endpoint)
@@ -240,16 +244,18 @@ def test_endpoint_is_disabled_after_repeated_failures_and_owners_are_told(endpoi
     endpoint.refresh_from_db()
     assert not endpoint.is_enabled
     assert endpoint.disabled_at and "15" in endpoint.disabled_reason
-    note = Notification.objects.get(event_type=NotificationEventType.WEBHOOK_DISABLED)
-    assert note.user == owner
-    assert not Notification.objects.filter(user=manager).exists()
+    editor = make_user("editor@example.com")
+    add_member(editor, org, workspace, WorkspaceMembership.WorkspaceRole.EDITOR)
+    notes = Notification.objects.filter(event_type=NotificationEventType.WEBHOOK_DISABLED)
+    assert {note.user for note in notes} == {owner, manager}
+    assert not Notification.objects.filter(user=editor).exists()
     assert services.emit("post.published", endpoint.workspace, {}) == []
 
     # Already off: further failures do not notify again.
     delivery.next_attempt_at = timezone.now()
     delivery.save(update_fields=["next_attempt_at"])
     _attempt(delivery, (500, ""))
-    assert Notification.objects.filter(event_type=NotificationEventType.WEBHOOK_DISABLED).count() == 1
+    assert Notification.objects.filter(event_type=NotificationEventType.WEBHOOK_DISABLED).count() == 2
 
 
 def test_success_resets_the_failure_streak(endpoint):
@@ -386,3 +392,65 @@ def test_an_attempt_that_outlived_its_lease_does_not_overwrite_the_outcome(endpo
 def test_every_payload_names_its_api_version(endpoint):
     delivery = services.send_test_event(endpoint)
     assert delivery.payload["api_version"] == services.API_VERSION
+
+
+def test_send_request_gives_up_when_the_response_drips_past_the_overall_deadline(endpoint):
+    class Dripping(httpx.SyncByteStream):
+        def __iter__(self):
+            yield b"a"
+            yield b"b"
+
+    def handler(request):
+        return httpx.Response(200, stream=Dripping())
+
+    # A deadline that has already passed by the first chunk.
+    with patch.object(services, "REQUEST_DEADLINE_SECONDS", -1.0), pytest.raises(httpx.TimeoutException):
+        services._send_request(endpoint.url, b"{}", {}, transport=httpx.MockTransport(handler))
+
+
+def test_send_request_gives_up_at_the_deadline_however_slow_each_step_is(endpoint):
+    def handler(request):
+        time.sleep(2)  # within every per-step timeout, but past the overall deadline
+        return httpx.Response(200)
+
+    started = time.monotonic()
+    with patch.object(services, "REQUEST_DEADLINE_SECONDS", 0.3), pytest.raises(httpx.TimeoutException):
+        services._send_request(endpoint.url, b"{}", {}, transport=httpx.MockTransport(handler))
+    assert time.monotonic() - started < 1.5
+
+
+def test_send_request_errors_reach_the_caller(endpoint):
+    def handler(request):
+        raise httpx.ConnectError("refused")
+
+    with pytest.raises(httpx.ConnectError):
+        services._send_request(endpoint.url, b"{}", {}, transport=httpx.MockTransport(handler))
+
+
+def test_a_list_of_long_strings_marks_its_object_truncated():
+    capped = services.cap_text_fields({"tags": ["x" * 20, "ok"], "inner": {"a": "y" * 20}}, 10)
+    assert capped["truncated"] is True and capped["tags"] == ["x" * 10, "ok"]
+    assert capped["inner"] == {"a": "y" * 10, "truncated": True}
+
+
+def test_long_text_fields_are_truncated_and_marked(endpoint, workspace):
+    long_body = "x" * (services.MAX_TEXT_FIELD_CHARS + 500)
+    [delivery] = services.emit(
+        EventType.POST_PUBLISHED, workspace, {"post_id": "p1", "comment": {"body": long_body, "id": "c1"}}
+    )
+    data = delivery.payload["data"]
+    assert len(data["comment"]["body"]) == services.MAX_TEXT_FIELD_CHARS
+    assert data["comment"]["truncated"] is True
+    assert "truncated" not in data
+    assert data["comment"]["id"] == "c1"
+
+
+def test_short_payloads_are_left_untouched_and_unmarked(endpoint, workspace):
+    [delivery] = services.emit(EventType.POST_PUBLISHED, workspace, {"post_id": "p1", "body": "short"})
+    assert delivery.payload["data"] == {"post_id": "p1", "body": "short"}
+
+
+def test_a_payload_with_many_long_fields_is_shortened_to_fit_the_size_cap(endpoint, workspace):
+    fields = {f"f{i}": "y" * services.MAX_TEXT_FIELD_CHARS for i in range(80)}
+    [delivery] = services.emit(EventType.POST_PUBLISHED, workspace, fields)
+    assert len(services.encode_payload(delivery.payload["data"])) <= services.MAX_PAYLOAD_BYTES

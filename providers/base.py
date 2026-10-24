@@ -343,6 +343,17 @@ class SocialProvider(ABC):
         return value if value and re.fullmatch(cls.competitor_handle_pattern, value) else ""
 
     @classmethod
+    def qualify_competitor_handle(cls, handle: str, using_account) -> str:
+        """``handle`` made unambiguous before it is stored, given the account that will read it.
+
+        For a network where a bare handle means "on the connected account's own
+        server" (a federated one), this spells that server out so the stored
+        handle keeps its meaning if the account is later replaced. The default
+        changes nothing.
+        """
+        return handle
+
+    @classmethod
     def _competitor_handle_from_url(cls, host: str, segments: list[str]) -> str:
         """The handle in a pasted profile link: the "@name" segment if there is one, else the last segment."""
         return next((s for s in segments if s.startswith("@")), segments[-1])
@@ -638,6 +649,15 @@ class SocialProvider(ABC):
         With ``since`` the walk stops once it reaches reviews older than that
         (plus a safety margin the provider chooses), so a routine poll costs one
         page. ``max_pages`` bounds a first import against the platform's quota.
+        """
+        raise NotImplementedError(f"{self.platform_name} does not support reviews")
+
+    def list_review_ids(self, access_token: str) -> set[str] | None:
+        """Every review id the platform currently shows for the connected location, or None if the list is incomplete.
+
+        Ids only, so a full pass is cheap: the inbox compares them with what it
+        holds to find reviews deleted on the platform. Return None rather than
+        a partial set when the list could not be read to the end.
         """
         raise NotImplementedError(f"{self.platform_name} does not support reviews")
 

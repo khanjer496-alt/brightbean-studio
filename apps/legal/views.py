@@ -78,11 +78,14 @@ THIRD_PARTY_ASSETS = [
         "delivery": "Embedded in report PDFs (apps/reports/fonts, licence texts included)",
     },
     {
-        "name": "Emoji names and groups",
-        "version": "",
-        "license": "Unicode emoji data (Unicode License)",
-        "url": "https://unicode.org/emoji/charts/",
-        "delivery": "Bundled (static/js/emoji-data.json)",
+        "name": "Emojibase (emojibase-data)",
+        "version": "18.0.0",
+        "license": "MIT",
+        "url": "https://emojibase.dev",
+        "delivery": (
+            "Bundled (static/js/emoji-data.json, licence texts in emoji-data.LICENSE.txt); "
+            "built from Unicode emoji data (Unicode License V3)"
+        ),
     },
     {
         "name": "Swagger UI",

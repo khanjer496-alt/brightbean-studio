@@ -21,6 +21,11 @@ class Subscription(models.Model):
         TRIALING = "trialing", "Trialing"
         ACTIVE = "active", "Active"
         PAST_DUE = "past_due", "Past due"
+        # Stripe gave up collecting (``unpaid``) or the subscription is
+        # ``paused``. Both stay linked to the Stripe subscription so a new
+        # Checkout can't start a second one; see ``effective_plan``.
+        UNPAID = "unpaid", "Unpaid"
+        PAUSED = "paused", "Paused"
         INCOMPLETE = "incomplete", "Incomplete"
         CANCELED = "canceled", "Canceled"
 
@@ -67,7 +72,9 @@ class Subscription(models.Model):
     @property
     def in_grace_period(self) -> bool:
         return (
-            self.status == self.Status.PAST_DUE and self.grace_until is not None and self.grace_until > timezone.now()
+            self.status in (self.Status.PAST_DUE, self.Status.UNPAID)
+            and self.grace_until is not None
+            and self.grace_until > timezone.now()
         )
 
     @property
@@ -79,6 +86,11 @@ class Subscription(models.Model):
         )
 
     @property
+    def has_linked_subscription(self) -> bool:
+        """A Stripe subscription that still exists and could bill, whatever it currently allows."""
+        return bool(self.stripe_subscription_id) and self.status in LINKED_STATUSES
+
+    @property
     def trial_days_left(self) -> int:
         if not self.is_trialing:
             return 0
@@ -86,7 +98,11 @@ class Subscription(models.Model):
         return max(1, remaining.days + (1 if remaining.seconds else 0))
 
     def effective_plan(self) -> Plan:
-        """The plan whose limits apply right now."""
+        """The plan whose limits apply right now.
+
+        ``past_due`` and ``unpaid`` keep the paid plan until the grace period
+        ends, then fall to Free; ``paused`` is Free straight away.
+        """
         if self.status == self.Status.ACTIVE:
             return get_plan(self.plan)
         if self.status == self.Status.TRIALING and (self.stripe_subscription_id or self.is_trialing):
@@ -98,6 +114,17 @@ class Subscription(models.Model):
     def start_grace_period(self) -> None:
         if self.grace_until is None:
             self.grace_until = timezone.now() + timedelta(days=settings.BILLING_GRACE_PERIOD_DAYS)
+
+
+# Statuses of a row whose Stripe subscription is still alive, so a second one
+# must not be started for the organization.
+LINKED_STATUSES = (
+    Subscription.Status.ACTIVE,
+    Subscription.Status.TRIALING,
+    Subscription.Status.PAST_DUE,
+    Subscription.Status.UNPAID,
+    Subscription.Status.PAUSED,
+)
 
 
 class ProcessedStripeEvent(models.Model):

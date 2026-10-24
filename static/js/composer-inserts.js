@@ -11,6 +11,16 @@
 (function () {
     const RECENT_EMOJI_KEY = 'composer:recent-emoji';
     const RECENT_EMOJI_MAX = 16;
+    const EMOJI_TONE_KEY = 'composer:emoji-tone';
+    // 0 keeps the default (yellow) emoji; 1-5 are the Fitzpatrick skin tones, in the order emoji-data.json lists them.
+    const EMOJI_TONES = [
+        { label: 'Default skin tone', glyph: '\u{1F44B}' },
+        { label: 'Light skin tone', glyph: '\u{1F44B}\u{1F3FB}' },
+        { label: 'Medium-light skin tone', glyph: '\u{1F44B}\u{1F3FC}' },
+        { label: 'Medium skin tone', glyph: '\u{1F44B}\u{1F3FD}' },
+        { label: 'Medium-dark skin tone', glyph: '\u{1F44B}\u{1F3FE}' },
+        { label: 'Dark skin tone', glyph: '\u{1F44B}\u{1F3FF}' },
+    ];
     const EMOJI_SEARCH_MAX = 96;
     const MENTION_PATTERN = /(^|\s)@([\w.@-]{1,40})$/;
     const MENTION_DEBOUNCE_MS = 250;
@@ -48,6 +58,23 @@
         }
     }
 
+    function readEmojiTone() {
+        try {
+            const tone = Number(localStorage.getItem(EMOJI_TONE_KEY));
+            return Number.isInteger(tone) && tone >= 0 && tone < EMOJI_TONES.length ? tone : 0;
+        } catch (e) {
+            return 0;
+        }
+    }
+
+    function writeEmojiTone(tone) {
+        try {
+            localStorage.setItem(EMOJI_TONE_KEY, String(tone));
+        } catch (e) {
+            // Private mode or blocked storage: the choice just doesn't persist.
+        }
+    }
+
     async function getJSON(url, options) {
         const response = await fetch(url, {
             credentials: 'same-origin',
@@ -82,6 +109,8 @@
                 emojiQuery: '',
                 emojiGroup: 0,
                 emojiLoading: false,
+                emojiTone: 0,
+                emojiToneChoices: EMOJI_TONES,
 
                 // Hashtags and signatures
                 hashtagSets: [],
@@ -156,6 +185,7 @@
 
                 async openEmoji() {
                     this.recentEmoji = readRecentEmoji();
+                    this.emojiTone = readEmojiTone();
                     if (!this.groups.length) {
                         this.emojiLoading = true;
                         this.groups = await loadEmoji(this.urls.emoji);
@@ -177,6 +207,16 @@
                     return matches;
                 },
 
+                // A row is [glyph, name, keywords, skin-tone glyphs?]; show the chosen tone where it has one.
+                emojiGlyph(row) {
+                    return (this.emojiTone && row[3] && row[3][this.emojiTone - 1]) || row[0];
+                },
+
+                setEmojiTone(tone) {
+                    this.emojiTone = tone;
+                    writeEmojiTone(tone);
+                },
+
                 pickEmoji(emoji) {
                     this.insert(emoji);
                     this.recentEmoji = [emoji, ...this.recentEmoji.filter((e) => e !== emoji)].slice(0, RECENT_EMOJI_MAX);
@@ -185,7 +225,7 @@
 
                 emojiName(emoji) {
                     for (const group of this.groups) {
-                        const row = group.emoji.find((r) => r[0] === emoji);
+                        const row = group.emoji.find((r) => r[0] === emoji || (r[3] && r[3].includes(emoji)));
                         if (row) return row[1];
                     }
                     return emoji;

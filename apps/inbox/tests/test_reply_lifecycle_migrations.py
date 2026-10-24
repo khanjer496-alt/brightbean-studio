@@ -213,3 +213,44 @@ def test_backfill_arriving_late_spares_rows_written_since_0002(inbox_message, re
     assert failed.status == InboxReply.Status.FAILED
     assert delivered.status == InboxReply.Status.SENT
     assert delivered.created_at == drafted_at
+
+
+FEED_INDEXES = {
+    "inbox_msg_ws_recv_id",
+    "inbox_msg_ws_created",
+    "inbox_msg_ws_assign_recv",
+    "inbox_msg_ws_sent_recv",
+    "inbox_msg_search_gin",
+}
+
+
+def _message_index_defs() -> dict[str, str]:
+    with connection.cursor() as cursor:
+        cursor.execute("SELECT indexname, indexdef FROM pg_indexes WHERE tablename = 'inbox_message'")
+        return dict(cursor.fetchall())
+
+
+@pytest.mark.django_db(transaction=True)
+def test_feed_index_migration_can_be_rerun_after_a_partial_failure():
+    """0007 builds its indexes concurrently outside a transaction, so a failure leaves some behind; a rerun must finish."""
+    migration = importlib.import_module("apps.inbox.migrations.0007_inbox_feed_indexes").Migration
+    state = MigrationExecutor(connection).loader.project_state((APP, "0007_inbox_feed_indexes"))
+    operations = migration.operations
+    before = {name: sql for name, sql in _message_index_defs().items() if name in FEED_INDEXES}
+    assert set(before) == FEED_INDEXES
+
+    def forwards(ops):
+        with connection.schema_editor(atomic=False) as editor:
+            for op in ops:
+                op.database_forwards(APP, editor, state, state)
+
+    # Simulate a crash after two indexes: drop the rest, then run the whole migration again.
+    with connection.schema_editor(atomic=False) as editor:
+        for op in operations[2:]:
+            op.database_backwards(APP, editor, state, state)
+    assert len(FEED_INDEXES & set(_message_index_defs())) == 2
+    forwards(operations)
+    # Running it a further time (nothing missing) is also fine.
+    forwards(operations)
+
+    assert {name: sql for name, sql in _message_index_defs().items() if name in FEED_INDEXES} == before

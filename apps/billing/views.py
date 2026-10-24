@@ -116,6 +116,9 @@ def checkout(request):
             services.change_plan(org, plan, interval)
             messages.success(request, f"You're now on the {plan.name} plan. Any difference is prorated.")
             return redirect("billing:overview")
+        if sub.has_linked_subscription:
+            # Unpaid or paused: a new Checkout would add a second subscription.
+            return redirect(services.manage_existing_subscription(org))
         return redirect(services.create_checkout_session(org, request.user, plan, interval))
     except services.BillingNotConfiguredError:
         logger.exception("Billing is enabled but Stripe isn't configured for %s/%s", slug, interval)

@@ -125,6 +125,18 @@ class TestStripeRedirects:
         assert kwargs["proration_behavior"] == "create_prorations"
         assert Subscription.objects.get(organization=organization).plan == "agency"
 
+    @pytest.mark.parametrize("status", [Subscription.Status.UNPAID, Subscription.Status.PAUSED])
+    def test_unpaid_or_paused_subscription_goes_to_the_portal_not_a_second_checkout(
+        self, billing, owner_client, organization, status
+    ):
+        set_plan(organization, "creator", status=status, stripe_customer_id="cus_1", stripe_subscription_id="sub_1")
+        with mock.patch("apps.billing.services.stripe") as stripe_mock:
+            stripe_mock.billing_portal.Session.create.return_value = {"url": "https://billing.stripe.com/p/1"}
+            response = owner_client.post(reverse("billing:checkout"), {"plan": "team", "interval": "month"})
+        assert response["Location"] == "https://billing.stripe.com/p/1"
+        stripe_mock.checkout.Session.create.assert_not_called()
+        stripe_mock.Subscription.modify.assert_not_called()
+
     @pytest.mark.parametrize("data", [{"plan": "free", "interval": "month"}, {"plan": "team", "interval": "weekly"}])
     def test_invalid_choice_is_refused(self, billing, owner_client, data):
         with mock.patch("apps.billing.services.stripe") as stripe_mock:
@@ -309,3 +321,35 @@ class TestBillingDisabledUnchanged:
         assert owner_client.get(reverse("inbox:feed", args=[workspace.id])).status_code == 200
         assert owner_client.get(reverse("client_portal_admin:client_list", args=[workspace.id])).status_code == 200
         assert not Subscription.objects.exists()
+
+
+@pytest.mark.django_db
+class TestCsvImportPlanLimit:
+    """A CSV import that would pass the monthly allowance is refused whole, not stopped partway."""
+
+    def _put_csv(self, client, workspace, rows):
+        session = client.session
+        session[f"csv_import_{workspace.id}"] = {"headers": ["caption", "date", "platform"], "rows": rows}
+        session[f"csv_mapping_{workspace.id}"] = {"caption": 0, "date": 1, "platforms": 2}
+        session.save()
+
+    def test_refuses_the_whole_import_before_creating_any_post(self, billing, owner_client, organization, workspace):
+        expire_trial(organization)
+        make_channels(workspace, 1)
+        day = (timezone.now() + timedelta(days=40)).strftime("%Y-%m-%d")
+        rows = [[f"Post {i}", day, "linkedin_personal"] for i in range(31)]
+        self._put_csv(owner_client, workspace, rows)
+        response = owner_client.post(reverse("composer:csv_confirm_import", args=[workspace.id]))
+        assert response.status_code == 200
+        assert "30 scheduled posts per month" in response.content.decode()
+        assert "No posts were imported" in response.content.decode()
+        assert not PlatformPost.objects.filter(post__workspace=workspace).exists()
+        assert f"csv_import_{workspace.id}" not in owner_client.session
+
+    def test_import_within_the_allowance_proceeds(self, billing, owner_client, organization, workspace):
+        expire_trial(organization)
+        make_channels(workspace, 1)
+        day = (timezone.now() + timedelta(days=40)).strftime("%Y-%m-%d")
+        self._put_csv(owner_client, workspace, [[f"Post {i}", day, "linkedin_personal"] for i in range(30)])
+        response = owner_client.post(reverse("composer:csv_confirm_import", args=[workspace.id]))
+        assert response.context["created_count"] == 30

@@ -574,3 +574,159 @@ class TestAnalytics:
 
     def test_accounts_without_reviews_yield_nothing(self, inbox_account, inbox_workspace):
         assert review_stats.review_overview([inbox_account], self.rng(inbox_workspace)) is None
+
+
+class TestRemovedReviewReconcile:
+    """Reviews deleted on Google are archived (not deleted) by the daily reconcile."""
+
+    def _ids(self, *numbers):
+        return {f"{PARENT}/reviews/{n}" for n in numbers}
+
+    def _run(self, account, listed=None, *, error=None):
+        from apps.inbox.review_reconcile import reconcile_account
+
+        with patch.object(GoogleBusinessProvider, "list_review_ids", return_value=listed, side_effect=error):
+            return reconcile_account(account)
+
+    def test_provider_lists_ids_with_a_field_mask_and_pages(self, provider):
+        provider._request = fake_pages(
+            {"reviews": [{"name": f"{PARENT}/reviews/r1"}], "nextPageToken": "p2"},
+            {"reviews": [{"name": f"{PARENT}/reviews/r2"}]},
+        )
+        assert provider.list_review_ids("tok") == {f"{PARENT}/reviews/r1", f"{PARENT}/reviews/r2"}
+        assert provider._request.calls[0][2]["params"]["fields"] == "reviews(name),nextPageToken"
+        assert provider._request.calls[1][2]["params"]["pageToken"] == "p2"
+
+    def test_provider_returns_none_when_the_list_never_ends(self, provider, monkeypatch):
+        monkeypatch.setattr("providers.google_business.REVIEW_IDS_MAX_PAGES", 2)
+        provider._request = fake_pages(*[{"reviews": [], "nextPageToken": f"p{i}"} for i in range(3)])
+        assert provider.list_review_ids("tok") is None
+
+    def test_archives_reviews_missing_from_the_platform_and_keeps_the_rest(self, inbox_workspace, gbp_account):
+        keep = make_review(inbox_workspace, gbp_account, 1)
+        gone = make_review(inbox_workspace, gbp_account, 2, status=InboxMessage.Status.OPEN)
+        assert self._run(gbp_account, self._ids(1)) == 1
+        keep.refresh_from_db()
+        gone.refresh_from_db()
+        assert keep.status == InboxMessage.Status.UNREAD and not keep.removed_from_platform
+        assert gone.status == InboxMessage.Status.ARCHIVED and gone.removed_from_platform
+        assert gone.extra["removed_previous_status"] == "open" and gone.body == "Nice place"
+        assert not gone.needs_reply
+        assert gone not in InboxMessage.objects.filter(needs_reply_q_filter())
+
+    def test_removed_reviews_leave_the_rating_analytics(self, inbox_workspace, gbp_account):
+        make_review(inbox_workspace, gbp_account, 1, rating=5)
+        make_review(inbox_workspace, gbp_account, 2, rating=1)
+        self._run(gbp_account, self._ids(1))
+        rows = review_stats._review_rows([gbp_account], timezone.now() - timedelta(days=10), timezone.now())
+        assert [message.rating for message, _ in rows] == [5]
+
+    def test_a_review_the_platform_lists_again_is_restored(self, inbox_workspace, gbp_account):
+        message = make_review(inbox_workspace, gbp_account, "r2", status=InboxMessage.Status.OPEN)
+        self._run(gbp_account, self._ids(1))
+        provider = GoogleBusinessProvider({"account_id": "accounts/1", "review_location": "locations/9"})
+        provider._request = fake_pages({"reviews": [review(2)]})
+        for msg in provider.list_reviews("tok").messages:
+            InboxSyncEngine()._upsert_message(gbp_account, msg, notify=False)
+        message.refresh_from_db()
+        assert not message.removed_from_platform and message.status == InboxMessage.Status.OPEN
+        assert "removed_previous_status" not in message.extra
+
+    def test_the_next_reconcile_restores_a_review_listed_again(self, inbox_workspace, gbp_account):
+        message = make_review(inbox_workspace, gbp_account, 2, status=InboxMessage.Status.OPEN)
+        self._run(gbp_account, self._ids(1))
+        message.refresh_from_db()
+        assert message.removed_from_platform
+        self._run(gbp_account, self._ids(1, 2))
+        message.refresh_from_db()
+        assert not message.removed_from_platform and message.status == InboxMessage.Status.OPEN
+        assert "removed_previous_status" not in message.extra
+
+    def test_a_removed_review_cannot_be_replied_to(self, inbox_workspace, gbp_account):
+        from apps.inbox.reply_policy import WEB_INBOX, review_reply_allowed
+
+        message = make_review(inbox_workspace, gbp_account, 2)
+        self._run(gbp_account, self._ids(1))
+        message.refresh_from_db()
+        allowed, reason = review_reply_allowed(message, origin=WEB_INBOX)
+        assert not allowed and "removed" in reason
+
+    def test_an_empty_list_with_reviews_on_file_changes_nothing(self, inbox_workspace, gbp_account):
+        message = make_review(inbox_workspace, gbp_account, 1)
+        assert self._run(gbp_account, set()) == 0
+        message.refresh_from_db()
+        assert not message.removed_from_platform
+
+    def test_an_incomplete_list_changes_nothing(self, inbox_workspace, gbp_account):
+        message = make_review(inbox_workspace, gbp_account, 1)
+        assert self._run(gbp_account, None) is None
+        message.refresh_from_db()
+        assert not message.removed_from_platform
+
+    def test_reviews_that_arrived_during_the_check_are_not_judged(self, inbox_workspace, gbp_account):
+        from apps.inbox.review_reconcile import reconcile_account
+
+        def listing(*args, **kwargs):
+            make_review(inbox_workspace, gbp_account, 3)  # imported by the sync while the list was read
+            return self._ids(1)
+
+        make_review(inbox_workspace, gbp_account, 1)
+        with patch.object(GoogleBusinessProvider, "list_review_ids", side_effect=listing):
+            assert reconcile_account(gbp_account) == 0
+
+    def test_rate_limit_backs_off_with_jitter_and_grows(self, gbp_account):
+        from apps.inbox.models import ReviewReconcileState
+        from apps.inbox.review_reconcile import BACKOFF_BASE, backoff_delay
+        from providers.exceptions import RateLimitError
+
+        before = timezone.now()
+        assert self._run(gbp_account, error=RateLimitError("slow down")) is None
+        state = ReviewReconcileState.objects.get(social_account=gbp_account)
+        assert state.consecutive_rate_limits == 1 and state.last_reconciled_at is None
+        assert before + BACKOFF_BASE / 2 <= state.backoff_until <= timezone.now() + BACKOFF_BASE
+        delays = {backoff_delay(3) for _ in range(20)}
+        assert len(delays) > 1 and all(BACKOFF_BASE * 2 <= d <= BACKOFF_BASE * 4 for d in delays)
+        assert backoff_delay(1, retry_after=7200) >= timedelta(hours=2)
+
+    def test_a_backed_off_location_is_left_alone_until_it_expires(self, gbp_account):
+        from apps.inbox.models import ReviewReconcileState
+        from apps.inbox.review_reconcile import _due_accounts
+
+        ReviewReconcileState.objects.create(
+            social_account=gbp_account, backoff_until=timezone.now() + timedelta(hours=1), consecutive_rate_limits=2
+        )
+        assert _due_accounts() == []
+        ReviewReconcileState.objects.update(backoff_until=timezone.now() - timedelta(minutes=1))
+        assert _due_accounts() == [gbp_account]
+
+    def test_a_location_is_checked_once_a_day_and_success_resets_the_backoff(self, inbox_workspace, gbp_account):
+        from apps.inbox.models import ReviewReconcileState
+        from apps.inbox.review_reconcile import _due_accounts
+
+        ReviewReconcileState.objects.create(
+            social_account=gbp_account, backoff_until=timezone.now() - timedelta(minutes=1), consecutive_rate_limits=3
+        )
+        make_review(inbox_workspace, gbp_account, 1)
+        self._run(gbp_account, self._ids(1))
+        state = ReviewReconcileState.objects.get(social_account=gbp_account)
+        assert (state.consecutive_rate_limits, state.backoff_until) == (0, None)
+        assert _due_accounts() == []
+
+    def test_spent_quota_trips_the_shared_breaker(self, gbp_account):
+        from providers.exceptions import QuotaExceededError
+
+        assert self._run(gbp_account, error=QuotaExceededError("daily quota")) is False
+        with patch.object(GoogleBusinessProvider, "list_review_ids") as listing:
+            assert self._run(gbp_account, self._ids()) is False
+        listing.assert_not_called()
+
+    def test_other_platforms_are_never_asked(self, inbox_account):
+        from apps.inbox.review_reconcile import _due_accounts
+
+        assert _due_accounts() == []
+
+
+def needs_reply_q_filter():
+    from apps.inbox.models import needs_reply_q
+
+    return needs_reply_q()

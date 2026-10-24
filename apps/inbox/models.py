@@ -166,9 +166,18 @@ class InboxMessage(models.Model):
         return self.review_reply.get("state") == REVIEW_REPLY_REJECTED
 
     @property
+    def removed_from_platform(self) -> bool:
+        """A review the platform no longer shows (deleted by its author or removed); kept here as history."""
+        return bool((self.extra or {}).get("removed_from_platform_at"))
+
+    @property
     def needs_reply(self) -> bool:
         """A review with no public reply yet, or whose reply the platform rejected."""
-        return self.message_type == self.MessageType.REVIEW and (not self.review_reply or self.review_reply_rejected)
+        return (
+            self.message_type == self.MessageType.REVIEW
+            and not self.removed_from_platform
+            and (not self.review_reply or self.review_reply_rejected)
+        )
 
     @property
     def attachments(self):
@@ -187,8 +196,10 @@ def needs_reply_q() -> models.Q:
 
     The queryset twin of :attr:`InboxMessage.needs_reply`, shared by the inbox, REST and MCP filters.
     """
-    return models.Q(message_type=InboxMessage.MessageType.REVIEW) & (
-        ~models.Q(extra__has_key="review_reply") | models.Q(extra__review_reply__state=REVIEW_REPLY_REJECTED)
+    return (
+        models.Q(message_type=InboxMessage.MessageType.REVIEW)
+        & ~models.Q(extra__has_key="removed_from_platform_at")
+        & (~models.Q(extra__has_key="review_reply") | models.Q(extra__review_reply__state=REVIEW_REPLY_REJECTED))
     )
 
 
@@ -199,6 +210,29 @@ def rating_band(rating: int | None) -> str:
     if rating >= 4:
         return SavedReply.RatingBand.POSITIVE
     return SavedReply.RatingBand.NEUTRAL if rating == 3 else SavedReply.RatingBand.NEGATIVE
+
+
+class ReviewReconcileState(models.Model):
+    """Where one location's check for reviews deleted on the platform stands.
+
+    ``backoff_until`` holds the location back after the platform rate-limited
+    it, growing with ``consecutive_rate_limits`` (see ``review_reconcile``).
+    """
+
+    social_account = models.OneToOneField(
+        "social_accounts.SocialAccount",
+        on_delete=models.CASCADE,
+        related_name="review_reconcile_state",
+    )
+    last_reconciled_at = models.DateTimeField(null=True, blank=True)
+    backoff_until = models.DateTimeField(null=True, blank=True)
+    consecutive_rate_limits = models.PositiveSmallIntegerField(default=0)
+
+    class Meta:
+        db_table = "inbox_review_reconcile_state"
+
+    def __str__(self):
+        return f"Review reconcile for {self.social_account_id}"
 
 
 class InboxReply(models.Model):

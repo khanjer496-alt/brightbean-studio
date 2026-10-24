@@ -49,11 +49,47 @@ function toolbar({ el = textarea(), accounts = [], storage, fetch } = {}) {
   return { component, el, flush };
 }
 
-test('emoji data is a searchable compact set with names', () => {
+test('emoji data is a full, compact set with names, keywords, skin tones and flags', () => {
   const rows = emoji.groups.flatMap((g) => g.emoji);
-  assert.ok(rows.length > 300);
-  assert.ok(rows.every(([glyph, name]) => glyph && typeof name === 'string' && name));
+  assert.ok(rows.length > 1800);
+  assert.ok(rows.every(([glyph, name, keywords]) => glyph && typeof name === 'string' && name && (keywords === undefined || typeof keywords === 'string')));
   assert.equal(new Set(rows.map((r) => r[0])).size, rows.length);
+  assert.ok(emoji.groups.map((g) => g.name).includes('Flags'));
+  const wave = rows.find((r) => r[0] === '👋');
+  assert.equal(wave[3].length, 5, 'five skin tones');
+  assert.ok(rows.filter((r) => r[3]).every((r) => r[3].length === 5));
+  assert.match(emoji.source, /^emojibase-data \d+\.\d+\.\d+ \(MIT\)/);
+  assert.ok(fs.statSync(path.join(root, 'static/js/emoji-data.json')).size < 200 * 1024, 'stays small');
+});
+
+test('emoji search finds flags by country name and shortcode keywords', async () => {
+  const { component } = toolbar();
+  await component.openEmoji();
+  component.emojiQuery = 'new zealand';
+  assert.ok(component.emojiShown.some((r) => r[0] === '🇳🇿'));
+  component.emojiQuery = 'rofl';
+  assert.ok(component.emojiShown.some((r) => r[0] === '🤣'));
+});
+
+test('the chosen skin tone applies to emoji that have one and is remembered', async () => {
+  const saved = {};
+  const storage = { getItem: (k) => saved[k] ?? null, setItem: (k, v) => { saved[k] = v; } };
+  const { component } = toolbar({ storage });
+  await component.openEmoji();
+  const wave = component.groups.flatMap((g) => g.emoji).find((r) => r[0] === '👋');
+  const smile = component.groups.flatMap((g) => g.emoji).find((r) => r[0] === '🙂');
+  assert.equal(component.emojiGlyph(wave), '👋');
+  component.setEmojiTone(3);
+  assert.equal(component.emojiGlyph(wave), '👋🏽');
+  assert.equal(component.emojiGlyph(smile), '🙂', 'emoji without tones are unchanged');
+  assert.equal(saved['composer:emoji-tone'], '3');
+  assert.equal(component.emojiName('👋🏽'), 'waving hand');
+  const again = toolbar({ storage });
+  await again.component.openEmoji();
+  assert.equal(again.component.emojiTone, 3);
+  const corrupt = toolbar({ storage: { getItem: () => '99', setItem() {} } });
+  await corrupt.component.openEmoji();
+  assert.equal(corrupt.component.emojiTone, 0);
 });
 
 test('insert puts text at the cursor and replaces a selection', () => {

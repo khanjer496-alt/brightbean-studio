@@ -14,10 +14,20 @@ class InboxConfig(AppConfig):
     @staticmethod
     def _register_tasks(sender, **kwargs):
         from apps.common.background import register_recurring_task
-        from apps.inbox.tasks import INBOX_SYNC_INTERVAL_SECONDS, run_inbox_sync_cycle
+        from apps.inbox.tasks import (
+            INBOX_SYNC_INTERVAL_SECONDS,
+            REVIEW_RECONCILE_INTERVAL_SECONDS,
+            reconcile_removed_reviews,
+            run_inbox_sync_cycle,
+        )
 
         register_recurring_task(
             run_inbox_sync_cycle,
             repeat=INBOX_SYNC_INTERVAL_SECONDS,
             verbose_name="run_inbox_sync_cycle",
+        )
+        register_recurring_task(
+            reconcile_removed_reviews,
+            repeat=REVIEW_RECONCILE_INTERVAL_SECONDS,
+            verbose_name="reconcile_removed_reviews",
         )

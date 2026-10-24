@@ -43,6 +43,9 @@ REVIEWS_PAGE_SIZE = 50
 # A first import walks this many pages (1,000 reviews) so the history analytics
 # reads is complete for nearly every location; later polls stop at ``since``.
 REVIEWS_FIRST_IMPORT_PAGES = 20
+# The reconcile that finds reviews deleted on Google reads only ids, but still
+# stops here (5,000 reviews) rather than walking a location without end.
+REVIEW_IDS_MAX_PAGES = 100
 # Accounts searched for the connected location when a login manages several.
 REVIEWS_OWNER_ACCOUNTS_MAX = 20
 # A reply or edit made on Google can move updateTime a little after we last
@@ -482,6 +485,23 @@ class GoogleBusinessProvider(SocialProvider):
                 page_token = None if reached_old else page_token
                 break
         return ReviewPage(messages=messages, average_rating=average, total_count=total, next_page_token=page_token)
+
+    def list_review_ids(self, access_token: str) -> set[str] | None:
+        parent = self._review_parent(access_token)
+        ids: set[str] = set()
+        page_token = None
+        for _ in range(REVIEW_IDS_MAX_PAGES):
+            params: dict = {"pageSize": REVIEWS_PAGE_SIZE, "fields": "reviews(name),nextPageToken"}
+            if page_token:
+                params["pageToken"] = page_token
+            data = self._request(
+                "GET", f"{REVIEWS_API}/{parent}/reviews", access_token=access_token, params=params
+            ).json()
+            ids.update(review["name"] for review in data.get("reviews", []) if "name" in review)
+            page_token = data.get("nextPageToken")
+            if not page_token:
+                return ids
+        return None
 
     def get_messages(self, access_token: str, since: datetime | None = None) -> list[ProviderInboxMessage]:
         pages = 5 if since else REVIEWS_FIRST_IMPORT_PAGES

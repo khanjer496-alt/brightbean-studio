@@ -97,6 +97,7 @@ def test_licenses_show_source_links_and_assets(client):
     assert "brightbeanxyz/brightbean-studio" in html
     for asset in ("Chart.js", "flatpickr", "SortableJS", "htmx", "Alpine.js", "Cropper.js", "Manrope"):
         assert asset in html
+    assert "Emojibase" in html and "18.0.0" in html
 
 
 def test_brand_urls_default_to_the_legal_routes():
