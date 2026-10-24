@@ -29,5 +29,9 @@ anthropic>=2.1,<3.0
 # fontTools); uharfbuzz is HarfBuzz's binary abi3 wheel (manylinux x86_64/aarch64,
 # macOS), used for Arabic joining and bidi. No cairo/pango, no compiler in the image.
 fpdf2>=2.8,<3.0
+
+# Content repurposing (apps.repurpose) — reads text out of an uploaded PDF. Pure
+# Python (BSD-3), no system libraries; page and size caps are applied before it runs.
+pypdf>=5.0,<7.0
 uharfbuzz>=0.50,<1.0
 sentry-sdk[django]>=2.13,<3.0

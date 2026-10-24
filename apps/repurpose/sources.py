@@ -1,0 +1,455 @@
+"""Turning a source into the plain text a run works from.
+
+Every reader returns a :class:`Source`: the text (capped at ``MAX_SOURCE_CHARS``),
+a label and where it came from. The text is *data* from then on. The prompts
+wrap it in a ``<source>`` tag and tell the model never to follow instructions
+inside it; nothing here interprets it.
+
+* ``from_url``: the composer's SSRF-safe fetch (``ai_writer.services.fetch_link``),
+  then a small readability pass: prefer ``<article>`` / ``<main>``, drop
+  navigation, forms and scripts. No headless browser.
+* ``from_pdf``: ``pypdf`` in a child process with memory, CPU and time limits,
+  after a size check and a ``%PDF-`` check; refuses password-protected files and
+  caps pages, stream sizes and characters. Nothing in the file is run. A run
+  takes the bytes with ``pending_pdf`` and reads them in the background task.
+* ``from_post``: a published post of the workspace.
+* ``from_video``: a video link on a platform whose API returns captions for the
+  connected account's own videos, otherwise the caller pastes a transcript.
+"""
+
+from __future__ import annotations
+
+import html
+import json
+import logging
+import re
+import subprocess
+import sys
+from dataclasses import dataclass
+from datetime import timedelta
+from html.parser import HTMLParser
+
+from django.conf import settings
+from django.core.cache import cache
+from django.utils import timezone
+
+from apps.ai_writer import services as ai_services
+
+logger = logging.getLogger(__name__)
+
+MAX_SOURCE_CHARS = 24_000
+MIN_SOURCE_CHARS = 40
+_REFRESH_WINDOW = timedelta(minutes=5)
+MAX_LABEL_CHARS = 255
+
+
+class TranscriptNeededError(ValueError):
+    """No transcript could be read through the platform's API; the person pastes one instead."""
+
+    code = "transcript_needed"
+
+
+@dataclass(frozen=True)
+class Source:
+    type: str
+    text: str
+    label: str = ""
+    url: str = ""
+    post: object | None = None
+    account: object | None = None
+    # A PDF not read yet: its bytes, for the background run (``pending_pdf``).
+    pdf: bytes | None = None
+
+
+def _finish(source_type: str, text: str, **extra) -> Source:
+    text = re.sub(r"[ \t\r\f\v]+", " ", text or "")
+    text = re.sub(r"\s*\n\s*\n\s*", "\n\n", text).strip()[:MAX_SOURCE_CHARS]
+    if len(text) < MIN_SOURCE_CHARS:
+        raise ValueError("There is too little text in that source to work from.")
+    extra["label"] = (extra.get("label") or "")[:MAX_LABEL_CHARS]
+    return Source(type=source_type, text=text, **extra)
+
+
+# ---------------------------------------------------------------------------
+# Pasted text
+# ---------------------------------------------------------------------------
+
+
+def from_text(text: str, label: str = "") -> Source:
+    return _finish("text", text, label=label or "Pasted text")
+
+
+# ---------------------------------------------------------------------------
+# Web pages
+# ---------------------------------------------------------------------------
+
+_SKIP_TAGS = frozenset(
+    {"script", "style", "noscript", "svg", "template", "nav", "header", "footer", "aside", "form", "iframe", "button"}
+)
+_BLOCK_TAGS = frozenset(
+    {"p", "div", "br", "li", "ul", "ol", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "tr", "section"}
+)
+_VOID_TAGS = frozenset(
+    {"area", "base", "br", "col", "embed", "hr", "img", "input", "link", "meta", "source", "track", "wbr"}
+)
+# Page furniture marked by role, class or id rather than by tag: share bars,
+# related posts, newsletter boxes, comments, Wikipedia's infoboxes and references.
+_SKIP_ROLES = frozenset({"navigation", "banner", "contentinfo", "complementary", "search", "dialog", "alert"})
+_SKIP_HINT = re.compile(
+    r"(?:^|[\s_-])(?:share|sharing|social|related|newsletter|subscribe|signup|comments?|sidebar|breadcrumbs?|"
+    r"cookie|consent|promo|advert|ads|sponsor|popup|modal|byline-share|infobox|navbox|reflist|references?|"
+    r"mw-editsection|toc|catlinks|printfooter|noprint|author-bio|tags|footnotes?)(?:$|[\s_-])",
+    re.IGNORECASE,
+)
+_MIN_CONTAINER_CHARS = 200
+_CONTENT_ROOTS = frozenset({"html", "body", "main", "article"})
+
+
+def _is_furniture(tag: str, attrs: dict) -> bool:
+    if tag in _CONTENT_ROOTS:
+        return False  # their classes describe the whole page (``vector-toc-available``), not furniture
+    if tag in _SKIP_TAGS or "hidden" in attrs or attrs.get("aria-hidden") == "true":
+        return True
+    if (attrs.get("role") or "").lower() in _SKIP_ROLES:
+        return True
+    hints = f"{attrs.get('class') or ''} {attrs.get('id') or ''}"
+    return bool(hints.strip()) and bool(_SKIP_HINT.search(hints))
+
+
+class _ReadableParser(HTMLParser):
+    """Collects text three ways (article, main, whole body) so the best container can win.
+
+    Text inside page furniture (menus, share bars, related links, comments) is
+    dropped; whitespace is collapsed the way a browser would, outside ``<pre>``.
+    """
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.title = ""
+        self.og_title = ""
+        self._in_title = False
+        # Tags opened since a piece of furniture started; empty when the text counts.
+        self._skip: list[str] = []
+        self._pre = 0
+        self._open: dict[str, int] = {"article": 0, "main": 0}
+        self.buffers: dict[str, list[str]] = {"article": [], "main": [], "body": []}
+
+    def handle_starttag(self, tag, attrs):
+        values = dict(attrs)
+        if tag == "meta":
+            if values.get("property") == "og:title":
+                self.og_title = values.get("content") or ""
+            return
+        if tag == "title":
+            self._in_title = True
+            return
+        if tag in _VOID_TAGS:
+            if tag == "br" and not self._skip:
+                self._write("\n")
+            return
+        if self._skip or _is_furniture(tag, values):
+            self._skip.append(tag)
+            return
+        if tag == "pre":
+            self._pre += 1
+        if tag in self._open:
+            self._open[tag] += 1
+        if tag in _BLOCK_TAGS:
+            self._write("\n")
+
+    def handle_startendtag(self, tag, attrs):
+        if tag in _VOID_TAGS or tag == "meta":
+            self.handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag):
+        if tag == "title":
+            self._in_title = False
+            return
+        if self._skip:
+            if tag in self._skip:
+                # Close back to the matching tag, tolerating sloppy markup.
+                while self._skip and self._skip.pop() != tag:
+                    pass
+            return
+        if tag == "pre" and self._pre:
+            self._pre -= 1
+        if tag in self._open and self._open[tag]:
+            self._open[tag] -= 1
+        if tag in _BLOCK_TAGS:
+            self._write("\n")
+
+    def handle_data(self, data):
+        if self._in_title:
+            self.title += data
+            return
+        if not self._skip:
+            self._write(data if self._pre else re.sub(r"\s+", " ", data))
+
+    def _write(self, text):
+        self.buffers["body"].append(text)
+        for name, depth in self._open.items():
+            if depth:
+                self.buffers[name].append(text)
+
+
+def readable_text(markup: str) -> tuple[str, str]:
+    """``(title, text)`` of an HTML page's main content, scripts, menus and forms removed."""
+    parser = _ReadableParser()
+    try:
+        parser.feed(markup)
+        parser.close()
+    except Exception:  # noqa: BLE001 - the stdlib parser can choke on hostile markup; fall back to tag stripping
+        logger.info("Readable-text pass failed; stripping tags instead", exc_info=True)
+        return ai_services._page_text(markup)
+    title = html.unescape(parser.og_title or parser.title).strip()
+    chosen = ""
+    for name in ("article", "main", "body"):
+        candidate = "".join(parser.buffers[name])
+        if name == "body" or len(candidate.strip()) >= _MIN_CONTAINER_CHARS:
+            chosen = candidate
+            break
+    return title[:300], chosen
+
+
+def from_url(url: str) -> Source:
+    title, text = ai_services.fetch_link(url, extract=readable_text)
+    return _finish("url", text, label=title or url, url=url.strip())
+
+
+# ---------------------------------------------------------------------------
+# PDF
+# ---------------------------------------------------------------------------
+
+
+# The extraction runs in a child process with a memory and CPU ceiling and a
+# wall-clock timeout, so a decompression bomb or a pathological content stream
+# costs that process, never the worker. pypdf never runs a PDF's JavaScript.
+PDF_MEMORY_BYTES = 768 * 1024 * 1024
+PDF_CPU_SECONDS = 30
+PDF_TIMEOUT_SECONDS = 45
+PDF_STREAM_BYTES = 20 * 1024 * 1024
+
+_PDF_WORKER = r"""
+import io, json, sys
+max_pages, max_chars, memory, cpu, stream = (int(v) for v in sys.argv[1:6])
+try:
+    import resource
+    resource.setrlimit(resource.RLIMIT_AS, (memory, memory))
+    resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu))
+except Exception:
+    pass  # not every OS honours these; the parent's timeout still applies
+data = sys.stdin.buffer.read()
+out = {}
+try:
+    import pypdf.filters as filters
+    for name in ("ZLIB_MAX_OUTPUT_LENGTH", "LZW_MAX_OUTPUT_LENGTH", "RUN_LENGTH_MAX_OUTPUT_LENGTH",
+                 "MAX_ARRAY_BASED_STREAM_OUTPUT_LENGTH", "MAX_DECLARED_STREAM_LENGTH", "JBIG2_MAX_OUTPUT_LENGTH"):
+        if hasattr(filters, name):
+            setattr(filters, name, stream)
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(data), strict=False)
+    if reader.is_encrypted and not reader.decrypt(""):
+        out = {"error": "encrypted"}
+    elif len(reader.pages) > max_pages:
+        out = {"error": "pages"}
+    else:
+        chunks, size = [], 0
+        for page in reader.pages:
+            text = (page.extract_text() or "")[: max_chars - size]
+            chunks.append(text)
+            size += len(text)
+            if size >= max_chars:
+                break
+        out = {"text": "\n\n".join(chunks)}
+except MemoryError:
+    out = {"error": "too_big"}
+except Exception as exc:
+    out = {"error": "unreadable", "type": type(exc).__name__}
+sys.stdout.write(json.dumps(out))
+"""
+
+
+def read_pdf(file_obj) -> bytes:
+    """The PDF's bytes, after the cheap checks (size, ``%PDF-`` header); nothing is parsed yet."""
+    max_bytes = settings.REPURPOSE_MAX_PDF_BYTES
+    data = file_obj.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise ValueError(f"That PDF is larger than {max_bytes // (1024 * 1024)} MB.")
+    if not data.startswith(b"%PDF-"):
+        raise ValueError("That file isn't a PDF.")
+    return data
+
+
+def pdf_text(data: bytes) -> str:
+    """The text of a PDF, read in a sandboxed child process. ``ValueError`` says why it can't be."""
+    pages = settings.REPURPOSE_MAX_PDF_PAGES
+    args = [str(v) for v in (pages, MAX_SOURCE_CHARS, PDF_MEMORY_BYTES, PDF_CPU_SECONDS, PDF_STREAM_BYTES)]
+    try:
+        done = subprocess.run(  # noqa: S603 - our own interpreter and fixed code; the PDF is only stdin
+            [sys.executable, "-I", "-c", _PDF_WORKER, *args],
+            input=data,
+            capture_output=True,
+            timeout=PDF_TIMEOUT_SECONDS,
+            check=False,
+        )
+        result = json.loads(done.stdout or b"{}")
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError("That PDF took too long to read. Paste its text instead.") from exc
+    except ValueError:
+        result = {}
+    error = result.get("error")
+    if error == "encrypted":
+        raise ValueError("That PDF is password protected.")
+    if error == "pages":
+        raise ValueError(f"That PDF has more than {pages} pages.")
+    if error == "too_big" or (not result and done.returncode < 0):
+        raise ValueError("That PDF is too complex to read. Paste its text instead.")
+    if "text" not in result:
+        logger.info("PDF could not be read: %s (exit %s)", result.get("type", "no result"), done.returncode)
+        raise ValueError("That PDF couldn't be read. It may be damaged.")
+    return result["text"]
+
+
+def pdf_source(text: str, name: str = "") -> Source:
+    try:
+        return _finish("pdf", text, label=name or "PDF")
+    except ValueError as exc:
+        raise ValueError("No text could be read from that PDF (scanned pages need OCR first).") from exc
+
+
+def pending_pdf(file_obj, name: str = "") -> Source:
+    """A PDF checked and held for the background run to read (parsing never happens in a request)."""
+    return Source(type="pdf", text="", label=(name or "PDF")[:MAX_LABEL_CHARS], pdf=read_pdf(file_obj))
+
+
+def from_pdf(file_obj, name: str = "") -> Source:
+    """Text of an uploaded PDF. Refuses oversized, encrypted, non-PDF and image-only files."""
+    return pdf_source(pdf_text(read_pdf(file_obj)), name)
+
+
+# ---------------------------------------------------------------------------
+# A published post
+# ---------------------------------------------------------------------------
+
+
+def from_post(post) -> Source:
+    """A published post's caption and thread, to be remixed for other networks."""
+    from apps.composer.models import PlatformPost
+    from apps.composer.services import post_thread_parts
+
+    if not post.platform_posts.filter(status=PlatformPost.Status.PUBLISHED).exists():
+        raise ValueError("Only a published post can be remixed.")
+    pieces = [post.caption or ""]
+    pieces += [part.caption for part in post_thread_parts(post) if part.caption]
+    return _finish(
+        "post", "\n\n".join(pieces), label=(post.title or post.caption_snippet or "Published post"), post=post
+    )
+
+
+# ---------------------------------------------------------------------------
+# Video transcripts
+# ---------------------------------------------------------------------------
+
+_SRT_INDEX = re.compile(r"^\d+$")
+_SRT_TIME = re.compile(r"^\d{1,2}:\d{2}:\d{2}[,.]\d{3}\s*-->")
+
+
+def srt_to_text(srt: str) -> str:
+    """Caption lines without cue numbers, timings or markup, as running text."""
+    lines = []
+    for raw in (srt or "").splitlines():
+        line = raw.strip()
+        if not line or _SRT_INDEX.match(line) or _SRT_TIME.match(line):
+            continue
+        lines.append(html.unescape(re.sub(r"<[^>]+>", "", line)))
+    return " ".join(lines)
+
+
+def _video_provider_for(url: str):
+    """``(platform, video id)`` for the platform whose link this is, or ``("", "")``."""
+    from providers import PROVIDER_REGISTRY
+
+    for platform, cls in PROVIDER_REGISTRY.items():
+        if cls.owned_video_transcripts:
+            video_id = cls.video_id_from_url(url)
+            if video_id:
+                return platform, video_id
+    return "", ""
+
+
+def from_video(url: str, *, transcript: str = "", accounts=()) -> Source:
+    """A video's transcript: pasted by the person, or read from the platform for a video on their own channel.
+
+    Only the platform's official captions API is used, and only for a video
+    owned by one of the workspace's connected ``accounts``. Anything else
+    raises :class:`TranscriptNeededError` so the person pastes the transcript.
+    """
+    url = (url or "").strip()
+    platform, video_id = _video_provider_for(url)
+    if not platform:
+        raise ValueError("That isn't a link to a supported video. Paste the transcript as text instead.")
+    label = f"{platform.title()} video {video_id}"
+    if (transcript or "").strip():
+        return _finish("video", transcript, label=label, url=url)
+
+    text = None
+    for account in accounts:
+        if account.platform != platform:
+            continue
+        text = _read_owned_transcript(account, video_id)
+        if text:
+            return _finish("video", text, label=label, url=url, account=account)
+    raise TranscriptNeededError(
+        "A transcript can only be read for videos on a channel connected to this workspace, and only when the "
+        "video has captions. Paste the transcript instead."
+    )
+
+
+TRANSCRIPT_CACHE_SECONDS = 24 * 60 * 60
+
+
+def _transcript_read_allowed() -> bool:
+    """Count one API transcript read against the deployment's daily budget; False once it is spent."""
+    key = f"repurpose:transcript-reads:{timezone.now():%Y-%m-%d}"
+    if cache.add(key, 1, TRANSCRIPT_CACHE_SECONDS + 3600):
+        return True
+    try:
+        return cache.incr(key) <= settings.REPURPOSE_TRANSCRIPT_READS_PER_DAY
+    except ValueError:  # expired between add and incr
+        return cache.add(key, 1, TRANSCRIPT_CACHE_SECONDS + 3600)
+
+
+def _read_owned_transcript(account, video_id: str) -> str | None:
+    """The transcript of a video on ``account``'s channel; cached a day, since a read spends real API quota."""
+    from apps.publisher.engine import _resolve_publish_credentials
+    from providers import get_provider
+    from providers.exceptions import ProviderError, QuotaExceededError
+
+    if account.connection_status != account.ConnectionStatus.CONNECTED:
+        return None
+    cache_key = f"repurpose:transcript:{account.pk}:{video_id}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached or None
+    if not _transcript_read_allowed():
+        raise TranscriptNeededError(
+            "Today's allowance for reading video captions is used up. Paste the transcript instead."
+        )
+    try:
+        provider = get_provider(account.platform, _resolve_publish_credentials(account))
+        access_token = account.oauth_access_token
+        if account.oauth_refresh_token and account.token_expires_within(_REFRESH_WINDOW):
+            access_token = account.refresh_oauth_token(provider, enqueue_backfill=False)
+        srt = provider.fetch_owned_video_transcript(
+            access_token, video_id=video_id, channel_id=account.account_platform_id
+        )
+    except QuotaExceededError as exc:
+        raise TranscriptNeededError(
+            f"{account.get_platform_display()} has used up its API quota for today. Paste the transcript instead."
+        ) from exc
+    except ProviderError:
+        logger.info("Transcript fetch failed for account %s", account.pk, exc_info=True)
+        return None
+    text = srt_to_text(srt) if srt else ""
+    cache.set(cache_key, text, TRANSCRIPT_CACHE_SECONDS)  # "" too: no captions isn't worth asking again today
+    return text or None

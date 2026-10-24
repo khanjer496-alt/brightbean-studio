@@ -208,6 +208,67 @@ class YouTubeProvider(SocialProvider):
 
     writing_style = "A video description: what viewers will get in the first lines, then detail, with a call to subscribe. A few hashtags at the end."
 
+    # Captions come from the official captions endpoints, for videos on the
+    # connected account's own channel only.
+    owned_video_transcripts = True
+
+    _VIDEO_HOSTS = frozenset({"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com"})
+    _VIDEO_ID_RE = re.compile(r"^[A-Za-z0-9_-]{11}$")
+
+    @classmethod
+    def video_id_from_url(cls, url: str) -> str:
+        """The 11-character video id in a youtube.com / youtu.be watch, shorts, live or embed link."""
+        try:
+            parts = urlsplit((url or "").strip())
+        except ValueError:
+            return ""
+        host = (parts.hostname or "").lower()
+        segments = [p for p in parts.path.split("/") if p]
+        candidate = ""
+        if host == "youtu.be" and segments:
+            candidate = segments[0]
+        elif host in cls._VIDEO_HOSTS:
+            if parts.path.rstrip("/") == "/watch":
+                candidate = dict(pair.split("=", 1) for pair in parts.query.split("&") if "=" in pair).get("v", "")
+            elif len(segments) >= 2 and segments[0] in {"shorts", "live", "embed", "v"}:
+                candidate = segments[1]
+        return candidate if cls._VIDEO_ID_RE.match(candidate) else ""
+
+    def fetch_owned_video_transcript(self, access_token: str, *, video_id: str, channel_id: str) -> str | None:
+        """The video's caption track as plain text, or None when it isn't ours or has no usable captions.
+
+        Three official calls: ``videos.list`` (1 quota unit) to confirm the video
+        is on ``channel_id``, ``captions.list`` (50) to pick a track, and
+        ``captions.download`` (200, ``tfmt=srt``) to read it. ``captions.download``
+        needs permission to edit the video, so the API refuses it for anyone
+        else's video; that refusal (403/404) is an ordinary "no transcript".
+        Sources: https://developers.google.com/youtube/v3/docs/captions/list and
+        https://developers.google.com/youtube/v3/docs/captions/download
+        """
+        video = self._request(
+            "GET", f"{API_BASE}/videos", access_token=access_token, params={"part": "snippet", "id": video_id}
+        ).json()
+        items = video.get("items") or []
+        if not items or (items[0].get("snippet") or {}).get("channelId") != channel_id:
+            return None
+        listing = self._request(
+            "GET", f"{API_BASE}/captions", access_token=access_token, params={"part": "snippet", "videoId": video_id}
+        ).json()
+        tracks = [t for t in listing.get("items") or [] if not (t.get("snippet") or {}).get("isDraft")]
+        if not tracks:
+            return None
+        # A human-made track beats automatic speech recognition.
+        tracks.sort(key=lambda t: (t.get("snippet") or {}).get("trackKind") == "asr")
+        try:
+            response = self._request(
+                "GET", f"{API_BASE}/captions/{tracks[0]['id']}", access_token=access_token, params={"tfmt": "srt"}
+            )
+        except APIError as exc:
+            if exc.status_code in (403, 404):
+                return None
+            raise
+        return response.text
+
     # ------------------------------------------------------------------
     # Metadata
     # ------------------------------------------------------------------

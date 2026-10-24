@@ -204,6 +204,11 @@ class AIRun:
 
     config: AIConfig
     remaining: int | None
+    # Tokens the run's answered calls used, so a caller with a cost cap
+    # (``apps.repurpose``) can stop before the next call.
+    input_tokens: int = 0
+    output_tokens: int = 0
+    calls: int = 0  # provider calls sent, answered or not
     # The model that answered the last call: the configured one, or the one a refusal fell back to.
     last_model: str = ""
 
@@ -211,12 +216,22 @@ class AIRun:
         return self.remaining is None or self.remaining > 0
 
 
-def _run(ctx: AIContext, run: AIRun, *, action: str, prompt: str, schema: dict, system: str | None = None) -> dict:
+def _run(
+    ctx: AIContext,
+    run: AIRun,
+    *,
+    action: str,
+    prompt: str,
+    schema: dict,
+    system: str | None = None,
+    max_tokens: int | None = None,
+) -> dict:
     """Send one prompt, log it, and return the JSON object the schema describes."""
     config = run.config
     provider = config.provider
     if run.remaining is not None:
         run.remaining -= 1
+    run.calls += 1
     started = time.monotonic()
     log = AIRequestLog(
         organization=ctx.organization,
@@ -229,7 +244,10 @@ def _run(ctx: AIContext, run: AIRun, *, action: str, prompt: str, schema: dict, 
         used_organization_key=config.uses_organization_key,
     )
     try:
-        completion = provider.generate(system=system or _system_prompt(ctx.workspace), prompt=prompt, schema=schema)
+        extra = {"max_tokens": max_tokens} if max_tokens else {}
+        completion = provider.generate(
+            system=system or _system_prompt(ctx.workspace), prompt=prompt, schema=schema, **extra
+        )
     except AIError as exc:
         log.status = AIRequestLog.Status.FAILED
         log.error_code = exc.code
@@ -242,6 +260,8 @@ def _run(ctx: AIContext, run: AIRun, *, action: str, prompt: str, schema: dict, 
     log.output_tokens = completion.output_tokens
     log.latency_ms = int((time.monotonic() - started) * 1000)
     log.save()
+    run.input_tokens += completion.input_tokens
+    run.output_tokens += completion.output_tokens
     return completion.data
 
 
@@ -774,12 +794,13 @@ LINK_MAX_BYTES = 2 * 1024 * 1024
 LINK_CONTENT_TYPES = frozenset({"text/html", "application/xhtml+xml", "text/plain"})
 
 
-def fetch_link(url: str) -> tuple[str, str]:
+def fetch_link(url: str, extract=None) -> tuple[str, str]:
     """Fetch a public web page for summarising and return (title, text).
 
     Uses the composer's SSRF-safe fetch (the one RSS feeds go through): http(s)
     only, every redirect hop re-checked against private and reserved
-    addresses, the body streamed and capped at ``LINK_MAX_BYTES``.
+    addresses, the body streamed and capped at ``LINK_MAX_BYTES``. ``extract``
+    turns the markup into ``(title, text)``; the default strips tags.
     """
     # Lives with the feed reader in the composer; imported here rather than
     # duplicated so both share one set of SSRF rules.
@@ -803,7 +824,7 @@ def fetch_link(url: str) -> tuple[str, str]:
     content_type = response.headers.get("Content-Type", "").split(";")[0].strip().lower()
     if content_type not in LINK_CONTENT_TYPES:
         raise ValueError("That link isn't a web page the assistant can read.")
-    title, text = _page_text(response.text)
+    title, text = (extract or _page_text)(response.text)
     if len(text) < 40:
         raise ValueError("That page has too little readable text to summarise.")
     return title, text
