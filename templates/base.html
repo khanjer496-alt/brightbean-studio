@@ -566,6 +566,7 @@
                 </a>
                 {% endif %}
 
+                {% block sidebar_channel_list %}
                 {% if request.workspace %}
                 {% if sidebar_channels or sidebar_unhealthy_channels %}
                 <!-- Channels -->
@@ -639,6 +640,7 @@
                 </div>
                 {% endif %}
                 {% endif %}
+                {% endblock sidebar_channel_list %}
                 {% endblock %}
             </nav>
 

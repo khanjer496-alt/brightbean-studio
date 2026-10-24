@@ -16,7 +16,7 @@ the time beside the chip), extra_chip (a month-cell overflow chip: hidden until 
         <span class="sr-only">{{ pp.display_status_label }}:{% if pp.effective_at and not hide_time %} {{ pp.effective_at|timezone:display_timezone|time:"H:i" }}{% endif %}</span>
         <span class="cal-chip-strip" aria-hidden="true"><span class="truncate">{% if pp.post.tags %}{{ pp.post.tags.0 }}{% else %}{{ pp.display_status_label }}{% endif %}</span>{% if pp.effective_at and not hide_time %}<time class="cal-chip-time" datetime="{{ pp.effective_at|date:'c' }}">{{ pp.effective_at|timezone:display_timezone|time:"H:i" }}</time>{% endif %}</span>
         <span class="cal-chip-body">
-            <span class="cal-chip-avatar">{% include "partials/_channel_avatar.html" with account=pp.social_account px=20 badge_px=12 square=True %}</span>
+            <span class="cal-chip-avatar">{% include "partials/_channel_avatar.html" with account=pp.social_account px=20 badge_px=9 square=True %}</span>
             {% with first_media=pp.post.media_attachments.all.0 %}
             {% if first_media and first_media.media_asset.thumbnail %}
             <img src="{{ first_media.media_asset.thumbnail.url }}" alt="" width="20" height="20" class="cal-chip-thumb w-5 h-5 rounded object-cover flex-shrink-0" loading="lazy" decoding="async">

@@ -2,9 +2,9 @@
 One channel avatar everywhere (sidebar, composer, accounts list, calendar rail and chips): the profile picture, or when there
 is none an initial-letter tile on Orbit tokens, plus the network logo as a small badge (never the logo twice).
 Arguments: account, px (avatar size in px, default 28), dim (optional: greyscale, for unhealthy channels),
-square (optional: rounded-lg tile instead of a circle), badge_px (optional: network badge size in px, default 16).
-{% endcomment %}{% with s=px|default:28 b=badge_px|default:16 %}<span class="relative inline-flex flex-shrink-0" style="width:{{ s }}px;height:{{ s }}px">
+square (optional: rounded-lg tile instead of a circle), badge_px (optional: network badge size in px, default 40% of the avatar, at least 12px).
+{% endcomment %}{% with s=px|default:28 b=badge_px|default:0 %}<span class="relative inline-flex flex-shrink-0" style="width:{{ s }}px;height:{{ s }}px">
     {% if account.display_avatar_url %}<img src="{{ account.display_avatar_url }}" alt="" width="{{ s }}" height="{{ s }}" class="{% if square %}rounded-lg{% else %}rounded-full{% endif %} object-cover{% if dim %} grayscale{% endif %}" style="width:{{ s }}px;height:{{ s }}px" loading="lazy" decoding="async">
     {% else %}<span class="flex items-center justify-center {% if square %}rounded-lg{% else %}rounded-full{% endif %} bg-surface-3 font-semibold text-ink" style="width:{{ s }}px;height:{{ s }}px;font-size:{% if s > 36 %}1rem{% elif s < 24 %}0.625rem{% else %}0.6875rem{% endif %}" aria-hidden="true">{{ account.display_name|make_list|first|upper }}</span>{% endif %}
-    {% if account.platform != "youtube" %}<span class="absolute -bottom-0.5 -end-0.5 flex items-center justify-center rounded-full bg-surface-0 ring-1 ring-[var(--border)] [&_svg]:size-full" style="width:{{ b }}px;height:{{ b }}px" aria-hidden="true">{% include "partials/_platform_icon.html" with platform=account.platform size="sm" %}</span>{% endif %}
+    {% if account.platform != "youtube" %}<span class="absolute -bottom-0.5 -end-0.5 flex items-center justify-center rounded-full bg-surface-0 ring-2 ring-[var(--surface-0)] [&_svg]:size-full" style="width:{% if b %}{{ b }}px{% else %}40%{% endif %};height:{% if b %}{{ b }}px{% else %}40%{% endif %};min-width:12px;min-height:12px" aria-hidden="true">{% include "partials/_platform_icon.html" with platform=account.platform size="sm" %}</span>{% endif %}
 </span>{% endwith %}

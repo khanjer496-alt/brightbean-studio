@@ -69,7 +69,7 @@ the inline script below, so a collapsed rail never flashes open).
                                     :aria-pressed="isSelected('{{ account.id }}') ? 'true' : 'false'" aria-pressed="{% if account.id|stringformat:'s' in rail_selected %}true{% else %}false{% endif %}"
                                     title="{{ account.display_name }}{% if account.needs_reconnect %} (needs reconnecting){% elif account.is_paused %} (paused){% endif %}">
                                 <span class="channel-avatar">
-                                    {% include "partials/_channel_avatar.html" with account=account px=36 badge_px=18 square=True dim=account.needs_reconnect %}
+                                    {% include "partials/_channel_avatar.html" with account=account px=36 badge_px=15 square=True dim=account.needs_reconnect %}
                                     {% if account.needs_reconnect %}<span class="channel-alert" aria-hidden="true">!</span>{% endif %}
                                 </span>
                                 <span class="channel-text">
