@@ -314,16 +314,15 @@ class FacebookVideoSettingsTests(AccountScopeTestsBase):
         PostMedia.objects.create(post=self.post, media_asset=self.video)
 
     def _facebook_payload(self, post_type=None):
-        """A composer submit for the Facebook account.
+        """A composer submit for the Facebook account, with its declared ``post_type`` field.
 
-        The hidden ``facebook_panel_<id>`` marker is what the composer renders
-        for every selected Facebook account, video attached or not; the select
-        itself is only submitted when exactly one video is attached.
+        The hidden ``ps_panel_<id>`` marker is what the composer renders for every account that
+        declares post settings.
         """
         account_id = str(self.facebook.id)
-        fields = {f"facebook_panel_{account_id}": "1"}
+        fields = {f"ps_panel_{account_id}": "1"}
         if post_type is not None:
-            fields[f"facebook_post_type_{account_id}"] = post_type
+            fields[f"ps_post_type_{account_id}"] = post_type
         return self._payload(
             selected_accounts=account_id,
             account_scope=account_id,
@@ -337,28 +336,18 @@ class FacebookVideoSettingsTests(AccountScopeTestsBase):
         self.facebook_pp.refresh_from_db()
         self.assertEqual(self.facebook_pp.platform_extra["post_type"], "reel")
 
-    def test_choosing_regular_video_clears_the_hint_rather_than_recording_it(self):
-        """A lone video already infers VIDEO, so the hint would only restate it.
-
-        Recording it could only go wrong: swap the attachment for an image
-        through the media endpoints and a stored "video" would still route the
-        image to Facebook's video endpoint.
-        """
-        self.facebook_pp.platform_extra = {"post_type": "reel", "audience": "public"}
-        self.facebook_pp.save(update_fields=["platform_extra"])
-
-        response = self.client.post(self.save_url, data=self._facebook_payload("video"))
+    def test_facebook_story_choice_round_trips_into_platform_extra(self):
+        response = self.client.post(self.save_url, data=self._facebook_payload("story"))
 
         self.assertIn(response.status_code, (200, 204, 302))
         self.facebook_pp.refresh_from_db()
-        self.assertEqual(self.facebook_pp.platform_extra, {"audience": "public"})
+        self.assertEqual(self.facebook_pp.platform_extra["post_type"], "story")
 
-    def test_facebook_reel_choice_is_cleared_when_video_is_removed(self):
+    def test_choosing_the_default_format_clears_the_hint(self):
         self.facebook_pp.platform_extra = {"post_type": "reel", "audience": "public"}
         self.facebook_pp.save(update_fields=["platform_extra"])
-        self.post.media_attachments.all().delete()
 
-        response = self.client.post(self.save_url, data=self._facebook_payload())
+        response = self.client.post(self.save_url, data=self._facebook_payload(""))
 
         self.assertIn(response.status_code, (200, 204, 302))
         self.facebook_pp.refresh_from_db()
@@ -383,7 +372,7 @@ class FacebookVideoSettingsTests(AccountScopeTestsBase):
         self.facebook_pp.refresh_from_db()
         self.assertEqual(self.facebook_pp.platform_extra, {"post_type": "reel"})
 
-    def test_facebook_reel_choice_is_rejected_for_multiple_attachments(self):
+    def test_facebook_reel_choice_is_ignored_by_the_publisher_for_multiple_attachments(self):
         image = MediaAsset.objects.create(
             organization=self.org,
             workspace=self.workspace,
@@ -398,8 +387,12 @@ class FacebookVideoSettingsTests(AccountScopeTestsBase):
         response = self.client.post(self.save_url, data=self._facebook_payload("reel"))
 
         self.assertIn(response.status_code, (200, 204, 302))
+        from apps.publisher.engine import PublishEngine
+
+        # The hint is kept as chosen, but the publisher ignores it once the attachments no longer fit a Reel.
         self.facebook_pp.refresh_from_db()
-        self.assertNotIn("post_type", self.facebook_pp.platform_extra)
+        resolved = PublishEngine._resolve_post_type("facebook", self.facebook_pp.platform_extra, 2, "video")
+        self.assertNotEqual(resolved.value, "reel")
 
 
 class PinterestBoardSelectionTests(AccountScopeTestsBase):

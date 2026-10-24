@@ -369,7 +369,8 @@ class ComposerEnforcementTest(_WorkspaceMixin, ComposerTestCase):
         }
 
         self.assertEqual(self.client.post(url, data, HTTP_HX_REQUEST="true").status_code, 204)
-        data[f"facebook_post_type_{facebook.id}"] = "reel"
+        data[f"ps_panel_{facebook.id}"] = "1"
+        data[f"ps_post_type_{facebook.id}"] = "reel"
         PlatformPost.objects.filter(post=post).update(status="draft")
         response = self.client.post(url, data, HTTP_HX_REQUEST="true")
         self.assertEqual(response.status_code, 400)

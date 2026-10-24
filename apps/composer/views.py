@@ -314,34 +314,7 @@ def _sync_platform_posts(request, post, workspace, initial_status=None):
         pp.platform_specific_first_comment = override_comment if override_comment else None
 
         # Per-platform extras
-        if account.platform == "facebook" and f"facebook_panel_{acc_id}" in request.POST:
-            # Gated on the panel's hidden marker, which the composer renders for
-            # every selected Facebook account regardless of media: that keeps a
-            # non-composer save from wiping extras it never rendered, while
-            # still letting a composer save clear a hint whose video is gone.
-            #
-            # The Reel selector itself is omitted when the attachment set is not
-            # exactly one video. Clearing an earlier choice in that case is what
-            # stops removing or replacing media from leaving a stale Reel hint
-            # that sends a text or image post to Facebook's Reel endpoint.
-            extra = {**(pp.platform_extra or {})}
-            facebook_post_type = request.POST.get(f"facebook_post_type_{acc_id}", "").strip()
-            media_types = list(post.media_attachments.values_list("media_asset__media_type", flat=True)[:2])
-            has_exactly_one_video = media_types == ["video"]
-            if facebook_post_type == "reel" and has_exactly_one_video:
-                extra["post_type"] = "reel"
-            else:
-                # Only the deviation from the default is worth storing. A lone
-                # video already infers PostType.VIDEO at publish time, so a
-                # "video" hint restates what the media says and can only go
-                # wrong: if the attachment is later swapped for an image
-                # through the media endpoints, the hint would still route it to
-                # Facebook's video endpoint. Choosing regular video therefore
-                # clears the hint rather than recording it.
-                extra.pop("post_type", None)
-            pp.platform_extra = extra
-
-        elif account.platform == "youtube":
+        if account.platform == "youtube":
             tags_list = parse_and_truncate_youtube_tag_string(request.POST.get(f"yt_tags_{acc_id}", ""))
             privacy_status = request.POST.get(f"yt_privacy_status_{acc_id}", "public")
             if privacy_status not in ("public", "unlisted", "private"):
@@ -709,9 +682,9 @@ def _composer_media_assets(request, post, workspace) -> list:
 def _composer_platform_extras(request, accounts, post=None) -> dict:
     """Each account's platform_extra as this form would leave it, for media checks.
 
-    Starts from the saved rows and applies the form's post-type choice
-    (``<platform>_post_type_<account id>``, e.g. a Facebook Reel), which
-    decides which of the platform's media rules apply. Keyed by account id.
+    Starts from the saved rows and applies the platform's own fields from the
+    form (a declared ``post_type`` such as a Reel or Story decides which of the
+    platform's media rules apply). Keyed by account id.
     """
     saved = {}
     if post is not None and not post._state.adding:
@@ -723,9 +696,6 @@ def _composer_platform_extras(request, accounts, post=None) -> dict:
     extras = {}
     for account in accounts:
         extra = dict(saved.get(account.id) or {})
-        hint = request.POST.get(f"{account.platform}_post_type_{account.id}", "").strip()
-        if hint:
-            extra["post_type"] = hint
         if post_settings_for(account.platform) and f"ps_panel_{account.id}" in request.POST:
             # The platform's own fields decide too (a declared ``post_type`` picks Story or Reel).
             extra = replace_post_settings(
