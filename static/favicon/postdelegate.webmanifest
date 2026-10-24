@@ -1,14 +1,32 @@
 {
+  "id": "/",
   "name": "PostDelegate",
   "short_name": "PostDelegate",
-  "icons": [
-    {
-      "src": "postdelegate-apple-touch-icon.png",
-      "sizes": "180x180",
-      "type": "image/png"
-    }
-  ],
+  "description": "Plan, approve and publish social posts from one calendar.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
   "theme_color": "#080A0F",
   "background_color": "#080A0F",
-  "display": "standalone"
+  "icons": [
+    {"src": "postdelegate-icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any"},
+    {"src": "postdelegate-icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any"},
+    {"src": "postdelegate-maskable-192.png", "sizes": "192x192", "type": "image/png", "purpose": "maskable"},
+    {"src": "postdelegate-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ],
+  "shortcuts": [
+    {
+      "name": "New post",
+      "short_name": "New post",
+      "url": "/app/new-post/",
+      "icons": [{"src": "postdelegate-icon-192.png", "sizes": "192x192", "type": "image/png"}]
+    },
+    {
+      "name": "Calendar",
+      "short_name": "Calendar",
+      "url": "/",
+      "icons": [{"src": "postdelegate-icon-192.png", "sizes": "192x192", "type": "image/png"}]
+    }
+  ]
 }

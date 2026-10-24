@@ -61,6 +61,7 @@ BRAND_LOGO_STATIC = env("BRAND_LOGO_STATIC", default="img/brightbean-studio-logo
 BRAND_FAVICON_STATIC = env("BRAND_FAVICON_STATIC", default="favicon/favicon.svg")
 BRAND_FAVICON_ICO_STATIC = env("BRAND_FAVICON_ICO_STATIC", default="favicon/favicon.ico")
 BRAND_APPLE_TOUCH_ICON_STATIC = env("BRAND_APPLE_TOUCH_ICON_STATIC", default="favicon/apple-touch-icon.png")
+PWA_BUILD_ID = env("PWA_BUILD_ID", default=env("SOURCE_VERSION", default=env("GIT_SHA", default="")))
 BRAND_MANIFEST_STATIC = env("BRAND_MANIFEST_STATIC", default="favicon/site.webmanifest")
 MCP_SERVER_NAME = env("MCP_SERVER_NAME", default="brightbean-studio")
 API_TOKEN_PREFIX = env("API_TOKEN_PREFIX", default="bb_studio_")
@@ -516,6 +517,9 @@ CSP_IMG_SRC = ("'self'", "data:", "blob:", "https:")
 CSP_FONT_SRC = ("'self'",)
 CSP_CONNECT_SRC = ("'self'",)
 CSP_MEDIA_SRC = ("'self'", "blob:", "https:")
+# The service worker (/sw.js) and the web manifest are same-origin files; say so explicitly.
+CSP_WORKER_SRC = ("'self'",)
+CSP_MANIFEST_SRC = ("'self'",)
 CSP_FORM_ACTION = (
     "'self'",
     "https://accounts.google.com",

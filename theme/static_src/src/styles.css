@@ -1393,3 +1393,9 @@ span.flatpickr-weekday {
   .animate-pulse { animation: none !important; opacity: 0.7; }
   .animate-spin, .pd-spinner { animation-duration: 2s !important; animation-iteration-count: infinite !important; }
 }
+
+/* WP11 PWA */
+[data-pd-install][hidden], [data-pd-install-ios][hidden] { display: none; }
+@media (display-mode: standalone) {
+  [data-pd-install] { display: none; }
+}
