@@ -42,6 +42,10 @@ class TestDeclarations:
             ("slack", ThreadMode.REPLY_CHAIN),
             ("reddit", ThreadMode.COMMENTS),
             ("x", ThreadMode.REPLY_CHAIN),
+            ("medium", ThreadMode.NONE),
+            ("wordpress", ThreadMode.NONE),
+            ("hashnode", ThreadMode.NONE),
+            ("listmonk", ThreadMode.NONE),
         ],
     )
     def test_every_platform_declares_its_mode(self, platform, mode):

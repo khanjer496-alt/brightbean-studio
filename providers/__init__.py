@@ -14,12 +14,15 @@ from .devto import DevtoProvider
 from .discord import DiscordProvider
 from .facebook import FacebookProvider
 from .google_business import GoogleBusinessProvider
+from .hashnode import HashnodeProvider
 from .instagram import InstagramProvider
 from .instagram_login import InstagramLoginProvider
 from .linkedin import LINKEDIN_RESERVED_CHARS
 from .linkedin_company import LinkedInCompanyProvider
 from .linkedin_personal import LinkedInPersonalProvider
+from .listmonk import ListmonkProvider
 from .mastodon import MastodonProvider
+from .medium import MediumProvider
 from .pinterest import PinterestProvider
 from .reddit import RedditProvider
 from .slack import SlackProvider
@@ -27,6 +30,7 @@ from .telegram import TelegramProvider
 from .threads import ThreadsProvider
 from .tiktok import TikTokProvider
 from .types import MediaRules, PeakWindow, PlugCapability, PostSetting, PostType, ThreadCapability
+from .wordpress import WordPressProvider
 from .x import XProvider
 from .youtube import YouTubeProvider
 
@@ -52,6 +56,10 @@ PROVIDER_REGISTRY: dict[str, type[SocialProvider]] = {
     "slack": SlackProvider,
     "reddit": RedditProvider,
     "x": XProvider,
+    "medium": MediumProvider,
+    "wordpress": WordPressProvider,
+    "hashnode": HashnodeProvider,
+    "listmonk": ListmonkProvider,
 }
 
 # Characters a platform escapes in the caption it publishes. Each one costs two

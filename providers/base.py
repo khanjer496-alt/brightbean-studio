@@ -19,6 +19,7 @@ from .types import (
     AccountProfile,
     AuthType,
     CommentResult,
+    ConnectField,
     Demographics,
     InboxMessage,
     MediaRules,
@@ -280,6 +281,23 @@ class SocialProvider(ABC):
     # Shown when the destination picker finds nothing to offer, and what to do about it.
     no_destinations_hint: ClassVar[str] = ""
 
+    # The inputs of the connect form named by ``connect_url_name``, for platforms the user connects by pasting
+    # credentials (a token, an application password) rather than through an OAuth grant: one generic page and
+    # view render and collect them (see ``connect_with_form``). ``connect_intro`` is the line under the page title,
+    # ``connect_notice`` a note in the box under the fields.
+    connect_fields: ClassVar[tuple[ConnectField, ...]] = ()
+    connect_intro: ClassVar[str] = ""
+    connect_notice: ClassVar[str] = ""
+
+    # The ``connect_fields`` key holding the address of a self-hosted site (WordPress, Listmonk). The connect
+    # view normalizes it to ``https://host/path``, refuses private and reserved addresses, and stores it as the
+    # account's ``instance_url``; empty for platforms with a fixed API host.
+    connect_url_field: ClassVar[str] = ""
+
+    # The credentials key that carries the account's ``instance_url`` to the provider at publish time. The engine
+    # sets it only after the stored address passes the SSRF check again, so a provider never sees an unchecked one.
+    account_url_credential: ClassVar[str] = ""
+
     # True when each customer registers their own developer app and enters its
     # credentials while connecting (X bills API use to the app owner). The platform
     # then counts as configured without app credentials in the environment, and
@@ -463,6 +481,30 @@ class SocialProvider(ABC):
         defaulting to the grant's own).
         """
         raise NotImplementedError(f"{self.platform_name} has no destination picker")
+
+    @staticmethod
+    def normalize_site_url(raw: str) -> str:
+        """``example.com/blog/`` as ``https://example.com/blog``, or "" when it isn't an https address.
+
+        https only: the credential is sent with every request, and a plain-http address would carry it in the clear.
+        """
+        value = (raw or "").strip()
+        if not value:
+            return ""
+        if "://" not in value:
+            value = f"https://{value}"
+        parts = urlsplit(value)
+        if parts.scheme != "https" or not parts.hostname or parts.username or parts.password:
+            return ""
+        return f"https://{parts.netloc}{parts.path.rstrip('/')}"
+
+    def connect_with_form(self, values: dict) -> tuple[AccountProfile, str]:
+        """Check the ``connect_fields`` values and return the profile and the secret to store, for a pasted-credentials platform.
+
+        ``values`` holds the form's non-blank inputs by key, the site address already normalized. The secret is
+        stored encrypted as the account's access token; raise ``PublishError`` for a message to show the user.
+        """
+        raise NotImplementedError(f"{self.platform_name} has no credentials connect form")
 
     # ------------------------------------------------------------------
     # OAuth methods (override for OAuth providers)

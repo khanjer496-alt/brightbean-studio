@@ -34,6 +34,10 @@ class TestProviderRegistry:
             "slack",
             "reddit",
             "x",
+            "medium",
+            "wordpress",
+            "hashnode",
+            "listmonk",
         }
         assert set(PROVIDER_REGISTRY.keys()) == expected
 
