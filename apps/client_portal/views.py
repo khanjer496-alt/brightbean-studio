@@ -5,17 +5,19 @@ from collections import defaultdict
 from django.db.models import F, Prefetch
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from apps.approvals import comments as approval_comments
 from apps.approvals import services as approval_services
-from apps.approvals.models import ApprovalAction, PostComment
+from apps.approvals.models import ApprovalAction, Channel, PostComment
 from apps.autonomy.service import client_visible_actions
 from apps.common.htmx import toast_response
 from apps.composer.models import Post
 from apps.members.models import WorkspaceMembership
 
 from .decorators import portal_auth_required
-from .services import consume_magic_link, create_portal_session, peek_magic_link
+from .services import PORTAL_LANDINGS, consume_magic_link, create_portal_session, peek_magic_link
 
 
 def _portal_response(post_id, action, *, tone, title, body=""):
@@ -53,7 +55,7 @@ def magic_link_entry(request, token):
         if not is_valid:
             return redirect("client_portal:magic_link_expired")
         create_portal_session(request, user, workspace)
-        return redirect("client_portal:dashboard")
+        return redirect(PORTAL_LANDINGS.get(request.POST.get("next", ""), "client_portal:dashboard"))
 
     magic_token = peek_magic_link(token)
     if magic_token is None:
@@ -63,6 +65,7 @@ def magic_link_entry(request, token):
         "client_portal/magic_link_confirm.html",
         {
             "token": token,
+            "next": request.GET.get("next", "") if request.GET.get("next") in PORTAL_LANDINGS else "",
             "workspace": magic_token.workspace,
         },
     )
@@ -126,7 +129,7 @@ def portal_approval_queue(request):
     base = (
         Post.objects.for_workspace(workspace.id)
         .select_related("author")
-        .prefetch_related("platform_posts__social_account", "media_attachments__media_asset")
+        .prefetch_related("platform_posts__social_account")
     )
     pending_posts = list(
         base.filter(platform_posts__status="pending_client").distinct().order_by("scheduled_at", "-created_at")
@@ -184,6 +187,112 @@ def portal_approval_queue(request):
     )
 
 
+def _review_cards(request, workspace):
+    """The posts waiting on this client, each with the exact content to decide on."""
+    from apps.approvals import decisions
+    from apps.approvals.models import ApprovalReminder
+    from apps.composer.previews import post_previews
+
+    states = decisions.review_states(request.user, workspace)
+    posts = list(
+        Post.objects.for_workspace(workspace.id)
+        .filter(platform_posts__status__in=states)
+        .distinct()
+        .select_related("author")
+        .order_by("scheduled_at", "-created_at")
+    )
+    due = dict(
+        ApprovalReminder.objects.filter(post__in=posts, stage__in=states, due_at__isnull=False).values_list(
+            "post_id", "due_at"
+        )
+    )
+    cards = []
+    for post in posts:
+        targets = list(
+            post.platform_posts.filter(status__in=states)
+            .select_related("social_account")
+            .order_by("social_account__platform")
+        )
+        cards.append(
+            {
+                "post": post,
+                "fingerprint": decisions.current_fingerprint(post, request.user, workspace),
+                "due_at": due.get(post.id),
+                # Portal users are clients: the comment service shows them external comments only.
+                "comments": list(approval_comments.get_comments_for_post(post, request.user)),
+                **post_previews(post, targets),
+            }
+        )
+    cards.sort(key=lambda c: (c["due_at"] is None, c["due_at"] or timezone.now()))
+    return cards
+
+
+@portal_auth_required
+@require_GET
+def portal_review(request):
+    """Review every post waiting on this client on one page: select-all approve, a note on each."""
+    workspace = request.portal_workspace
+    cards = _review_cards(request, workspace)
+    due = [c["due_at"] for c in cards if c["due_at"]]
+    return render(
+        request,
+        "client_portal/review.html",
+        {"workspace": workspace, "cards": cards, "earliest_due_at": min(due) if due else None},
+    )
+
+
+@portal_auth_required
+@require_POST
+def portal_review_approve(request):
+    """Approve the selected posts, each on the content the client was shown."""
+    from apps.approvals import decisions
+
+    workspace = request.portal_workspace
+    ids = request.POST.getlist("post_ids")
+    posts = {str(p.id): p for p in Post.objects.for_workspace(workspace.id).filter(id__in=ids)}
+    items = [
+        (posts[pid], request.POST.get(f"fp_{pid}", ""), request.POST.get(f"comment_{pid}", "").strip())
+        for pid in ids
+        if pid in posts
+    ]
+    if not items:
+        return _portal_error(request, "Select at least one post to approve.")
+    results = decisions.decide_batch(request.user, workspace, items, channel=Channel.PORTAL)
+    approved = sum(1 for _, outcome, _ in results if outcome == "approved")
+    changed = sum(1 for _, outcome, _ in results if outcome == "changed")
+    plural = "s" if approved != 1 else ""
+    if changed:
+        return toast_response(
+            tone="warn",
+            title=f"{approved} post{plural} approved, {changed} changed",
+            body="Review the updated posts before approving them.",
+            events={"portalAction": {"action": "batch"}},
+        )
+    if not approved:
+        return toast_response(
+            tone="warn",
+            title="Nothing to approve",
+            body="Those posts were already decided.",
+            events={"portalAction": {"action": "batch"}},
+        )
+    return toast_response(
+        tone="success",
+        title=f"{approved} post{plural} approved",
+        body="Thanks — they are scheduled to publish.",
+        events={"portalAction": {"action": "batch"}},
+    )
+
+
+@portal_auth_required
+@require_GET
+def portal_post_previews(request, post_id):
+    """What each network will publish for one post (loaded into its approval card when opened)."""
+    from apps.composer.previews import post_previews
+
+    post = get_object_or_404(Post, id=post_id, workspace=request.portal_workspace)
+    return render(request, "composer/partials/approver_previews.html", post_previews(post))
+
+
 @portal_auth_required
 @require_POST
 def portal_approve(request, post_id):
@@ -195,7 +304,7 @@ def portal_approve(request, post_id):
     comment_text = request.POST.get("comment", "")
 
     try:
-        approval_services.approve_post(post, request.user, workspace, comment_text)
+        approval_services.approve_post(post, request.user, workspace, comment_text, channel=Channel.PORTAL)
     except ValueError as e:
         return _portal_error(request, str(e))
 
@@ -217,7 +326,7 @@ def portal_request_changes(request, post_id):
     comment_text = request.POST.get("comment", "")
 
     try:
-        approval_services.request_changes(post, request.user, workspace, comment_text)
+        approval_services.request_changes(post, request.user, workspace, comment_text, channel=Channel.PORTAL)
     except ValueError as e:
         return _portal_error(request, str(e))
 
@@ -239,7 +348,7 @@ def portal_reject(request, post_id):
     comment_text = request.POST.get("comment", "")
 
     try:
-        approval_services.reject_post(post, request.user, workspace, comment_text)
+        approval_services.reject_post(post, request.user, workspace, comment_text, channel=Channel.PORTAL)
     except ValueError as e:
         return _portal_error(request, str(e))
 
@@ -259,7 +368,7 @@ def portal_request_hold(request, post_id):
     comment_text = request.POST.get("comment", "")
 
     try:
-        approval_services.request_hold(post, request.user, workspace, comment_text)
+        approval_services.request_hold(post, request.user, workspace, comment_text, channel=Channel.PORTAL)
     except ValueError as e:
         return _portal_error(request, str(e))
 

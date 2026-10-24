@@ -1,0 +1,133 @@
+{% load static tz %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="no-referrer">
+    <meta name="robots" content="noindex, nofollow">
+    <title>{% if state == "done" %}Thanks{% else %}Confirm your decision{% endif %} - {{ brand_short_name }}</title>
+    <link rel="icon" href="{% static brand_favicon_ico_static %}" sizes="any">
+    <link rel="icon" type="image/svg+xml" href="{% static brand_favicon_static %}">
+    <link rel="stylesheet" href="{% static 'css/dist/styles.css' %}">
+</head>
+<body class="min-h-screen bg-stone-50 font-sans text-stone-900 antialiased">
+<main class="mx-auto w-full max-w-xl px-4 py-8 sm:py-12">
+
+    {% if state == "ready" or state == "stale" or state == "nothing" or state == "done" or state == "resent" %}
+    <p class="mb-1 text-[12px] font-semibold uppercase tracking-wider text-stone-400">{{ link.workspace.name }}</p>
+    {% endif %}
+
+    {% if state == "invalid" %}
+    <h1 class="text-xl font-bold tracking-tight">This link isn't valid</h1>
+    <p class="mt-2 text-sm text-stone-600">It may be incomplete or no longer belong to this account. Open the post from your {{ brand_short_name }} workspace, or ask the team to send you a new request.</p>
+
+    {% elif state == "used" %}
+    <h1 class="text-xl font-bold tracking-tight">This link has already been used</h1>
+    <p class="mt-2 text-sm text-stone-600">A decision was already recorded from this email, so there is nothing more to confirm. If it is still waiting, open the post to review it.</p>
+
+    {% elif state == "expired" %}
+    <h1 class="text-xl font-bold tracking-tight">This link has expired</h1>
+    <p class="mt-2 text-sm text-stone-600">Approval links stay valid for a limited time. Open the post from your {{ brand_short_name }} workspace, or ask the team to send you a new request.</p>
+
+    {% elif state == "wrong_user" %}
+    <h1 class="text-xl font-bold tracking-tight">This link was sent to someone else</h1>
+    <p class="mt-2 text-sm text-stone-600">You are signed in as a different person than the one this approval request was sent to, so nothing was recorded. Sign out and open the link again, or ask the team to send you your own request.</p>
+
+    {% elif state == "nothing" %}
+    <h1 class="text-xl font-bold tracking-tight">Nothing is waiting for you</h1>
+    <p class="mt-2 text-sm text-stone-600">This post has already been decided, or has moved on to a different step.</p>
+
+    {% elif state == "done" %}
+    <div class="rounded-2xl border border-stone-200 bg-white p-6 text-center" role="status">
+        <h1 class="text-xl font-bold tracking-tight">{% if link.action == "approve" or link.action == "approve_held" %}Approved{% elif link.action == "dismiss_held" %}Dismissed{% else %}Feedback sent{% endif %}</h1>
+        <p class="mt-2 text-sm text-stone-600">{% if link.action == "approve" %}Thanks, your approval is recorded.{% elif link.action == "approve_held" %}It is on its way, and the decision is in the Activity trail.{% elif link.action == "dismiss_held" %}Nothing was sent. The decision is in the Activity trail.{% else %}Thanks, the team has your feedback and will send an updated version.{% endif %} You can close this page.</p>
+    </div>
+
+    {% elif state == "resent" %}
+    <div class="rounded-2xl border border-stone-200 bg-white p-6 text-center" role="status">
+        <h1 class="text-xl font-bold tracking-tight">New email on its way</h1>
+        <p class="mt-2 text-sm text-stone-600">We sent a fresh approval email for the new version to {{ link.recipient_email }}.</p>
+    </div>
+
+    {% elif held %}{# a held agent action: ready #}
+    <h1 class="text-xl font-bold tracking-tight">{% if link.action == "approve_held" %}Approve this held item?{% else %}Dismiss this held item?{% endif %}</h1>
+    <p class="mt-1 text-sm text-stone-600">{{ held.actor_name }}'s {{ held.get_action_type_display|lower }} was held for review. Nothing is recorded until you press the button below.</p>
+    <dl class="mt-5 space-y-3 rounded-2xl border border-stone-200 bg-white p-4 text-sm">
+        {% if held.account_label or held.social_account %}
+        <div><dt class="text-[12px] font-semibold uppercase tracking-wider text-stone-400">Account</dt><dd class="mt-0.5 text-stone-800">{{ held.social_account.account_name|default:held.account_label }}</dd></div>
+        {% endif %}
+        <div><dt class="text-[12px] font-semibold uppercase tracking-wider text-stone-400">Why it was held</dt><dd class="mt-0.5 whitespace-pre-wrap break-words text-stone-800">{{ held.summary }}</dd></div>
+        {% if held.final_text and not previews %}
+        <div><dt class="text-[12px] font-semibold uppercase tracking-wider text-stone-400">What would be sent</dt><dd class="mt-0.5 whitespace-pre-wrap break-words text-stone-800">{{ held.final_text }}</dd></div>
+        {% endif %}
+    </dl>
+    {% if previews %}
+    <div class="mt-5">
+        {% include "composer/partials/approver_previews.html" %}
+    </div>
+    {% endif %}
+    {% if state == "ready" %}
+    <form method="post" class="mt-6 rounded-2xl border border-stone-200 bg-white p-4">
+        {% csrf_token %}
+        {% if error %}<p class="mb-3 text-sm font-medium text-red-600" role="alert">{{ error }}</p>{% endif %}
+        {% if link.action == "approve_held" %}
+        <button type="submit" class="min-h-11 w-full rounded-full bg-green-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2">Confirm approval</button>
+        {% else %}
+        <button type="submit" class="min-h-11 w-full rounded-full bg-stone-800 px-5 py-2.5 text-sm font-semibold text-white hover:bg-stone-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-stone-400 focus-visible:ring-offset-2">Confirm dismiss</button>
+        {% endif %}
+    </form>
+    {% endif %}
+
+    {% else %}{# ready, stale #}
+
+    {% if state == "stale" %}
+    <div class="mb-5 rounded-2xl border border-amber-200 bg-amber-50 p-4" role="alert">
+        <h1 class="text-base font-bold text-amber-900">This post changed — review the new version</h1>
+        <p class="mt-1 text-sm text-amber-900">It was edited after the email you opened, so that link can no longer approve it. The current version is below. We can email you a fresh link for it.</p>
+        <form method="post" action="{% url 'approval_links:resend' token=request.resolver_match.kwargs.token %}" class="mt-3">
+            {% csrf_token %}
+            <button type="submit" class="min-h-11 rounded-full bg-amber-600 px-5 py-2 text-sm font-semibold text-white hover:bg-amber-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2">Email me the new version</button>
+        </form>
+    </div>
+    {% else %}
+    <h1 class="text-xl font-bold tracking-tight">{% if link.action == "approve" %}Approve this post?{% else %}Request changes{% endif %}</h1>
+    <p class="mt-1 text-sm text-stone-600">Nothing is recorded until you press the button below.</p>
+    {% if due_at %}<p class="mt-2 inline-flex rounded-full bg-orange-50 px-3 py-1 text-[12px] font-semibold text-orange-700">Needs approval by {% timezone workspace.effective_timezone|default:"UTC" %}{{ due_at|date:"D g:i A" }}{% endtimezone %}</p>{% endif %}
+    {% endif %}
+
+    <div class="mt-5">
+        {% include "composer/partials/approver_previews.html" %}
+    </div>
+
+    {% if comments %}
+    <section class="mt-5" aria-label="Comments">
+        <h2 class="text-[12px] font-semibold uppercase tracking-wider text-stone-400">Comments</h2>
+        <ul class="mt-2 space-y-2">
+            {% for c in comments %}
+            <li class="rounded-xl border border-stone-200 bg-white p-3 text-sm"><span class="font-semibold">{{ c.author.display_name|default:"Team" }}</span> <span class="whitespace-pre-wrap break-words text-stone-700">{{ c.body }}</span></li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
+    {% if state == "ready" %}
+    <form method="post" class="mt-6 rounded-2xl border border-stone-200 bg-white p-4">
+        {% csrf_token %}
+        {% if link.action == "request_changes" %}
+        <label for="comment" class="block text-sm font-semibold text-stone-800">What should change?</label>
+        <textarea id="comment" name="comment" rows="4" required class="mt-2 w-full resize-y rounded-lg border border-stone-300 px-3 py-2 text-base text-stone-900 focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-200" aria-describedby="comment-help{% if error %} comment-error{% endif %}">{{ comment }}</textarea>
+        <p id="comment-help" class="mt-1 text-xs text-stone-500">The author sees this note.</p>
+        {% if error %}<p id="comment-error" class="mt-1 text-sm font-medium text-red-600" role="alert">{{ error }}</p>{% endif %}
+        <button type="submit" class="mt-4 min-h-11 w-full rounded-full bg-amber-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-600 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2">Send feedback</button>
+        {% else %}
+        {% if error %}<p class="mb-3 text-sm font-medium text-red-600" role="alert">{{ error }}</p>{% endif %}
+        <button type="submit" class="min-h-11 w-full rounded-full bg-green-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2">Confirm approval</button>
+        {% endif %}
+    </form>
+    {% endif %}
+
+    {% endif %}
+</main>
+</body>
+</html>

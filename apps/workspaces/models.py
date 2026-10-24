@@ -32,6 +32,9 @@ class Workspace(models.Model):
         choices=ApprovalWorkflowMode.choices,
         default=ApprovalWorkflowMode.NONE,
     )
+    # Hours a post may wait in a review stage before it is overdue ("needs approval
+    # by ..."); blank means no deadline. Reminders go out before it, escalation after.
+    approval_sla_hours = models.PositiveIntegerField(null=True, blank=True)
     is_archived = models.BooleanField(default=False)
 
     # Brand voice for the AI writing assistant (apps.ai_writer): every prompt

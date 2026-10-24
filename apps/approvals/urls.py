@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views
+from . import views, views_slack
 
 app_name = "approvals"
 
@@ -18,5 +18,10 @@ urlpatterns = [
         views.comment_attachment,
         name="comment_attachment",
     ),
+    path("approvals/slack/connect/", views_slack.connect, name="slack_connect"),
+    path("approvals/slack/channel/", views_slack.choose_channel, name="slack_channel"),
+    path("approvals/slack/disconnect/", views_slack.disconnect, name="slack_disconnect"),
+    path("approvals/send-digest/", views_slack.send_digest, name="send_digest"),
     path("approvals/<uuid:post_id>/versions/", views.version_diff, name="version_diff"),
+    path("approvals/<uuid:post_id>/previews/", views.post_previews_view, name="post_previews"),
 ]

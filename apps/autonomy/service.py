@@ -300,6 +300,11 @@ def announce(action: AgentAction) -> None:
             events.agent_action(action)
             if action.decision in (Decision.HELD, Decision.BLOCKED):
                 _notify_managers(action)
+            if action.decision == Decision.HELD:
+                # The workspace's approvals Slack channel, when connected, gets Approve / Dismiss buttons.
+                from apps.approvals.slack import queue_held_request
+
+                queue_held_request(action)
     except Exception:
         logger.exception("Could not announce agent action %s", action.pk)
 

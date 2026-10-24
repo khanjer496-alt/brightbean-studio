@@ -1,0 +1,6 @@
+{% autoescape off %}- {{ item.action.actor_name }}, {{ item.action.get_action_type_display }}{% if item.action.social_account or item.action.account_label %} ({{ item.action.social_account.account_name|default:item.action.account_label }}){% endif %}
+  {{ item.action.summary }}
+{% if item.action.final_text %}  "{{ item.action.final_text|truncatechars:600 }}"
+{% endif %}{% if item.links.approve %}  Approve: {{ item.links.approve }}
+{% endif %}{% if item.links.dismiss %}  Dismiss: {{ item.links.dismiss }}
+{% endif %}{% endautoescape %}

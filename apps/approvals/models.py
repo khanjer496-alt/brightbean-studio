@@ -3,13 +3,27 @@
 Models:
     ApprovalAction - Audit trail of approval decisions on a post.
     PostComment - Threaded comments with internal/external visibility.
-    ApprovalReminder - Tracks reminder state per post per stage.
+    ApprovalReminder - Tracks reminder state and the approval deadline per post per stage.
+    ApprovalLink - Signed, single-use, expiring one-tap link from an approval email.
+    SlackApprovalConnection - A workspace's Slack channel for approval requests.
 """
 
 import uuid
 
 from django.conf import settings
 from django.db import models
+
+from apps.common.encryption import EncryptedTextField
+
+
+class Channel(models.TextChoices):
+    """The surface an approval decision was made on."""
+
+    WEB = "web", "Web app"
+    EMAIL = "email", "Email link"
+    SLACK = "slack", "Slack"
+    PORTAL = "portal", "Client portal"
+    API = "api", "API"
 
 
 class ApprovalAction(models.Model):
@@ -47,6 +61,11 @@ class ApprovalAction(models.Model):
     )
     action = models.CharField(max_length=20, choices=ActionType.choices)
     comment = models.TextField(blank=True, default="")
+    # Where the decision was made, and the content it was made on: the
+    # fingerprint is the hash of exactly what the decider could see (see
+    # ``policy.review_fingerprint``), so the trail proves what was approved.
+    channel = models.CharField(max_length=10, choices=Channel.choices, default=Channel.WEB)
+    fingerprint = models.CharField(max_length=64, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -132,6 +151,11 @@ class ApprovalReminder(models.Model):
     reminder_count = models.PositiveIntegerField(default=0)
     last_reminder_at = models.DateTimeField(null=True, blank=True)
     escalated = models.BooleanField(default=False)
+    # "Needs approval by": set when the post enters the stage (from the
+    # workspace's SLA unless a caller names a time). Null means no deadline, and
+    # the stall rules in ``tasks`` apply instead.
+    due_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    deadline_reminded_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         db_table = "approvals_approval_reminder"
@@ -139,3 +163,109 @@ class ApprovalReminder(models.Model):
 
     def __str__(self):
         return f"Reminder({self.stage}, count={self.reminder_count}) for {self.post_id}"
+
+
+def _link_expiry():
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    return timezone.now() + timedelta(hours=settings.APPROVAL_LINK_TTL_HOURS)
+
+
+class ApprovalLink(models.Model):
+    """One-tap decision link sent in an approval email.
+
+    The URL carries only a signed reference to this row. The row is what makes
+    the link single-use (``used_at``), expiring (``expires_at``) and bound to
+    its recipient (``recipient`` and the address it was mailed to). The buttons
+    of one email item share a ``group``: acting on either retires both.
+
+    A link decides either a ``post`` (approve / request changes) or an
+    ``agent_action`` an autonomy policy held for review (approve / dismiss).
+    """
+
+    class Action(models.TextChoices):
+        APPROVE = "approve", "Approve"
+        REQUEST_CHANGES = "request_changes", "Request changes"
+        APPROVE_HELD = "approve_held", "Approve held item"
+        DISMISS_HELD = "dismiss_held", "Dismiss held item"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    group = models.UUIDField(db_index=True)
+    workspace = models.ForeignKey("workspaces.Workspace", on_delete=models.CASCADE, related_name="approval_links")
+    post = models.ForeignKey(
+        "composer.Post", on_delete=models.CASCADE, null=True, blank=True, related_name="approval_links"
+    )
+    agent_action = models.ForeignKey(
+        "autonomy.AgentAction", on_delete=models.CASCADE, null=True, blank=True, related_name="approval_links"
+    )
+    recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="approval_links")
+    recipient_email = models.EmailField()
+    action = models.CharField(max_length=20, choices=Action.choices)
+    # ``policy.review_fingerprint`` of the post when the email was built (blank for a held item).
+    fingerprint = models.CharField(max_length=64, blank=True, default="")
+    expires_at = models.DateTimeField(default=_link_expiry)
+    used_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "approvals_approval_link"
+        indexes = [models.Index(fields=["expires_at"], name="idx_approval_link_expiry")]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(post__isnull=False) | models.Q(agent_action__isnull=False),
+                name="approval_link_has_subject",
+            )
+        ]
+
+    def __str__(self):
+        return f"ApprovalLink({self.action}) for {self.post_id or self.agent_action_id}"
+
+    @property
+    def is_held_item(self):
+        return self.agent_action_id is not None
+
+    @property
+    def is_expired(self):
+        from django.utils import timezone
+
+        return timezone.now() >= self.expires_at
+
+    @property
+    def is_usable(self):
+        return self.used_at is None and not self.is_expired
+
+
+class SlackApprovalConnection(models.Model):
+    """A workspace's Slack channel that receives approval requests.
+
+    Separate from a Slack *publishing* account: it carries its own bot token,
+    with the extra scopes needed to read members' verified emails and to open
+    the request-changes dialog.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workspace = models.OneToOneField(
+        "workspaces.Workspace", on_delete=models.CASCADE, related_name="slack_approval_connection"
+    )
+    team_id = models.CharField(max_length=32, db_index=True)
+    team_name = models.CharField(max_length=255, blank=True, default="")
+    bot_token = EncryptedTextField()
+    channel_id = models.CharField(max_length=32, blank=True, default="")
+    channel_name = models.CharField(max_length=255, blank=True, default="")
+    connected_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "approvals_slack_connection"
+
+    def __str__(self):
+        return f"Slack {self.team_name or self.team_id} for {self.workspace_id}"
+
+    @property
+    def is_ready(self):
+        return bool(self.channel_id and self.bot_token)

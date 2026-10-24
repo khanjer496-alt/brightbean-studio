@@ -139,6 +139,7 @@ DEFAULT_CHANNELS: dict[str, dict[str, bool]] = {
     EventType.AGENT_ACTION_HELD: {Channel.IN_APP: True, Channel.EMAIL: True},
     EventType.AGENT_ACTION_BLOCKED: {Channel.IN_APP: True, Channel.EMAIL: False},
     EventType.AI_VISIBILITY_REPORT: {Channel.IN_APP: True, Channel.EMAIL: False},
+    EventType.APPROVAL_DIGEST: {Channel.IN_APP: False, Channel.EMAIL: True},
 }
 
 # Event types considered non-critical (suppressed during quiet hours).
@@ -375,8 +376,15 @@ def _dispatch_email(delivery: NotificationDelivery) -> None:
         "brand_short_name": settings.BRAND_SHORT_NAME,
     }
 
-    text_content = render_to_string("notifications/email/notification.txt", context)
-    html_content = render_to_string("notifications/email/notification.html", context)
+    # An approval request carries its own layout: the exact previews and the
+    # one-tap buttons. Imported here because approvals depends on this module.
+    from apps.approvals.emails import approval_email_context
+
+    approval = approval_email_context(notification)
+    if approval:
+        context.update(approval["context"])
+    text_content = render_to_string(approval["text"] if approval else "notifications/email/notification.txt", context)
+    html_content = render_to_string(approval["html"] if approval else "notifications/email/notification.html", context)
 
     subject = notification.title
 

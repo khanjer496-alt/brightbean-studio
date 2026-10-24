@@ -1,0 +1,26 @@
+{% load tz %}{% autoescape off %}{{ notification.title }}
+{{ workspace.name }}
+
+{{ notification.body }}
+{% if due_at %}Needs approval by {% timezone timezone %}{{ due_at|date:"D g:i A T" }}{% endtimezone %}
+{% endif %}
+{% for p in previews %}--- {{ p.account.get_platform_display }} ({{ p.account.account_name|default:p.account.account_handle }}) ---
+{% if p.title and p.needs_title %}Title: {{ p.title }}
+{% endif %}{{ p.caption }}
+{% for part in p.thread.parts %}
+{% if p.thread.mode == "comments" %}Comment{% else %}Part{% endif %} {{ part.number }}: {{ part.caption }}{% endfor %}
+{% if p.first_comment %}First comment: {{ p.first_comment }}
+{% endif %}{% for row in p.settings %}{{ row.label }}: {{ row.value }}
+{% endfor %}
+{% endfor %}{% if media_items %}Media, in order:{% for m in media_items %} {{ forloop.counter }}. {{ m.filename }}{% endfor %}
+
+{% endif %}Approve: {{ approve_url }}
+Request changes: {{ changes_url }}
+
+These links are for you only, work once, and expire in {{ ttl_hours }} hours. Each opens a page where you confirm.
+
+Review everything waiting for you: {{ review_all_url }}
+
+---
+You received this because of your notification settings.
+Manage preferences: {{ app_url }}/notifications/preferences/{% endautoescape %}

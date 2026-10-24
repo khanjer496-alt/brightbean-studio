@@ -4,6 +4,7 @@ Handles magic link generation, verification, and portal session creation.
 """
 
 import logging
+from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth import login
@@ -108,6 +109,27 @@ def generate_magic_link(workspace, client_user, created_by):
         MagicLinkToken.objects.filter(pk__in=superseded).update(expires_at=timezone.now())
 
     return token
+
+
+# Where a portal entry link may land after sign-in: names only, never a caller-supplied URL.
+PORTAL_LANDINGS = {"review": "client_portal:review"}
+
+
+def issue_portal_link(client_user, workspace, *, landing="", ttl_days=7):
+    """A magic link URL for a client that is not emailed by this function.
+
+    For emails that carry their own message (an approval request) and want a
+    "Review all" button that signs the client into the portal. ``landing`` is a
+    key of :data:`PORTAL_LANDINGS` and takes them straight to that page.
+    """
+    token = MagicLinkToken.objects.create(
+        user=client_user,
+        workspace=workspace,
+        expires_at=timezone.now() + timedelta(days=ttl_days),
+    )
+    app_url = getattr(settings, "APP_URL", "http://localhost:8000").rstrip("/")
+    url = f"{app_url}/portal/{token.token}/"
+    return f"{url}?next={landing}" if landing in PORTAL_LANDINGS else url
 
 
 def peek_magic_link(token_string):

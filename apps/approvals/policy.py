@@ -99,3 +99,27 @@ def approval_allows_publish(platform_post) -> bool:
     if platform_post.approval_completed_at is None or not platform_post.approval_fingerprint:
         return False
     return platform_post.approval_fingerprint == publish_fingerprint(platform_post)
+
+
+def targets_fingerprint(platform_posts) -> str:
+    """One fingerprint over several platform posts (``""`` when there are none).
+
+    What a bundled decision covers: each target's own ``publish_fingerprint``,
+    in a stable order, so a change to any account's text, media, thread or
+    settings changes the whole.
+    """
+    parts = sorted(f"{pp.pk}:{publish_fingerprint(pp)}" for pp in platform_posts)
+    if not parts:
+        return ""
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()
+
+
+def review_fingerprint(post, statuses) -> str:
+    """The fingerprint of what a reviewer in the stage(s) ``statuses`` is being asked to decide.
+
+    Computed over the post's platform posts currently in those statuses. A
+    decision link or a Slack button carries the value from when the request was
+    built; if the value now differs, the post changed and must be looked at again.
+    """
+    targets = post.platform_posts.filter(status__in=statuses).select_related("post", "social_account")
+    return targets_fingerprint(targets)

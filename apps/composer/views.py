@@ -75,6 +75,7 @@ from .models import (
     Signature,
     Tag,
 )
+from .previews import account_preview, thread_preview
 from .services import (
     MENTION_QUERY_MAX,
     default_signature,
@@ -2086,24 +2087,13 @@ def preview(request, workspace_id):
             override_key = f"override_caption_{account.id}"
             effective_title = request.POST.get(override_title_key, "") or title
             effective_caption = request.POST.get(override_key, "") or caption
-            char_limit = account.char_limit
-            # Counted after escaping, so the badge matches what gets published.
-            char_count = account.caption_wire_length(effective_caption)
-            field_config = account.field_config
             previews.append(
-                {
-                    "account": account,
-                    "title": effective_title,
-                    "caption": effective_caption,
-                    "first_comment": first_comment,
-                    "char_count": char_count,
-                    "char_limit": char_limit,
-                    "is_over_limit": char_count > char_limit,
-                    "truncated_caption": effective_caption[:char_limit]
-                    if len(effective_caption) > char_limit
-                    else effective_caption,
-                    "needs_title": field_config["needs_title"],
-                }
+                account_preview(
+                    account,
+                    title=effective_title,
+                    caption=effective_caption,
+                    first_comment=first_comment,
+                )
             )
 
     # Gather media for preview - check pending session media or post attachments
@@ -2184,24 +2174,7 @@ def _thread_preview(account, specs, asset_map, first_comment="") -> dict | None:
     """What the preview panel shows of the thread for one account, or None for a single post."""
     if not specs:
         return None
-    capability = thread_capability_for(account.platform)
-    limit = capability.part_max_length or account.char_limit
-    parts = spec_thread_parts(account, specs, asset_map)
-    return {
-        "mode": capability.mode.value,
-        "blocker": thread_blocker(account, parts, first_comment=first_comment),
-        "parts": [
-            {
-                "number": number,
-                "caption": caption,
-                "char_count": account.caption_wire_length(caption),
-                "char_limit": limit,
-                "is_over_limit": account.caption_wire_length(caption) > limit,
-                "media": [{"url": a.file.url if a.file else "", "is_video": a.is_video} for a in assets],
-            }
-            for number, (caption, assets) in enumerate(parts, start=2)
-        ],
-    }
+    return thread_preview(account, spec_thread_parts(account, specs, asset_map), first_comment)
 
 
 @login_required

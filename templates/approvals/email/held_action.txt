@@ -1,0 +1,11 @@
+{% autoescape off %}{{ notification.title }}
+{{ workspace.name }}
+
+{% include "approvals/email/_held_item.txt" %}
+These links are for you only, work once, and expire in {{ ttl_hours }} hours. Each opens a page where you confirm.
+
+Open Activity: {{ activity_url }}
+
+---
+You received this because of your notification settings.
+Manage preferences: {{ app_url }}/notifications/preferences/{% endautoescape %}

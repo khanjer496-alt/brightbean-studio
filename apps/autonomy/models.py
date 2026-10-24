@@ -241,6 +241,8 @@ class AgentAction(models.Model):
         related_name="+",
     )
     reviewed_at = models.DateTimeField(null=True, blank=True)
+    # Where the review happened: "web" (Activity), "email" (a one-tap link) or "slack".
+    review_channel = models.CharField(max_length=10, blank=True, default="")
 
     platform_deleted_at = models.DateTimeField(null=True, blank=True)
     platform_delete_result = models.CharField(max_length=255, blank=True, default="")

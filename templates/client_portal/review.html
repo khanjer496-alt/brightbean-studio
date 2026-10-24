@@ -1,0 +1,76 @@
+{% extends "client_portal/portal_base.html" %}
+{% load tz %}
+{% block title %}Review all - {{ workspace.name }}{% endblock %}
+
+{% block content %}
+<div hx-trigger="portalAction from:body"
+     hx-get="{% url 'client_portal:review' %}"
+     hx-target="#review-root" hx-select="#review-root" hx-swap="outerHTML">
+    <div id="review-root" class="max-w-[680px]"
+         x-data="{ selected: [], all: {{ cards|length }}, ids: [{% for c in cards %}'{{ c.post.id }}'{% if not forloop.last %},{% endif %}{% endfor %}],
+                   toggleAll(on) { this.selected = on ? [...this.ids] : []; } }">
+        <div class="mb-6">
+            <h1 class="text-[1.375rem] font-bold tracking-tight" style="color: var(--text-primary);">Review all ({{ cards|length }})</h1>
+            <p class="mt-0.5 text-[0.875rem]" style="color: var(--text-secondary);">Check what each network will publish, then approve in one go or leave a note on any post.</p>
+            {% if earliest_due_at %}
+            <p class="mt-2 inline-flex rounded-full bg-orange-50 px-3 py-1 text-[0.75rem] font-semibold text-orange-700" data-deadline>Needs approval by {% timezone workspace.effective_timezone|default:"UTC" %}{{ earliest_due_at|date:"D g:i A" }}{% endtimezone %}</p>
+            {% endif %}
+        </div>
+
+        {% if cards %}
+        <form hx-post="{% url 'client_portal:review_approve' %}" hx-swap="none" aria-label="Approve selected posts">
+            <div class="sticky top-14 z-20 mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-stone-200 bg-white p-3">
+                <label class="flex min-h-11 items-center gap-2 text-sm font-medium text-stone-700">
+                    <input type="checkbox" class="h-5 w-5 rounded border-stone-300" :checked="selected.length === all" @change="toggleAll($event.target.checked)">
+                    Select all
+                </label>
+                <button type="submit" :disabled="selected.length === 0"
+                        class="ml-auto min-h-11 rounded-full bg-green-600 px-5 py-2 text-sm font-semibold text-white hover:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
+                    Approve selected (<span x-text="selected.length"></span>)
+                </button>
+            </div>
+
+            <div class="space-y-5">
+                {% for c in cards %}
+                <article class="rounded-2xl border border-stone-200 bg-white p-4" aria-labelledby="rv-{{ c.post.id }}">
+                    <div class="mb-3 flex items-start gap-3">
+                        <input type="checkbox" name="post_ids" value="{{ c.post.id }}" x-model="selected" id="sel-{{ c.post.id }}" class="mt-1 h-5 w-5 flex-shrink-0 rounded border-stone-300">
+                        <label for="sel-{{ c.post.id }}" class="min-w-0 flex-1">
+                            <span id="rv-{{ c.post.id }}" class="block text-[0.9375rem] font-semibold text-stone-900">{{ c.post.title|default:c.post.caption_snippet|default:"(no caption)" }}</span>
+                            <span class="block text-[0.75rem] text-stone-500">by {{ c.post.author.display_name|default:"Unknown" }}{% if c.due_at %} &middot; needs approval by {% timezone workspace.effective_timezone|default:"UTC" %}{{ c.due_at|date:"D g:i A" }}{% endtimezone %}{% endif %}</span>
+                        </label>
+                    </div>
+                    <input type="hidden" name="fp_{{ c.post.id }}" value="{{ c.fingerprint }}">
+
+                    {% with previews=c.previews media_items=c.media_items %}
+                    <details class="mb-3" open>
+                        <summary class="min-h-11 cursor-pointer py-2 text-sm font-medium text-stone-700">What each network will publish</summary>
+                        {% include "composer/partials/approver_previews.html" %}
+                    </details>
+                    {% endwith %}
+
+                    {% if c.comments %}
+                    <ul class="mb-3 space-y-1.5">
+                        {% for cm in c.comments %}
+                        <li class="rounded-lg bg-stone-50 p-2 text-[0.8125rem] text-stone-700"><span class="font-semibold">{{ cm.author.display_name|default:"Team" }}</span> {{ cm.body }}</li>
+                        {% endfor %}
+                    </ul>
+                    {% endif %}
+
+                    <label for="comment-{{ c.post.id }}" class="block text-[0.8125rem] font-semibold text-stone-700">Note (optional when approving, required for changes)</label>
+                    <textarea id="comment-{{ c.post.id }}" name="comment_{{ c.post.id }}" rows="2" class="mt-1 w-full resize-y rounded-lg border border-stone-300 px-3 py-2 text-base focus:border-orange-400 focus:outline-none focus:ring-2 focus:ring-orange-200"></textarea>
+                    <button type="button" hx-post="{% url 'client_portal:request_changes' post_id=c.post.id %}" hx-vals='js:{comment: document.getElementById("comment-{{ c.post.id }}").value}' hx-swap="none"
+                            class="mt-2 min-h-11 rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-800 hover:bg-amber-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-400">Request changes</button>
+                </article>
+                {% endfor %}
+            </div>
+        </form>
+        {% else %}
+        <div class="py-20 text-center">
+            <p class="font-medium" style="color: var(--text-secondary);">All caught up</p>
+            <p class="mt-1 text-sm" style="color: var(--text-tertiary);">No posts are waiting for your review right now.</p>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

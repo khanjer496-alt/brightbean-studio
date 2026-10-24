@@ -7,9 +7,19 @@ class ApprovalsConfig(AppConfig):
     verbose_name = "Approvals"
 
     def ready(self):
-        from django.db.models.signals import post_migrate
+        from django.db.models.signals import post_delete, post_migrate
+
+        from apps.members.models import WorkspaceMembership
 
         post_migrate.connect(self._register_tasks, sender=self)
+        post_delete.connect(self._retire_links, sender=WorkspaceMembership, dispatch_uid="approvals_retire_links")
+
+    @staticmethod
+    def _retire_links(sender, instance, **kwargs):
+        """Someone removed from a workspace can't use the approval links already emailed to them."""
+        from apps.approvals.links import retire_for
+
+        retire_for(recipient_id=instance.user_id, workspace_id=instance.workspace_id)
 
     @staticmethod
     def _register_tasks(sender, **kwargs):

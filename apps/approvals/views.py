@@ -336,6 +336,18 @@ def comment_attachment(request, workspace_id, post_id, comment_id):
 @login_required
 @require_workspace_role("viewer")
 @require_GET
+def post_previews_view(request, workspace_id, post_id):
+    """What each network will publish for one post (loaded into its Approvals row when expanded)."""
+    from apps.composer.previews import post_previews
+
+    workspace = _get_workspace(request, workspace_id)
+    post = get_object_or_404(Post, id=post_id, workspace=workspace)
+    return render(request, "composer/partials/approver_previews.html", post_previews(post))
+
+
+@login_required
+@require_workspace_role("viewer")
+@require_GET
 def version_diff(request, workspace_id, post_id):
     """Show diff between two post versions."""
     workspace = _get_workspace(request, workspace_id)

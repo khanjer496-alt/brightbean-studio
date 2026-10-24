@@ -1,0 +1,13 @@
+{% comment %}
+What each network will actually publish, for the people who approve it. The same mockups the composer draws
+(preview_card.html), plus the details a mockup can't show (preview_details.html).
+Context: previews (composer.previews.post_previews), media_items.
+{% endcomment %}
+<div class="space-y-4" data-approver-previews>
+    {% for p in previews %}
+    <section class="overflow-hidden rounded-[14px] border border-stone-200 bg-white" aria-label="{{ p.account.get_platform_display }} preview">
+        {% include "composer/partials/preview_card.html" %}
+        {% include "composer/partials/preview_details.html" %}
+    </section>
+    {% endfor %}
+</div>

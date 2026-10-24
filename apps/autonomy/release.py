@@ -276,8 +276,50 @@ def release_hold(action: AgentAction, user) -> AgentAction:
 # Reviewing what was held
 # ---------------------------------------------------------------------------
 
+# What each review needs, on top of being a team member of the workspace.
+REVIEW_PERMISSIONS = {
+    "approve": ("approve_posts", "publish_directly"),
+    "dismiss": ("approve_posts",),
+}
+_REVIEW_DENIED = {
+    "approve": "Approving a held item needs approval and publishing permission.",
+    "dismiss": "Permission denied: approve_posts",
+}
+_CHANNEL_LABEL = {"email": "an email link", "slack": "Slack"}
 
-def approve_held(action: AgentAction, user) -> AgentAction:
+
+def can_review_held(user, workspace, verb: str) -> bool:
+    """Whether ``user`` may ``verb`` ("approve" / "dismiss") held entries in ``workspace``."""
+    from apps.members.models import WorkspaceMembership
+
+    membership = (
+        WorkspaceMembership.objects.select_related("custom_role")
+        .filter(user=user, workspace=workspace, user__is_active=True)
+        .exclude(workspace_role=WorkspaceMembership.WorkspaceRole.CLIENT)
+        .first()
+    )
+    if membership is None or verb not in REVIEW_PERMISSIONS:
+        return False
+    perms = membership.effective_permissions
+    return all(perms.get(permission) for permission in REVIEW_PERMISSIONS[verb])
+
+
+def review_held(action: AgentAction, user, verb: str, *, channel: str = "web") -> AgentAction:
+    """Approve or dismiss a held entry as ``user``: the Activity page's rules, wherever the click came from.
+
+    Raises ``PermissionDenied`` when ``user`` may not, ``ReleaseError`` when the
+    entry's state doesn't allow it.
+    """
+    from django.core.exceptions import PermissionDenied
+
+    if not can_review_held(user, action.workspace, verb):
+        raise PermissionDenied(_REVIEW_DENIED.get(verb, "Permission denied."))
+    if verb == "approve":
+        return approve_held(action, user, channel=channel)
+    return dismiss_held(action, user, channel=channel)
+
+
+def approve_held(action: AgentAction, user, *, channel: str = "web") -> AgentAction:
     """Approve something an agent's policy held: schedule the draft or send the reply, as this person."""
     from apps.composer.services import transition_platform_post
     from apps.inbox.services import ReplyStateError, send_reply_now
@@ -325,7 +367,9 @@ def approve_held(action: AgentAction, user) -> AgentAction:
         action.review_outcome = "approved"
         action.reviewed_by = user
         action.reviewed_at = timezone.now()
-        action.save(update_fields=["review_outcome", "reviewed_by", "reviewed_at"])
+        action.review_channel = channel
+        action.save(update_fields=["review_outcome", "reviewed_by", "reviewed_at", "review_channel"])
+    via = f" via {_CHANNEL_LABEL[channel]}" if channel in _CHANNEL_LABEL else ""
     service.record(
         workspace=action.workspace,
         actor=human(user),
@@ -336,7 +380,7 @@ def approve_held(action: AgentAction, user) -> AgentAction:
         post=action.post,
         platform_post=action.platform_post,
         reply=action.reply,
-        summary=f"Approved the held {ActionType(action.action_type).label.lower()} from {action.actor_name}.",
+        summary=f"Approved the held {ActionType(action.action_type).label.lower()} from {action.actor_name}{via}.",
         final_text=action.final_text,
     )
     return action
@@ -351,7 +395,7 @@ def _start_series(post) -> None:
         refresh_series(post)
 
 
-def dismiss_held(action: AgentAction, user) -> AgentAction:
+def dismiss_held(action: AgentAction, user, *, channel: str = "web") -> AgentAction:
     """Dismiss a held item: the draft stays a draft, the reply draft is discarded."""
     from apps.inbox.models import InboxReply
 
@@ -365,7 +409,8 @@ def dismiss_held(action: AgentAction, user) -> AgentAction:
         action.review_outcome = "dismissed"
         action.reviewed_by = user
         action.reviewed_at = timezone.now()
-        action.save(update_fields=["review_outcome", "reviewed_by", "reviewed_at"])
+        action.review_channel = channel
+        action.save(update_fields=["review_outcome", "reviewed_by", "reviewed_at", "review_channel"])
     return action
 
 
