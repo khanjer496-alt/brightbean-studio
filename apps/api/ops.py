@@ -2895,6 +2895,9 @@ def _plug_rule_response(rule, *, with_runs: bool = False) -> PlugRuleResponse:
         action=rule.action,
         reposter_account_id=rule.actor_account_id,
         message=rule.message,
+        check_interval_minutes=rule.interval_minutes,
+        reads_per_post=rule.reads_per_post,
+        read_cost_per_post_usd=rule.read_cost_per_post,
         is_active=rule.is_active,
         summary=rule.summary,
         runs=[_plug_run_response(r) for r in rule.runs.select_related("platform_post")[:20]] if with_runs else [],
@@ -2947,6 +2950,9 @@ def _plug_networks(actor: Actor) -> list[PlugNetworkResponse]:
                 message_max_length=cap.message_max_length,
                 check_interval_minutes=cap.check_interval_minutes,
                 metered_reads=cap.metered_reads,
+                read_cost_usd=cap.read_cost_usd,
+                max_actions_per_day=cap.max_actions_per_day,
+                requires_approval=cap.requires_approval,
             )
         )
     return out
@@ -3020,6 +3026,7 @@ def create_plug_rule(actor: Actor, payload: CreatePlugRuleRequest) -> PlugRuleRe
             action=payload.action,
             actor_account=reposter,
             message=payload.message,
+            check_interval_minutes=payload.check_interval_minutes,
         )
     except plug_services.PlugError as exc:
         raise _plug_error(exc) from exc

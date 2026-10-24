@@ -39,6 +39,10 @@ def _capability_json(account) -> dict:
         "message_max": cap.message_max_length or account.char_limit,
         "metered": cap.metered_reads,
         "interval": cap.check_interval_minutes,
+        "max_interval": services.MAX_INTERVAL_MINUTES,
+        "read_cost": cap.read_cost_usd,
+        "per_day": cap.max_actions_per_day,
+        "approval": cap.requires_approval,
     }
 
 
@@ -98,6 +102,7 @@ def _fields_from(request, account) -> dict:
         "action": request.POST.get("action", ""),
         "actor_account": reposter,
         "message": request.POST.get("message", ""),
+        "check_interval_minutes": request.POST.get("check_interval_minutes", ""),
     }
 
 
@@ -138,8 +143,8 @@ def rule_add(request, workspace_id):
             )
         except services.PlugError as exc:
             error = str(exc)
-    if request.POST.get("panel") == "composer" and request.htmx:
-        return _panel(request, post.post if post else None, error=error, form=request.POST)
+    if request.POST.get("panel") == "composer" and request.htmx and post is not None:
+        return _panel(request, post.post, error=error, form=request.POST)
     if error:
         return render(request, "plugs/home.html", _home_context(request, error=error, form=request.POST), status=422)
     messages.success(request, "Automation added. It starts watching as soon as the post is live.")

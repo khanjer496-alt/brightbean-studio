@@ -2584,6 +2584,11 @@ class PlugRuleResponse(Schema):
         None, description="Another account in the workspace that acts instead of the post's own account."
     )
     message: str = ""
+    check_interval_minutes: int = Field(..., description="Minutes between two reads of a watched post's counts.")
+    reads_per_post: int = Field(..., description="The most reads one watched post costs over the window.")
+    read_cost_per_post_usd: float | None = Field(
+        None, description="What those reads can cost on the customer's own developer app, where the network bills them."
+    )
     is_active: bool
     summary: str
     runs: list[PlugRunResponse] = Field(default_factory=list, description="Only on a single-rule read.")
@@ -2602,8 +2607,13 @@ class PlugNetworkResponse(Schema):
     cross_actions: list[str] = Field(..., description="What another account on the same network can do to it.")
     reposter_account_ids: list[uuid.UUID] = Field(..., description="Accounts that can be named as the reposter.")
     message_max_length: int | None = None
-    check_interval_minutes: int
+    check_interval_minutes: int = Field(..., description="The shortest gap between two reads of a post's counts.")
     metered_reads: bool = Field(..., description="True when each read is billed to the customer's own developer app.")
+    read_cost_usd: float | None = Field(None, description="The published price of one read, where reads are billed.")
+    max_actions_per_day: int = Field(..., description="Automated actions one account may take in any 24 hours.")
+    requires_approval: bool = Field(
+        ..., description="True when the network's terms forbid automated posting, so every action waits for a person."
+    )
 
 
 class PlugRulesListResponse(Schema):
@@ -2627,6 +2637,12 @@ class CreatePlugRuleRequest(Schema):
         None, description="Another connected account (same workspace and network) that reposts or quotes instead."
     )
     message: str = Field("", max_length=2000, description="The reply or quote text; ignored for a repost.")
+    check_interval_minutes: int | None = Field(
+        None,
+        ge=1,
+        le=1440,
+        description="Minutes between reads of the post's counts; omit for the network's shortest gap (`check_interval_minutes` in networks). Longer gaps cost less where reads are billed.",
+    )
 
 
 class UpdatePlugRuleRequest(Schema):
@@ -2639,6 +2655,7 @@ class UpdatePlugRuleRequest(Schema):
     )
     clear_reposter: bool = False
     message: str | None = Field(None, max_length=2000)
+    check_interval_minutes: int | None = Field(None, ge=1, le=1440)
     is_active: bool | None = None
 
 

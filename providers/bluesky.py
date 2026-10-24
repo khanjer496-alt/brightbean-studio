@@ -109,12 +109,15 @@ class BlueskyProvider(SocialProvider):
     # https://docs.bsky.app/docs/advanced-guides/posts  https://docs.bsky.app/docs/tutorials/like-repost
     # (checked 2026-10-24: the pages redirect to bsky.network and did not render for the checker; the record
     # shapes below are the lexicon's app.bsky.feed.repost and app.bsky.embed.record.)
+    # Policy (community guidelines, checked 2026-10-24): "Do not artificially manipulate features or social signals to
+    # gain unearned reach", so another account never reposts or quotes (no cross actions); the account's own
+    # repost, follow-up reply or quote of its own post stays, within the daily cap.
     plugs = PlugCapability(
         triggers=frozenset({PlugTrigger.LIKES, PlugTrigger.REPOSTS}),
         own_actions=frozenset({PlugAction.REPOST, PlugAction.REPLY, PlugAction.QUOTE}),
-        cross_actions=frozenset({PlugAction.REPOST, PlugAction.QUOTE}),
         message_max_length=300,
         source="https://docs.bsky.app/docs/advanced-guides/posts",
+        policy_source="https://bsky.social/about/support/community-guidelines",
     )
 
     supports_public_profile_metrics = True

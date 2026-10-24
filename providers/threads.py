@@ -91,6 +91,9 @@ class ThreadsProvider(SocialProvider):
         cross_actions=frozenset({PlugAction.REPOST}),
         message_max_length=500,
         source="https://developers.facebook.com/docs/threads/posts/reposts",
+        # Meta's inauthentic-behaviour policy targets networks of accounts boosting each other, so a repost by another
+        # account is only ever made once a person approves it (every cross-account action is held).
+        policy_source="https://transparency.meta.com/policies/community-standards/inauthentic-behavior/",
     )
 
     writing_style = "Casual and conversational, like talking to followers. At most one hashtag; emojis welcome."

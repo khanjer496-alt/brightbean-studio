@@ -5,7 +5,7 @@ Context: workspace, post, targets [{pp, capability, rules, runs}], policy, can_m
 {% endcomment %}
 <section id="plugs-panel" class="mt-4 border-t border-stone-200 pt-4" aria-labelledby="plugs-panel-title">
     <h2 id="plugs-panel-title" class="m-0 text-sm font-semibold text-stone-800">Engagement automations</h2>
-    <p class="m-0 mt-1 text-xs text-stone-500">Repost, reply or have another account boost this post once it reaches a number of likes, reposts or views. The <a class="underline" href="{% url 'plugs:home' workspace_id=workspace.id %}">autonomy policy</a> decides whether it acts or waits for approval{% if policy.crisis_paused %} (crisis pause is on){% endif %}.</p>
+    <p class="m-0 mt-1 text-xs text-stone-500">Repost it or reply under it once it reaches a number of likes, reposts or views. The <a class="underline" href="{% url 'plugs:home' workspace_id=workspace.id %}">autonomy policy</a> decides whether it acts or waits for approval{% if policy.crisis_paused %} (crisis pause is on){% endif %}.</p>
     {% if error %}<p role="alert" class="m-0 mt-2 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700">{{ error }}</p>{% endif %}
     {% for target in targets %}
     <div class="mt-3 rounded-xl border border-line bg-surface-1 p-3">

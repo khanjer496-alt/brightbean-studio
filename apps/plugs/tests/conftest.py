@@ -42,6 +42,22 @@ def booster(workspace):
     return make_account(workspace, name="Booster")
 
 
+@pytest.fixture
+def toot(workspace):
+    """A Mastodon account: a network where another account may boost a post (with a person's approval)."""
+    return make_account(workspace, "mastodon", "Toot")
+
+
+@pytest.fixture
+def toot_booster(workspace):
+    return make_account(workspace, "mastodon", "Toot booster")
+
+
+@pytest.fixture
+def toot_published(toot):
+    return publish_post(toot, remote_id="109", caption="Hello fediverse")
+
+
 def publish_post(account, *, hours_ago=1, remote_id="at://did:plc:me/app.bsky.feed.post/1", caption="Hello"):
     post = Post.objects.create(workspace=account.workspace, caption=caption)
     return PlatformPost.objects.create(

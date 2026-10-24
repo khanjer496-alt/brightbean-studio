@@ -67,11 +67,17 @@ class TestAdd:
         )
         assert response.status_code == 422 and not PlugRule.objects.exists()
 
-    def test_cross_account_repost(self, owner_client, workspace, account, booster):
+    def test_cross_account_repost(self, owner_client, workspace, toot, toot_booster):
         owner_client.post(
-            url("rule_add", workspace), {"account": str(account.id), **FORM, "actor_account": str(booster.id)}
+            url("rule_add", workspace), {"account": str(toot.id), **FORM, "actor_account": str(toot_booster.id)}
         )
-        assert PlugRule.objects.get().actor_account == booster
+        assert PlugRule.objects.get().actor_account == toot_booster
+
+    def test_check_interval_is_kept(self, owner_client, workspace, account):
+        owner_client.post(
+            url("rule_add", workspace), {"account": str(account.id), **FORM, "check_interval_minutes": "90"}
+        )
+        assert PlugRule.objects.get().check_interval_minutes == 90
 
 
 class TestToggleDelete:

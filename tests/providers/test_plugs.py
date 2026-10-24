@@ -27,8 +27,9 @@ class TestDeclarations:
     @pytest.mark.parametrize(
         ("platform", "own", "cross", "triggers"),
         [
-            ("bluesky", {"repost", "reply", "quote"}, {"repost", "quote"}, {"likes", "reposts"}),
-            ("x", {"repost", "reply"}, {"repost"}, {"likes", "reposts", "views"}),
+            # Bluesky and X forbid amplifying with several accounts, so no cross actions there.
+            ("bluesky", {"repost", "reply", "quote"}, set(), {"likes", "reposts"}),
+            ("x", {"repost", "reply"}, set(), {"likes", "reposts", "views"}),
             ("mastodon", {"repost", "reply"}, {"repost"}, {"likes", "reposts"}),
             ("threads", {"reply"}, {"repost"}, {"likes", "reposts", "views"}),
             ("linkedin_company", {"reply"}, {"repost"}, {"likes", "reposts", "views"}),
@@ -40,7 +41,15 @@ class TestDeclarations:
         assert {a.value for a in cap.cross_actions} == cross
         assert {t.value for t in cap.triggers} == triggers
         assert cap.source.startswith("https://")
+        assert cap.policy_source.startswith("https://"), (
+            "each network cites the policy its actions were checked against"
+        )
+        assert 1 <= cap.max_actions_per_day <= 10
         assert cap.watchable
+
+    def test_linkedin_terms_need_a_person_for_every_action(self):
+        assert plug_capability_for("linkedin_company").requires_approval
+        assert not plug_capability_for("bluesky").requires_approval
 
     def test_x_quote_is_not_offered_and_reads_are_metered(self):
         cap = XProvider.plugs

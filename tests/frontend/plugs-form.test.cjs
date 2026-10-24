@@ -27,17 +27,18 @@ const caps = [
     message_max: 500,
     metered: true,
     interval: 60,
+    read_cost: 0.005,
   },
 ];
 
 // The component runs in its own realm, so arrays are compared as plain JSON.
 const plain = (value) => JSON.parse(JSON.stringify(value));
 
-function component(accountId) {
+function component(accountId, interval, windowHours) {
   const sandbox = {};
   const document = { getElementById: (id) => (id === 'caps' ? { textContent: JSON.stringify(caps) } : null) };
   vm.runInNewContext(source, Object.assign(sandbox, { window: sandbox, document }));
-  return sandbox.plugsRuleForm('caps', accountId);
+  return sandbox.plugsRuleForm('caps', accountId, interval, windowHours);
 }
 
 test('offers what the chosen account can do itself, plus actions only another account can do', () => {
@@ -77,4 +78,20 @@ test('an unknown account offers nothing instead of failing', () => {
   const form = component('zzz');
   assert.deepEqual(plain(form.actions()), []);
   assert.equal(form.current().triggers.length, 0);
+});
+
+test('estimates reads per post from the window and the gap, never below the network floor', () => {
+  const form = component('c', '', '24');
+  assert.equal(form.reads(), 25);
+  assert.equal(form.cost(), 25 * 0.005);
+  form.interval = 10;
+  assert.equal(form.reads(), 25, 'a gap shorter than the network allows is raised to it');
+  form.interval = 240;
+  assert.equal(form.reads(), 7);
+});
+
+test('no cost estimate where the network does not bill reads', () => {
+  const form = component('a', '', '6');
+  assert.equal(form.reads(), 25);
+  assert.equal(form.cost(), null);
 });

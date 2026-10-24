@@ -1615,7 +1615,9 @@ _tool(
     (
         "List engagement automations ('plugs') and what each allowed account's network supports. A rule says: when a "
         "post reaches N likes, reposts or views within T hours of publishing, repost it, reply under it with a "
-        "message, or have another account in the workspace repost or quote it. Each rule fires once per post. "
+        "message, or (where the network allows it, and only once a person approves) have another account in the "
+        "workspace repost it. Each rule fires once per post and each account takes at most max_actions_per_day "
+        "automated actions a day; requires_approval networks hold every action for a person. "
         "`networks` lists, per account, the counts the network reports (triggers), what the account itself can do "
         "(own_actions), what another account can do to its posts (cross_actions) and the accounts that can be named "
         "as the reposter. A rule with no post_id is a default for the account's new posts. Needs create_posts. "
@@ -1648,7 +1650,9 @@ _tool(
         "when post_id is omitted) reaches `threshold` likes, reposts or views within `window_hours` of publishing, "
         "`action` it: repost (boost), reply (message posted under the post) or quote (repost with the message). Give "
         "reposter_account_id to have another connected account of the workspace on the same network act "
-        "(repost or quote only). Check list_plug_rules `networks` for what each network allows; an unsupported "
+        "(only where cross_actions allows it; that action always waits for a person's approval). "
+        "check_interval_minutes spaces the reads (billed per read on some networks; the response estimates the "
+        "cost per post). Check list_plug_rules `networks` for what each network allows; an unsupported "
         "combination is refused with the reason. The rule acts later as an automation, so the autonomy policy "
         "decides then whether it goes out, is held for a person or is blocked. Needs publish_directly; every "
         "account must be in the allowlist."
@@ -1664,6 +1668,12 @@ _tool(
         "action": {"type": "string", "enum": _PLUG_ACTIONS},
         "reposter_account_id": _uuid_prop("Another account (same workspace and network) that reposts or quotes."),
         "message": _text_prop("Reply or quote text; ignored for a repost.", max_length=2000),
+        "check_interval_minutes": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1440,
+            "description": "Minutes between reads of the post's counts; omit for the network's shortest gap (`check_interval_minutes` in networks). Longer gaps cost less where reads are billed.",
+        },
     },
     required=["social_account_id", "trigger", "threshold", "action"],
     idempotent=True,
@@ -1692,6 +1702,7 @@ _tool(
         "reposter_account_id": _uuid_prop(),
         "clear_reposter": {"type": "boolean"},
         "message": _text_prop(max_length=2000),
+        "check_interval_minutes": {"type": "integer", "minimum": 1, "maximum": 1440},
         "is_active": {"type": "boolean"},
     },
     required=["rule_id"],

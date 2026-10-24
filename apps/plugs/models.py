@@ -11,7 +11,12 @@ from django.conf import settings
 from django.db import models
 
 from apps.common.managers import WorkspaceScopedManager
+from providers import plug_capability_for
 from providers.types import PlugAction, PlugTrigger
+
+
+def reads_per_post(window_hours: int, interval_minutes: int) -> int:
+    return 1 + (window_hours * 60) // max(interval_minutes, 1)
 
 
 class PlugRule(models.Model):
@@ -48,6 +53,9 @@ class PlugRule(models.Model):
         "social_accounts.SocialAccount", on_delete=models.CASCADE, null=True, blank=True, related_name="plug_roles"
     )
     message = models.TextField(blank=True, default="")
+    # Minutes between two reads of the post's counts; empty means the network's shortest gap
+    # (``PlugCapability.check_interval_minutes``). Longer gaps cost less where reads are billed.
+    check_interval_minutes = models.PositiveSmallIntegerField(null=True, blank=True)
     is_active = models.BooleanField(default=True)
     created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
@@ -76,6 +84,23 @@ class PlugRule(models.Model):
     @property
     def is_cross_account(self) -> bool:
         return self.actor_account_id is not None and self.actor_account_id != self.social_account_id
+
+    @property
+    def interval_minutes(self) -> int:
+        """Minutes between two reads of a watched post: the rule's own gap, never shorter than the network allows."""
+        floor = plug_capability_for(self.social_account.platform).check_interval_minutes
+        return max(self.check_interval_minutes or floor, floor)
+
+    @property
+    def reads_per_post(self) -> int:
+        """The most reads one watched post can cost over the whole window (one at the start, then one per gap)."""
+        return reads_per_post(self.window_hours, self.interval_minutes)
+
+    @property
+    def read_cost_per_post(self) -> float | None:
+        """The most the reads of one watched post can cost the customer, in US dollars, where the network bills them."""
+        cost = plug_capability_for(self.social_account.platform).read_cost_usd
+        return None if cost is None else round(cost * self.reads_per_post, 4)
 
     @property
     def summary(self) -> str:

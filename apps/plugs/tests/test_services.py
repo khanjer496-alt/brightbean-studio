@@ -8,6 +8,7 @@ import pytest
 from django.utils import timezone
 
 from apps.autonomy.models import AgentAction, Decision
+from apps.composer.models import PlatformPost
 from apps.plugs import services
 from apps.plugs.models import PlugRule, PlugRun
 from apps.plugs.services import PlugError
@@ -95,37 +96,49 @@ class TestValidation:
 
 
 class TestCrossAccountScoping:
-    def test_reposter_must_share_workspace_and_network(self, published, booster, organization):
+    def test_reposter_must_share_workspace_and_network(self, toot_published, toot_booster, organization):
         from apps.workspaces.models import Workspace
 
         other_ws = Workspace.objects.create(organization=organization, name="Other")
-        foreign = make_account(other_ws, "bluesky", "Foreign")
-        wrong_network = make_account(published.social_account.workspace, "mastodon", "Toot")
+        foreign = make_account(other_ws, "mastodon", "Foreign")
+        wrong_network = make_account(toot_published.social_account.workspace, "bluesky", "Sky2")
         with pytest.raises(PlugError, match="same workspace"):
-            rule_for(published, actor_account=foreign)
+            rule_for(toot_published, actor_account=foreign)
         with pytest.raises(PlugError, match="same network"):
-            rule_for(published, actor_account=wrong_network)
-        assert rule_for(published, actor_account=booster).is_cross_account
+            rule_for(toot_published, actor_account=wrong_network)
+        assert rule_for(toot_published, actor_account=toot_booster).is_cross_account
 
-    def test_reposter_must_be_connected(self, published, booster):
-        booster.connection_status = "disconnected"
-        booster.save()
+    def test_reposter_must_be_connected(self, toot_published, toot_booster):
+        toot_booster.connection_status = "disconnected"
+        toot_booster.save()
         with pytest.raises(PlugError, match="not connected"):
-            rule_for(published, actor_account=booster)
+            rule_for(toot_published, actor_account=toot_booster)
 
-    def test_reply_cannot_come_from_another_account(self, published, booster):
+    def test_reply_cannot_come_from_another_account(self, toot_published, toot_booster):
         with pytest.raises(PlugError, match="cannot reply"):
-            rule_for(published, action="reply", message="hi", actor_account=booster)
+            rule_for(toot_published, action="reply", message="hi", actor_account=toot_booster)
 
-    def test_choices_list_only_same_workspace_same_network(self, account, booster, workspace, organization):
+    @pytest.mark.parametrize("platform", ["bluesky", "x"])
+    def test_networks_that_forbid_amplification_take_no_reposter(self, workspace, platform):
+        # Bluesky's community guidelines and X's developer guidelines rule out boosting with several accounts.
+        own = make_account(workspace, platform, "Own")
+        other = make_account(workspace, platform, "Other")
+        assert list(services.reposter_choices(own)) == []
+        with pytest.raises(PlugError, match="another account cannot repost"):
+            rule_for(publish_post(own, remote_id="1"), actor_account=other)
+
+    def test_choices_list_only_same_workspace_same_network(self, toot, toot_booster, workspace, organization):
         from apps.workspaces.models import Workspace
 
-        make_account(workspace, "mastodon", "Toot")
-        make_account(Workspace.objects.create(organization=organization, name="Other"), "bluesky", "Foreign")
-        assert list(services.reposter_choices(account)) == [booster]
+        make_account(workspace, "bluesky", "Sky")
+        make_account(Workspace.objects.create(organization=organization, name="Other"), "mastodon", "Foreign")
+        assert list(services.reposter_choices(toot)) == [toot_booster]
 
-    def test_a_rule_edited_into_another_workspace_is_refused_at_firing(self, published, booster, full_auto, network):
-        rule = rule_for(published, actor_account=booster, threshold=1)
+    def test_a_rule_edited_into_another_workspace_is_refused_at_firing(
+        self, toot_published, toot_booster, full_auto, network
+    ):
+        booster = toot_booster
+        rule = rule_for(toot_published, actor_account=booster, threshold=1)
         from apps.workspaces.models import Workspace
 
         other = Workspace.objects.create(organization=booster.workspace.organization, name="Moved")
@@ -426,18 +439,31 @@ class TestAutonomy:
 
 
 class TestActions:
-    def test_cross_account_repost_acts_as_the_other_account(self, published, booster, full_auto, network, monkeypatch):
+    def test_cross_account_repost_waits_for_a_person_then_acts_as_the_other_account(
+        self, toot_published, toot_booster, full_auto, network, monkeypatch, owner
+    ):
+        from apps.autonomy import release
+
         used = []
         monkeypatch.setattr(
             "apps.publisher.engine._provider_and_access_token", lambda a: (used.append(a.pk) or network, "t")
         )
-        rule_for(published, threshold=1, actor_account=booster)
+        rule_for(toot_published, threshold=1, actor_account=toot_booster)
         network.counts = {"likes": 3}
         services.check_rules()
-        assert used == [published.social_account_id, booster.pk]
+        run = PlugRun.objects.get()
+        # Even under full autonomy, another account boosting a post is a person's call.
+        assert run.status == PlugRun.Status.AWAITING_APPROVAL and network.calls == []
+        held = AgentAction.objects.get(plug_run=run)
+        assert held.decision == Decision.HELD and "another account" in held.summary
+
+        release.approve_held(held, owner)
+        run.refresh_from_db()
+        assert run.status == PlugRun.Status.DONE
+        assert used == [toot_published.social_account_id, toot_booster.pk]
         target = network.calls[0][1]
-        assert target.cross_account and target.platform_post_id == published.platform_post_id
-        assert target.permalink == published.permalink
+        assert target.cross_account and target.platform_post_id == toot_published.platform_post_id
+        assert target.permalink == toot_published.permalink
 
     def test_reply_goes_under_the_post(self, published, full_auto, network):
         rule_for(published, threshold=1, action="reply", message="Read more: https://example.com")
@@ -445,8 +471,8 @@ class TestActions:
         services.check_rules()
         assert network.calls == [("reply", published.platform_post_id, "Read more: https://example.com")]
 
-    def test_quote_carries_the_message(self, published, booster, full_auto, network):
-        rule_for(published, threshold=1, action="quote", message="Worth reading", actor_account=booster)
+    def test_quote_carries_the_message(self, published, full_auto, network):
+        rule_for(published, threshold=1, action="quote", message="Worth reading")
         network.counts = {"likes": 3}
         services.check_rules()
         assert network.calls[0][0] == "quote" and network.calls[0][2] == "Worth reading"
@@ -456,3 +482,67 @@ class TestActions:
         services.check_rules()
         services.delete_rule(rule)
         assert not PlugRun.objects.exists()
+
+
+class TestPlatformLimits:
+    def test_terms_that_forbid_automated_posting_hold_every_action(self, workspace, full_auto, network):
+        page = make_account(workspace, "linkedin_company", "Page")
+        post = publish_post(page, remote_id="urn:li:share:1")
+        rule_for(post, trigger="likes", threshold=1, action="reply", message="Thanks for reading")
+        network.counts = {"likes": 2}
+        services.check_rules()
+        run = PlugRun.objects.get()
+        assert run.status == PlugRun.Status.AWAITING_APPROVAL and network.calls == []
+        assert "API terms" in run.detail
+
+    def test_daily_cap_per_account(self, account, full_auto, network):
+        cap = services.plug_capability_for(account.platform).max_actions_per_day
+        for i in range(cap + 1):
+            rule_for(publish_post(account, remote_id=f"at://p/{i}"), threshold=1)
+        network.counts = {"likes": 5}
+        services.check_rules()
+        statuses = list(PlugRun.objects.values_list("status", flat=True))
+        assert statuses.count(PlugRun.Status.DONE) == cap
+        assert statuses.count(PlugRun.Status.BLOCKED) == 1
+        blocked = PlugRun.objects.get(status=PlugRun.Status.BLOCKED)
+        assert "last 24 hours" in blocked.detail
+        assert AgentAction.objects.filter(plug_run=blocked, decision=Decision.BLOCKED).exists()
+        assert len(network.calls) == cap
+
+    def test_rule_interval_spaces_reads_but_never_below_the_network_floor(self, published, full_auto, network):
+        floor = services.plug_capability_for("bluesky").check_interval_minutes
+        with pytest.raises(PlugError, match="checked every"):
+            rule_for(published, check_interval_minutes=floor - 1)
+        rule = rule_for(published, check_interval_minutes=120, window_hours=24)
+        assert rule.reads_per_post == 1 + 24 * 60 // 120
+        assert rule.read_cost_per_post is None
+        before = timezone.now()
+        services.check_rules(now=before)
+        run = PlugRun.objects.get()
+        assert run.next_check_at == before + timedelta(minutes=120)
+
+    def test_metered_network_estimates_the_cost(self, workspace):
+        x = make_account(workspace, "x", "Ex")
+        rule = rule_for(publish_post(x, remote_id="1"), window_hours=24)
+        assert rule.interval_minutes == 60 and rule.reads_per_post == 25
+        assert rule.read_cost_per_post == pytest.approx(25 * 0.005)
+
+
+class TestDeletedPosts:
+    def test_a_post_the_network_no_longer_has_ends_the_watch(self, published, full_auto, network):
+        rule_for(published)
+        network.error = ("read", APIError("Bluesky did not return the post", platform="Bluesky", retryable=False))
+        services.check_rules()
+        run = PlugRun.objects.get()
+        assert run.status == PlugRun.Status.FAILED and run.next_check_at is None
+
+    def test_a_post_taken_down_here_stops_being_read(self, published, full_auto, network):
+        rule_for(published)
+        services.check_rules()
+        published.status = PlatformPost.Status.FAILED
+        published.save()
+        PlugRun.objects.update(next_check_at=None)
+        reads = network.reads
+        services.check_rules()
+        assert network.reads == reads
+        assert PlugRun.objects.get().status == PlugRun.Status.CANCELLED

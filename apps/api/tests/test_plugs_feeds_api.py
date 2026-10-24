@@ -14,6 +14,7 @@ from apps.api.tests.world import bearer, call_tool, make_post, tool_error, tool_
 from apps.api_keys import services as key_services
 from apps.composer.models import Feed, PlatformPost
 from apps.members.models import PERMISSION_KEYS
+from apps.social_accounts.models import SocialAccount
 
 pytestmark = pytest.mark.django_db
 
@@ -82,8 +83,10 @@ class TestPlugsRest:
         by_account = {n["social_account_id"]: n for n in listing["networks"]}
         network = by_account[str(world.account1.id)]
         assert network["triggers"] == ["likes", "reposts"]
-        assert network["cross_actions"] == ["quote", "repost"]
-        assert network["reposter_account_ids"] == [str(world.account2.id)]
+        # Bluesky's guidelines rule out boosting with several accounts.
+        assert network["cross_actions"] == [] and network["reposter_account_ids"] == []
+        assert network["max_actions_per_day"] >= 1 and network["requires_approval"] is False
+        assert created.json()["reads_per_post"] == 1 + 12 * 60 // network["check_interval_minutes"]
 
         assert world.full.get(f"/api/v1/plugs/{rule_id}").json()["runs"] == []
         changed = patch_json(world.full, f"/api/v1/plugs/{rule_id}", {"threshold": 75, "is_active": False})
@@ -92,6 +95,8 @@ class TestPlugsRest:
         assert world.full.get(f"/api/v1/plugs/{rule_id}").status_code == 404
 
     def test_default_rule_and_cross_account_reposter(self, world):
+        # Mastodon lets another account boost (each one waits for a person's approval).
+        SocialAccount.objects.filter(pk__in=[world.account1.pk, world.account2.pk]).update(platform="mastodon")
         response = post_json(
             world.full, "/api/v1/plugs/", rule_payload(world, reposter_account_id=str(world.account2.id))
         )

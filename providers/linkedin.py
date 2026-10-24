@@ -142,6 +142,11 @@ class LinkedInProvider(SocialProvider):
         cross_actions=frozenset({PlugAction.REPOST}),
         message_max_length=1250,
         source="https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api",
+        # API Terms of Use 3.1(26) (checked 2026-10-24): an application may not "automate posting on the LinkedIn
+        # Services". A rule here only prepares the comment or reshare; a person approves each one before it goes out.
+        requires_approval=True,
+        max_actions_per_day=3,
+        policy_source="https://www.linkedin.com/legal/l/api-terms-of-use",
     )
 
     # Source: https://sproutsocial.com/insights/best-times-to-post-on-social-media/ (published 2026-03-31; checked 2026-10-24):

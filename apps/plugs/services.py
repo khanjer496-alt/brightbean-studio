@@ -15,12 +15,19 @@ is reached asks the autonomy policy before acting as the "system" actor:
 Each (rule, post) pair is one row, claimed by a status change under a row lock,
 so a rule fires at most once however many workers race on it, and a request
 whose outcome is unknown (``ambiguous_write``) is recorded, never repeated.
-Reads are spaced by the provider's ``check_interval_minutes`` and back off after
-errors and rate limits.
+Reads are spaced by the rule's interval (never shorter than the provider's
+``check_interval_minutes``) and back off after errors and rate limits.
+
+Platform rules shape what may happen on its own: an action by *another*
+account (a cross-account repost) is always held for a person, a network whose
+terms forbid automated posting (``PlugCapability.requires_approval``) holds
+every action, and one account takes at most
+``PlugCapability.max_actions_per_day`` automated actions in any 24 hours.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import datetime as dt
 import logging
 from dataclasses import dataclass
@@ -31,7 +38,7 @@ from django.utils import timezone
 
 from apps.autonomy import release, service
 from apps.autonomy.actors import system
-from apps.autonomy.models import ActionType
+from apps.autonomy.models import ActionType, AgentAction, Decision
 from apps.composer.models import PlatformPost
 from apps.social_accounts.models import SocialAccount
 from providers import plug_capability_for
@@ -46,6 +53,8 @@ MAX_RULES_PER_POST = 5
 MAX_DEFAULT_RULES_PER_ACCOUNT = 5
 MAX_THRESHOLD = 100_000_000
 MAX_WINDOW_HOURS = 168
+MAX_INTERVAL_MINUTES = 24 * 60
+DAY = dt.timedelta(hours=24)
 MAX_ATTEMPTS = 3
 MAX_CHECK_FAILURES = 8
 # Reads of one account's posts in a single run of the checker, so a long list can't spend a platform's allowance.
@@ -88,6 +97,7 @@ def clean_rule(
     action: str,
     actor_account: SocialAccount | None = None,
     message: str = "",
+    check_interval_minutes=None,
     exclude_rule: PlugRule | None = None,
 ) -> dict:
     """The validated fields of a rule, or :class:`PlugError` saying what to change."""
@@ -111,6 +121,16 @@ def clean_rule(
         raise PlugError(f"The window must be between 1 and {MAX_WINDOW_HOURS} hours.")
     if action not in {a.value for a in PlugAction}:
         raise PlugError("Choose repost, reply or quote.")
+    if check_interval_minutes in ("", None):
+        check_interval_minutes = None
+    else:
+        try:
+            check_interval_minutes = int(check_interval_minutes)
+        except (TypeError, ValueError) as exc:
+            raise PlugError("The time between checks must be a whole number of minutes.") from exc
+        floor = capability.check_interval_minutes
+        if not floor <= check_interval_minutes <= MAX_INTERVAL_MINUTES:
+            raise PlugError(f"{label} posts can be checked every {floor} to {MAX_INTERVAL_MINUTES} minutes.")
 
     actor = actor_account if actor_account is not None and actor_account.pk != account.pk else None
     if actor is not None:
@@ -149,6 +169,7 @@ def clean_rule(
         "action": action,
         "actor_account": actor,
         "message": message,
+        "check_interval_minutes": check_interval_minutes,
     }
 
 
@@ -184,6 +205,7 @@ def update_rule(rule: PlugRule, **changes) -> PlugRule:
             "action": rule.action,
             "actor_account": rule.actor_account,
             "message": rule.message,
+            "check_interval_minutes": rule.check_interval_minutes,
             **changes,
         }
         cleaned = clean_rule(
@@ -266,6 +288,15 @@ def _backoff(run: PlugRun, now, base: dt.timedelta) -> dt.datetime:
     return now + min(base * (2 ** min(run.check_failures, 10)), BACKOFF_CAP)
 
 
+def _drop_unpublished() -> int:
+    """End the watch on posts that are no longer live (deleted, taken down), so they stop being read."""
+    return (
+        PlugRun.objects.filter(status=PlugRun.Status.WATCHING)
+        .exclude(platform_post__status=PlatformPost.Status.PUBLISHED)
+        .update(status=PlugRun.Status.CANCELLED, next_check_at=None, detail="The post is no longer published.")
+    )
+
+
 def _due_runs(now):
     return (
         PlugRun.objects.filter(status=PlugRun.Status.WATCHING)
@@ -287,6 +318,7 @@ def check_rules(*, now=None) -> CheckResult:
 
     now = now or timezone.now()
     result = CheckResult(created=_create_runs(now))
+    result.expired += _drop_unpublished()
     by_account: dict = {}
     for run in _due_runs(now):
         if _ends_at(run) < now:
@@ -330,28 +362,42 @@ def check_rules(*, now=None) -> CheckResult:
                     _finish(run, PlugRun.Status.FAILED, "This network can't report that number.")
                     result.failed += 1
                     continue
+                except ProviderError as exc:
+                    if exc.retryable:
+                        _read_failed(run, now, result)
+                    else:
+                        # Not found or refused for good (usually deleted on the network): stop instead of re-reading.
+                        _finish(
+                            run, PlugRun.Status.FAILED, f"The post's numbers could not be read: {_message_for(exc)}"
+                        )
+                        result.failed += 1
+                    continue
                 except Exception as exc:
                     logger.warning("Plugs: counts for %s failed: %s", post.pk, type(exc).__name__)
-                    run.check_failures += 1
-                    if run.check_failures >= MAX_CHECK_FAILURES:
-                        _finish(run, PlugRun.Status.FAILED, "The post's numbers could not be read.")
-                        result.failed += 1
-                    else:
-                        run.next_check_at = _backoff(run, now, dt.timedelta(minutes=capability.check_interval_minutes))
-                        run.save(update_fields=["check_failures", "next_check_at", "updated_at"])
+                    _read_failed(run, now, result)
                     continue
                 counts_by_post[post.pk] = counts
                 result.read += 1
             run.last_counts = counts
             run.last_checked_at = now
             run.check_failures = 0
-            run.next_check_at = now + dt.timedelta(minutes=capability.check_interval_minutes)
+            run.next_check_at = now + dt.timedelta(minutes=run.rule.interval_minutes)
             run.save(update_fields=["last_counts", "last_checked_at", "check_failures", "next_check_at", "updated_at"])
             value = int(counts.get(run.rule.trigger, 0))
             if value >= run.rule.threshold:
                 fire(run, value=value, now=now)
                 result.fired += 1
     return result
+
+
+def _read_failed(run: PlugRun, now, result: CheckResult) -> None:
+    run.check_failures += 1
+    if run.check_failures >= MAX_CHECK_FAILURES:
+        _finish(run, PlugRun.Status.FAILED, "The post's numbers could not be read.")
+        result.failed += 1
+        return
+    run.next_check_at = _backoff(run, now, dt.timedelta(minutes=run.rule.interval_minutes))
+    run.save(update_fields=["check_failures", "next_check_at", "updated_at"])
 
 
 def _delay(runs, now, wait) -> None:
@@ -405,6 +451,31 @@ def fire(run: PlugRun, *, value: int, now=None) -> PlugRun:
         who = system(WHO)
         action_type = _action_type(rule)
         text = _text_for(run)
+        # One account's automated actions are counted under its row lock, so racing workers can't pass the cap.
+        SocialAccount.objects.select_for_update().filter(pk=actor_account.pk).first()
+        capability = plug_capability_for(actor_account.platform)
+        used = actions_in_last_day(actor_account, now)
+        if used >= capability.max_actions_per_day:
+            run.status = PlugRun.Status.BLOCKED
+            run.detail = (
+                f"{actor_account.account_name or 'The account'} already took {used} automated actions in the last "
+                f"24 hours, the most {actor_account.get_platform_display()} gets, so this one was skipped."
+            )
+            run.save()
+            service.record(
+                workspace=rule.workspace,
+                actor=who,
+                action_type=action_type,
+                operation=f"plug.{rule.action}",
+                decision=Decision.BLOCKED,
+                summary=f"Blocked because {run.detail[0].lower()}{run.detail[1:]}",
+                account=actor_account,
+                post=run.platform_post.post,
+                platform_post=run.platform_post,
+                plug_run=run,
+                final_text=text,
+            )
+            return run
         verdict = service.evaluate(
             workspace=rule.workspace,
             actor=who,
@@ -414,6 +485,7 @@ def fire(run: PlugRun, *, value: int, now=None) -> PlugRun:
             when=now,
             source="system",
         )
+        verdict = _with_platform_hold(verdict, rule, capability)
         links = {
             "workspace": rule.workspace,
             "actor": who,
@@ -446,6 +518,43 @@ def fire(run: PlugRun, *, value: int, now=None) -> PlugRun:
     if perform_now:
         perform(run)
     return run
+
+
+def actions_in_last_day(account: SocialAccount, now=None) -> int:
+    """Automated actions ``account`` took or has waiting for approval in the last 24 hours (a blocked one isn't one)."""
+    now = now or timezone.now()
+    return (
+        AgentAction.objects.filter(
+            plug_run__isnull=False,
+            social_account=account,
+            created_at__gte=now - DAY,
+            decision__in=(Decision.EXECUTED, Decision.HELD),
+        )
+        .values("plug_run")
+        .distinct()
+        .count()
+    )
+
+
+def _with_platform_hold(verdict, rule: PlugRule, capability):
+    """Turn an allowed action into one held for a person where the platform's rules want a person to decide."""
+    if not verdict.executes:
+        return verdict
+    if capability.requires_approval:
+        label = rule.acting_account.get_platform_display()
+        reason = f"{label}'s API terms don't allow automated posting, so a person approves each one"
+    elif rule.is_cross_account:
+        reason = "another account boosting the post needs a person's approval on every network"
+    else:
+        return verdict
+    row = {"name": "platform", "label": "Platform rules", "passed": False, "reason": reason, "blocking": False}
+    return dataclasses.replace(
+        verdict,
+        outcome=service.HOLD,
+        reasons=[reason, *verdict.reasons],
+        results=[row, *verdict.results],
+        undo_delay=dt.timedelta(0),
+    )
 
 
 def _actor_problem(rule: PlugRule) -> str:

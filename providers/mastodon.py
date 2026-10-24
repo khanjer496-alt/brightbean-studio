@@ -135,6 +135,8 @@ class MastodonProvider(SocialProvider):
         own_actions=frozenset({PlugAction.REPOST, PlugAction.REPLY}),
         cross_actions=frozenset({PlugAction.REPOST}),
         source="https://docs.joinmastodon.org/methods/statuses/#boost",
+        # Each server sets its own rules on bots; a boost by another account is held for a person like everywhere.
+        policy_source="https://docs.joinmastodon.org/user/preferences/#bot",
     )
 
     supports_public_profile_metrics = True

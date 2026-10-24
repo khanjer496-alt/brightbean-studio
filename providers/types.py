@@ -348,12 +348,23 @@ class PlugCapability:
     cross_actions: frozenset[PlugAction] = frozenset()
     # Characters a reply or quote message may carry; None means the account's own limit.
     message_max_length: int | None = None
-    # Minutes between two reads of one post's counts. Raised where reading costs money or quota.
+    # The shortest gap, in minutes, between two reads of one post's counts (a rule may ask for a longer one).
+    # Raised where reading costs money or quota.
     check_interval_minutes: int = 15
     # True when each read is billed to the customer's own developer app.
     metered_reads: bool = False
+    # What one read costs the customer in US dollars, where the platform publishes a price; None when free or unknown.
+    read_cost_usd: float | None = None
+    # Every action needs a person's approval, whatever the autonomy level: the platform's terms don't allow it to be
+    # automated. (An action by *another* account always needs approval anyway; see ``apps.plugs.services``.)
+    requires_approval: bool = False
+    # Actions one account may take through automations in any 24 hours, so a burst of popular posts never turns
+    # into a burst of reposts the platform would read as spam.
+    max_actions_per_day: int = 10
     # The platform documentation the declaration was checked against.
     source: str = ""
+    # The platform's automation / developer policy the allowed actions were checked against.
+    policy_source: str = ""
 
     @property
     def watchable(self) -> bool:

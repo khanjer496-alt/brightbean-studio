@@ -276,16 +276,22 @@ class XProvider(SocialProvider):
 
     # Reposting is POST /2/users/{id}/retweets with the tweet.write scope; a reply is POST /2/tweets with
     # reply.in_reply_to_tweet_id. Quote posts (quote_tweet_id) need an Enterprise plan, so they are not offered.
-    # Counts come from GET /2/tweets/{id} public_metrics, billed per read to the customer's own app.
+    # Counts come from GET /2/tweets/{id} public_metrics, billed per read to the customer's own app ($0.005 per
+    # post read, https://docs.x.com/x-api/getting-started/pricing, checked 2026-10-24).
     # https://docs.x.com/x-api/posts/repost-post  https://docs.x.com/x-api/posts/creation-of-a-post
+    # Policy (developer guidelines, checked 2026-10-24): an automated repost is fine for informational content but
+    # "no bulk spam", and multiple accounts must not be used "to amplify the same message", so another account never
+    # reposts (no cross actions). A reply here is the account's follow-up on its own post, never an unsolicited reply.
     plugs = PlugCapability(
         triggers=frozenset({PlugTrigger.LIKES, PlugTrigger.REPOSTS, PlugTrigger.VIEWS}),
         own_actions=frozenset({PlugAction.REPOST, PlugAction.REPLY}),
-        cross_actions=frozenset({PlugAction.REPOST}),
         message_max_length=280,
         check_interval_minutes=60,
         metered_reads=True,
+        read_cost_usd=0.005,
+        max_actions_per_day=5,
         source="https://docs.x.com/x-api/posts/repost-post",
+        policy_source="https://docs.x.com/developer-guidelines",
     )
 
     # Source: https://sproutsocial.com/insights/best-times-to-post-on-social-media/ (published 2026-03-31; checked 2026-10-24):
