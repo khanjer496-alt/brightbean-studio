@@ -15,12 +15,16 @@ from django.contrib.auth.decorators import login_required
 from django.core import signing
 from django.core.exceptions import PermissionDenied
 from django.db import transaction
+from django.http import HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 from django_ratelimit.decorators import ratelimit
 
+from apps.autonomy import service as autonomy_service
+from apps.autonomy.actors import human as human_actor
 from apps.billing.entitlements import PlanLimitError, billing_enabled, check_can_add_channel
+from apps.calendar import services as calendar_services
 from apps.common.validators import is_safe_url as _is_safe_url
 from apps.credentials.models import PlatformCredential, configured_platform_credential, derive_is_configured
 from apps.members.decorators import require_permission
@@ -1176,12 +1180,30 @@ def update_options(request, workspace_id, account_id):
 def set_paused(request, workspace_id, account_id):
     """Pause or resume publishing to the account (``paused=1`` / ``paused=0``).
 
-    Posts scheduled to a paused account stay scheduled and are held by the publisher; resuming sends them
-    as overdue.
+    Posts scheduled to a paused account stay scheduled and are held by the publisher. Resuming takes
+    ``held_posts`` (requeue, the default, / publish_now / skip): what happens to those whose time passed
+    meanwhile. The card asks first when there are any.
     """
     account = get_object_or_404(SocialAccount.objects.for_workspace(workspace_id), id=account_id)
     pause = request.POST.get("paused") == "1"
-    account.set_paused(pause, by=request.user)
+    held_posts = request.POST.get("held_posts") or calendar_services.DEFAULT_HELD_POSTS
+    if not pause and held_posts not in calendar_services.HELD_POSTS_CHOICES:
+        return HttpResponseBadRequest("Unknown choice for the held posts.")
+    was_paused = account.is_paused
+    if pause:
+        if account.set_paused(True, by=request.user):
+            autonomy_service.record_account_pause(account.workspace, human_actor(request.user), account, paused=True)
+    else:
+        outcome = calendar_services.resume_publishing(account, held_posts, by=request.user)
+        if was_paused:
+            autonomy_service.record_account_pause(
+                account.workspace,
+                human_actor(request.user),
+                account,
+                paused=False,
+                held_posts=held_posts,
+                outcome=outcome,
+            )
     if request.headers.get("HX-Request"):
         return _render_account_card(request, account, workspace_id)
     messages.success(

@@ -157,6 +157,16 @@ class AccountSummary(Schema):
         )
 
 
+class AccountPauseResponse(AccountSummary):
+    """The account after a pause or resume, with what resuming did to the posts held while it was paused."""
+
+    requeued: int = Field(0, description="Held posts moved into the account's next open posting slots (``requeue``).")
+    published_now: int = Field(0, description="Held posts set to go out now, a minute apart (``publish_now``).")
+    skipped: int = Field(
+        0, description="Held posts turned into drafts: all of them for ``skip``, or any ``requeue`` found no slot for."
+    )
+
+
 class StorageSummary(Schema):
     used_bytes: int
     limit_bytes: int

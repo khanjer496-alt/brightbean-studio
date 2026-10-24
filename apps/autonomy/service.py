@@ -308,6 +308,35 @@ def record(
     return action
 
 
+def record_account_pause(workspace, actor, account, *, paused: bool, held_posts: str = "", outcome: dict | None = None):
+    """Log a channel being paused or resumed; a resume also says what was chosen for the posts held meanwhile."""
+    if paused:
+        summary = f"Paused publishing to {account.display_name}: its scheduled posts are held."
+    else:
+        outcome = outcome or {}
+        moved = ", ".join(
+            f"{count} {label}"
+            for label, count in (
+                ("re-queued", outcome.get("requeued")),
+                ("published now", outcome.get("published_now")),
+                ("left as drafts", outcome.get("skipped")),
+            )
+            if count
+        )
+        summary = f"Resumed publishing to {account.display_name}."
+        if held_posts:
+            summary += f" Held posts: {held_posts}" + (f" ({moved})." if moved else " (none were overdue).")
+    return record(
+        workspace=workspace,
+        actor=actor,
+        action_type=ActionType.APPROVAL,
+        operation="account.pause" if paused else "account.resume",
+        decision=Decision.EXECUTED,
+        account=account,
+        summary=summary,
+    )
+
+
 def recently_recorded(workspace, target_key: str, decision: str, *, hours: int = 24) -> bool:
     """Whether the same refusal or hold was already logged lately (an hourly task would repeat it)."""
     if not target_key:

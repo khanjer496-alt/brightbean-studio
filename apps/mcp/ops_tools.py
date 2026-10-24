@@ -23,6 +23,7 @@ from apps.api.schemas import (
     UpdateFeedAutopostRequest,
     UpdatePlugRuleRequest,
 )
+from apps.calendar.services import HELD_POSTS_CHOICES
 from apps.mcp.handlers import (
     _PARTS_INPUT_SCHEMA,
     _POST_SETTINGS_INPUT_SCHEMA,
@@ -1330,15 +1331,39 @@ _tool(
     required=["account_id"],
 )
 
+
+def _held_posts_arg(args: dict) -> str:
+    value = args.get("held_posts", "requeue")
+    if value not in HELD_POSTS_CHOICES:
+        raise JsonRpcError(INVALID_PARAMS, f"held_posts must be one of: {', '.join(HELD_POSTS_CHOICES)}")
+    return value
+
+
 _tool(
     "resume_account",
     (
-        "Resume publishing to a paused account. Posts held while it was paused go out, overdue ones first. "
-        "Needs manage_social_accounts."
+        "Resume publishing to a paused account. `held_posts` says what happens to posts whose scheduled time "
+        "passed while it was paused: `requeue` (default) moves them into the account's next open posting slots "
+        "in their original order, `publish_now` sends them a minute apart, `skip` turns them into drafts. Posts "
+        "still in the future keep their time and nothing is deleted. (Before this option existed, resuming "
+        "published everything held at once; pass `publish_now` for that.) Returns the account with counts of "
+        "requeued, published_now and skipped posts. Needs manage_social_accounts."
     ),
     ops.set_account_paused,
-    lambda a: {"_args": (_uuid_arg(a, "account_id", required=True),), "paused": False},
-    properties={"account_id": _uuid_prop("ID from list_accounts.")},
+    lambda a: {
+        "_args": (_uuid_arg(a, "account_id", required=True),),
+        "paused": False,
+        "held_posts": _held_posts_arg(a),
+    },
+    properties={
+        "account_id": _uuid_prop("ID from list_accounts."),
+        "held_posts": {
+            "type": "string",
+            "enum": ["requeue", "publish_now", "skip"],
+            "default": "requeue",
+            "description": "What to do with posts whose time passed while the account was paused.",
+        },
+    },
     required=["account_id"],
 )
 

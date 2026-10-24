@@ -1,0 +1,34 @@
+{% comment %}
+Resume dialog for one paused account card: asks what to do with the posts held while it was paused.
+Included inside the card's actions element, whose Alpine scope provides ``resumeOpen``. Context: account,
+workspace_id, overdue (how many held posts are already past their time). Only rendered when overdue > 0.
+{% endcomment %}
+{% load common_extras %}
+{% modal open="resumeOpen" title="Resume publishing?" description="Choose what happens to posts that are already past their time." size="sm" return_focus="#resume-btn-"|add:account.id|stringformat:"s" %}
+<form method="post" action="{% url 'social_accounts:set_paused' workspace_id=workspace_id account_id=account.id %}"
+      hx-post="{% url 'social_accounts:set_paused' workspace_id=workspace_id account_id=account.id %}"
+      hx-target="#account-{{ account.id }}" hx-swap="outerHTML" class="space-y-3">
+    {% csrf_token %}
+    <input type="hidden" name="paused" value="0">
+    <p class="text-sm text-ink-2"><strong>{{ overdue }} post{{ overdue|pluralize }} {{ overdue|pluralize:"was,were" }} held while paused.</strong> Posts still in the future keep their time. Nothing is deleted.</p>
+    <fieldset class="space-y-2">
+        <legend class="sr-only">What to do with the held posts</legend>
+        <label class="flex cursor-pointer items-start gap-2 rounded-lg border border-line bg-surface-0 p-3 text-sm text-ink">
+            <input type="radio" name="held_posts" value="requeue" class="mt-1" checked data-autofocus>
+            <span><span class="font-semibold">Re-queue</span><br><span class="text-xs text-ink-3">Move them into the next free posting slots, in their original order.</span></span>
+        </label>
+        <label class="flex cursor-pointer items-start gap-2 rounded-lg border border-line bg-surface-0 p-3 text-sm text-ink">
+            <input type="radio" name="held_posts" value="publish_now" class="mt-1">
+            <span><span class="font-semibold">Publish now</span><br><span class="text-xs text-ink-3">Send them a minute apart, starting now.</span></span>
+        </label>
+        <label class="flex cursor-pointer items-start gap-2 rounded-lg border border-line bg-surface-0 p-3 text-sm text-ink">
+            <input type="radio" name="held_posts" value="skip" class="mt-1">
+            <span><span class="font-semibold">Skip</span><br><span class="text-xs text-ink-3">Turn them into drafts. Nothing is published.</span></span>
+        </label>
+    </fieldset>
+    <div class="pd-modal-actions">
+        <button type="button" class="btn-outline w-auto" @click="resumeOpen = false">Cancel</button>
+        <button type="submit" class="btn-brand w-auto">Resume</button>
+    </div>
+</form>
+{% endmodal %}
