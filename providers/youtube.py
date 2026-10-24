@@ -469,12 +469,9 @@ class YouTubeProvider(SocialProvider):
 
         description = content.description or content.text or ""
         shorts_suffix = " #Shorts" if content.post_type == PostType.SHORT else ""
-        if content.title:
-            title = content.title
-        else:
-            # No title was written, so one is made from the caption. Shortening that derived
-            # title isn't cutting what the user wrote for this field, so it ends at a word with "…".
-            title = _derived_title(content.text or "", TITLE_MAX_LENGTH - len(shorts_suffix))
+        # Without a written title one is made from the caption. Shortening that derived title
+        # isn't cutting what the user wrote for this field, so it ends at a word with "…".
+        title = content.title or _derived_title(content.text or "", TITLE_MAX_LENGTH - len(shorts_suffix))
 
         # Shorts: add #Shorts tag if not already present
         title_label = "The title"
