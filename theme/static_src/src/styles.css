@@ -348,7 +348,7 @@ img.sidebar-logo-mark {
 }
 .btn-danger-soft:hover {
   background: var(--error-500) !important;
-  color: white !important;
+  color: var(--surface-page) !important; /* 7:1 on error-500; white was 2.6:1 */
 }
 
 .btn-danger-soft-bg {
@@ -421,13 +421,6 @@ img.sidebar-logo-mark {
 }
 .btn-surface-neutral-50:hover {
   background: var(--neutral-50) !important;
-}
-
-.btn-amber {
-  transition: background var(--dur-fast) ease;
-}
-.btn-amber:hover {
-  background: var(--warning-50) !important;
 }
 
 .btn-danger-tint {
