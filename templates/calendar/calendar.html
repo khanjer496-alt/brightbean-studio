@@ -73,6 +73,15 @@
         background: var(--primary); color: white;
     }
 
+    /* Week view: today's column echoes the month view - date in a filled circle - with a faint brand wash
+       down the column instead of a flat grey block. */
+    .cal-week-today { background: color-mix(in srgb, var(--primary) 5%, transparent); }
+    .cal-week-day-num {
+        width: 26px; height: 26px; margin: 2px auto 0; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .cal-week-today .cal-week-day-num { background: var(--primary); color: white; }
+
     .post-chip {
         display: flex; align-items: center; gap: 4px;
         padding: 3px 6px; border-radius: 6px;

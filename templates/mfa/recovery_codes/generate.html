@@ -18,7 +18,7 @@
             {% trans "Cancel" %}
         </a>
         <button type="submit"
-                class="{% if unused_code_count %}btn-danger-soft bg-[var(--error-50)] text-[var(--error-500)]{% else %}btn-neutral bg-[var(--neutral-100)] text-[var(--text-primary)]{% endif %} px-5 py-2 text-sm font-medium rounded-full transition-colors cursor-pointer whitespace-nowrap">
+                class="{% if unused_code_count %}btn-danger-soft bg-bad-soft text-bad{% else %}btn-neutral bg-[var(--neutral-100)] text-[var(--text-primary)]{% endif %} px-5 py-2 text-sm font-medium rounded-full transition-colors cursor-pointer whitespace-nowrap focus-visible:ring-2 focus-visible:ring-accent">
             {% trans "Generate" %}
         </button>
     </form>

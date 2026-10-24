@@ -45,9 +45,9 @@ Context: week_days, week_slots, week_agenda, workspace.
     <div class="grid grid-cols-[72px_repeat(7,minmax(0,1fr))] border-b border-stone-200 sticky top-0 bg-white z-10">
         <div class="border-r border-stone-200"></div>
         {% for day in week_days %}
-        <div class="px-2 py-2 text-center border-r border-stone-200 last:border-r-0 {% if day == today %}bg-orange-50{% endif %}">
-            <div class="text-[11px] font-semibold text-stone-500 uppercase">{{ day|date:"D" }}</div>
-            <div class="text-sm font-semibold {% if day == today %}text-orange-600{% else %}text-stone-700{% endif %}">{{ day.day }}</div>
+        <div class="px-2 py-2 text-center border-r border-stone-200 last:border-r-0 {% if day == today %}cal-week-today{% endif %}"{% if day == today %} aria-current="date"{% endif %}>
+            <div class="text-[11px] font-semibold uppercase {% if day == today %}text-accent{% else %}text-stone-500{% endif %}">{{ day|date:"D" }}</div>
+            <div class="cal-week-day-num text-sm font-semibold text-stone-700">{{ day.day }}</div>
         </div>
         {% endfor %}
     </div>
@@ -59,7 +59,7 @@ Context: week_days, week_slots, week_agenda, workspace.
             <span class="text-[11px] font-medium text-stone-500 tabular-nums">{{ hour }}:00</span>
         </div>
         {% for cell in day_cells %}
-        <div class="border-r border-stone-100 last:border-r-0 p-1 cal-add-cell cal-drop {% if cell.posts or cell.slots %}has-posts{% endif %} {% if cell.day == today %}bg-orange-50/30{% endif %}"
+        <div class="border-r border-stone-100 last:border-r-0 p-1 cal-add-cell cal-drop {% if cell.posts or cell.slots %}has-posts{% endif %} {% if cell.day == today %}cal-week-today{% endif %}"
              data-date="{{ cell.compose_date }}" data-time="{{ cell.compose_time }}">
             {% if cell.day > today or cell.day == today and hour >= current_hour %}
             <a href="{% url 'composer:compose' workspace_id=workspace.id %}?scheduled_date={{ cell.compose_date }}&scheduled_time={{ cell.compose_time }}" class="cal-add-btn"
