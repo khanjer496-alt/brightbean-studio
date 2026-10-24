@@ -381,11 +381,13 @@ class TestSecondSubscription:
     def test_stripe_unreachable_while_checking_is_retried(self, stripe_sub):
         import stripe
 
-        with mock.patch(
-            "apps.billing.services.stripe.Subscription.retrieve", side_effect=stripe.APIConnectionError("x")
+        with (
+            mock.patch(
+                "apps.billing.services.stripe.Subscription.retrieve", side_effect=stripe.APIConnectionError("x")
+            ),
+            pytest.raises(stripe.APIConnectionError),
         ):
-            with pytest.raises(stripe.APIConnectionError):
-                post_event(Client(), _event("customer.subscription.created", _subscription(sub_id="sub_2")))
+            post_event(Client(), _event("customer.subscription.created", _subscription(sub_id="sub_2")))
         assert not ProcessedStripeEvent.objects.exists()
         stripe_sub.refresh_from_db()
         assert stripe_sub.stripe_subscription_id == "sub_1"
