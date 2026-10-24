@@ -166,6 +166,14 @@ class TestStripeRedirects:
         assert response["Location"] == "https://billing.stripe.com/p/1"
         assert stripe_mock.billing_portal.Session.create.call_args.kwargs["customer"] == "cus_1"
 
+    def test_portal_uses_the_configured_portal(self, billing, owner_client, organization, settings):
+        settings.STRIPE_PORTAL_CONFIGURATION = "bpc_postdelegate"
+        set_plan(organization, "team", stripe_customer_id="cus_1")
+        with mock.patch("apps.billing.services.stripe") as stripe_mock:
+            stripe_mock.billing_portal.Session.create.return_value = {"url": "https://billing.stripe.com/p/1"}
+            owner_client.post(reverse("billing:portal"))
+        assert stripe_mock.billing_portal.Session.create.call_args.kwargs["configuration"] == "bpc_postdelegate"
+
     def test_portal_without_customer(self, billing, owner_client):
         response = owner_client.post(reverse("billing:portal"))
         assert "no billing account" in " ".join(_messages(response))

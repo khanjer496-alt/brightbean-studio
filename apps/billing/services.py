@@ -169,10 +169,12 @@ def create_portal_session(org) -> str:
     sub = get_subscription(org)
     if not sub.stripe_customer_id:
         raise BillingNotConfiguredError("This organization has no Stripe customer yet.")
+    options = {"configuration": settings.STRIPE_PORTAL_CONFIGURATION} if settings.STRIPE_PORTAL_CONFIGURATION else {}
     session = stripe.billing_portal.Session.create(
         api_key=_api_key(),
         customer=sub.stripe_customer_id,
         return_url=billing_url(absolute=True),
+        **options,
     )
     return session["url"]
 

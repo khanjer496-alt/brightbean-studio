@@ -905,6 +905,9 @@ BILLING_ENABLED = env.bool("BILLING_ENABLED", default=False)
 STRIPE_SECRET_KEY = env("STRIPE_SECRET_KEY", default="")
 STRIPE_PUBLISHABLE_KEY = env("STRIPE_PUBLISHABLE_KEY", default="")
 STRIPE_WEBHOOK_SECRET = env("STRIPE_WEBHOOK_SECRET", default="")
+# The Customer Portal configuration (bpc_...) to open; blank uses the Stripe account's default one.
+# Set it when the Stripe account serves more than this product.
+STRIPE_PORTAL_CONFIGURATION = env("STRIPE_PORTAL_CONFIGURATION", default="")
 # plan slug → billing interval → Stripe Price id. Print these lines for a
 # Stripe account with ``manage.py billing_create_stripe_prices``.
 STRIPE_PRICE_IDS = {
