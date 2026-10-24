@@ -50,7 +50,7 @@
                 </button>
             </form>
             <form method="POST" action="{% url 'webhooks:delete' workspace_id=workspace.id endpoint_id=endpoint.id %}"
-                  data-confirm="Delete this endpoint and its delivery log?" data-confirm-title="Delete endpoint" data-confirm-label="Delete" data-confirm-variant="danger">
+                  data-confirm="Delete the endpoint {{ endpoint.url }} and its delivery log? Deliveries stop at once." data-confirm-title="Delete endpoint" data-confirm-label="Delete" data-confirm-variant="danger">
                 {% csrf_token %}
                 <button type="submit" class="btn-danger-soft min-h-11 px-5 py-2 text-sm font-medium rounded-full cursor-pointer bg-bad-soft text-bad">
                     Delete endpoint
