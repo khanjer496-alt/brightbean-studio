@@ -7,13 +7,7 @@ Usage: {% include "social_accounts/partials/_account_card.html" with account=acc
     <div class="flex flex-wrap items-start gap-x-4 gap-y-3 sm:flex-nowrap">
         <!-- Avatar -->
         <div class="flex-shrink-0">
-            {% if account.display_avatar_url %}
-            <img src="{{ account.display_avatar_url }}" alt="{{ account.display_name }}" class="w-11 h-11 rounded-full object-cover ring-2 ring-stone-100">
-            {% else %}
-            <div class="w-11 h-11 rounded-full bg-stone-100 flex items-center justify-center text-stone-400">
-                {% if account.platform == "youtube" %}<span class="font-semibold">{{ account.display_name|make_list|first|upper }}</span>{% else %}{% include "social_accounts/partials/_platform_icon.html" with platform=account.platform size="5" %}{% endif %}
-            </div>
-            {% endif %}
+            {% include "partials/_channel_avatar.html" with account=account px=44 %}
         </div>
 
         <!-- Info -->

@@ -1,22 +1,22 @@
 {% load analytics_extras %}
-<div class="flex flex-1 items-center justify-center p-10">
-    <div class="max-w-[420px] text-center">
-        {% if active_account.platform != "youtube" %}<div class="relative mx-auto mb-5 h-[72px] w-[72px]">
-            <div class="flex h-[72px] w-[72px] items-center justify-center rounded-2xl bg-accent-soft">
+<div class="flex flex-1 items-center justify-center p-6 sm:p-10">
+    <div class="pd-empty max-w-[420px]">
+        {% if active_account.platform != "youtube" %}<div class="relative mb-4 h-16 w-16">
+            <div class="pd-empty-icon !mb-0">
                 {% include "partials/_platform_icon.html" with platform=active_account.platform size="lg" %}
             </div>
             <span class="absolute -bottom-1 -right-1 flex h-7 w-7 items-center justify-center rounded-full border-[3px] border-surface-0 bg-good font-bold text-surface-0" aria-hidden="true">✓</span>
         </div>{% endif %}
-        <h2 class="mb-2 text-2xl font-bold tracking-tight text-ink">{{ active_account.account_name }} is connected</h2>
-        <p class="mb-2 text-[15px] leading-relaxed text-ink-2">
+        <h2 class="pd-empty-title">{{ active_account.account_name }} is connected</h2>
+        <p class="pd-empty-body !mb-2">
             {% if active_account.platform == "youtube" %}YouTube has not returned analytics for this reporting period. Reports refresh daily and may arrive after a delay.{% else %}We started collecting analytics when you connected this account. Metrics for this account usually appear within <strong>24–48 hours</strong> of your first published post.{% endif %}
         </p>
         <div class="mt-3 inline-flex items-center gap-2 rounded-full border border-line bg-surface-1 px-3.5 py-2">
             <span class="h-2 w-2 rounded-full bg-warn" aria-hidden="true"></span>
             <span class="text-[13px] font-medium text-ink-2">{% if active_account.platform == "youtube" %}Awaiting YouTube report{% else %}Awaiting first full sync{% endif %}</span>
         </div>
-        <div class="mt-7 flex justify-center gap-2.5">
-            <a href="{% url 'composer:create_landing' workspace_id=workspace.id %}" class="btn-brand w-auto px-5 py-2.5">Create a post</a>
+        <div class="mt-5 flex justify-center gap-2.5">
+            <a href="{% url 'composer:create_landing' workspace_id=workspace.id %}" class="btn-brand min-h-11 w-auto px-5">Create a post</a>
         </div>
     </div>
 </div>

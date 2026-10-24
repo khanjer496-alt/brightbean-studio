@@ -373,18 +373,7 @@
                         <span class="checkmark">
                             <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                         </span>
-                        <div class="relative flex-shrink-0">
-                            {% if account.display_avatar_url %}
-                            <img src="{{ account.display_avatar_url }}" alt="{{ account.display_name }}" class="w-7 h-7 rounded-full object-cover">
-                            {% else %}
-                            <div class="w-7 h-7 rounded-full bg-stone-100 flex items-center justify-center text-stone-400">
-                                {% if account.platform == "youtube" %}<span class="text-xs font-semibold">{{ account.display_name|make_list|first|upper }}</span>{% else %}{% include "partials/_platform_icon.html" with platform=account.platform size="sm" %}{% endif %}
-                            </div>
-                            {% endif %}
-                            {% if account.platform != "youtube" %}<div class="absolute -bottom-0.5 -end-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center">
-                                {% include "partials/_platform_icon.html" with platform=account.platform size="sm" %}
-                            </div>{% endif %}
-                        </div>
+                        {% include "partials/_channel_avatar.html" with account=account px=28 %}
                         <span class="text-sm font-medium text-stone-700 truncate">{{ account.display_name }}{% if account.platform == "youtube" %} <small>YouTube</small>{% endif %}</span>
                     </button>
                     {% empty %}
@@ -540,9 +529,9 @@
                 <!-- Caption with inline media -->
                 <div x-data="{ showTemplatePicker: false }">
                     <div class="flex items-center justify-between mb-2">
-                        <label class="text-sm font-semibold text-stone-500 uppercase tracking-wider"
+                        <label class="text-sm font-semibold text-stone-500 uppercase tracking-wider shrink-0 me-2"
                                x-text="captionLabel">Caption</label>
-                        <div class="flex items-center gap-2 relative">
+                        <div class="flex items-center gap-2 relative flex-nowrap">
                             {% if post and is_edit %}
                             <div x-data="{ showSaveTemplate: false }">
                                 <button type="button" @click="showSaveTemplate = !showSaveTemplate"
@@ -579,7 +568,7 @@
                             {% endif %}
                             <button type="button"
                                     @click="showTemplatePicker = !showTemplatePicker; if (showTemplatePicker) $nextTick(() => htmx.trigger($refs.templatePicker, 'load-picker'))"
-                                    class="text-xs font-semibold py-1.5 px-3 rounded-full border border-stone-200 text-stone-500 hover:border-stone-300 hover:text-stone-700 transition-colors flex items-center gap-1">
+                                    class="text-xs font-semibold py-1.5 px-3 rounded-full border border-stone-200 text-stone-500 hover:border-stone-300 hover:text-stone-700 transition-colors flex items-center gap-1 whitespace-nowrap shrink-0">
                                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
                                 Use Template
                             </button>
