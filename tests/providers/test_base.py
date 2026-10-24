@@ -41,6 +41,10 @@ class TestProviderRegistry:
             "twitch",
             "kick",
             "dribbble",
+            "medium",
+            "wordpress",
+            "hashnode",
+            "listmonk",
         }
         assert set(PROVIDER_REGISTRY.keys()) == expected
 

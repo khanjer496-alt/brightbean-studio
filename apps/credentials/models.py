@@ -78,6 +78,10 @@ class PlatformCredential(models.Model):
         TWITCH = "twitch", "Twitch"
         KICK = "kick", "Kick"
         DRIBBBLE = "dribbble", "Dribbble"
+        MEDIUM = "medium", "Medium"
+        WORDPRESS = "wordpress", "WordPress"
+        HASHNODE = "hashnode", "Hashnode"
+        LISTMONK = "listmonk", "Listmonk"
 
     class TestResult(models.TextChoices):
         SUCCESS = "success", "Success"

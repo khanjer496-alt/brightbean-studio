@@ -32,6 +32,10 @@ NO_ANALYTICS_PLATFORMS: dict[str, str] = {
     "kick": ("Kick chat messages have no analytics."),
     "dribbble": ("Dribbble's API doesn't expose shot analytics; publishing is supported."),
     "farcaster": ("Farcaster analytics aren't wired up yet; publishing is supported."),
+    "medium": ("Medium's API doesn't expose story statistics."),
+    "wordpress": ("Publishing to WordPress is supported, but its analytics aren't wired up yet."),
+    "hashnode": ("Publishing to Hashnode is supported, but its analytics aren't wired up yet."),
+    "listmonk": ("Listmonk campaign statistics aren't wired up yet; publishing is supported."),
     "x": ("X bills every post-metrics read to your own developer app, so analytics aren't synced automatically."),
 }
 

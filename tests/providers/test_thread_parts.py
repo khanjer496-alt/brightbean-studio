@@ -49,6 +49,10 @@ class TestDeclarations:
             ("twitch", ThreadMode.NONE),
             ("kick", ThreadMode.NONE),
             ("dribbble", ThreadMode.NONE),
+            ("medium", ThreadMode.NONE),
+            ("wordpress", ThreadMode.NONE),
+            ("hashnode", ThreadMode.NONE),
+            ("listmonk", ThreadMode.NONE),
         ],
     )
     def test_every_platform_declares_its_mode(self, platform, mode):

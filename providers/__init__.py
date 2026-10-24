@@ -16,6 +16,7 @@ from .dribbble import DribbbleProvider
 from .facebook import FacebookProvider
 from .farcaster import FarcasterProvider
 from .google_business import GoogleBusinessProvider
+from .hashnode import HashnodeProvider
 from .instagram import InstagramProvider
 from .instagram_login import InstagramLoginProvider
 from .kick import KickProvider
@@ -23,8 +24,10 @@ from .lemmy import LemmyProvider
 from .linkedin import LINKEDIN_RESERVED_CHARS
 from .linkedin_company import LinkedInCompanyProvider
 from .linkedin_personal import LinkedInPersonalProvider
+from .listmonk import ListmonkProvider
 from .mastodon import MastodonProvider
 from .nostr import NostrProvider
+from .medium import MediumProvider
 from .pinterest import PinterestProvider
 from .reddit import RedditProvider
 from .slack import SlackProvider
@@ -34,6 +37,7 @@ from .tiktok import TikTokProvider
 from .tumblr import TumblrProvider
 from .twitch import TwitchProvider
 from .types import MediaRules, PeakWindow, PlugCapability, PostSetting, PostType, ThreadCapability
+from .wordpress import WordPressProvider
 from .x import XProvider
 from .youtube import YouTubeProvider
 
@@ -66,6 +70,10 @@ PROVIDER_REGISTRY: dict[str, type[SocialProvider]] = {
     "twitch": TwitchProvider,
     "kick": KickProvider,
     "dribbble": DribbbleProvider,
+    "medium": MediumProvider,
+    "wordpress": WordPressProvider,
+    "hashnode": HashnodeProvider,
+    "listmonk": ListmonkProvider,
 }
 
 # Characters a platform escapes in the caption it publishes. Each one costs two

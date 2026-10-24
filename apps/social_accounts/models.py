@@ -482,6 +482,10 @@ class SocialAccount(models.Model):
         "google_business": 1500,
         "mastodon": 500,
         "devto": 25000,
+        "medium": 50000,
+        "wordpress": 50000,
+        "hashnode": 50000,
+        "listmonk": 100000,
     }
 
     @property
@@ -598,6 +602,34 @@ class SocialAccount(models.Model):
             "needs_title": True,
             "title_label": "Shot Title",
             "caption_label": "Description",
+            "supports_first_comment": False,
+        },
+        "medium": {
+            "needs_title": True,
+            "title_max_length": 100,
+            "title_label": "Story Title",
+            "caption_label": "Body (Markdown)",
+            "supports_first_comment": False,
+        },
+        "wordpress": {
+            "needs_title": True,
+            "title_max_length": 255,
+            "title_label": "Post Title",
+            "caption_label": "Body (Markdown)",
+            "supports_first_comment": False,
+        },
+        "hashnode": {
+            "needs_title": True,
+            "title_max_length": 250,
+            "title_label": "Article Title",
+            "caption_label": "Body (Markdown)",
+            "supports_first_comment": False,
+        },
+        "listmonk": {
+            "needs_title": True,
+            "title_max_length": 250,
+            "title_label": "Email Subject",
+            "caption_label": "Body (Markdown)",
             "supports_first_comment": False,
         },
     }
@@ -732,6 +764,10 @@ class SocialAccount(models.Model):
             "twitch": "tw",
             "kick": "ki",
             "dribbble": "dr",
+            "medium": "me",
+            "wordpress": "wp",
+            "hashnode": "hn",
+            "listmonk": "lm",
         }
         return icons.get(self.platform, self.platform[:2])
 

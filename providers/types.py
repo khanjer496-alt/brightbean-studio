@@ -456,6 +456,22 @@ class PostSetting:
         }
 
 
+@dataclass(frozen=True)
+class ConnectField:
+    """One input of a platform's credentials connect form (``SocialProvider.connect_fields``).
+
+    Declared on the provider class so one generic page renders the form and one view collects it, for
+    networks the user connects with a token or password they paste rather than through an OAuth grant.
+    ``kind`` is ``text``, ``url`` or ``password``; a password is never echoed back to the page.
+    """
+
+    key: str
+    label: str
+    kind: str = "text"
+    help: str = ""
+    placeholder: str = ""
+
+
 class UploadCache(Protocol):
     """Somewhere a provider can remember an upload between publish attempts.
 

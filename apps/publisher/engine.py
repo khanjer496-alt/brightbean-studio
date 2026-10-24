@@ -137,6 +137,14 @@ def _resolve_publish_credentials(account):
     # Whatever else a provider keeps per account (a Slack channel) comes from
     # the provider itself rather than from another branch above.
     provider_cls = PROVIDER_REGISTRY.get(platform)
+    if provider_cls is not None and provider_cls.account_url_credential and account.instance_url:
+        from apps.common.validators import is_safe_url
+
+        # The address was checked when the account was connected; DNS can change since, so check it again.
+        if is_safe_url(account.instance_url):
+            credentials[provider_cls.account_url_credential] = account.instance_url
+        else:
+            logger.warning("%s site URL failed SSRF check for account %s", platform, account.id)
     if provider_cls is not None:
         credentials.update(provider_cls.credentials_for_account(account))
 
