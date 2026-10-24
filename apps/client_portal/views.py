@@ -129,7 +129,7 @@ def portal_approval_queue(request):
     base = (
         Post.objects.for_workspace(workspace.id)
         .select_related("author")
-        .prefetch_related("platform_posts__social_account", "media_attachments__media_asset")
+        .prefetch_related("platform_posts__social_account")
     )
     pending_posts = list(
         base.filter(platform_posts__status="pending_client").distinct().order_by("scheduled_at", "-created_at")
@@ -281,6 +281,16 @@ def portal_review_approve(request):
         body="Thanks — they are scheduled to publish.",
         events={"portalAction": {"action": "batch"}},
     )
+
+
+@portal_auth_required
+@require_GET
+def portal_post_previews(request, post_id):
+    """What each network will publish for one post (loaded into its approval card when opened)."""
+    from apps.composer.previews import post_previews
+
+    post = get_object_or_404(Post, id=post_id, workspace=request.portal_workspace)
+    return render(request, "composer/partials/approver_previews.html", post_previews(post))
 
 
 @portal_auth_required

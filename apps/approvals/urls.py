@@ -23,4 +23,5 @@ urlpatterns = [
     path("approvals/slack/disconnect/", views_slack.disconnect, name="slack_disconnect"),
     path("approvals/send-digest/", views_slack.send_digest, name="send_digest"),
     path("approvals/<uuid:post_id>/versions/", views.version_diff, name="version_diff"),
+    path("approvals/<uuid:post_id>/previews/", views.post_previews_view, name="post_previews"),
 ]

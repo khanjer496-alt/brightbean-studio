@@ -178,23 +178,33 @@ class ApprovalLink(models.Model):
 
     The URL carries only a signed reference to this row. The row is what makes
     the link single-use (``used_at``), expiring (``expires_at``) and bound to
-    its recipient (``recipient`` and the address it was mailed to). The two
-    buttons of one email share a ``group``: acting on either retires both.
+    its recipient (``recipient`` and the address it was mailed to). The buttons
+    of one email item share a ``group``: acting on either retires both.
+
+    A link decides either a ``post`` (approve / request changes) or an
+    ``agent_action`` an autonomy policy held for review (approve / dismiss).
     """
 
     class Action(models.TextChoices):
         APPROVE = "approve", "Approve"
         REQUEST_CHANGES = "request_changes", "Request changes"
+        APPROVE_HELD = "approve_held", "Approve held item"
+        DISMISS_HELD = "dismiss_held", "Dismiss held item"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     group = models.UUIDField(db_index=True)
     workspace = models.ForeignKey("workspaces.Workspace", on_delete=models.CASCADE, related_name="approval_links")
-    post = models.ForeignKey("composer.Post", on_delete=models.CASCADE, related_name="approval_links")
+    post = models.ForeignKey(
+        "composer.Post", on_delete=models.CASCADE, null=True, blank=True, related_name="approval_links"
+    )
+    agent_action = models.ForeignKey(
+        "autonomy.AgentAction", on_delete=models.CASCADE, null=True, blank=True, related_name="approval_links"
+    )
     recipient = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="approval_links")
     recipient_email = models.EmailField()
     action = models.CharField(max_length=20, choices=Action.choices)
-    # ``policy.review_fingerprint`` of the post when the email was built.
-    fingerprint = models.CharField(max_length=64)
+    # ``policy.review_fingerprint`` of the post when the email was built (blank for a held item).
+    fingerprint = models.CharField(max_length=64, blank=True, default="")
     expires_at = models.DateTimeField(default=_link_expiry)
     used_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -202,9 +212,19 @@ class ApprovalLink(models.Model):
     class Meta:
         db_table = "approvals_approval_link"
         indexes = [models.Index(fields=["expires_at"], name="idx_approval_link_expiry")]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(post__isnull=False) | models.Q(agent_action__isnull=False),
+                name="approval_link_has_subject",
+            )
+        ]
 
     def __str__(self):
-        return f"ApprovalLink({self.action}) for {self.post_id} to {self.recipient_email}"
+        return f"ApprovalLink({self.action}) for {self.post_id or self.agent_action_id}"
+
+    @property
+    def is_held_item(self):
+        return self.agent_action_id is not None
 
     @property
     def is_expired(self):

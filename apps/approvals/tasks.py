@@ -136,16 +136,18 @@ def _process_deadlines(now):
     for reminder in due_reminders:
         post = reminder.post
         if reminder.due_at <= now:
-            if not reminder.escalated:
+            # Claim the escalation first, so an overlapping run can't send it twice.
+            if ApprovalReminder.objects.filter(pk=reminder.pk, escalated=False).update(escalated=True):
                 _escalate(post, reminder.stage, overdue=True)
-                reminder.escalated = True
-                reminder.save(update_fields=["escalated"])
         elif reminder.deadline_reminded_at is None and reminder.due_at - _deadline_lead(post.workspace) <= now:
             to_remind.setdefault((post.workspace, reminder.stage), []).append(reminder)
 
     for (workspace, stage), reminders in to_remind.items():
-        _remind_deadline(workspace, stage)
-        ApprovalReminder.objects.filter(pk__in=[r.pk for r in reminders]).update(deadline_reminded_at=now)
+        claimed = ApprovalReminder.objects.filter(
+            pk__in=[r.pk for r in reminders], deadline_reminded_at__isnull=True
+        ).update(deadline_reminded_at=now)
+        if claimed:
+            _remind_deadline(workspace, stage)
 
 
 def _remind_deadline(workspace, stage):

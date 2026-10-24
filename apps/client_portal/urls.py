@@ -10,6 +10,7 @@ urlpatterns = [
     path("approvals/", views.portal_approval_queue, name="approval_queue"),
     path("approvals/review/", views.portal_review, name="review"),
     path("approvals/review/approve/", views.portal_review_approve, name="review_approve"),
+    path("approvals/<uuid:post_id>/previews/", views.portal_post_previews, name="post_previews"),
     path("approvals/<uuid:post_id>/approve/", views.portal_approve, name="approve"),
     path("approvals/<uuid:post_id>/request-changes/", views.portal_request_changes, name="request_changes"),
     path("approvals/<uuid:post_id>/reject/", views.portal_reject, name="reject"),

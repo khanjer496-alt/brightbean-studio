@@ -171,7 +171,7 @@ class TeamDigestAndDeadlineTests(OneTapBase):
         )
         mail.outbox.clear()
         tasks.check_approval_reminders()
-        digest = [m for m in mail.outbox if "need your approval" in m.subject]
+        digest = [m for m in mail.outbox if "your approval" in m.subject]
         self.assertEqual(len(digest), 1)
         reminder.refresh_from_db()
         self.assertIsNotNone(reminder.deadline_reminded_at)
@@ -179,7 +179,7 @@ class TeamDigestAndDeadlineTests(OneTapBase):
         # Not reminded twice.
         mail.outbox.clear()
         tasks.check_approval_reminders()
-        self.assertEqual([m for m in mail.outbox if "need your approval" in m.subject], [])
+        self.assertEqual([m for m in mail.outbox if "your approval" in m.subject], [])
         # Past the deadline: managers are told, once.
         ApprovalReminder.objects.filter(pk=reminder.pk).update(due_at=timezone.now() - timedelta(minutes=1))
         tasks.check_approval_reminders()

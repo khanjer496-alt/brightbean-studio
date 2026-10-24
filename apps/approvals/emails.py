@@ -5,7 +5,12 @@ email; an event that is not an approval request gets ``None`` and keeps the
 generic notification template. The post email shows what each network will
 publish (the same data the composer previews draw, see
 ``apps.composer.previews``) and two single-use buttons; the digest lists
-everything waiting on the recipient behind one "Review all" button.
+everything waiting on the recipient behind one "Review all" button, plus the
+items an autonomy policy held for them, each with its own Approve / Dismiss
+links (decided through the autonomy service, see ``decisions.decide_held``).
+
+Pictures are signed, expiring URLs (``links.media_url``), never attachments.
+Nothing internal (team-only comments, notes) is put in these emails.
 """
 
 from __future__ import annotations
@@ -20,21 +25,18 @@ from apps.members.models import WorkspaceMembership
 from apps.notifications.models import EventType
 
 from . import decisions
-from .links import issue_links
+from .links import issue_held_links, issue_links, media_url
 from .models import ApprovalReminder
 
 KIND_DIGEST = "review_digest"
 DIGEST_LIMIT = 15
+HELD_LIMIT = 10
 
 _POST_EVENTS = frozenset({EventType.POST_SUBMITTED, EventType.CLIENT_APPROVAL_REQUESTED, EventType.APPROVAL_REMINDER})
 
 
 def _app_url() -> str:
     return getattr(settings, "APP_URL", "http://localhost:8000").rstrip("/")
-
-
-def _absolute(url: str) -> str:
-    return f"{_app_url()}{url}" if url.startswith("/") else url
 
 
 def _membership(user, workspace):
@@ -65,12 +67,37 @@ def _due_at(post, states):
 def _email_previews(post, targets):
     data = post_previews(post, targets)
     for item in data["media_items"]:
-        item["url"] = _absolute(item["url"])
+        item["url"] = media_url(item["id"])
     for preview in data["previews"]:
         for part in (preview["thread"] or {}).get("parts", []):
             for item in part["media"]:
-                item["url"] = _absolute(item["url"])
+                item["url"] = media_url(item["id"])
     return data
+
+
+def _is_team(membership) -> bool:
+    return bool(membership and membership.workspace_role != WorkspaceMembership.WorkspaceRole.CLIENT)
+
+
+def held_items(user, workspace, membership, *, limit=HELD_LIMIT) -> list[dict]:
+    """Items an autonomy policy held that ``user`` may review, each with its one-tap links.
+
+    Team members only, and only the verbs the Activity page would let them use.
+    """
+    if not _is_team(membership):
+        return []
+    verbs = decisions.held_verbs(user, workspace)
+    if not verbs:
+        return []
+    items = []
+    for action in decisions.held_waiting(workspace)[:limit]:
+        allowed = [v for v in verbs if v != "approve" or decisions.can_approve_from_outside(action)]
+        items.append({"action": action, "links": issue_held_links(action, user, verbs=allowed)})
+    return items
+
+
+def _activity_url(workspace) -> str:
+    return f"{_app_url()}{reverse('autonomy:activity', kwargs={'workspace_id': workspace.id})}?decision=held"
 
 
 def _post_context(notification):
@@ -144,7 +171,8 @@ def _digest_context(notification):
     if not _can_approve(membership):
         return None
     posts = waiting_posts(user, workspace)
-    if not posts:
+    held = held_items(user, workspace, membership)
+    if not posts and not held:
         return None
     due = [p.waiting_due_at for p in posts if p.waiting_due_at]
     return {
@@ -158,6 +186,44 @@ def _digest_context(notification):
             "earliest_due_at": min(due) if due else None,
             "timezone": workspace.effective_timezone or "UTC",
             "review_all_url": _review_all_url(user, workspace, membership),
+            "held": held,
+            "activity_url": _activity_url(workspace),
+            "ttl_hours": settings.APPROVAL_LINK_TTL_HOURS,
+        },
+    }
+
+
+def _held_context(notification):
+    """The "held for review" email to a team member, with Approve / Dismiss links when they may use them."""
+    from apps.autonomy.models import AgentAction
+
+    data = notification.data
+    action = (
+        AgentAction.objects.select_related("workspace", "social_account", "platform_post__social_account")
+        .filter(pk=data["action_id"], workspace_id=data["workspace_id"])
+        .first()
+    )
+    if action is None or action.decision != "held" or action.review_outcome:
+        return None
+    workspace = action.workspace
+    membership = _membership(notification.user, workspace)
+    if not _is_team(membership):
+        return None
+    verbs = [
+        v
+        for v in decisions.held_verbs(notification.user, workspace)
+        if v != "approve" or decisions.can_approve_from_outside(action)
+    ]
+    if not verbs:
+        return None
+    return {
+        "html": "approvals/email/held_action.html",
+        "text": "approvals/email/held_action.txt",
+        "context": {
+            "workspace": workspace,
+            "item": {"action": action, "links": issue_held_links(action, notification.user, verbs=verbs)},
+            "activity_url": _activity_url(workspace),
+            "ttl_hours": settings.APPROVAL_LINK_TTL_HOURS,
         },
     }
 
@@ -169,4 +235,6 @@ def approval_email_context(notification) -> dict | None:
         return _digest_context(notification)
     if notification.event_type in _POST_EVENTS and data.get("post_id") and data.get("workspace_id"):
         return _post_context(notification)
+    if notification.event_type == EventType.AGENT_ACTION_HELD and data.get("action_id") and data.get("workspace_id"):
+        return _held_context(notification)
     return None

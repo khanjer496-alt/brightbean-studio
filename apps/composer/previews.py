@@ -19,6 +19,7 @@ POST_TYPE_LABEL = "Format"
 def media_item(asset) -> dict:
     """One media asset as the preview mockups read it."""
     return {
+        "id": str(asset.pk),
         "url": asset.file.url if asset.file else "",
         "is_video": asset.is_video,
         "filename": asset.filename,

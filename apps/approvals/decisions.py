@@ -128,3 +128,57 @@ def decide_batch(user, workspace, items, *, channel):
         else:
             results.append((post, "approved", ""))
     return results
+
+
+# --------------------------------------------------------------------------- held agent actions
+
+HELD_VERBS = ("approve", "dismiss")
+
+
+def held_waiting(workspace):
+    """Items an autonomy policy held in ``workspace`` that still wait for a person, oldest first."""
+    from apps.autonomy.models import AgentAction
+
+    return (
+        AgentAction.objects.filter(workspace=workspace, decision=Decision.HELD, review_outcome="")
+        .select_related("social_account", "platform_post__social_account", "post")
+        .order_by("created_at")
+    )
+
+
+def held_verbs(user, workspace) -> tuple[str, ...]:
+    """Which of approve / dismiss ``user`` may use on held items in ``workspace`` (the Activity page's rules)."""
+    from apps.autonomy.release import can_review_held
+
+    return tuple(verb for verb in HELD_VERBS if can_review_held(user, workspace, verb))
+
+
+def can_approve_from_outside(action) -> bool:
+    """Whether a held item can be approved without opening it (it has a post or a reply to send)."""
+    return bool(action.platform_post_id or action.reply_id)
+
+
+def decide_held(action, user, verb, *, channel):
+    """Approve or dismiss a held agent action as ``user``, through the autonomy service.
+
+    The same permission and state checks as the Activity page
+    (``release.review_held``); ``channel`` is recorded on the entry. Raises
+    :class:`DecisionError` with a message for the decider.
+    """
+    from django.core.exceptions import PermissionDenied
+
+    from apps.autonomy import release
+
+    if verb not in HELD_VERBS:
+        raise DecisionError("Unknown decision.")
+    if action.decision != Decision.HELD or action.review_outcome:
+        raise NothingWaitingError
+    if verb == "approve" and not can_approve_from_outside(action):
+        raise DecisionError("Open it in Activity to review it; there is nothing to send from here.")
+    try:
+        return release.review_held(action, user, verb, channel=channel)
+    except PermissionDenied as exc:
+        raise DecisionError(str(exc) or "You can't review this item.") from exc
+    except release.ReleaseError as exc:
+        # Includes losing a race with another reviewer: the row lock re-checks the state.
+        raise DecisionError(str(exc)) from exc

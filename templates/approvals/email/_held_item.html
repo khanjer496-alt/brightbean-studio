@@ -1,0 +1,33 @@
+{% comment %}
+One item an autonomy policy held, as an email table, with its one-tap links.
+Context: item = {"action": AgentAction, "links": {"approve"?: url, "dismiss"?: url}}.
+{% endcomment %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 12px;border:1px solid #E7E5E4;border-radius:10px;">
+  <tr>
+    <td bgcolor="#FFFFFF" style="padding:12px 14px;font-size:14px;line-height:1.55;color:#1C1917;border-radius:10px;">
+      <p style="margin:0 0 4px;font-size:12px;font-weight:700;color:#57534E;">{{ item.action.actor_name }} &middot; {{ item.action.get_action_type_display }}{% if item.action.social_account or item.action.account_label %} &middot; {{ item.action.social_account.account_name|default:item.action.account_label }}{% endif %}</p>
+      <p style="margin:0 0 6px;color:#44403C;">{{ item.action.summary }}</p>
+      {% if item.action.final_text %}<p style="margin:0 0 10px;padding:8px 10px;background-color:#F5F5F4;border-radius:8px;word-break:break-word;color:#1C1917;">{{ item.action.final_text|truncatechars:600|linebreaksbr }}</p>{% endif %}
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+        {% if item.links.approve %}
+        <td style="padding:0 8px 0 0;">
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td align="center" bgcolor="#16A34A" style="border-radius:9999px;background-color:#16A34A;">
+              <a href="{{ item.links.approve }}" target="_blank" rel="noopener" style="display:inline-block;padding:10px 22px;color:#FFFFFF;font-size:14px;font-weight:700;text-decoration:none;border-radius:9999px;">Approve</a>
+            </td>
+          </tr></table>
+        </td>
+        {% endif %}
+        {% if item.links.dismiss %}
+        <td>
+          <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
+            <td align="center" bgcolor="#F5F5F4" style="border-radius:9999px;background-color:#F5F5F4;border:1px solid #D6D3D1;">
+              <a href="{{ item.links.dismiss }}" target="_blank" rel="noopener" style="display:inline-block;padding:9px 20px;color:#44403C;font-size:14px;font-weight:700;text-decoration:none;border-radius:9999px;">Dismiss</a>
+            </td>
+          </tr></table>
+        </td>
+        {% endif %}
+      </tr></table>
+    </td>
+  </tr>
+</table>

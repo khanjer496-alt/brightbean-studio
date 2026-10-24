@@ -11,25 +11,39 @@ from apps.members.models import WorkspaceMembership
 from apps.notifications.engine import notify
 from apps.notifications.models import EventType
 
+from . import decisions
 from .emails import KIND_DIGEST, waiting_posts
+
+
+def _held_count(workspace, user) -> int:
+    """Held agent items ``user`` could approve or dismiss (team members only, via the Activity rules)."""
+    if not decisions.held_verbs(user, workspace):
+        return 0
+    return decisions.held_waiting(workspace).count()
 
 
 def send_review_digest(workspace, user, *, posts=None):
     """Email ``user`` one digest of what waits on them in ``workspace``; None when nothing does."""
     posts = waiting_posts(user, workspace) if posts is None else posts
-    if not posts:
+    held = _held_count(workspace, user)
+    if not posts and not held:
         return None
     count = len(posts)
-    due = [p.waiting_due_at for p in posts if getattr(p, "waiting_due_at", None)]
-    title = f"{count} post{'s' if count != 1 else ''} need your approval"
-    if due:
-        local = timezone.localtime(min(due), zoneinfo.ZoneInfo(workspace.effective_timezone or "UTC"))
-        title += f" by {date_format(local, 'D g:i A')}"
+    if count:
+        title = f"{count} post{'s' if count != 1 else ''} need{'s' if count == 1 else ''} your approval"
+        due = [p.waiting_due_at for p in posts if getattr(p, "waiting_due_at", None)]
+        if due:
+            local = timezone.localtime(min(due), zoneinfo.ZoneInfo(workspace.effective_timezone or "UTC"))
+            title += f" by {date_format(local, 'D g:i A')}"
+        body = f"{count} in {workspace.name} {'is' if count == 1 else 'are'} waiting for your decision."
+    else:
+        title = f"{held} held agent item{'s' if held != 1 else ''} to review"
+        body = f"An agent's work in {workspace.name} was held for a person to look at."
     return notify(
         user=user,
         event_type=EventType.APPROVAL_DIGEST,
         title=title,
-        body=f"{count} in {workspace.name} {'is' if count == 1 else 'are'} waiting for your decision.",
+        body=body,
         data={"kind": KIND_DIGEST, "workspace_id": str(workspace.id)},
     )
 

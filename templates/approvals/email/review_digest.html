@@ -3,21 +3,24 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light only">
+<meta name="supported-color-schemes" content="light">
 <title>{{ notification.title }}</title>
 <style>
+  :root { color-scheme: light only; supported-color-schemes: light; }
   body, table, td, a { -webkit-text-size-adjust: 100%; -ms-text-size-adjust: 100%; }
   table, td { mso-table-lspace: 0pt; mso-table-rspace: 0pt; }
   body { margin: 0; padding: 0; width: 100% !important; }
 </style>
 </head>
-<body style="margin:0;padding:0;background-color:#FAFAF9;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1C1917;">
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:#FAFAF9;">
+<body bgcolor="#FAFAF9" style="margin:0;padding:0;background-color:#FAFAF9;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1C1917;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#FAFAF9" style="background-color:#FAFAF9;">
 <tr><td align="center" style="padding:32px 16px;">
-  <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="max-width:600px;width:100%;background-color:#FFFFFF;border-radius:12px;border:1px solid #E7E5E4;">
+  <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#FFFFFF" style="max-width:600px;width:100%;background-color:#FFFFFF;border-radius:12px;border:1px solid #E7E5E4;">
     <tr><td style="padding:24px 28px 16px;border-bottom:1px solid #F5F5F4;font-size:13px;font-weight:700;color:#57534E;">{{ workspace.name }}</td></tr>
     <tr>
       <td style="padding:24px 28px 8px;">
-        <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;line-height:1.3;color:#1C1917;">{{ count }} post{{ count|pluralize }} waiting for your approval</h1>
+        <h1 style="margin:0 0 8px;font-size:20px;font-weight:700;line-height:1.3;color:#1C1917;">{% if count %}{{ count }} post{{ count|pluralize }} waiting for your approval{% else %}Held agent work to review{% endif %}</h1>
         {% if earliest_due_at %}
         <p style="margin:0 0 12px;"><span style="display:inline-block;padding:4px 12px;background-color:#FFF7ED;border-radius:9999px;font-size:12px;font-weight:700;color:#C2410C;">Needs approval by {% timezone timezone %}{{ earliest_due_at|date:"D g:i A T" }}{% endtimezone %}</span></p>
         {% endif %}
@@ -41,6 +44,7 @@
         {% if hidden_count %}<p style="margin:8px 0 0;font-size:13px;color:#78716C;">and {{ hidden_count }} more</p>{% endif %}
       </td>
     </tr>
+    {% if count %}
     <tr>
       <td style="padding:20px 28px 28px;">
         <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr>
@@ -50,9 +54,20 @@
         </tr></table>
       </td>
     </tr>
+    {% endif %}
+    {% if held %}
+    <tr>
+      <td style="padding:8px 28px 20px;">
+        <h2 style="margin:0 0 4px;font-size:15px;font-weight:700;color:#1C1917;">Held by your autonomy settings ({{ held|length }})</h2>
+        <p style="margin:0 0 12px;font-size:13px;line-height:1.5;color:#57534E;">An agent's work stopped for a person to look at. Approve or dismiss it here; each button opens a page where you confirm. These links are for you only, work once, and expire in {{ ttl_hours }} hours.</p>
+        {% for item in held %}{% include "approvals/email/_held_item.html" %}{% endfor %}
+        <a href="{{ activity_url }}" style="font-size:13px;font-weight:600;color:#C2410C;text-decoration:underline;">Open Activity</a>
+      </td>
+    </tr>
+    {% endif %}
     <tr>
       <td style="padding:16px 28px 24px;border-top:1px solid #F5F5F4;">
-        <p style="margin:0;font-size:12px;line-height:1.5;color:#A8A29E;">You received this because of your notification settings. <a href="{{ app_url }}/notifications/preferences/" style="color:#EA580C;text-decoration:underline;">Manage preferences</a></p>
+        <p style="margin:0;font-size:12px;line-height:1.5;color:#78716C;">You received this because of your notification settings. <a href="{{ app_url }}/notifications/preferences/" style="color:#C2410C;text-decoration:underline;">Manage preferences</a></p>
       </td>
     </tr>
   </table>

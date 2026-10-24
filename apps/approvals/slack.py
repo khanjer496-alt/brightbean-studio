@@ -28,6 +28,7 @@ from background_task import background
 from django.conf import settings
 from django.core import signing
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.urls import reverse
 
 from apps.accounts.models import User
@@ -49,6 +50,8 @@ TIMEOUT = 8.0
 
 ACTION_APPROVE = "approval_approve"
 ACTION_CHANGES = "approval_changes"
+ACTION_HELD_APPROVE = "held_approve"
+ACTION_HELD_DISMISS = "held_dismiss"
 MODAL_CALLBACK = "approval_changes_modal"
 COMMENT_BLOCK = "comment_block"
 COMMENT_ACTION = "comment"
@@ -310,6 +313,75 @@ def queue_request(post, workspace) -> None:
         post_request_task(str(post.id))
 
 
+def held_blocks(action, *, resolved: str = "") -> list[dict]:
+    """A held agent item: what was held and why, then Approve / Dismiss (or the outcome once decided)."""
+    account = action.social_account.account_name if action.social_account else action.account_label
+    lines = [f"*{_escape(action.actor_name)}* · {_escape(action.get_action_type_display())}"]
+    if account:
+        lines[0] += f" · {_escape(account)}"
+    lines.append(_escape(action.summary)[:1200])
+    if action.final_text:
+        lines.append(">" + _escape(action.final_text)[:1500].replace("\n", "\n>"))
+    blocks: list[dict] = [
+        {"type": "header", "text": {"type": "plain_text", "text": "Held for review by your autonomy settings"}},
+        {"type": "section", "text": {"type": "mrkdwn", "text": "\n".join(lines)[:2900]}},
+    ]
+    if resolved:
+        blocks.append({"type": "context", "elements": [{"type": "mrkdwn", "text": _escape(resolved)}]})
+        return blocks
+    elements = []
+    if decisions.can_approve_from_outside(action):
+        elements.append(
+            {
+                "type": "button",
+                "style": "primary",
+                "action_id": ACTION_HELD_APPROVE,
+                "text": {"type": "plain_text", "text": "Approve"},
+                "value": str(action.id),
+            }
+        )
+    elements.append(
+        {
+            "type": "button",
+            "action_id": ACTION_HELD_DISMISS,
+            "text": {"type": "plain_text", "text": "Dismiss"},
+            "value": str(action.id),
+        }
+    )
+    blocks.append({"type": "actions", "block_id": "held_actions", "elements": elements})
+    return blocks
+
+
+def post_held_request(action) -> bool:
+    """Post a held agent item to the workspace's approval channel; False when nothing was sent."""
+    connection = SlackApprovalConnection.objects.filter(workspace_id=action.workspace_id).first()
+    if connection is None or not connection.is_ready or not is_available(connection.workspace):
+        return False
+    data = api_call(
+        "chat.postMessage",
+        connection.bot_token,
+        {"channel": connection.channel_id, "text": "Agent work held for review.", "blocks": held_blocks(action)},
+    )
+    if not data.get("ok"):
+        logger.warning("Slack held-item request failed for workspace %s: %s", action.workspace_id, data.get("error"))
+    return bool(data.get("ok"))
+
+
+@background(schedule=0)
+def post_held_request_task(action_id):
+    from apps.autonomy.models import AgentAction
+
+    action = AgentAction.objects.select_related("social_account").filter(pk=action_id).first()
+    if action is not None and action.decision == "held" and not action.review_outcome:
+        post_held_request(action)
+
+
+def queue_held_request(action) -> None:
+    """Ask for the Slack message about a held agent item; a no-op unless Slack approvals are connected."""
+    if SlackApprovalConnection.objects.filter(workspace_id=action.workspace_id).exclude(channel_id="").exists():
+        post_held_request_task(str(action.id))
+
+
 # --------------------------------------------------------------------------- interactions
 
 
@@ -319,7 +391,10 @@ def member_for_slack_user(connection, slack_user_id: str):
     user = data.get("user") or {}
     profile = user.get("profile") or {}
     email = (profile.get("email") or "").strip().lower()
-    if not data.get("ok") or not email or not user.get("is_email_confirmed", False) or user.get("is_bot"):
+    if not data.get("ok") or not email or not user.get("is_email_confirmed", False):
+        return None
+    # A bot, a deactivated account, or someone from another Slack team never maps.
+    if user.get("is_bot") or user.get("deleted") or user.get("team_id") not in (None, connection.team_id):
         return None
     candidate = User.objects.filter(email__iexact=email, is_active=True).first()
     if (
@@ -343,7 +418,23 @@ def _verified_connections(payload: dict, timestamp: str, signature: str, body: b
 def _post_for(connection, post_id):
     from apps.composer.models import Post
 
-    return Post.objects.filter(pk=post_id, workspace=connection.workspace).first()
+    try:
+        return Post.objects.filter(pk=post_id, workspace=connection.workspace).first()
+    except (ValueError, ValidationError):
+        return None
+
+
+def _held_for(connection, action_id):
+    from apps.autonomy.models import AgentAction
+
+    try:
+        return (
+            AgentAction.objects.select_related("social_account", "workspace")
+            .filter(pk=action_id, workspace=connection.workspace)
+            .first()
+        )
+    except (ValueError, ValidationError):
+        return None
 
 
 def _ephemeral(text: str) -> dict:
@@ -391,6 +482,21 @@ def _decide(connection, slack_user_id, post_id, fingerprint, decision, comment="
     return user, ""
 
 
+def _decide_held(connection, slack_user_id, action_id, verb):
+    """Approve or dismiss a held agent item as the mapped member, through the autonomy service."""
+    user = member_for_slack_user(connection, slack_user_id)
+    if user is None:
+        return None, None, _link_text(connection)
+    action = _held_for(connection, action_id)
+    if action is None:
+        return user, None, "That item no longer exists."
+    try:
+        decisions.decide_held(action, user, verb, channel=Channel.SLACK)
+    except decisions.DecisionError as exc:
+        return user, action, str(exc)
+    return user, action, ""
+
+
 def _update_message(connection, channel: str, ts: str, post_id: str, text: str) -> None:
     post = _post_for(connection, post_id)
     if post is None or not channel or not ts:
@@ -413,7 +519,19 @@ def handle_interaction(payload: dict, connection) -> dict | None:
         post_id, fingerprint = _split_value(action.get("value", ""))
         channel = (payload.get("channel") or {}).get("id", "")
         ts = (payload.get("message") or {}).get("ts", "")
-        if action.get("action_id") == ACTION_APPROVE:
+        if action.get("action_id") in (ACTION_HELD_APPROVE, ACTION_HELD_DISMISS):
+            verb = "approve" if action["action_id"] == ACTION_HELD_APPROVE else "dismiss"
+            user, held, error = _decide_held(connection, slack_user, action.get("value", ""), verb)
+            if error:
+                _respond(payload.get("response_url", ""), _ephemeral(error))
+            elif channel and ts:
+                done = f"{'Approved' if verb == 'approve' else 'Dismissed'} by {user.display_name} via Slack."
+                api_call(
+                    "chat.update",
+                    connection.bot_token,
+                    {"channel": channel, "ts": ts, "text": done, "blocks": held_blocks(held, resolved=done)},
+                )
+        elif action.get("action_id") == ACTION_APPROVE:
             user, error = _decide(connection, slack_user, post_id, fingerprint, decisions.APPROVE)
             if error:
                 _respond(payload.get("response_url", ""), _ephemeral(error))
@@ -483,14 +601,20 @@ def process_request(body: bytes, timestamp: str, signature: str):
         return 401, None
     if not cache.add(f"slack-approval-sig:{signature}", 1, REPLAY_WINDOW_SECONDS + 60):
         return 409, None
-    # Several PostDelegate workspaces may share one Slack team: pick the one that owns the post.
-    owner = connections[0]
+    # Several PostDelegate workspaces may share one Slack team: act only through
+    # the one that owns the post or held item. Nothing is looked up outside it.
     action = (payload.get("actions") or [{}])[0]
-    post_id = _split_value(action.get("value", ""))[0]
-    if not post_id and payload.get("view"):
-        post_id = (json.loads(payload["view"].get("private_metadata") or "[]") + [""])[0]
-    for connection in connections:
-        if post_id and _post_for(connection, post_id) is not None:
-            owner = connection
-            break
+    subject_id = _split_value(action.get("value", ""))[0]
+    if not subject_id and payload.get("view"):
+        try:
+            subject_id = (json.loads(payload["view"].get("private_metadata") or "[]") + [""])[0]
+        except ValueError:
+            return 400, None
+    held = action.get("action_id") in (ACTION_HELD_APPROVE, ACTION_HELD_DISMISS)
+    lookup = _held_for if held else _post_for
+    owner = next((c for c in connections if subject_id and lookup(c, subject_id) is not None), None)
+    if owner is None:
+        if payload.get("response_url"):
+            _respond(payload["response_url"], _ephemeral("That item isn't in a workspace connected to this Slack."))
+        return 200, None
     return 200, handle_interaction(payload, owner)

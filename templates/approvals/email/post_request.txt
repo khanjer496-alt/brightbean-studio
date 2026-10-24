@@ -1,4 +1,4 @@
-{% load tz %}{{ notification.title }}
+{% load tz %}{% autoescape off %}{{ notification.title }}
 {{ workspace.name }}
 
 {{ notification.body }}
@@ -23,4 +23,4 @@ Review everything waiting for you: {{ review_all_url }}
 
 ---
 You received this because of your notification settings.
-Manage preferences: {{ app_url }}/notifications/preferences/
+Manage preferences: {{ app_url }}/notifications/preferences/{% endautoescape %}

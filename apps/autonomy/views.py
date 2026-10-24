@@ -185,7 +185,12 @@ _ACTIONS = {
     "undo": ("create_posts", release.undo, "Undone. Nothing was sent."),
     "hold": ("create_posts", release.hold, "On hold. It will not go out until you release it."),
     "release": ("publish_directly", release.release_hold, "Released. It will go out shortly."),
-    "dismiss": ("approve_posts", release.dismiss_held, "Dismissed."),
+}
+# Reviewing a held item goes through ``release.review_held``, the same check the
+# email links and Slack buttons use.
+_REVIEWS = {
+    "approve": "Approved. It is scheduled.",
+    "dismiss": "Dismissed.",
 }
 
 
@@ -198,11 +203,9 @@ def action_run(request, workspace_id, action_id, verb):
     action = _action_or_404(workspace, action_id)
     perms = _perms(request)
     try:
-        if verb == "approve":
-            if not (perms.get("approve_posts") and perms.get("publish_directly")):
-                raise PermissionDenied("Approving a held item needs approval and publishing permission.")
-            release.approve_held(action, request.user)
-            messages.success(request, "Approved. It is scheduled.")
+        if verb in _REVIEWS:
+            release.review_held(action, request.user, verb)
+            messages.success(request, _REVIEWS[verb])
         elif verb == "delete":
             if not perms.get("publish_directly"):
                 raise PermissionDenied("Deleting from the platform needs publishing permission.")
