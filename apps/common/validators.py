@@ -6,6 +6,8 @@ import socket
 import xml.etree.ElementTree as ET
 from urllib.parse import urlparse
 
+from defusedxml import DefusedXmlException
+from defusedxml.ElementTree import fromstring as defused_fromstring
 from django.core.exceptions import ValidationError
 
 MAX_TAGS = 25
@@ -146,9 +148,10 @@ def is_valid_hex_color(value: str) -> bool:
 def safe_xml_fromstring(body: bytes, *, max_bytes: int = MAX_XML_BYTES) -> ET.Element | None:
     """Parse RSS/Atom/Webhook XML safely.
 
-    Hardens against billion-laughs / quadratic-blowup attacks WITHOUT pulling in
-    the `defusedxml` dependency: we cap body size and reject any document that
-    declares a DTD or internal entities. Legitimate RSS/Atom/PubSubHubbub
+    Hardens against billion-laughs / quadratic-blowup and XXE attacks: the body
+    size is capped and ``defusedxml`` refuses any DTD, entity declaration or
+    external reference wherever it appears (and in any encoding, which a byte
+    scan of the prolog alone would miss). Legitimate RSS/Atom/PubSubHubbub
     payloads never need either.
 
     Returns the parsed root element, or None for any reject path (oversized,
@@ -166,8 +169,8 @@ def safe_xml_fromstring(body: bytes, *, max_bytes: int = MAX_XML_BYTES) -> ET.El
     if b"<!doctype" in head or b"<!entity" in head:
         return None
     try:
-        return ET.fromstring(body)
-    except ET.ParseError:
+        return defused_fromstring(bytes(body), forbid_dtd=True, forbid_entities=True, forbid_external=True)
+    except (ET.ParseError, DefusedXmlException, ValueError):
         return None
 
 

@@ -65,6 +65,58 @@ def reply_is_held(reply, now=None) -> bool:
     return _live_autonomous().filter(reply_id=reply.pk).filter(_waiting(now)).exists()
 
 
+def released_plug_action(run, now=None):
+    """The live automated decision behind an engagement automation once nothing holds it back, else None.
+
+    Nothing holds it back when its undo window is over, no person put it on hold and crisis pause is off.
+    """
+    now = now or timezone.now()
+    return _live_autonomous().filter(plug_run_id=run.pk).exclude(_waiting(now)).first()
+
+
+def has_live_plug_action(run) -> bool:
+    """Whether an automated decision for ``run`` is still standing (not undone)."""
+    return _live_autonomous().filter(plug_run_id=run.pk).exists()
+
+
+def plug_send_blocker(workspace, account, action_type: str) -> str:
+    """Why an engagement automation must not go out right now, or "" when the policy still allows it.
+
+    Asked at the moment of sending, like :func:`send_blocker`, so a level lowered after the decision still wins.
+    """
+    policy = get_policy(workspace)
+    if policy.crisis_paused:
+        return "crisis pause is on"
+    level, source = resolve_level(workspace, account, action_type, policy=policy)
+    if level in _SENDING_LEVELS:
+        return ""
+    where = "this account" if source == "account" else "this workspace"
+    return f"autonomy for '{ActionType(action_type).label.lower()}' is now {Level(level).label} for {where}"
+
+
+def hold_plug_at_send(run, reason: str) -> AgentAction:
+    """The policy no longer lets a queued engagement automation go out: hold it for a person, like a post."""
+    from .actors import system
+
+    run.status = "awaiting_approval"
+    run.detail = f"Held for review because {reason}."
+    run.save(update_fields=["status", "detail", "updated_at"])
+    rule = run.rule
+    return service.record(
+        workspace=rule.workspace,
+        actor=system("Publisher"),
+        action_type=(ActionType.REPLY if rule.action == "reply" else ActionType.PUBLISH_POSTS),
+        operation="publish.held_at_send",
+        decision=Decision.HELD,
+        summary=f"Held for review because {reason}. It was not sent; approve it in Activity to send it.",
+        account=rule.acting_account,
+        post=run.platform_post.post,
+        platform_post=run.platform_post,
+        plug_run=run,
+        final_text=rule.message,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Re-checking the policy at the moment of sending
 # ---------------------------------------------------------------------------
@@ -167,8 +219,9 @@ def going_out_soon(workspace, *, limit: int = 50):
         .filter(
             Q(platform_post__status="scheduled", platform_post__isnull=False)
             | Q(reply__status="draft", reply__isnull=False)
+            | Q(plug_run__status="queued", plug_run__isnull=False)
         )
-        .select_related("social_account", "platform_post__post", "reply__inbox_message")
+        .select_related("social_account", "platform_post__post", "reply__inbox_message", "plug_run")
         .order_by("release_at")[:limit]
     )
 
@@ -202,12 +255,20 @@ def _live(action: AgentAction) -> AgentAction:
         )
     if action.reply_id:
         action.reply = InboxReply.objects.select_for_update().get(pk=action.reply_id)
+    if action.plug_run_id:
+        from apps.plugs.models import PlugRun
+
+        action.plug_run = PlugRun.objects.select_for_update().get(pk=action.plug_run_id)
     return action
 
 
 def _still_waiting(action: AgentAction) -> None:
     from apps.inbox.models import InboxReply
 
+    if action.plug_run is not None:
+        if action.plug_run.status != "queued":
+            raise ReleaseError("It already went out (or is going out now), so it can't be stopped.")
+        return
     if action.platform_post is not None and action.platform_post.status != "scheduled":
         raise ReleaseError("It already went out (or is going out now), so it can't be stopped. Delete it instead.")
     if action.reply is not None and action.reply.status != InboxReply.Status.DRAFT:
@@ -224,7 +285,13 @@ def undo(action: AgentAction, user) -> AgentAction:
         if action.undone_at is not None:
             return action
         pp, reply = action.platform_post, action.reply
-        if pp is not None:
+        if action.plug_run is not None:
+            if action.plug_run.status != "queued":
+                raise ReleaseError("It already went out (or is going out now), so it can't be undone.")
+            action.plug_run.status = "cancelled"
+            action.plug_run.detail = "Undone before it went out."
+            action.plug_run.save(update_fields=["status", "detail", "updated_at"])
+        elif pp is not None:
             if pp.status != "scheduled":
                 raise ReleaseError(
                     "It already went out (or is going out now), so it can't be undone. Delete it instead."
@@ -333,7 +400,14 @@ def approve_held(action: AgentAction, user, *, channel: str = "web") -> AgentAct
         if action.decision != Decision.HELD or action.review_outcome:
             raise ReleaseError("This is not waiting for review.")
         pp, reply = action.platform_post, action.reply
-        if pp is not None and action.operation == "thread.paused":
+        if action.plug_run_id:
+            from apps.plugs import services as plug_services
+
+            try:
+                plug_services.approve_run(action.plug_run, user)
+            except plug_services.PlugError as exc:
+                raise ReleaseError(str(exc)) from exc
+        elif pp is not None and action.operation == "thread.paused":
             from apps.publisher.engine import resume_thread
 
             # Approving a paused thread resumes it from the part where it stopped.
@@ -425,9 +499,15 @@ def dismiss_held(action: AgentAction, user, *, channel: str = "web") -> AgentAct
     from apps.inbox.models import InboxReply
 
     with transaction.atomic():
-        action = AgentAction.objects.select_for_update(of=("self",)).select_related("reply").get(pk=action.pk)
+        action = (
+            AgentAction.objects.select_for_update(of=("self",)).select_related("reply", "plug_run").get(pk=action.pk)
+        )
         if action.decision != Decision.HELD or action.review_outcome:
             raise ReleaseError("This is not waiting for review.")
+        if action.plug_run is not None and action.plug_run.status == "awaiting_approval":
+            action.plug_run.status = "cancelled"
+            action.plug_run.detail = "Dismissed by a person."
+            action.plug_run.save(update_fields=["status", "detail", "updated_at"])
         reply = action.reply
         if reply is not None and reply.status == InboxReply.Status.DRAFT:
             reply.delete()

@@ -25,6 +25,10 @@ from .types import (
     MediaType,
     MentionSuggestion,
     OAuthTokens,
+    PlugAction,
+    PlugCapability,
+    PlugTarget,
+    PlugTrigger,
     PostMetrics,
     PostType,
     PublicProfileMetrics,
@@ -121,6 +125,19 @@ class MastodonProvider(SocialProvider):
     thread = ThreadCapability(mode=ThreadMode.REPLY_CHAIN, max_parts=25, media_per_part=True)
 
     mention_lookup = True
+
+    # A boost is POST /api/v1/statuses/:id/reblog (scope write:statuses); a reply is a status with in_reply_to_id;
+    # the status entity carries favourites_count and reblogs_count. Another account on a different server finds the
+    # status through the search endpoint with resolve=true before boosting it.
+    # https://docs.joinmastodon.org/methods/statuses/#boost
+    plugs = PlugCapability(
+        triggers=frozenset({PlugTrigger.LIKES, PlugTrigger.REPOSTS}),
+        own_actions=frozenset({PlugAction.REPOST, PlugAction.REPLY}),
+        cross_actions=frozenset({PlugAction.REPOST}),
+        source="https://docs.joinmastodon.org/methods/statuses/#boost",
+        # Each server sets its own rules on bots; a boost by another account is held for a person like everywhere.
+        policy_source="https://docs.joinmastodon.org/user/preferences/#bot",
+    )
 
     supports_public_profile_metrics = True
     competitor_handle_hint = "name@mastodon.social"
@@ -630,6 +647,27 @@ class MastodonProvider(SocialProvider):
             engagements=(data.get("favourites_count", 0) + data.get("reblogs_count", 0) + data.get("replies_count", 0)),
             extra=data,
         )
+
+    def repost_post(self, access_token: str, target: PlugTarget) -> PublishResult:
+        """Boost a status. Another account's status is first resolved on this account's own server."""
+        status_id = target.platform_post_id
+        if target.cross_account:
+            found = self._request(
+                "GET",
+                f"{self.instance_url}/api/v2/search",
+                access_token=access_token,
+                params={"q": target.permalink, "type": "statuses", "resolve": "true", "limit": 1},
+            ).json()
+            statuses = found.get("statuses") or []
+            if not target.permalink or not statuses:
+                raise PublishError(
+                    "This server could not find the post to boost.", platform=self.platform_name, retryable=False
+                )
+            status_id = statuses[0]["id"]
+        data = self._request(
+            "POST", f"{self.instance_url}/api/v1/statuses/{status_id}/reblog", access_token=access_token
+        ).json()
+        return PublishResult(platform_post_id=str(data.get("id", "")), url=data.get("url"), extra=data)
 
     def public_profile_metrics(self, handle: str, using_account, access_token: str = "") -> PublicProfileMetrics:
         """Followers and status count from the instance's account lookup, engagement from the account's statuses.

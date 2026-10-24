@@ -1,0 +1,6 @@
+{% comment %}A run's status as a badge. Context: run.{% endcomment %}
+{% if run.status == "done" %}<span class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">Done</span>
+{% elif run.status == "watching" or run.status == "queued" or run.status == "retry" or run.status == "firing" %}<span class="inline-flex items-center rounded-full bg-sky-100 px-2 py-0.5 text-xs font-medium text-sky-800">{{ run.get_status_display }}</span>
+{% elif run.status == "awaiting_approval" or run.status == "unconfirmed" %}<span class="inline-flex items-center rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">{{ run.get_status_display }}</span>
+{% elif run.status == "failed" or run.status == "blocked" %}<span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">{{ run.get_status_display }}</span>
+{% else %}<span class="inline-flex items-center rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-700">{{ run.get_status_display }}</span>{% endif %}

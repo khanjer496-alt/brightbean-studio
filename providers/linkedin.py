@@ -23,6 +23,10 @@ from .types import (
     MediaType,
     OAuthTokens,
     PeakWindow,
+    PlugAction,
+    PlugCapability,
+    PlugTarget,
+    PlugTrigger,
     PostMetrics,
     PostType,
     PublishContent,
@@ -149,6 +153,23 @@ class LinkedInProvider(SocialProvider):
     publishes_documents = True
     # LinkedIn comments are capped at 1,250 characters.
     thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=1250)
+
+    # A reshare is POST /rest/posts with reshareContext.parent (w_member_social or w_organization_social) and a
+    # comment is socialActions/{urn}/comments. Share statistics, the only counts, exist for Company Pages, so the
+    # personal variant offers no trigger and therefore no automation of its own.
+    # https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api
+    plugs = PlugCapability(
+        triggers=frozenset({PlugTrigger.LIKES, PlugTrigger.REPOSTS, PlugTrigger.VIEWS}),
+        own_actions=frozenset({PlugAction.REPLY}),
+        cross_actions=frozenset({PlugAction.REPOST}),
+        message_max_length=1250,
+        source="https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/posts-api",
+        # API Terms of Use 3.1(26) (checked 2026-10-24): an application may not "automate posting on the LinkedIn
+        # Services". A rule here only prepares the comment or reshare; a person approves each one before it goes out.
+        requires_approval=True,
+        max_actions_per_day=3,
+        policy_source="https://www.linkedin.com/legal/l/api-terms-of-use",
+    )
 
     # Source: https://sproutsocial.com/insights/best-times-to-post-on-social-media/ (published 2026-03-31; checked 2026-10-24):
     # Mon 1-2pm; Tue 11am-5pm; Wed 11am-4pm; Thu 11am, 1-5pm; Fri 11am, 1-2pm. Hours are the audience's local time; industry averages, not your audience.
@@ -681,6 +702,19 @@ class LinkedInProvider(SocialProvider):
             url=self._post_urn_to_url(post_urn),
             extra={"urn": post_urn},
         )
+
+    def repost_post(self, access_token: str, target: PlugTarget) -> PublishResult:
+        """Reshare a post on the connected member or Page (``reshareContext.parent``)."""
+        author = self.credentials.get("author_urn")
+        if not author:
+            author = f"urn:li:person:{self.get_profile(access_token).platform_id}"
+        body = self._build_post_body(author, "")
+        body["reshareContext"] = {"parent": target.platform_post_id}
+        resp = self._request(
+            "POST", f"{API_BASE}/rest/posts", access_token=access_token, headers=LINKEDIN_HEADERS, json=body
+        )
+        post_urn = resp.headers.get("x-restli-id", "")
+        return PublishResult(platform_post_id=post_urn, url=self._post_urn_to_url(post_urn), extra={"urn": post_urn})
 
     # ------------------------------------------------------------------
     # Comments

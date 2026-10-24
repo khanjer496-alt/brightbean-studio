@@ -25,9 +25,9 @@ The token is shown once. **Rotate** gives the same token (same scope, limits and
 
 | Capability | Group | Risk | What it covers | Workspace permissions it uses | REST routes | MCP tools |
 |---|---|---|---|---|---|---|
-| **Read posts & calendar** (`read_calendar`) | Content | low | See posts, drafts, queues, posting slots, ideas, templates, tags, events, team members and connected accounts. | `create_posts` (ideas, templates and evergreen are read with it) | 23 | 21 |
+| **Read posts & calendar** (`read_calendar`) | Content | low | See posts, drafts, queues, posting slots, ideas, templates, tags, events, team members, connected accounts, engagement automations and followed feeds. | `create_posts` (ideas, templates, evergreen, automations and feeds are read with it) | 27 | 25 |
 | **Draft posts** (`draft_posts`) | Content | medium | Write and edit drafts, duplicate posts, keep ideas, templates, tags, categories and calendar events, and save repurposing outputs as drafts. | `create_posts` | 20 | 20 |
-| **Schedule & publish** (`schedule_posts`) | Content | high | Schedule posts, cancel or delete them, manage queues, posting slots and evergreen recycling. | `create_posts`, `publish_directly`, `manage_social_accounts` (posting slots) | 13 | 14 |
+| **Schedule & publish** (`schedule_posts`) | Content | high | Schedule posts, cancel or delete them, manage queues, posting slots, evergreen recycling, engagement automations (repost or reply when a post takes off) and RSS auto-posting. | `create_posts`, `publish_directly`, `manage_social_accounts` (posting slots) | 20 | 21 |
 | **Media upload** (`upload_media`) | Content | medium | Browse the media library and upload images and video. | `upload_media` | 3 | 5 |
 | **AI writing assistant** (`use_ai_assistant`) | Content | medium | Ask the workspace's AI assistant to write or adapt captions and repurpose articles, PDFs and videos. Counts toward the AI budget. | `create_posts` | 5 | 5 |
 | **Inbox read** (`read_inbox`) | Inbox | low | Read comments and direct messages from connected accounts. | `use_inbox` | 2 | 2 |

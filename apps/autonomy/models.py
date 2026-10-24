@@ -215,6 +215,14 @@ class AgentAction(models.Model):
         blank=True,
         related_name="agent_actions",
     )
+    # An engagement automation (repost, follow-up reply) held for a person or waiting out its undo window.
+    plug_run = models.ForeignKey(
+        "plugs.PlugRun",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="agent_actions",
+    )
     # Identifies the thing acted on so a repeated refusal is logged once a day.
     target_key = models.CharField(max_length=64, blank=True, default="", db_index=True)
 
@@ -265,6 +273,8 @@ class AgentAction(models.Model):
         """Executed by an automation but not yet sent, so it can still be undone or held."""
         if self.undone_at is not None or self.release_at is None or self.decision != Decision.EXECUTED:
             return False
+        if self.plug_run_id:
+            return self.plug_run.status == "queued"
         if self.platform_post_id:
             return self.platform_post.status == "scheduled"
         if self.reply_id:
