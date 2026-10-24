@@ -1,0 +1,21 @@
+---
+import Doc from '../layouts/Doc.astro';
+import { SITE } from '../data/site';
+---
+<Doc title="Connect Codex and coding agents to PostDelegate" description="Use a scoped API key to let Codex, Claude Code or Cursor draft social posts in PostDelegate, then review and schedule them." h1="Connect Codex and coding agents" eyebrow="Codex" lead="Bring social drafts into a Codex workflow, then review and schedule them in PostDelegate.">
+  <a slot="actions" href={SITE.signup} class="btn btn-primary btn-lg">Start free — 14-day trial, no card</a>
+  <h2>Setup</h2>
+  <ol>
+    <li>In PostDelegate open <strong>Settings → API Keys</strong> and create a key. Start with <code>create_posts</code> only and a capability preset such as draft-only. Optionally set “Read-only until approved”, so anything that would go out is held for a person.</li>
+    <li>Add the MCP server to your agent with the endpoint <code>{SITE.app}/api/v1/mcp</code> and the key as a bearer token, stored in the client’s settings or an environment variable, never in a prompt or a shared file.</li>
+    <li>Ask the agent to run <code>list_accounts</code>, then create one draft with <code>create_draft</code>.</li>
+    <li>Review in the web app. Schedule it yourself, or let the agent use <code>schedule_draft</code> if its key and your autonomy policy allow it.</li>
+  </ol>
+  <h2>Safe defaults</h2>
+  <ul>
+    <li>Keep <code>publish_directly</code> off for draft-only keys.</li>
+    <li>Use the REST create endpoint with an <code>Idempotency-Key</code> when retries matter.</li>
+    <li>Per-token daily limits on scheduled posts and a crisis-pause switch are available.</li>
+  </ul>
+  <p>See also the <a href="/api">REST API</a> and <a href="/mcp">MCP guide</a>.</p>
+</Doc>

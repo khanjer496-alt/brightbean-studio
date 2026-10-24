@@ -1,0 +1,27 @@
+---
+import Doc from '../layouts/Doc.astro';
+import { SITE } from '../data/site';
+const guides = [
+  { t: 'Connect through MCP', d: 'Give a compatible AI client access to drafts, media, scheduling, approvals and analytics tools.', href: '/mcp' },
+  { t: 'Build with the REST API', d: 'Create drafts, upload media and schedule reviewed posts with scoped bearer keys.', href: '/api' },
+  { t: 'Use PostDelegate with Claude', d: 'Add a custom connector, sign in with OAuth and prepare drafts in a conversation.', href: '/claude-cowork' },
+  { t: 'Connect Codex and coding agents', d: 'Bring social drafts into Codex, Claude Code or Cursor with a scoped key.', href: '/codex' },
+];
+---
+<Doc title="Publish with your AI agent — PostDelegate" description="Connect Claude, ChatGPT, Codex or your own agent to PostDelegate over MCP or REST. You set the autonomy level, undo window and approvals." h1="Let your AI agent publish. Keep control." eyebrow="For AI agents" lead="Agents connect over MCP or the REST API. A workspace’s autonomy dial decides what they may do alone, and every action is logged.">
+  <a slot="actions" href={SITE.signup} class="btn btn-primary btn-lg">Start free — 14-day trial, no card</a>
+  <div class="not-prose grid gap-4 sm:grid-cols-2">
+    {guides.map((g) => (<a href={g.href} class="card card-hover block p-6 no-underline"><h2 class="!mt-0 text-lg font-extrabold !text-ink">{g.t}</h2><p class="!my-2 text-sm">{g.d}</p><span class="text-sm font-bold text-brand-200">Read the guide →</span></a>))}
+  </div>
+  <h2>What an agent can do</h2>
+  <p>Posts (create, read, update, schedule, cancel, delete, duplicate), media, approvals, comments, queues and posting slots, best times, evergreen recycling, ideas, templates, tags, calendar events, inbox replies, analytics, reports, link-in-bio, brand voice, the autonomy policy and the audit trail. Connecting or disconnecting a social account stays in the web app because it needs the platform’s own sign-in screen.</p>
+  <h2>How you stay in control</h2>
+  <ul>
+    <li><strong>Autonomy dial</strong> per action: Off, Draft only, Auto with guardrails, Full auto. New workspaces start at Draft only.</li>
+    <li><strong>A key can only tighten the policy.</strong> It can lower levels or switch crisis pause on, never loosen them.</li>
+    <li><strong>Scoped tokens</strong> limit each key to chosen capabilities, accounts and daily budgets.</li>
+    <li><strong>Undo window</strong>, <strong>crisis pause</strong> and an <strong>audit trail</strong> for every action.</li>
+  </ul>
+  <h2>Which AI?</h2>
+  <p>Any. Use Claude or ChatGPT over MCP, or add your own API key (Anthropic, OpenAI, Google Gemini or an OpenAI-compatible service) for the built-in writing tools. AI is billed by your provider, never by PostDelegate. Do not paste account passwords or social tokens into prompts.</p>
+</Doc>

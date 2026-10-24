@@ -1,0 +1,28 @@
+---
+import Doc from '../../layouts/Doc.astro';
+import CompareTable from '../../components/CompareTable.astro';
+import { SITE } from '../../data/site';
+const rows = [
+  { feature: 'Open source', us: 'Yes, AGPL-3.0, built on BrightBean Studio', them: 'Yes, AGPL-3.0' },
+  { feature: 'Agent access', us: 'MCP server and REST API with scoped keys', them: 'Advertises agent publishing, a CLI, MCP and a public API' },
+  { feature: 'Limits on what an agent may do alone', us: 'Per-action autonomy dial, undo window, crisis pause, audit trail', them: 'Not established in this comparison; check their docs' },
+  { feature: 'Approvals', us: 'Internal review, client sign-off stage, change requests, holds', them: 'Advertises team collaboration; check client-approval depth' },
+  { feature: 'Bring your own AI', us: 'Your own key from any provider, or Claude/ChatGPT over MCP; no AI in any plan', them: 'Advertises built-in AI content tools' },
+  { feature: 'Networks', us: '27 networks in the app (platform access varies)', them: 'Advertises 30+ networks' },
+  { feature: 'Creative tools', us: 'Basic media editing, no creative studio', them: 'Advertises an image editor and AI content tools' },
+  { feature: 'Free plan', us: 'Yes, 3 channels', them: 'Check their pricing page' },
+];
+---
+<Doc title="PostDelegate vs Postiz — an honest comparison" description="Compare PostDelegate and Postiz on agent safety, approvals, bring-your-own AI, networks and creative tools." h1="PostDelegate vs Postiz" eyebrow="Compare" lead="Two scheduler approaches to AI-driven publishing. Here is where they differ, and where Postiz may fit you better.">
+  <a slot="actions" href={SITE.signup} class="btn btn-primary btn-lg">Start free — 14-day trial, no card</a>
+  <h2>At a glance</h2>
+  <CompareTable other="Postiz" rows={rows} />
+  <h2>Where PostDelegate is different</h2>
+  <p>PostDelegate is designed around letting an agent act without losing control. Each workspace sets a level for drafting, publishing, replying and recycling. Autonomous actions wait in an undo window, crisis pause stops them all, and a key can tighten the policy but never loosen it.</p>
+  <h2>Where Postiz may fit better</h2>
+  <p>If you want a broad set of built-in creative and AI content tools, or the largest possible network list, evaluate Postiz’s advertised tools against your needs. Connecting AI agents is a shared capability and not unique to either product.</p>
+  <h2>How to evaluate</h2>
+  <ul><li>Test an agent-created draft, human review, scheduling and failure recovery on the channels you need.</li><li>Check current plans, limits and network coverage on both sites.</li></ul>
+  <h2>Sources and scope</h2>
+  <p>Statements about Postiz come from its public descriptions and may be out of date, so verify them on <a href="https://postiz.com" rel="noopener nofollow">postiz.com</a>. This is a feature comparison, not a performance benchmark, and “check their docs” means we have not verified that point. PostDelegate is not affiliated with Postiz.</p>
+</Doc>

@@ -1,0 +1,29 @@
+---
+import Doc from '../layouts/Doc.astro';
+import { SITE } from '../data/site';
+---
+<Doc title="PostDelegate MCP server — connect Claude, ChatGPT and other AI clients" description="Connect an MCP-compatible AI client to your PostDelegate workspace to draft, schedule and review social posts with scoped permissions." h1="Connect an AI client over MCP" eyebrow="MCP server" lead="A Streamable HTTP MCP server lets a compatible AI client use the tools your workspace allows.">
+  <a slot="actions" href={SITE.signup} class="btn btn-primary btn-lg">Start free — 14-day trial, no card</a>
+  <h2>Endpoint</h2>
+  <pre><code>{SITE.app}/api/v1/mcp</code></pre>
+  <p>No trailing slash. Copy the exact URL for your workspace from <strong>Settings → API Keys</strong>.</p>
+  <h2>Authentication</h2>
+  <ul>
+    <li><strong>OAuth</strong> (Claude and other clients that support it): sign in and approve access. The connection acts with your own workspace permissions, so it is not automatically draft-only.</li>
+    <li><strong>Scoped API key</strong> as a bearer token (Claude Code, Cursor, custom agents). Give it only the capabilities it needs and store it in the client’s settings, never in a prompt.</li>
+  </ul>
+  <h2>First draft</h2>
+  <ol>
+    <li>Call <code>list_accounts</code> to see the accounts the key can use.</li>
+    <li>Call <code>create_draft</code>. It saves a draft without scheduling or publishing.</li>
+    <li>Review the draft in the web app, complete any approval, then call <code>schedule_draft</code> with an ISO 8601 time that includes a timezone offset or <code>Z</code>.</li>
+  </ol>
+  <p>Scheduling needs both <code>create_posts</code> and <code>publish_directly</code>. “Scheduled” means queued, not published. Use <code>get_post</code> to check per-channel results.</p>
+  <h2>Media</h2>
+  <p>Attach workspace media asset IDs. Small files can use <code>upload_media</code>; larger ones use <code>request_media_upload</code> then <code>finalize_media_upload</code>.</p>
+  <h2>Autonomy and safety</h2>
+  <p>Read the workspace policy with <code>get_autonomy_policy</code>. A write that was held or refused says why, so the agent can behave. A key can tighten the policy but never loosen it. Every action is listed by <code>list_agent_actions</code> and in the Activity page.</p>
+  <h2>Retries</h2>
+  <p>Create-like tools accept an <code>idempotency_key</code>; the same key with the same body returns the first result for 24 hours. If a response is lost, check the workspace before retrying.</p>
+  <p>See the full <a href="/api">REST API guide</a> and the <a href="/agents">agent overview</a>.</p>
+</Doc>

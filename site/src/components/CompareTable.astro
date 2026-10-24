@@ -1,0 +1,13 @@
+---
+interface Props { other: string; rows: { feature: string; us: string; them: string }[] }
+const { other, rows } = Astro.props;
+---
+<div class="not-prose my-6 overflow-x-auto rounded-2xl border border-line">
+  <table class="w-full min-w-[34rem] border-collapse text-left text-sm">
+    <caption class="sr-only">PostDelegate compared with {other}</caption>
+    <thead class="bg-surface-2 text-xs uppercase tracking-wider text-ink-3"><tr><th scope="col" class="p-4">Feature</th><th scope="col" class="p-4 text-brand-200">PostDelegate</th><th scope="col" class="p-4">{other}</th></tr></thead>
+    <tbody class="divide-y divide-line bg-surface-1">
+      {rows.map((r) => (<tr><th scope="row" class="p-4 font-bold text-ink">{r.feature}</th><td class="p-4 text-ink-2">{r.us}</td><td class="p-4 text-ink-2">{r.them}</td></tr>))}
+    </tbody>
+  </table>
+</div>

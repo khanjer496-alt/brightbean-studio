@@ -1,0 +1,27 @@
+---
+import Doc from '../../layouts/Doc.astro';
+import CompareTable from '../../components/CompareTable.astro';
+import { SITE } from '../../data/site';
+const rows = [
+  { feature: 'Agent access', us: 'MCP server and REST API with scoped keys', them: 'Advertises a developer API and MCP access' },
+  { feature: 'Limits on what an agent may do alone', us: 'Per-action autonomy dial, undo window, crisis pause, audit trail', them: 'Not established in this comparison; check their docs' },
+  { feature: 'Approvals', us: 'Internal review, client sign-off, change requests, holds', them: 'Advertises team invitations; check approval depth' },
+  { feature: 'Bring your own AI', us: 'Your own key from any provider, or Claude/ChatGPT over MCP', them: 'Check their docs' },
+  { feature: 'Bulk video / content studio', us: 'No equivalent bulk video studio', them: 'Advertises bulk video scheduling and a content studio on selected plans' },
+  { feature: 'Networks', us: '27 networks in the app (platform access varies)', them: 'Advertises ten platforms' },
+  { feature: 'Open source', us: 'Yes, AGPL-3.0', them: 'Check their docs' },
+];
+---
+<Doc title="PostDelegate vs Post Bridge — an honest comparison" description="Compare PostDelegate and Post Bridge on agent access, approvals, networks and video tools." h1="PostDelegate vs Post Bridge" eyebrow="Compare" lead="Both offer API and MCP access. The real question is review, safety and the channels you need.">
+  <a slot="actions" href={SITE.signup} class="btn btn-primary btn-lg">Start free — 14-day trial, no card</a>
+  <h2>At a glance</h2>
+  <CompareTable other="Post Bridge" rows={rows} />
+  <h2>Where PostDelegate is different</h2>
+  <p>Review and safety. Approved posts can be scheduled by REST or MCP while keeping the required approval checks, and the autonomy dial decides what an agent may publish by itself.</p>
+  <h2>Where Post Bridge may fit better</h2>
+  <p>For video-heavy creator work, evaluate Post Bridge’s advertised batch and studio tools. PostDelegate does not have an equivalent bulk video studio.</p>
+  <h2>How to evaluate</h2>
+  <ul><li>Run the agent-to-review-to-schedule path with your own approval requirements.</li><li>Check current account limits, API access and plan terms directly with each product.</li></ul>
+  <h2>Sources and scope</h2>
+  <p>Statements about Post Bridge come from its public descriptions and may be out of date, so verify them on its own site. We make no claim that PostDelegate is cheaper, faster or more reliable. PostDelegate is not affiliated with Post Bridge.</p>
+</Doc>

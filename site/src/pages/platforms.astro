@@ -1,0 +1,25 @@
+---
+import Base from '../layouts/Base.astro';
+import NetworkBadge from '../components/NetworkBadge.astro';
+import PageHero from '../components/PageHero.astro';
+import CtaBand from '../components/CtaBand.astro';
+import { NETWORKS, NETWORK_COUNT } from '../data/networks';
+import { SITE } from '../data/site';
+---
+<Base title={`Supported platforms: ${NETWORK_COUNT} social networks — PostDelegate`} description="Instagram, Facebook, LinkedIn, TikTok, YouTube, X, Threads, Bluesky, Pinterest, Mastodon and more. See every network PostDelegate supports and its caption limit.">
+  <PageHero eyebrow="Platforms" title={`${NETWORK_COUNT} networks, one calendar`} lead="Each platform controls its own API access, account types and permissions, so what you can do on a channel depends on that platform.">
+    <a href={SITE.signup} class="btn btn-primary btn-lg">Start free — 14-day trial, no card</a>
+  </PageHero>
+  <section class="section"><div class="container-x">
+    <ul class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {NETWORKS.map((n) => (
+        <li><a href={n.scheduler ? `/${n.scheduler}` : '/tools/caption-checker'} class="card card-hover flex items-center gap-4 p-4">
+          <NetworkBadge n={n} size="lg" />
+          <span><span class="block font-extrabold">{n.name}</span><span class="text-sm text-ink-2">Caption limit {n.limit.toLocaleString('en-US')}{n.unit === 'utf8_bytes' ? ' bytes' : ' characters'}</span></span>
+        </a></li>
+      ))}
+    </ul>
+    <p class="mt-8 max-w-2xl text-sm text-ink-3">Instagram and LinkedIn each have two connection routes (Instagram via Facebook or direct Instagram Login; LinkedIn personal or company Page). Caption limits come from the app’s per-network rules.</p>
+  </div></section>
+  <CtaBand />
+</Base>

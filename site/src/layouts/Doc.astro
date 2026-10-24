@@ -1,0 +1,12 @@
+---
+import Base from './Base.astro';
+import PageHero from '../components/PageHero.astro';
+import CtaBand from '../components/CtaBand.astro';
+interface Props { title: string; description: string; h1: string; eyebrow?: string; lead?: string; jsonLd?: object[]; cta?: boolean; noindex?: boolean }
+const { title, description, h1, eyebrow, lead, jsonLd = [], cta = true, noindex } = Astro.props;
+---
+<Base title={title} description={description} jsonLd={jsonLd} noindex={noindex}>
+  <PageHero eyebrow={eyebrow} title={h1} lead={lead}><slot name="actions" /></PageHero>
+  <section class="py-14 sm:py-20"><div class="container-x"><div class="prose-pd max-w-3xl"><slot /></div></div></section>
+  {cta && <CtaBand />}
+</Base>

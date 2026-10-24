@@ -1,0 +1,17 @@
+---
+import Doc from '../layouts/Doc.astro';
+import { SITE } from '../data/site';
+---
+<Doc title="Use PostDelegate with Claude — social media publishing over MCP" description="Add PostDelegate as a custom connector in Claude, prepare drafts in a conversation, then review and schedule them in your workspace." h1="Use PostDelegate with Claude" eyebrow="Claude" lead="Create drafts, work with media and schedule posts from Claude, with your approvals and autonomy settings still in charge.">
+  <a slot="actions" href={SITE.signup} class="btn btn-primary btn-lg">Start free — 14-day trial, no card</a>
+  <h2>Connect Claude, step by step</h2>
+  <ol>
+    <li><strong>Get your endpoint.</strong> Use <code>{SITE.app}/api/v1/mcp</code> (copy it from Settings → API Keys).</li>
+    <li><strong>Add a custom connector.</strong> In Claude open Settings → Connectors → Add custom connector, name it and paste the URL. Team policies may limit custom connectors.</li>
+    <li><strong>Authorize.</strong> Claude registers itself and opens PostDelegate to sign in and approve. No API key is required, and the connection acts with your own permissions.</li>
+    <li><strong>Start with one draft.</strong> Ask Claude to list your accounts, then create a single draft without scheduling.</li>
+    <li><strong>Review, then schedule.</strong> Finish any approvals in the web app. Scheduling needs <code>create_posts</code> and <code>publish_directly</code>.</li>
+    <li><strong>If something fails</strong> check the endpoint, the account’s authorization and the discovered tools. If a draft response was lost, look in the workspace before retrying.</li>
+  </ol>
+  <p>Never put API keys, social tokens or passwords in the chat. For Claude Code, Cursor and custom agents, use a <a href="/codex">scoped API key</a> instead. More in the <a href="/mcp">MCP guide</a>.</p>
+</Doc>

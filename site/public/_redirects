@@ -1,0 +1,14 @@
+# Legal pages live in the app (canonical). 301 so existing links and SEO carry over.
+/privacy        https://app.postdelegate.com/legal/privacy/        301
+/terms          https://app.postdelegate.com/legal/terms/          301
+/licenses       https://app.postdelegate.com/legal/licenses/       301
+/data-deletion  https://app.postdelegate.com/legal/data-deletion/  301
+/privacy/       https://app.postdelegate.com/legal/privacy/        301
+/terms/         https://app.postdelegate.com/legal/terms/          301
+/licenses/      https://app.postdelegate.com/legal/licenses/       301
+/data-deletion/ https://app.postdelegate.com/legal/data-deletion/  301
+# Old static assets referenced by the previous site
+/postdelegate-workspace-preview.png  /og.png  301
+/postdelegate-composer-preview.png   /og.png  301
+# Old sitemap location keeps working (rewrite, not redirect)
+/sitemap.xml  /sitemap-0.xml  200

@@ -1,0 +1,43 @@
+---
+import Base from '../../layouts/Base.astro';
+import PageHero from '../../components/PageHero.astro';
+import CtaBand from '../../components/CtaBand.astro';
+const app = { '@context': 'https://schema.org', '@type': 'WebApplication', name: 'UTM link builder', applicationCategory: 'UtilitiesApplication', operatingSystem: 'Any', offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' }, url: 'https://postdelegate.com/tools/utm-builder' };
+---
+<Base title="UTM link builder for social posts | PostDelegate" description="Free UTM link builder: add source, medium and campaign to a URL so your analytics shows where social visits came from. Runs in your browser." jsonLd={[app]}>
+  <PageHero eyebrow="Free tool" title="UTM link builder" lead="Add source, medium and campaign to a link so your analytics can show where visits came from. It runs in your browser; nothing is sent or saved." />
+  <section class="section"><div class="container-x max-w-3xl">
+    <form id="utm" class="grid gap-5" onsubmit="return false">
+      {[['url', 'Destination URL', 'https://example.com/page', 'url'], ['source', 'Source', 'linkedin', 'text'], ['medium', 'Medium', 'social', 'text'], ['campaign', 'Campaign', 'spring-launch', 'text']].map(([id, label, ph, type]) => (
+        <div><label for={id} class="mb-2 block text-sm font-bold">{label}</label><input id={id} type={type} placeholder={ph} autocomplete="off" class="w-full rounded-xl border border-line-hover bg-surface-1 px-4 py-3 text-ink placeholder:text-ink-3 focus:border-brand-300" /></div>
+      ))}
+      <button id="example" type="button" class="btn btn-ghost w-fit">Try an example</button>
+    </form>
+    <div class="mt-8">
+      <label for="out" class="mb-2 block text-sm font-bold">Tracking link</label>
+      <div class="flex flex-col gap-3 sm:flex-row"><input id="out" readonly class="min-w-0 flex-1 rounded-xl border border-line bg-surface px-4 py-3 font-mono text-sm text-brand-200" value="" /><button id="copy" type="button" class="btn btn-primary">Copy</button></div>
+      <p id="msg" class="mt-2 min-h-5 text-sm text-ink-3" aria-live="polite"></p>
+    </div>
+    <div class="prose-pd mt-10"><h2>Good to know</h2><ul><li>Existing query parameters and the URL fragment are kept.</li><li>Any existing utm_source, utm_medium and utm_campaign are replaced by your values.</li><li>Your analytics tool must support UTM attribution to report these visits.</li></ul></div>
+  </div></section>
+  <CtaBand />
+</Base>
+<script>
+  const $ = (id: string) => document.getElementById(id) as HTMLInputElement;
+  const build = () => {
+    const raw = $('url').value.trim(); const msg = $('msg');
+    if (!raw) { $('out').value = ''; msg.textContent = ''; return; }
+    try {
+      const u = new URL(raw);
+      if (!/^https?:$/.test(u.protocol)) throw new Error('scheme');
+      for (const k of ['source', 'medium', 'campaign']) { const v = $(k).value.trim(); if (v) u.searchParams.set('utm_' + k, v); else u.searchParams.delete('utm_' + k); }
+      $('out').value = u.toString(); msg.textContent = '';
+    } catch { $('out').value = ''; msg.textContent = 'Enter a full link starting with http:// or https://'; }
+  };
+  ['url', 'source', 'medium', 'campaign'].forEach((id) => $(id).addEventListener('input', build));
+  $('example').addEventListener('click', () => { $('url').value = 'https://example.com/spring'; $('source').value = 'linkedin'; $('medium').value = 'social'; $('campaign').value = 'spring-launch'; build(); });
+  $('copy').addEventListener('click', async () => {
+    const v = $('out').value; if (!v) return;
+    try { await navigator.clipboard.writeText(v); $('msg').textContent = 'Copied.'; } catch { $('out').select(); $('msg').textContent = 'Press Ctrl+C or Cmd+C to copy.'; }
+  });
+</script>

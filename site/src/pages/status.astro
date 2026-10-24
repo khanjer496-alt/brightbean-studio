@@ -1,0 +1,12 @@
+---
+import Doc from '../layouts/Doc.astro';
+import { SITE } from '../data/site';
+---
+<Doc title="Status — PostDelegate" description="Where to check whether PostDelegate is up and how to report a problem." h1="Status" eyebrow="Status" lead="The app and this website are separate services." cta={false}>
+  <h2>Check the app</h2>
+  <p>The workspace runs at <a href={SITE.app}>{SITE.app}</a>. Its health endpoint is at <a href={`${SITE.app}/health/`}>{SITE.app}/health/</a> and returns a plain response when the app is up.</p>
+  <h2>Social platforms</h2>
+  <p>Publishing also depends on each social platform’s own API. When a platform has an outage, posts to it can be delayed or fail, and the post shows the platform’s error so you can retry.</p>
+  <h2>Report a problem</h2>
+  <p>Email <a href={`mailto:${SITE.email}`}>{SITE.email}</a> with your workspace name and the time it happened. We do not publish an automated incident history yet.</p>
+</Doc>
