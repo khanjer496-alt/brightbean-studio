@@ -12,6 +12,7 @@ from django.views.static import serve
 
 from apps.accounts.views import health_check
 from apps.api.api import api as agent_api
+from apps.common import pwa
 from apps.connect import views as connect_views
 from apps.legal import views as legal_views
 from apps.oauth_server import views as oauth_views
@@ -36,6 +37,9 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("health/", health_check, name="health_check"),
     path("favicon.ico", favicon),
+    path("sw.js", pwa.service_worker, name="service_worker"),
+    path("offline/", pwa.offline, name="offline"),
+    path("app/new-post/", pwa.new_post_shortcut, name="pwa_new_post"),
     path("accounts/", include("apps.accounts.urls")),
     path("accounts/", include("allauth.urls")),
     path("organizations/", include("apps.organizations.urls")),

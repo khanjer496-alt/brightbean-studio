@@ -23,6 +23,16 @@
     </a>
 </div>
 
+<div class="border-t border-line" data-pd-install hidden>
+    <!-- Install app (shown by pwa.js only where the browser can install, never inside the installed app) -->
+    <button type="button" data-pd-install-button aria-expanded="false"
+            class="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-ink-2 hover:bg-surface-2 transition-colors text-start">
+        <svg class="w-4 h-4 text-ink-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Install app
+    </button>
+    <p data-pd-install-ios hidden class="px-4 pb-3 text-xs text-ink-2">On iPhone or iPad, tap the Share button in Safari, then choose Add to Home Screen.</p>
+</div>
+
 <div class="border-t border-line px-4 py-2.5">
     {% include "partials/_legal_links.html" %}
     {% include "partials/_source_credit.html" %}
