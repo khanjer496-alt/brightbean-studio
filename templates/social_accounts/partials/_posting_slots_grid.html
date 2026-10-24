@@ -74,7 +74,7 @@ Context: account (with prefetched posting_slots), workspace_id.
                                       class="flex items-center gap-1">
                                     {% csrf_token %}
                                     <input type="hidden" name="social_account_id" value="{{ account.id }}">
-                                    <input type="time" name="time" value="{{ slot.time|time:'H:i' }}"
+                                    <input aria-label="Posting time" type="time" name="time" value="{{ slot.time|time:'H:i' }}"
                                            class="w-[90px] text-xs px-1.5 py-1 rounded border border-stone-200 outline-none focus:border-orange-400"
                                            @keydown.escape="editing = false">
                                     <button aria-label="Save slot" type="submit"
@@ -107,7 +107,7 @@ Context: account (with prefetched posting_slots), workspace_id.
                                 {% csrf_token %}
                                 <input type="hidden" name="social_account_id" value="{{ account.id }}">
                                 <input type="hidden" name="day_of_week" value="{{ day.value }}">
-                                <input type="time" name="time" x-model="newTime"
+                                <input aria-label="Posting time" type="time" name="time" x-model="newTime"
                                        x-ref="timeInput_{{ day.value }}"
                                        @keydown.escape="adding = false"
                                        class="w-[90px] text-xs px-1.5 py-1 rounded border border-stone-200 outline-none focus:border-orange-400">

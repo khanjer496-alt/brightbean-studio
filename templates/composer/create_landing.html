@@ -449,7 +449,7 @@
                      class="absolute end-0 top-full mt-1 bg-white rounded-xl shadow-lg ring-1 ring-stone-200 py-1 z-50 min-w-[200px] max-h-[280px] flex flex-col">
                     <!-- Search -->
                     <div class="px-2 py-1.5 border-b border-stone-100">
-                        <input type="text" x-ref="tagFilterSearchInput" x-model="tagFilterSearch"
+                        <input aria-label="Search tags" type="text" x-ref="tagFilterSearchInput" x-model="tagFilterSearch"
                                class="w-full text-sm px-2.5 py-1.5 rounded-lg border border-stone-200 outline-none focus:border-orange-400 transition-colors"
                                placeholder="Search tags...">
                     </div>
@@ -484,7 +484,7 @@
                     <div class="fixed inset-0 bg-black/30" @click="showCreateTagModal = false"></div>
                     <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6" @click.stop>
                         <h3 class="text-base font-semibold text-stone-800 mb-4">Create new tag</h3>
-                        <input type="text" x-ref="newTagNameInput" x-model="newTagName"
+                        <input aria-label="Tag name" type="text" x-ref="newTagNameInput" x-model="newTagName"
                                @keydown.enter.prevent="if(newTagName.trim()) { _persistTag(newTagName.trim()); if(!allTags.includes(newTagName.trim())) { allTags.push(newTagName.trim()); allTags.sort(); } showCreateTagModal = false; newTagName = ''; }"
                                class="w-full text-sm px-3 py-2.5 rounded-xl border border-stone-200 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all"
                                placeholder="Tag name...">
@@ -615,7 +615,7 @@
                             <div x-show="createTagDropdownOpen" x-cloak x-transition class="idea-pill-dropdown">
                                 <!-- Search input -->
                                 <div style="padding: 4px 6px; border-bottom: 1px solid var(--border);">
-                                    <input type="text" x-ref="createTagSearchInput" x-model="createTagSearch"
+                                    <input aria-label="Search or create tag" type="text" x-ref="createTagSearchInput" x-model="createTagSearch"
                                            @keydown.enter.prevent="if (createTagSearch.trim() && !filteredCreateTags.includes(createTagSearch.trim())) { persistAndToggleCreateTag(createTagSearch.trim()); } else if (filteredCreateTags.length === 1) { toggleCreateTag(filteredCreateTags[0]); createTagSearch = ''; }"
                                            class="w-full text-xs px-2 py-1.5 rounded border outline-none"
                                            style="border-color: var(--border);"
@@ -671,8 +671,8 @@
 
                 <!-- Body -->
                 <div class="idea-modal-body" @click="createGroupDropdownOpen = false; createTagDropdownOpen = false">
-                    <input type="text" name="title" required class="idea-title-input" placeholder="Give your idea a title">
-                    <textarea name="description" class="idea-desc-input" placeholder="Let it flow... or"></textarea>
+                    <input aria-label="Idea title" type="text" name="title" required class="idea-title-input" placeholder="Give your idea a title">
+                    <textarea aria-label="Idea description" name="description" class="idea-desc-input" placeholder="Let it flow... or"></textarea>
                     <input type="file" name="media" x-ref="ideaFileInput" accept="image/*,video/*,.gif" style="display:none" multiple
                            @change="_handleFileSelect($event)">
 
@@ -718,7 +718,7 @@
                                  x-transition:enter-end="opacity-100 scale-100"
                                  class="emoji-picker-popup">
                                 <div class="emoji-picker-search">
-                                    <input type="text" placeholder="Search emoji..." x-model="_emojiSearch"
+                                    <input aria-label="Search emoji" type="text" placeholder="Search emoji..." x-model="_emojiSearch"
                                            class="w-full px-2 py-1.5 text-xs rounded border outline-none"
                                            style="border-color: var(--border);"
                                            @click.stop>
@@ -812,7 +812,7 @@
                             <div x-show="editTagDropdownOpen" x-cloak x-transition class="idea-pill-dropdown">
                                 <!-- Search input -->
                                 <div style="padding: 4px 6px; border-bottom: 1px solid var(--border);">
-                                    <input type="text" x-ref="editTagSearchInput" x-model="editTagSearch"
+                                    <input aria-label="Search or create tag" type="text" x-ref="editTagSearchInput" x-model="editTagSearch"
                                            @keydown.enter.prevent="if (editTagSearch.trim() && !filteredEditTags.includes(editTagSearch.trim())) { persistAndToggleEditTag(editTagSearch.trim()); } else if (filteredEditTags.length === 1) { toggleEditTag(filteredEditTags[0]); editTagSearch = ''; }"
                                            class="w-full text-xs px-2 py-1.5 rounded border outline-none"
                                            style="border-color: var(--border);"
@@ -868,10 +868,10 @@
 
                 <!-- Body -->
                 <div class="idea-modal-body" @click="editGroupDropdownOpen = false; editTagDropdownOpen = false">
-                    <input type="text" name="title" required
+                    <input aria-label="Idea title" type="text" name="title" required
                            :value="editingIdea?.title || ''"
                            class="idea-title-input" placeholder="Give your idea a title">
-                    <textarea name="description" class="idea-desc-input" placeholder="Let it flow... or"
+                    <textarea aria-label="Idea description" name="description" class="idea-desc-input" placeholder="Let it flow... or"
                               x-text="editingIdea?.description || ''"></textarea>
                     <input type="file" name="media" x-ref="editIdeaFileInput" accept="image/*,video/*,.gif" style="display:none" multiple
                            @change="_handleEditFileSelect($event)">
@@ -997,7 +997,7 @@
             <div class="fixed inset-0 bg-black/30" @click="closeIdeaCreateTagModal()"></div>
             <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6" @click.stop>
                 <h3 class="text-base font-semibold text-stone-800 mb-4">Create new tag</h3>
-                <input type="text" x-ref="ideaNewTagNameInput" x-model="newIdeaTagName"
+                <input aria-label="Tag name" type="text" x-ref="ideaNewTagNameInput" x-model="newIdeaTagName"
                        @keydown.enter.prevent="createIdeaTagFromModal()"
                        class="w-full text-sm px-3 py-2.5 rounded-xl border border-stone-200 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all"
                        placeholder="Tag name...">

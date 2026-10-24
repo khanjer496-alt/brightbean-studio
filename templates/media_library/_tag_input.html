@@ -20,7 +20,7 @@
   {% if is_shared_library and is_admin or not is_shared_library and not asset.is_shared %}
   <!-- Add tag input -->
   <div class="relative">
-    <input type="text"
+    <input aria-label="Add tag" type="text"
            x-model="inputValue"
            @keydown.enter.prevent="addTag(inputValue)"
            @keydown.comma.prevent="addTag(inputValue)"

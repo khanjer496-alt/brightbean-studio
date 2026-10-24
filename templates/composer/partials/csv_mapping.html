@@ -48,7 +48,7 @@
                 {% for field in field_choices %}
                 <div>
                     <label class="block text-[11px] font-semibold text-stone-500 mb-1 uppercase tracking-wide">{{ field }}</label>
-                    <select name="map_{{ field }}" class="form-input w-full text-xs py-1.5">
+                    <select aria-label="Map column {{ field }}" name="map_{{ field }}" class="form-input w-full text-xs py-1.5">
                         <option value="">- Skip -</option>
                         {% for header in headers %}
                         <option value="{{ forloop.counter0 }}">{{ header }}</option>

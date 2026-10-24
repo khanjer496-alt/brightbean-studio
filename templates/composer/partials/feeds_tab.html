@@ -178,7 +178,7 @@
             <input type="hidden" name="feed_id" value="{{ selected_feed_id }}">
             <div>
                 <label class="block text-xs font-semibold text-stone-600 mb-1.5">RSS URL</label>
-                <input type="url"
+                <input aria-label="Feed URL" type="url"
                        name="rss_url"
                        x-ref="customUrlInput"
                        x-model="customUrl"

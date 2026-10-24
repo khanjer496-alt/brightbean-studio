@@ -13,7 +13,7 @@
           hx-target="#folder-tree"
           hx-swap="innerHTML"
           @htmx:after-request="showNewFolder = false">
-      <input type="text" name="name" placeholder="Folder name..."
+      <input aria-label="Folder name" type="text" name="name" placeholder="Folder name..."
              class="input-focus w-full text-sm px-3 py-2 border rounded-lg outline-none mb-4"
              style="border-color: var(--border, #E7E5E4);"
              required autofocus>

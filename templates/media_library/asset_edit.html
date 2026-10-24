@@ -159,14 +159,14 @@
     <div class="flex items-center gap-6 mb-3">
       <div class="flex items-center gap-2">
         <label class="text-xs font-semibold" style="color: var(--text-tertiary);">Start</label>
-        <input type="number" x-model.number="trimStart" step="0.1" min="0" :max="trimEnd"
+        <input aria-label="Trim start (seconds)" type="number" x-model.number="trimStart" step="0.1" min="0" :max="trimEnd"
                class="input-focus w-24 text-xs px-2.5 py-1.5 border rounded-lg text-center outline-none"
                style="font-variant-numeric: tabular-nums;">
         <span class="text-xs" style="color: var(--text-ghost);">sec</span>
       </div>
       <div class="flex items-center gap-2">
         <label class="text-xs font-semibold" style="color: var(--text-tertiary);">End</label>
-        <input type="number" x-model.number="trimEnd" step="0.1" :min="trimStart" :max="duration"
+        <input aria-label="Trim end (seconds)" type="number" x-model.number="trimEnd" step="0.1" :min="trimStart" :max="duration"
                class="input-focus w-24 text-xs px-2.5 py-1.5 border rounded-lg text-center outline-none"
                style="font-variant-numeric: tabular-nums;">
         <span class="text-xs" style="color: var(--text-ghost);">sec</span>
