@@ -16,63 +16,59 @@
 
     /* Panels */
     .panel-center { flex: 1; min-width: 0; }
-    .panel-right  {
-        /* Mobile: off-canvas drawer sliding in from the right */
-        position: fixed; inset: 0 0 0 auto;
-        width: 100%; max-width: 380px;
+    /* Preview pane. Phones: a bottom sheet. 640-1279px: a drawer from the end edge (the editor needs the room next
+       to the sidebar). From xl: a docked column, wider on large screens so the post reads at real size. All three are one element, so the preview
+       panel's hx-trigger / previewUpdate wiring is identical everywhere. */
+    .panel-right {
+        position: fixed; inset: auto 0 0 0;
+        width: 100%; max-width: none; height: 92dvh;
         z-index: 58;
-        transform: translateX(100%);
-        /* visibility keeps the closed drawer's controls out of the tab order */
+        display: flex; flex-direction: column;
+        background: var(--surface-0);
+        border-radius: 20px 20px 0 0;
+        transform: translateY(100%);
+        /* visibility keeps the closed pane's controls out of the tab order */
         visibility: hidden;
-        transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 200ms;
-        box-shadow: -8px 0 24px rgba(23,20,18,0.08);
+        transition: transform 220ms var(--ease-out), visibility 0s linear 220ms;
+        box-shadow: 0 -12px 40px rgb(0 0 0 / 0.5);
+        padding-bottom: env(safe-area-inset-bottom);
+        overscroll-behavior: contain;
     }
-    .panel-right.is-open { transform: translateX(0); visibility: visible; transition-delay: 0s; }
-    @media (min-width: 1024px) {
+    .panel-right.is-open { transform: none; visibility: visible; transition-delay: 0s; }
+    @media (min-width: 640px) {
+        .panel-right {
+            inset: 0 0 0 auto; inset-inline: auto 0;
+            width: 420px; max-width: 100%; height: auto;
+            border-radius: 0;
+            transform: translateX(100%);
+            box-shadow: -8px 0 32px rgb(0 0 0 / 0.4);
+            padding-bottom: 0;
+        }
+        [dir="rtl"] .panel-right { transform: translateX(-100%); }
+        .panel-right.is-open, [dir="rtl"] .panel-right.is-open { transform: none; }
+    }
+    @media (min-width: 1280px) {
         .panel-right {
             position: static; inset: auto;
-            width: 340px; max-width: none;
+            width: 400px; max-width: none;
             flex-shrink: 0;
             transform: none; transition: none;
             visibility: visible;
             box-shadow: none;
+            border-inline-start: 1px solid var(--border);
         }
+        [dir="rtl"] .panel-right { transform: none; }
     }
+    @media (min-width: 1440px) { .panel-right { width: 480px; } }
+    @media (min-width: 1800px) { .panel-right { width: 540px; } }
     .panel-right-backdrop {
         position: fixed; inset: 0;
         background: rgb(0 0 0 / 0.5);
         z-index: 57;
     }
-    @media (min-width: 1024px) {
+    @media (min-width: 1280px) {
         .panel-right-backdrop { display: none !important; }
     }
-
-    /* Platform account checkbox pill - compact for header row */
-    .acct-pill {
-        display: flex; align-items: center; gap: 6px;
-        padding: 5px 10px; border-radius: 9999px;
-        border: 1.5px solid var(--border);
-        background: var(--surface-1);
-        cursor: pointer; user-select: none;
-        transition: all 150ms cubic-bezier(0.16, 1, 0.3, 1);
-        white-space: nowrap;
-    }
-    .acct-pill:hover { border-color: var(--border); background: var(--surface-0); }
-    .acct-pill.selected {
-        border-color: var(--primary); background: var(--surface-2);
-        box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 8%, transparent);
-    }
-    .acct-pill .checkmark {
-        width: 16px; height: 16px; border-radius: 4px;
-        border: 1.5px solid var(--border); flex-shrink: 0;
-        display: flex; align-items: center; justify-content: center;
-        transition: all 150ms ease;
-    }
-    .acct-pill.selected .checkmark {
-        background: var(--primary); border-color: var(--primary);
-    }
-    .acct-pill.selected .checkmark svg { display: block; }
-    .acct-pill .checkmark svg { display: none; }
 
     /* Platform icon circles */
     .platform-icon {
@@ -246,26 +242,6 @@
         border-color: transparent;
     }
 
-    /* Action bar */
-    .action-bar {
-        background: var(--surface-1);
-        border-top: 1px solid var(--border);
-        padding: 12px 16px;
-        display: flex; align-items: center; gap: 6px;
-        /* Delete + Save Draft + Submit for Approval + the schedule split button outgrow the column
-           next to the preview; wrap the actions (still end-aligned) rather than push them off-screen. */
-        flex-wrap: wrap; justify-content: flex-end; row-gap: 8px;
-        position: relative;
-        z-index: 51;
-    }
-    @media (max-width: 639px) {
-        /* Phones: keep the actions reachable above the home indicator */
-        .action-bar { padding: 10px 12px max(10px, env(safe-area-inset-bottom)); gap: 4px; }
-    }
-    @media (min-width: 640px) {
-        .action-bar { padding: 20px 24px; gap: 8px; }
-    }
-
     /* Subtle entrance animation - uses 'both' but resets transform at 100% to avoid
        creating a permanent stacking context (which traps z-index of child popovers). */
     @keyframes slideUp {
@@ -292,6 +268,221 @@
     .panel-scroll::-webkit-scrollbar-track { background: transparent; }
     .panel-scroll::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
     .panel-scroll::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+
+    /* WP4 composer ─────────────────────────────────────────────────
+       Two-pane card: the editor (channel strip, tabs, content, sticky footer) and the live preview.
+       Only Orbit tokens here; the older blocks above still lean on the remapped stone classes. */
+    .pd-composer { flex: 1; display: flex; min-height: 0; min-width: 0; background: var(--surface-0); }
+    @media (min-width: 640px) {
+        .pd-composer {
+            margin: 0.75rem; border: 1px solid var(--border);
+            border-radius: var(--radius-2xl); overflow: hidden;
+        }
+    }
+    @media (max-width: 639px) {
+        /* Phones: the composer is the whole screen (its own back button, tabs and footer); the shell header and
+           drawer give way until it closes. */
+        .composer-main { position: fixed; inset: 0; z-index: 45; height: 100dvh; background: var(--surface-0); }
+    }
+    .pd-composer-edit { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+    .pd-pane-bar {
+        height: 56px; flex-shrink: 0; display: flex; align-items: center; gap: 0.75rem;
+        padding-inline: 1rem; background: var(--surface-page); border-bottom: 1px solid var(--border);
+    }
+    @media (min-width: 640px) { .pd-pane-bar { padding-inline: 1.5rem; } }
+    .pd-pane-title { font-size: 1rem; font-weight: 700; color: var(--text-primary); letter-spacing: -0.01em; }
+    /* The editor scrolls as one column so the strip and the footer can stick to its edges. */
+    .pd-composer-scroll {
+        flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+        display: flex; flex-direction: column; scroll-padding-block: 7rem 6rem;
+    }
+    .pd-composer-scroll > #composer-form { flex: 1 0 auto; min-height: auto; }
+
+    /* Channel strip + tabs */
+    .pd-channels {
+        position: sticky; top: 0; z-index: 40;
+        background: var(--surface-0); border-bottom: 1px solid var(--border);
+    }
+    .channel-strip, .pd-tabs {
+        display: flex; align-items: center; gap: 0.5rem;
+        overflow-x: auto; overscroll-behavior-x: contain; scrollbar-width: none;
+        padding-inline: 1rem;
+    }
+    .channel-strip::-webkit-scrollbar, .pd-tabs::-webkit-scrollbar { display: none; }
+    @media (min-width: 640px) { .channel-strip, .pd-tabs { padding-inline: 1.5rem; } }
+    .channel-strip { padding-block: 0.75rem 0.5rem; scroll-snap-type: x proximity; scroll-padding-inline: 1rem; }
+    .channel-toggle {
+        position: relative; flex: 0 0 auto; width: 44px; height: 44px; scroll-snap-align: start;
+        display: inline-flex; align-items: center; justify-content: center;
+        border: 2px solid transparent; border-radius: 9999px; background: transparent; cursor: pointer;
+        filter: grayscale(1); opacity: 0.6;
+        transition: opacity var(--dur-fast), filter var(--dur-fast), border-color var(--dur-fast), box-shadow var(--dur-fast);
+    }
+    .channel-toggle:hover { opacity: 0.9; }
+    .channel-toggle.is-selected {
+        filter: none; opacity: 1; border-color: var(--primary);
+        box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent);
+    }
+    .channel-toggle:focus-visible, .channel-tab:focus-visible, .channel-tab-remove:focus-visible,
+    .pd-foot-btn:focus-visible, .pd-split-main:focus-visible, .pd-split-toggle:focus-visible {
+        outline: 2px solid var(--brand-green-500); outline-offset: 2px;
+    }
+    .pd-tabs { padding-block: 0.25rem 0.75rem; }
+    .channel-tab-wrap { position: relative; flex: 0 0 auto; display: inline-flex; }
+    .channel-tab {
+        display: inline-flex; align-items: center; gap: 0.5rem; min-height: 40px; max-width: 14rem;
+        padding: 0 0.875rem; border-radius: var(--radius-xl);
+        border: 1px solid var(--border); background: var(--surface-1); color: var(--text-secondary);
+        font-size: 0.8125rem; font-weight: 600; white-space: nowrap; cursor: pointer;
+        transition: background var(--dur-fast), border-color var(--dur-fast), color var(--dur-fast);
+    }
+    .channel-tab:hover { background: var(--surface-2); color: var(--text-primary); }
+    .channel-tab[aria-selected="true"] {
+        border-color: var(--brand-400); background: var(--primary-soft); color: var(--text-primary);
+    }
+    .channel-tab.has-remove { padding-inline-end: 2.25rem; }
+    .channel-tab .tab-name { overflow: hidden; text-overflow: ellipsis; max-width: 8.5rem; }
+    .channel-tab-remove {
+        position: absolute; inset-inline-end: 0.375rem; top: 50%; transform: translateY(-50%);
+        width: 24px; height: 24px; border-radius: 9999px; border: none; background: transparent;
+        color: var(--text-tertiary); display: inline-flex; align-items: center; justify-content: center; cursor: pointer;
+    }
+    .channel-tab-remove:hover { background: var(--error-50); color: var(--error-700); }
+    .tab-dot { width: 8px; height: 8px; border-radius: 9999px; background: var(--primary); flex-shrink: 0; }
+    .tab-dot.is-bad { background: var(--error-500); }
+    @media (pointer: coarse) {
+        .channel-tab { min-height: 44px; }
+        .channel-tab-remove { width: 32px; height: 32px; }
+    }
+
+    /* Per-channel character counters under the caption */
+    .chan-counts { display: flex; flex-wrap: wrap; gap: 0.375rem; }
+    .chan-count {
+        display: inline-flex; align-items: center; gap: 0.375rem; min-height: 28px; padding: 0 0.625rem;
+        border-radius: 9999px; border: 1px solid transparent; background: var(--surface-2);
+        color: var(--text-secondary); font-size: 0.75rem; font-weight: 600; font-variant-numeric: tabular-nums; cursor: pointer;
+    }
+    .chan-count:hover { border-color: var(--border-hover); }
+    .chan-count.is-near { color: var(--warning-700); }
+    .chan-count.is-over { background: var(--error-50); color: var(--error-700); border-color: var(--error-500); }
+    @media (pointer: coarse) { .chan-count { min-height: 36px; } }
+
+    /* Card used by the per-channel pane */
+    .pd-card { border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--surface-1); padding: 1rem; }
+
+    /* Drop anywhere on the caption box: the whole box lights up */
+    .caption-wrap.dragover { border-color: var(--primary); background: var(--surface-2); }
+    .caption-wrap.dragover::after {
+        content: attr(data-drop-label); position: absolute; inset: 0; z-index: 3; pointer-events: none;
+        display: flex; align-items: center; justify-content: center; border-radius: inherit;
+        background: color-mix(in srgb, var(--surface-0) 82%, transparent);
+        color: var(--text-primary); font-size: 0.9375rem; font-weight: 600;
+    }
+    .media-strip {
+        display: flex; flex-wrap: nowrap; align-items: flex-start; gap: 0.5rem; overflow-x: auto;
+        padding: 0 1rem 0.75rem; overscroll-behavior-x: contain; scrollbar-width: thin;
+    }
+    .media-strip > * { flex-shrink: 0; }
+    @media (max-width: 639px) {
+        .media-dropzone-inline, .media-thumb, .media-unsplash-btn { width: 80px; height: 80px; }
+        .media-unsplash-btn { width: 44px; }
+        /* 16px stops iOS zooming the page when a field takes focus */
+        .caption-editor, .comment-editor { font-size: 16px; }
+    }
+
+    /* Footer: sticks to the bottom of the editor pane, above the home indicator on phones */
+    .action-bar {
+        position: sticky; bottom: 0; z-index: 51;
+        background: var(--surface-1); border-top: 1px solid var(--border);
+        padding: 0.75rem 1rem max(0.75rem, env(safe-area-inset-bottom));
+        display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 0.75rem;
+    }
+    @media (min-width: 640px) { .action-bar { padding: 0.875rem 1.5rem; } }
+    .pd-footer-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 0.375rem 0.75rem; min-width: 0; flex: 1 1 12rem; }
+    .pd-footer-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 0.5rem; min-width: 0; flex: 0 1 auto; }
+    @media (max-width: 639px) {
+        .pd-footer-meta { flex-basis: 100%; }
+        .pd-footer-actions { flex: 1 1 100%; justify-content: stretch; }
+        .pd-footer-actions .pd-split { flex: 1 1 10rem; min-width: 0; }
+        .pd-footer-actions .pd-split-main { flex: 1; min-width: 0; justify-content: center; }
+    }
+    .pd-chip {
+        display: inline-flex; align-items: center; gap: 0.375rem; min-height: 32px; max-width: 100%;
+        padding: 0 0.75rem; border-radius: 9999px; border: 1px solid var(--border); background: var(--surface-2);
+        color: var(--text-secondary); font-size: 0.75rem; font-weight: 600; cursor: pointer; white-space: nowrap;
+    }
+    .pd-chip[disabled] { opacity: 0.5; cursor: not-allowed; }
+    .pd-chip:hover { border-color: var(--border-hover); color: var(--text-primary); }
+    .pd-chip > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .pd-chip--brand { background: var(--primary-soft); color: var(--text-brand); border-color: var(--primary-ring); cursor: default; }
+    .pd-chip.is-bad { background: var(--error-50); color: var(--error-700); border-color: var(--error-500); cursor: default; }
+    .pd-foot-btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; flex-shrink: 0;
+        min-height: 40px; min-width: 40px; padding: 0 0.875rem; border-radius: var(--radius-lg);
+        background: transparent; border: 1px solid var(--border); color: var(--text-primary);
+        font-size: 0.875rem; font-weight: 600; cursor: pointer;
+        transition: background var(--dur-fast), border-color var(--dur-fast);
+    }
+    .pd-foot-btn:hover { background: var(--surface-2); border-color: var(--border-hover); }
+    .pd-foot-btn--ghost { border-color: transparent; }
+    .pd-foot-btn--danger { color: var(--error-700); border-color: transparent; }
+    .pd-foot-btn--danger:hover { background: var(--error-50); }
+    .pd-foot-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+    @media (max-width: 639px), (pointer: coarse) { .pd-foot-btn, .pd-split-main, .pd-split-toggle { min-height: 44px; } }
+    .pd-split { position: relative; display: inline-flex; flex-shrink: 0; }
+    .pd-split-main, .pd-split-toggle {
+        display: inline-flex; align-items: center; gap: 0.5rem; min-height: 40px;
+        background: var(--primary); color: var(--text-inverse); border: 1px solid var(--primary);
+        font-size: 0.875rem; font-weight: 600; cursor: pointer; box-shadow: var(--shadow-primary);
+        transition: background var(--dur-fast);
+    }
+    .pd-split-main { padding: 0 1.125rem; border-radius: var(--radius-lg) 0 0 var(--radius-lg); white-space: nowrap; }
+    .pd-split-toggle { padding: 0 0.625rem; border-radius: 0 var(--radius-lg) var(--radius-lg) 0; border-inline-start-color: rgb(255 255 255 / 0.28); }
+    [dir="rtl"] .pd-split-main { border-radius: 0 var(--radius-lg) var(--radius-lg) 0; }
+    [dir="rtl"] .pd-split-toggle { border-radius: var(--radius-lg) 0 0 var(--radius-lg); }
+    .pd-split-main:hover, .pd-split-toggle:hover { background: var(--primary-hover); }
+    .pd-split-main[disabled], .pd-split-toggle[disabled] { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+    .pd-split-pop {
+        position: absolute; bottom: calc(100% + 0.5rem); inset-inline-end: 0; z-index: 50;
+        width: 20rem; max-width: calc(100vw - 2rem);
+        background: var(--surface-1); border: 1px solid var(--border-hover); border-radius: var(--radius-xl);
+        box-shadow: var(--shadow-xl), 0 0 0 1px rgb(0 0 0 / 0.3);
+    }
+    .pd-split-pop.hidden, .pd-split-backdrop.hidden { display: none; }
+    .pd-split-backdrop { display: none; }
+    @media (max-width: 639px) {
+        /* A bottom sheet on phones, like every other sheet */
+        .pd-split-pop {
+            position: fixed; inset: auto 0 0 0; width: auto; max-width: none; max-height: 88dvh; overflow-y: auto;
+            border-radius: 20px 20px 0 0; border-width: 1px 0 0; padding-bottom: env(safe-area-inset-bottom);
+            animation: pd-sheet-in 220ms var(--ease-out);
+        }
+        .pd-split-backdrop:not(.hidden) { display: block; position: fixed; inset: 0; z-index: 49; background: rgb(0 0 0 / 0.5); }
+    }
+    .pd-split-item {
+        display: flex; align-items: flex-start; gap: 0.75rem; width: 100%; padding: 0.625rem 0.75rem;
+        border-radius: var(--radius-lg); text-align: start; cursor: pointer; background: transparent; border: none;
+        color: var(--text-primary); min-height: 44px;
+    }
+    .pd-split-item:hover, .pd-split-item:focus-visible { background: var(--surface-2); outline: none; }
+    .pd-split-item:focus-visible { box-shadow: inset 0 0 0 2px var(--brand-green-500); }
+    .pd-split-item .t { font-size: 0.875rem; font-weight: 600; }
+    .pd-split-item .d { font-size: 0.75rem; color: var(--text-tertiary); margin-top: 0.125rem; }
+    .pd-split-icon {
+        width: 2rem; height: 2rem; border-radius: var(--radius-lg); flex-shrink: 0; margin-top: 0.125rem;
+        display: flex; align-items: center; justify-content: center; background: var(--primary-soft); color: var(--text-brand);
+    }
+    .pd-split-icon--warn { background: var(--warning-50); color: var(--warning-700); }
+
+    /* Preview pane chrome */
+    .pd-sheet-grab { display: block; width: 36px; height: 4px; border-radius: 9999px; background: var(--border-hover); margin: 8px auto 0; }
+    @media (min-width: 640px) { .pd-sheet-grab { display: none; } }
+    .preview-card.is-active { border-color: var(--primary); box-shadow: 0 0 0 3px color-mix(in srgb, var(--primary) 20%, transparent); }
+    .pd-channel-banner { display: flex; align-items: center; gap: 0.5rem; }
+    @media (prefers-reduced-motion: reduce) {
+        .panel-right, .channel-toggle, .channel-tab { transition: none; }
+        .pd-split-pop { animation: none; }
+    }
 </style>
 {% endblock %}
 
@@ -299,86 +490,141 @@
 <div class="composer-main flex flex-col flex-1"
      x-data="composerApp()"
      @keydown.meta.s.prevent="saveDraft()"
-     @keydown.ctrl.s.prevent="saveDraft()">
+     @keydown.ctrl.s.prevent="saveDraft()"
+     @composer-post-now.window="publishNow()"
+     @composer-save-draft.window="saveDraft()">
 
-    {% onboarding_hint "composer" extra_class="mx-4 mt-3 sm:mx-6" %}
+    {% onboarding_hint "composer" extra_class="mx-4 mt-3 sm:mx-6 max-sm:hidden" %}
 
-    <!-- Page header -->
-    <div class="flex items-center gap-3 px-4 sm:px-6 py-3 border-b border-stone-100 flex-shrink-0">
-        <button aria-label="Go back" @click="if (document.referrer && document.referrer.startsWith(location.origin)) { history.back(); } else { location.href='{% url 'composer:create_landing' workspace_id=workspace.id %}'; }"
-                class="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-stone-200 text-stone-400 hover:text-stone-700 hover:border-stone-300 hover:bg-stone-50 transition-all duration-150 cursor-pointer">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+    <div class="pd-composer">
+    <div class="pd-composer-edit">
+
+    <!-- Pane header -->
+    <div class="pd-pane-bar">
+        <button type="button" aria-label="Go back" @click="if (document.referrer && document.referrer.startsWith(location.origin)) { history.back(); } else { location.href='{% url 'composer:create_landing' workspace_id=workspace.id %}'; }"
+                class="inline-flex items-center justify-center w-10 h-10 sm:w-8 sm:h-8 rounded-lg border border-line text-ink-3 hover:text-ink hover:border-line-strong hover:bg-surface-2 transition-colors cursor-pointer">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
         </button>
-        <h1 class="text-base font-semibold text-stone-900 tracking-[-0.01em]">{% if is_edit %}Edit{% else %}Create{% endif %}</h1>
-        <!-- Preview toggle (mobile only) -->
+        <h1 class="pd-pane-title">{% if is_edit %}Edit post{% else %}Create post{% endif %}</h1>
+        <!-- Preview toggle (below lg: opens the preview as a sheet) -->
         <button type="button" id="preview-toggle-btn" @click="showPreviewPanel = true; $nextTick(() => document.getElementById('preview-close-btn')?.focus())" :aria-expanded="showPreviewPanel.toString()" aria-controls="preview-panel-drawer"
-                class="lg:hidden ms-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 text-stone-600 text-xs font-semibold hover:border-stone-300 hover:bg-stone-50 transition-all duration-150 cursor-pointer">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+                class="xl:hidden ms-auto inline-flex items-center gap-1.5 min-h-11 sm:min-h-9 px-3 rounded-lg border border-line text-ink-2 text-xs font-semibold hover:border-line-strong hover:bg-surface-2 transition-colors cursor-pointer">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
             <span>Preview</span>
             <span x-show="selectedAccounts.length > 0" x-cloak
                   x-text="selectedAccounts.length"
-                  class="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-orange-100 text-orange-700 text-[10px] font-bold tabular-nums"></span>
+                  class="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-accent-soft text-brand text-[10px] font-bold tabular-nums"></span>
         </button>
     </div>
 
-    <!-- Panels -->
-    <div class="flex flex-1 min-h-0">
-
-    <!-- Left panel removed - platforms moved to header, media moved to caption area -->
-
     <!-- ════════════════════════════════════════════════════════════
-         CENTER PANEL - Caption Editor + Actions
+         EDITOR PANE - channels, tabs, content, sticky footer
          ════════════════════════════════════════════════════════════ -->
-    <div class="panel-center flex flex-col bg-stone-50 min-h-0">
+    <div class="pd-composer-scroll panel-center panel-scroll">
         <form id="composer-form"
               hx-post="{% if post %}{% url 'composer:save_post_edit' workspace_id=workspace.id post_id=post.id %}{% else %}{% url 'composer:save_post' workspace_id=workspace.id %}{% endif %}"
               hx-swap="none"
               @htmx:after-request="onFormSaved($event)"
               @htmx:confirm="onLinkConfirm($event)"
+              @htmx:validation:halted="clearPendingAction()"
+              {# A required field inside a tab that is not showing cannot be focused by the browser: open its tab first. #}
+              @invalid.capture="onInvalidField($event)"
               {# onFormSaved renders every failure inline, JSON or not, so the global toast would duplicate it. Element-scoped: nested controls (Clone, template picker) keep theirs. #}
               data-no-error-toast
               {% if not post_is_readonly %}data-unsaved-guard{% endif %}
-              class="flex flex-col flex-1 min-h-0">
+              class="flex flex-col">
             <input type="hidden" name="selected_accounts" :value="selectedAccounts.join(',')">
             <input type="hidden" name="shorten_links" :value="shortenLinks">
+            {# A selected channel that is not customised says so, so a saved override is cleared only on purpose. #}
+            <template x-for="accId in selectedAccounts" :key="'reset-' + accId">
+                <input type="hidden" :name="'override_reset_' + accId" value="1" :disabled="overrides[accId]">
+            </template>
             {% if account_scope %}
             <!-- Composer opened scoped to one account (?account=) — save endpoints
                  must not delete/transition platform posts outside this scope. -->
             <input type="hidden" name="account_scope" value="{{ account_scope }}">
             {% endif %}
 
-            <div class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-5 panel-scroll relative z-0 max-sm:has-[[data-insert-open]]:z-[60]">
-
-                <!-- Saved account sets: one click selects the group (and fills its saved per-account settings) -->
-                <div x-show="accountSets.length" x-cloak class="flex items-center gap-2 flex-wrap" role="group" aria-label="Account sets">
-                    <span class="text-xs font-semibold text-stone-500">Sets</span>
+            <!-- Channel strip (pick channels) and tabs (choose what to edit) -->
+            <div class="pd-channels">
+                <div x-show="accountSets.length" x-cloak class="flex items-center gap-2 overflow-x-auto px-4 sm:px-6 pt-3" role="group" aria-label="Account sets">
+                    <span class="text-xs font-semibold text-ink-3 shrink-0">Sets</span>
                     <template x-for="set in accountSets" :key="set.id">
                         <button type="button" @click="applySet(set)" :aria-pressed="setIsActive(set).toString()"
                                 :title="set.skipped.length ? 'Not connected, left out: ' + set.skipped.join(', ') : ''"
-                                :class="setIsActive(set) ? 'border-orange-300 bg-orange-50 text-orange-700' : 'border-stone-200 text-stone-600 hover:border-stone-300 hover:bg-stone-50'"
-                                class="inline-flex items-center min-h-11 sm:min-h-9 px-3 rounded-full border text-xs font-semibold transition-colors cursor-pointer">
+                                :class="setIsActive(set) ? 'border-[var(--primary)] bg-accent-soft text-ink' : 'border-line text-ink-2 hover:border-line-strong hover:bg-surface-2'"
+                                class="inline-flex items-center shrink-0 min-h-11 sm:min-h-9 px-3 rounded-full border text-xs font-semibold transition-colors cursor-pointer">
                             <span x-text="set.name"></span>
-                            <span class="ms-1.5 tabular-nums text-stone-400" x-text="set.account_ids.length"></span>
+                            <span class="ms-1.5 tabular-nums text-ink-3" x-text="set.account_ids.length"></span>
                         </button>
                     </template>
                 </div>
 
-                <!-- Platform account pills -->
-                <div class="flex items-center gap-2 flex-wrap">
+                <div class="channel-strip" role="group" aria-label="Channels to post to">
                     {% for account in social_accounts %}
-                    <button type="button" class="acct-pill"
-                           :class="{ 'selected': selectedAccounts.includes('{{ account.id }}') }"
-                           :aria-pressed="selectedAccounts.includes('{{ account.id }}')"
-                           @click="toggleAccount('{{ account.id }}')">
-                        <span class="checkmark">
-                            <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-                        </span>
-                        {% include "partials/_channel_avatar.html" with account=account px=28 %}
-                        <span class="text-sm font-medium text-stone-700 truncate">{{ account.display_name }}{% if account.platform == "youtube" %} <small>YouTube</small>{% endif %}</span>
+                    <button type="button" class="channel-toggle"
+                            :class="{ 'is-selected': selectedAccounts.includes('{{ account.id }}') }"
+                            :aria-pressed="selectedAccounts.includes('{{ account.id }}').toString()"
+                            title="{{ account.display_name }}{% if account.platform != 'youtube' %} ({{ account.get_platform_display }}){% endif %}"
+                            aria-label="{{ account.display_name }}{% if account.platform != 'youtube' %} on {{ account.get_platform_display }}{% endif %}"
+                            @click="toggleAccount('{{ account.id }}')">
+                        {% include "partials/_channel_avatar.html" with account=account px=40 %}
                     </button>
+                    {% if social_accounts %}
+                    <span class="text-xs text-ink-3 ps-1 whitespace-nowrap" x-show="selectedAccounts.length === 0" x-cloak>Choose where to post</span>
+                    {% endif %}
                     {% empty %}
-                    <span class="text-xs text-stone-500">No channels connected yet. <a href="{% url 'social_accounts:connect' workspace_id=workspace.id %}" class="font-medium text-accent hover:underline">Connect a channel</a> to schedule this post.</span>
+                    <span class="text-xs text-ink-3">No channels connected yet. <a href="{% url 'social_accounts:connect' workspace_id=workspace.id %}" class="font-medium text-accent hover:underline">Connect a channel</a> to schedule this post.</span>
                     {% endfor %}
+                </div>
+
+                <div class="pd-tabs" role="tablist" aria-label="Edit content for" x-show="selectedAccounts.length > 0" x-cloak
+                     @keydown="onTabKey($event)">
+                    <div class="channel-tab-wrap">
+                        <button type="button" role="tab" id="tab-global" data-tab="global" aria-controls="pane-global" class="channel-tab"
+                                :aria-selected="(activeTab === 'global').toString()" :tabindex="activeTab === 'global' ? 0 : -1"
+                                @click="selectTab('global')">
+                            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.75" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6.429 9.75L2.25 12l4.179 2.25m0-4.5l5.571 3 5.571-3m-11.142 0L2.25 7.5 12 2.25l9.75 5.25-4.179 2.25m0 0L21.75 12l-4.179 2.25m0 0l4.179 2.25L12 21.75 2.25 16.5l4.179-2.25m11.142 0l-5.571 3-5.571-3"/></svg>
+                            <span class="tab-name">All channels</span>
+                        </button>
+                    </div>
+                    {% for account in social_accounts %}
+                    <div class="channel-tab-wrap" x-show="selectedAccounts.includes('{{ account.id }}')" x-cloak>
+                        <button type="button" role="tab" id="tab-{{ account.id }}" data-tab="{{ account.id }}" aria-controls="pane-channel" class="channel-tab has-remove"
+                                :aria-selected="(activeTab === '{{ account.id }}').toString()" :tabindex="activeTab === '{{ account.id }}' ? 0 : -1"
+                                @click="selectTab('{{ account.id }}')">
+                            {% include "partials/_channel_avatar.html" with account=account px=24 %}
+                            <span class="tab-name">{{ account.display_name }}</span>
+                            <span class="tab-dot" x-show="overrides['{{ account.id }}']" x-cloak></span>
+                            <span class="sr-only" x-show="overrides['{{ account.id }}']" x-cloak>(customised)</span>
+                            <span class="tab-dot is-bad" x-show="channelOver('{{ account.id }}')" x-cloak></span>
+                            <span class="sr-only" x-show="channelOver('{{ account.id }}')" x-cloak>(over the character limit)</span>
+                        </button>
+                        <button type="button" class="channel-tab-remove" aria-label="Remove {{ account.display_name }} from this post"
+                                @click="toggleAccount('{{ account.id }}')">
+                            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                        </button>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <div class="flex-1 p-4 sm:p-6 space-y-4 sm:space-y-5 relative z-0 max-sm:has-[[data-insert-open]]:z-[60]">
+
+                <!-- Why the last save was refused -->
+                <div id="form-issues" x-show="formIssues.length" x-cloak role="alert"
+                     class="flex items-start gap-2.5 rounded-xl border border-[var(--error-500)] bg-bad-soft p-3">
+                    <svg class="w-4 h-4 mt-0.5 shrink-0 text-bad" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"/></svg>
+                    <div class="min-w-0 flex-1">
+                        <p class="text-sm font-semibold text-bad">This post can't be saved yet</p>
+                        <ul class="mt-1 space-y-0.5 text-sm text-ink-2">
+                            <template x-for="message in formIssues" :key="message"><li x-text="message"></li></template>
+                        </ul>
+                    </div>
+                    <button type="button" aria-label="Dismiss" @click="formIssues = []"
+                            class="w-8 h-8 -m-1 shrink-0 rounded-md text-ink-3 hover:text-ink hover:bg-surface-2 flex items-center justify-center cursor-pointer">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                    </button>
                 </div>
 
                 {% if failed_platform_posts %}
@@ -504,6 +750,10 @@
                 </div>
                 {% endif %}
 
+                <!-- ════ All channels: the shared content ════ -->
+                <div id="pane-global" role="tabpanel" aria-labelledby="tab-global" tabindex="-1" class="space-y-4 sm:space-y-5 outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-green-500)] rounded-lg"
+                     x-show="!onChannelTab">
+
                 <!-- Title (conditional - only when YouTube/Pinterest selected) -->
                 <div x-show="anyPlatformNeedsTitle" x-transition x-cloak>
                     <label class="block text-sm font-semibold text-stone-500 uppercase tracking-wider mb-2"
@@ -586,7 +836,10 @@
                             </div>
                         </div>
                     </div>
-                    <div class="caption-wrap">
+                    <div class="caption-wrap" data-drop-label="Drop your files here to upload"
+                         @dragover="if ($event.dataTransfer && Array.from($event.dataTransfer.types || []).includes('Files')) { $event.preventDefault(); $el.classList.add('dragover') }"
+                         @dragleave="if (!$el.contains($event.relatedTarget)) $el.classList.remove('dragover')"
+                         @drop="if ($event.dataTransfer && $event.dataTransfer.files.length) { $event.preventDefault(); handleFileDrop($event) } $el.classList.remove('dragover')">
                         <textarea :aria-label="captionLabel" name="caption"
                                   id="caption-editor"
                                   class="caption-editor"
@@ -596,14 +849,11 @@
                                   rows="7">{{ form.caption.value|default:"" }}</textarea>
 
                         <!-- Media row: dropzone tile + Unsplash tile + attached thumbnails -->
-                        <div class="flex flex-wrap items-start gap-2 px-4 pb-3">
+                        <div class="media-strip">
                             <input type="file" x-ref="fileInput" class="hidden" multiple
                                    accept="image/*,video/*"
                                    @change="handleFileSelect($event)">
                             <div class="media-dropzone-inline" role="button" tabindex="0" @keydown.enter.self.prevent="$el.click()" @keydown.space.self.prevent="$el.click()" aria-label="Add photos or videos"
-                                 @dragover.prevent="$el.classList.add('dragover')"
-                                 @dragleave="$el.classList.remove('dragover')"
-                                 @drop.prevent="handleFileDrop($event); $el.classList.remove('dragover')"
                                  @click="$refs.fileInput.click()">
                                 <svg class="w-6 h-6 text-stone-300 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                                 <span class="text-[11px] text-stone-400 leading-tight">Drag & drop or <span class="text-orange-500 font-medium">select files</span></span>
@@ -643,20 +893,298 @@
                                     Shorten links
                                 </label>
                             </div>
-                            <span class="text-xs tabular-nums font-medium"
+                            <span class="text-xs tabular-nums font-medium" dir="ltr"
                                   :class="captionOverLimit() ? 'text-red-500' : 'text-stone-400'"
                                   x-text="captionLimit() ? captionCount() + ' / ' + captionLimit() : captionCount()">
                             </span>
                         </div>
+                    </div>
+                    <!-- Each selected channel against its own limit (the same counting rule the server applies) -->
+                    <div class="chan-counts mt-2" x-show="limitedChannels().length" x-cloak role="group" aria-label="Characters per channel">
+                        <template x-for="accId in limitedChannels()" :key="'count-' + accId">
+                            <button type="button" class="chan-count"
+                                    :class="{ 'is-over': channelOver(accId), 'is-near': channelNear(accId) }"
+                                    :title="channelOver(accId) ? 'Over the limit: shorten it or customise this channel' : 'Open ' + (charLimits[accId]?.name || 'this channel')"
+                                    @click="selectTab(accId)">
+                                <span x-text="charLimits[accId]?.name"></span>
+                                <span dir="ltr" x-text="channelCount(accId) + ' / ' + channelLimit(accId)"></span>
+                            </button>
+                        </template>
                     </div>
                 </div>
 
                 <!-- Thread: later parts after the caption above -->
                 {% include "composer/partials/thread_editor.html" %}
 
+                <!-- First Comment (conditional - only when a platform supporting comments is selected) -->
+                <div x-show="anyPlatformSupportsFirstComment" x-transition x-cloak>
+                    <label class="block text-sm font-semibold text-stone-500 uppercase tracking-wider mb-2">First Comment</label>
+                    <textarea aria-label="First comment" name="first_comment"
+                              class="comment-editor"
+                              placeholder="First comment posted after the main post…"
+                              @input="debouncedPreviewUpdate()"
+                              rows="1">{{ form.first_comment.value|default:"" }}</textarea>
+                </div>
+                <!-- Hidden first_comment field for form submission when section is hidden -->
+                <template x-if="!anyPlatformSupportsFirstComment">
+                    <input type="hidden" name="first_comment" value="{{ form.first_comment.value|default:"" }}">
+                </template>
+
+                <!-- Content Category -->
+                {% if categories %}
+                <div>
+                    <label class="block text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">Category</label>
+                    <select aria-label="Category" name="category"
+                            class="w-full text-sm px-4 py-2.5 rounded-xl border border-stone-200 bg-white text-stone-700 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all duration-150">
+                        <option value="">No category</option>
+                        {% for cat in categories %}
+                        <option value="{{ cat.id }}" {% if post and post.category_id == cat.id %}selected{% endif %}
+                                style="padding-left: 24px;">
+                            ● {{ cat.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                {% endif %}
+
+                <hr class="border-stone-200">
+
+                <!-- Tags (dropdown with search & create) -->
+                <div class="relative" x-data="{
+                    tags: {{ post.tags|json_attr }},
+                    tagDropdownOpen: false,
+                    tagSearch: '',
+                    allTags: [{% for tag in all_tags %}'{{ tag.name|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}],
+                    get filteredTags() {
+                        const q = this.tagSearch.toLowerCase();
+                        return this.allTags.filter(t => !q || t.toLowerCase().includes(q));
+                    },
+                    toggleTag(name) {
+                        const idx = this.tags.indexOf(name);
+                        if (idx >= 0) { this.tags.splice(idx, 1); }
+                        else { this.tags.push(name); }
+                    },
+                    createTag() {
+                        const name = this.tagSearch.trim();
+                        if (!name) return;
+                        if (!this.allTags.includes(name)) { this.allTags.push(name); this.allTags.sort(); }
+                        if (!this.tags.includes(name)) { this.tags.push(name); }
+                        this.tagSearch = '';
+                        /* Persist to server */
+                        fetch('{% url "composer:tag_create" workspace_id=workspace.id %}', {
+                            method: 'POST',
+                            headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value, 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: 'name=' + encodeURIComponent(name),
+                        });
+                    },
+                    removeTag(idx) { this.tags.splice(idx, 1); },
+                    showCreateTagModal: false,
+                    newTagName: '',
+                    _persistTag(name) {
+                        if (!this.allTags.includes(name)) { this.allTags.push(name); this.allTags.sort(); }
+                        if (!this.tags.includes(name)) { this.tags.push(name); }
+                        fetch('{% url "composer:tag_create" workspace_id=workspace.id %}', {
+                            method: 'POST',
+                            headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value, 'Content-Type': 'application/x-www-form-urlencoded' },
+                            body: 'name=' + encodeURIComponent(name),
+                        });
+                    },
+                }" @click.away="tagDropdownOpen = false">
+                    <div class="flex items-center gap-2 mb-2">
+                        <label class="text-sm font-semibold text-stone-500 uppercase tracking-wider">Tags</label>
+                        <span class="text-[10px] font-semibold text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full uppercase tracking-wider">Internal team only</span>
+                    </div>
+                    <input type="hidden" name="tags" :value="tags.join(',')">
+
+                    <!-- Selected tags chips + trigger -->
+                    <div class="flex flex-wrap items-center gap-1.5 w-full min-h-[42px] px-3 py-2 rounded-xl border border-stone-200 bg-white transition-all duration-150 cursor-pointer"
+                         :class="tagDropdownOpen && 'border-orange-500 ring-2 ring-orange-100'"
+                         @click="tagDropdownOpen = !tagDropdownOpen; if(tagDropdownOpen) $nextTick(() => { $refs.tagSearchInput.focus(); $refs.tagSearchInput.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); })">
+                        <template x-for="(tag, idx) in tags" :key="tag">
+                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-stone-100 text-stone-700">
+                                <span x-text="tag"></span>
+                                <button aria-label="Remove tag" type="button" @click.stop="removeTag(idx)" class="w-3.5 h-3.5 rounded-full flex items-center justify-center text-stone-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                                    <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+                                </button>
+                            </span>
+                        </template>
+                        <span x-show="!tags.length" class="text-sm text-stone-400">Select tags...</span>
+                        <svg class="w-4 h-4 ms-auto text-stone-400 shrink-0 transition-transform duration-150" :class="tagDropdownOpen && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                    </div>
+
+                    <!-- Dropdown -->
+                    <div x-show="tagDropdownOpen" x-cloak x-transition
+                         class="mt-1 bg-white rounded-xl shadow-lg ring-1 ring-stone-200 py-1 max-h-[220px] overflow-y-auto"
+                         @click.stop>
+                        <!-- Search input -->
+                        <div class="px-2 py-1.5 border-b border-stone-100">
+                            <input aria-label="Search or create tag" type="text" x-ref="tagSearchInput" x-model="tagSearch"
+                                   @keydown.enter.prevent="if (tagSearch.trim() && !filteredTags.includes(tagSearch.trim())) { createTag(); } else if (filteredTags.length === 1) { toggleTag(filteredTags[0]); tagSearch = ''; }"
+                                   class="w-full text-sm px-2 py-1.5 rounded-lg border border-stone-200 outline-none focus:border-orange-400 transition-colors"
+                                   placeholder="Search or create tag...">
+                        </div>
+                        <!-- Tag list -->
+                        <template x-for="tag in filteredTags" :key="tag">
+                            <label class="flex items-center gap-2 px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50 cursor-pointer rounded-md mx-1">
+                                <input type="checkbox" class="rounded accent-orange-500"
+                                       :checked="tags.includes(tag)"
+                                       @change="toggleTag(tag)">
+                                <span x-text="tag"></span>
+                            </label>
+                        </template>
+                        <!-- No results / Create -->
+                        <template x-if="tagSearch.trim() && !filteredTags.length">
+                            <button type="button" @click="createTag()"
+                                    class="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-stone-600 hover:bg-stone-50 rounded-md mx-1">
+                                <svg class="w-3.5 h-3.5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                                Create "<span x-text="tagSearch.trim()" class="font-semibold"></span>"
+                            </button>
+                        </template>
+                        <template x-if="tagSearch.trim() && filteredTags.length && !filteredTags.includes(tagSearch.trim())">
+                            <div class="border-t border-stone-100 mt-1 pt-1">
+                                <button type="button" @click="createTag()"
+                                        class="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-stone-600 hover:bg-stone-50 rounded-md mx-1">
+                                    <svg class="w-3.5 h-3.5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                                    Create "<span x-text="tagSearch.trim()" class="font-semibold"></span>"
+                                </button>
+                            </div>
+                        </template>
+                        <template x-if="!tagSearch.trim() && !allTags.length">
+                            <div class="px-3 py-2 text-xs text-stone-400">No tags yet. Type to create one.</div>
+                        </template>
+                        <!-- Create new tag -->
+                        <div class="border-t border-stone-100 px-1 py-1">
+                            <button type="button" @click="tagDropdownOpen = false; showCreateTagModal = true; newTagName = tagSearch; tagSearch = ''; $nextTick(() => $refs.newTagNameInput.focus())"
+                                    class="flex items-center gap-2 w-full px-2.5 py-1.5 text-sm text-stone-600 hover:bg-stone-50 rounded-md cursor-pointer transition-colors">
+                                <svg class="w-3.5 h-3.5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                                Create new tag
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Create Tag Modal (teleported to body to escape stacking contexts) -->
+                    <template x-teleport="body">
+                        <div x-show="showCreateTagModal" x-cloak class="fixed inset-0 z-[200] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Create new tag" x-pd-dialog="showCreateTagModal">
+                            <div class="fixed inset-0 bg-black/30" @click="showCreateTagModal = false"></div>
+                            <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6" @click.stop>
+                                <h3 class="text-base font-semibold text-stone-800 mb-4">Create new tag</h3>
+                                <input aria-label="Tag name" type="text" x-ref="newTagNameInput" x-model="newTagName"
+                                       @keydown.enter.prevent="if(newTagName.trim()) { _persistTag(newTagName.trim()); showCreateTagModal = false; newTagName = ''; }"
+                                       class="w-full text-sm px-3 py-2.5 rounded-xl border border-stone-200 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all"
+                                       placeholder="Tag name...">
+                                <div class="flex justify-end gap-2 mt-4">
+                                    <button type="button" @click="showCreateTagModal = false; newTagName = ''"
+                                            class="px-4 py-2 text-sm font-medium text-stone-600 hover:bg-stone-100 rounded-lg cursor-pointer transition-colors">
+                                        Cancel
+                                    </button>
+                                    <button type="button"
+                                            @click="if(newTagName.trim()) { _persistTag(newTagName.trim()); showCreateTagModal = false; newTagName = ''; }"
+                                            class="px-4 py-2 text-sm font-semibold text-white rounded-lg transition-colors bg-[color:var(--primary)]"
+                                           
+                                            :class="newTagName.trim() ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'">
+                                        Create
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+
+                <!-- Internal Notes (hidden from client/viewer roles) -->
+                {% if can_view_internal_notes %}
+                <div>
+                    <div class="flex items-center gap-2 mb-2">
+                        <label class="text-sm font-semibold text-stone-500 uppercase tracking-wider">Notes</label>
+                        <span class="text-[10px] font-semibold text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full uppercase tracking-wider">Internal team only</span>
+                    </div>
+                    <textarea aria-label="Internal notes" name="internal_notes"
+                              class="w-full text-sm font-normal px-4 py-3 rounded-xl border border-dashed border-stone-200 bg-stone-50/80 text-stone-600 outline-none focus:border-stone-300 transition-all duration-150 resize-none"
+                              placeholder="Internal team notes - not visible to clients…"
+                              rows="2">{{ form.internal_notes.value|default:"" }}</textarea>
+                </div>
+                {% endif %}
+                </div><!-- /pane-global -->
+
+                <!-- ════ One channel: its own text and its network's settings ════ -->
+                <div id="pane-channel" role="tabpanel" :aria-labelledby="'tab-' + activeTab" tabindex="-1" class="space-y-4 sm:space-y-5 outline-none focus-visible:ring-2 focus-visible:ring-[var(--brand-green-500)] rounded-lg"
+                     x-show="onChannelTab" x-cloak>
+                <!-- What this channel posts: the shared content, or its own text -->
+                <template x-for="accId in selectedAccounts" :key="'channel-content-' + accId">
+                    <div class="pd-card" x-show="activeTab === accId" x-cloak :data-channel-panel="accId">
+                        <div class="flex items-center gap-2 mb-3 flex-wrap">
+                            <span class="platform-icon w-5 h-5 rounded-[5px] flex items-center justify-center"
+                                  :class="'pi-' + (charLimits[accId]?.platform || '')"
+                                  x-html="platformIconSvg(charLimits[accId]?.platform || '')"></span>
+                            <h2 class="text-sm font-semibold text-ink" x-text="charLimits[accId]?.name"></h2>
+                            <span class="pd-chip pd-chip--brand" x-show="overrides[accId]" x-cloak>Customised</span>
+                            <span class="chan-count ms-auto" x-show="channelLimit(accId)" x-cloak
+                                  :class="{ 'is-over': channelOver(accId), 'is-near': channelNear(accId) }"
+                                  @click="document.getElementById('override-caption-' + accId)?.focus()"
+                                  x-text="channelCount(accId) + ' / ' + channelLimit(accId)"
+                                  dir="ltr"
+                                  :aria-label="channelOver(accId) ? 'Over the character limit' : 'Characters used'"></span>
+                        </div>
+
+                        <!-- Using the shared content -->
+                        <div x-show="!overrides[accId]">
+                            <p class="text-xs text-ink-3 mb-2">This channel posts the shared content from All channels.</p>
+                            <p class="text-sm text-ink-2 whitespace-pre-wrap break-words line-clamp-4 rounded-lg bg-surface-2 p-3"
+                               x-text="caption.trim() ? caption : 'Nothing written yet.'"></p>
+                            <div class="mt-3 flex flex-wrap gap-2">
+                                <button type="button" class="pd-foot-btn" @click="customise(accId)">Customise for this channel</button>
+                                <button type="button" class="pd-foot-btn pd-foot-btn--ghost" @click="selectTab('global')">Edit shared content</button>
+                            </div>
+                        </div>
+
+                        <!-- Its own content -->
+                        <div x-show="overrides[accId]" x-cloak>
+                            <!-- Title override (only for platforms that need it) -->
+                            <template x-if="charLimits[accId]?.needs_title">
+                                <div class="mb-3">
+                                    <label class="block text-[11px] font-semibold text-ink-3 uppercase tracking-wider mb-1"
+                                           :for="'override-title-' + accId"
+                                           x-text="(charLimits[accId]?.title_label || 'Title') + ' override'"></label>
+                                    <input :id="'override-title-' + accId" type="text" :name="'override_title_' + accId" :disabled="!overrides[accId]"
+                                           x-model="overrideTitles[accId]"
+                                           class="w-full text-sm px-3 py-2 rounded-lg border border-[var(--border-input)] bg-surface-1 text-ink outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-ring)] transition-all"
+                                           :placeholder="'Custom ' + (charLimits[accId]?.title_label || 'title') + '…'"
+                                           :maxlength="charLimits[accId]?.title_max_length || 255"
+                                           @input="debouncedPreviewUpdate()">
+                                </div>
+                            </template>
+                            <textarea aria-label="Custom caption for this channel" :name="'override_caption_' + accId" :disabled="!overrides[accId]"
+                                      x-model="overrideCaptions[accId]"
+                                      @input="debouncedPreviewUpdate()"
+                                      class="w-full text-[15px] leading-relaxed px-3 py-2 rounded-lg border border-[var(--border-input)] bg-surface-1 text-ink outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-ring)] transition-all resize-y"
+                                      :placeholder="'Custom ' + (charLimits[accId]?.caption_label || 'caption') + ' for this channel…'"
+                                      :id="'override-caption-' + accId"
+                                      rows="5"></textarea>
+                            {% include "composer/partials/insert_toolbar.html" with target_id="'override-caption-' + accId" mention_accounts="charLimits[accId]?.mention_lookup ? [accId] : []" label="'the caption override'" panel_position="below" %}
+                            <!-- Per-part overrides for this account's thread -->
+                            <template x-for="(part, index) in threadParts" :key="'override-' + accId + '-' + part.key">
+                                <div class="mt-2">
+                                    <label class="block text-[11px] font-semibold text-ink-3 uppercase tracking-wider mb-1"
+                                           :for="'override-part-' + accId + '-' + part.key"
+                                           x-text="'Part ' + (index + 2) + ' override'"></label>
+                                    <textarea :id="'override-part-' + accId + '-' + part.key"
+                                              class="w-full text-sm px-3 py-2 rounded-lg border border-[var(--border-input)] bg-surface-1 text-ink outline-none focus:border-[var(--primary)] focus:ring-2 focus:ring-[var(--primary-ring)] transition-all resize-none"
+                                              :placeholder="'Custom text for part ' + (index + 2) + ' on this channel…'"
+                                              rows="2"
+                                              x-model="part.caption_overrides[accId]"
+                                              @input="debouncedPreviewUpdate()"></textarea>
+                                    {% include "composer/partials/insert_toolbar.html" with target_id="'override-part-' + accId + '-' + part.key" mention_accounts="charLimits[accId]?.mention_lookup ? [accId] : []" label="'the override of part ' + (index + 2)" panel_position="below" %}
+                                </div>
+                            </template>
+                            <div class="mt-3">
+                                <button type="button" class="pd-foot-btn pd-foot-btn--ghost" @click="revertOverride(accId)">Back to shared content</button>
+                            </div>
+                        </div>
+                    </div>
+                </template>
+
                 <!-- Settings a platform declares for itself (Reddit subreddit and flair, ...) -->
                 <template x-for="accId in selectedAccounts" :key="'provider-settings-' + accId">
-                    <div x-show="(charLimits[accId]?.post_settings || []).length" x-cloak
+                    <div x-show="activeTab === accId && (charLimits[accId]?.post_settings || []).length > 0" x-cloak :data-channel-panel="accId"
                          x-data="providerSettings(accId, '{{ workspace.id }}', platformExtras)"
                          class="border border-stone-200 rounded-xl bg-white p-4 space-y-3">
                         <input type="hidden" :name="'ps_panel_' + accId" value="1"
@@ -715,7 +1243,7 @@
 
                 <!-- Pinterest settings (auto-visible when any Pinterest account is selected) -->
                 <template x-for="accId in selectedAccounts" :key="'pin-settings-' + accId">
-                    <div x-show="charLimits[accId]?.platform === 'pinterest'" x-cloak
+                    <div x-show="activeTab === accId && charLimits[accId]?.platform === 'pinterest'" x-cloak :data-channel-panel="accId"
                          x-data="{ boards: [], boardsLoading: false, boardsLoaded: false }"
                          x-effect="if (charLimits[accId]?.platform === 'pinterest' && !boardsLoaded) {
                              boardsLoading = true;
@@ -859,7 +1387,7 @@
 
                 <!-- YouTube settings (auto-visible when any YouTube account is selected) -->
                 <template x-for="accId in selectedAccounts" :key="'yt-settings-' + accId">
-                    <div x-show="charLimits[accId]?.platform === 'youtube'" x-cloak
+                    <div x-show="activeTab === accId && charLimits[accId]?.platform === 'youtube'" x-cloak :data-channel-panel="accId"
                          class="border border-stone-200 rounded-xl bg-white p-4 space-y-3">
                         <div class="flex items-center gap-2">
                             <a :href="charLimits[accId]?.youtube_url || 'https://www.youtube.com/'" target="_blank" rel="noopener noreferrer" class="text-xs font-semibold text-stone-600 underline underline-offset-2">YouTube</a>
@@ -962,7 +1490,7 @@
 
                 <!-- TikTok settings (auto-visible when any TikTok account is selected) -->
                 <template x-for="accId in selectedAccounts" :key="'tt-settings-' + accId">
-                    <div x-show="charLimits[accId]?.platform === 'tiktok'" x-cloak
+                    <div x-show="activeTab === accId && charLimits[accId]?.platform === 'tiktok'" x-cloak :data-channel-panel="accId"
                          x-data="{
                              tt: null,
                              ttLoading: false,
@@ -1267,427 +1795,155 @@
                     </div>
                 </template>
 
-                <!-- Override toggle buttons -->
-                <div class="flex flex-wrap gap-1.5" x-show="selectedAccounts.length > 0" x-cloak>
-                    <template x-for="accId in selectedAccounts" :key="'toggle-' + accId">
-                        <button type="button"
-                                class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full border transition-all duration-150 cursor-pointer"
-                                :class="overrides[accId] ? 'border-orange-200 bg-orange-50 text-orange-700' : 'border-stone-200 bg-white text-stone-400 hover:text-stone-600 hover:border-stone-300'"
-                                @click="overrides[accId] = !overrides[accId]"
-                                x-show="!overrides[accId]">
-                            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                            <span x-text="'Customize for ' + (charLimits[accId]?.name || 'this channel')"></span>
-                        </button>
-                    </template>
-                </div>
-
-                <!-- Platform-specific overrides -->
-                <template x-for="accId in selectedAccounts" :key="'override-' + accId">
-                    <div class="border border-stone-200 rounded-xl bg-white p-4"
-                         x-show="overrides[accId]" x-cloak x-transition>
-                        <div class="flex items-center gap-2 mb-3">
-                            <span class="platform-icon w-5 h-5 rounded-[5px] flex items-center justify-center"
-                                  :class="'pi-' + (charLimits[accId]?.platform || '')"
-                                  x-html="platformIconSvg(charLimits[accId]?.platform || '')"></span>
-                            <span class="text-xs font-semibold text-stone-600" x-text="charLimits[accId]?.name + ' - Custom Override'"></span>
-                            <button type="button" class="ms-auto text-xs text-red-400 hover:text-red-500 cursor-pointer" @click="overrides[accId] = false">Remove override</button>
-                        </div>
-                        <!-- Title override (only for platforms that need it) -->
-                        <template x-if="charLimits[accId]?.needs_title">
-                            <div class="mb-3">
-                                <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1"
-                                       x-text="(charLimits[accId]?.title_label || 'Title') + ' Override'"></label>
-                                <input aria-label="Custom title for this account" type="text" :name="'override_title_' + accId"
-                                       class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all"
-                                       :placeholder="'Custom ' + (charLimits[accId]?.title_label || 'title') + '…'"
-                                       :maxlength="charLimits[accId]?.title_max_length || 255">
-                            </div>
-                        </template>
-                        <textarea aria-label="Custom caption for this account" :name="'override_caption_' + accId"
-                                  x-model="overrideCaptions[accId]"
-                                  class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all resize-none"
-                                  style="font-family: system-ui, -apple-system, sans-serif;"
-                                  :placeholder="'Custom ' + (charLimits[accId]?.caption_label || 'caption') + ' for this platform...'"
-                                  :id="'override-caption-' + accId"
-                                  rows="3"></textarea>
-                        {% include "composer/partials/insert_toolbar.html" with target_id="'override-caption-' + accId" mention_accounts="charLimits[accId]?.mention_lookup ? [accId] : []" label="'the caption override'" panel_position="below" %}
-                        <!-- Per-part overrides for this account's thread -->
-                        <template x-for="(part, index) in threadParts" :key="'override-' + accId + '-' + part.key">
-                            <div class="mt-2">
-                                <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1"
-                                       :for="'override-part-' + accId + '-' + part.key"
-                                       x-text="'Part ' + (index + 2) + ' override'"></label>
-                                <textarea :id="'override-part-' + accId + '-' + part.key"
-                                          class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all resize-none"
-                                          :placeholder="'Custom text for part ' + (index + 2) + ' on this platform…'"
-                                          rows="2"
-                                          x-model="part.caption_overrides[accId]"
-                                          @input="debouncedPreviewUpdate()"></textarea>
-                                {% include "composer/partials/insert_toolbar.html" with target_id="'override-part-' + accId + '-' + part.key" mention_accounts="charLimits[accId]?.mention_lookup ? [accId] : []" label="'the override of part ' + (index + 2)" panel_position="below" %}
-                            </div>
-                        </template>
-
-                    </div>
-                </template>
-
-                <!-- First Comment (conditional - only when a platform supporting comments is selected) -->
-                <div x-show="anyPlatformSupportsFirstComment" x-transition x-cloak>
-                    <label class="block text-sm font-semibold text-stone-500 uppercase tracking-wider mb-2">First Comment</label>
-                    <textarea aria-label="First comment" name="first_comment"
-                              class="comment-editor"
-                              placeholder="First comment posted after the main post…"
-                              @input="debouncedPreviewUpdate()"
-                              rows="1">{{ form.first_comment.value|default:"" }}</textarea>
-                </div>
-                <!-- Hidden first_comment field for form submission when section is hidden -->
-                <template x-if="!anyPlatformSupportsFirstComment">
-                    <input type="hidden" name="first_comment" value="{{ form.first_comment.value|default:"" }}">
-                </template>
-
-                <!-- Content Category -->
-                {% if categories %}
-                <div>
-                    <label class="block text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">Category</label>
-                    <select aria-label="Category" name="category"
-                            class="w-full text-sm px-4 py-2.5 rounded-xl border border-stone-200 bg-white text-stone-700 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all duration-150">
-                        <option value="">No category</option>
-                        {% for cat in categories %}
-                        <option value="{{ cat.id }}" {% if post and post.category_id == cat.id %}selected{% endif %}
-                                style="padding-left: 24px;">
-                            ● {{ cat.name }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
-                {% endif %}
-
-                <hr class="border-stone-200">
-
-                <!-- Tags (dropdown with search & create) -->
-                <div class="relative" x-data="{
-                    tags: {{ post.tags|json_attr }},
-                    tagDropdownOpen: false,
-                    tagSearch: '',
-                    allTags: [{% for tag in all_tags %}'{{ tag.name|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}],
-                    get filteredTags() {
-                        const q = this.tagSearch.toLowerCase();
-                        return this.allTags.filter(t => !q || t.toLowerCase().includes(q));
-                    },
-                    toggleTag(name) {
-                        const idx = this.tags.indexOf(name);
-                        if (idx >= 0) { this.tags.splice(idx, 1); }
-                        else { this.tags.push(name); }
-                    },
-                    createTag() {
-                        const name = this.tagSearch.trim();
-                        if (!name) return;
-                        if (!this.allTags.includes(name)) { this.allTags.push(name); this.allTags.sort(); }
-                        if (!this.tags.includes(name)) { this.tags.push(name); }
-                        this.tagSearch = '';
-                        /* Persist to server */
-                        fetch('{% url "composer:tag_create" workspace_id=workspace.id %}', {
-                            method: 'POST',
-                            headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value, 'Content-Type': 'application/x-www-form-urlencoded' },
-                            body: 'name=' + encodeURIComponent(name),
-                        });
-                    },
-                    removeTag(idx) { this.tags.splice(idx, 1); },
-                    showCreateTagModal: false,
-                    newTagName: '',
-                    _persistTag(name) {
-                        if (!this.allTags.includes(name)) { this.allTags.push(name); this.allTags.sort(); }
-                        if (!this.tags.includes(name)) { this.tags.push(name); }
-                        fetch('{% url "composer:tag_create" workspace_id=workspace.id %}', {
-                            method: 'POST',
-                            headers: { 'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value, 'Content-Type': 'application/x-www-form-urlencoded' },
-                            body: 'name=' + encodeURIComponent(name),
-                        });
-                    },
-                }" @click.away="tagDropdownOpen = false">
-                    <div class="flex items-center gap-2 mb-2">
-                        <label class="text-sm font-semibold text-stone-500 uppercase tracking-wider">Tags</label>
-                        <span class="text-[10px] font-semibold text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full uppercase tracking-wider">Internal team only</span>
-                    </div>
-                    <input type="hidden" name="tags" :value="tags.join(',')">
-
-                    <!-- Selected tags chips + trigger -->
-                    <div class="flex flex-wrap items-center gap-1.5 w-full min-h-[42px] px-3 py-2 rounded-xl border border-stone-200 bg-white transition-all duration-150 cursor-pointer"
-                         :class="tagDropdownOpen && 'border-orange-500 ring-2 ring-orange-100'"
-                         @click="tagDropdownOpen = !tagDropdownOpen; if(tagDropdownOpen) $nextTick(() => { $refs.tagSearchInput.focus(); $refs.tagSearchInput.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); })">
-                        <template x-for="(tag, idx) in tags" :key="tag">
-                            <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-stone-100 text-stone-700">
-                                <span x-text="tag"></span>
-                                <button aria-label="Remove tag" type="button" @click.stop="removeTag(idx)" class="w-3.5 h-3.5 rounded-full flex items-center justify-center text-stone-400 hover:text-red-500 hover:bg-red-50 transition-colors">
-                                    <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                                </button>
-                            </span>
-                        </template>
-                        <span x-show="!tags.length" class="text-sm text-stone-400">Select tags...</span>
-                        <svg class="w-4 h-4 ms-auto text-stone-400 shrink-0 transition-transform duration-150" :class="tagDropdownOpen && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
-                    </div>
-
-                    <!-- Dropdown -->
-                    <div x-show="tagDropdownOpen" x-cloak x-transition
-                         class="mt-1 bg-white rounded-xl shadow-lg ring-1 ring-stone-200 py-1 max-h-[220px] overflow-y-auto"
-                         @click.stop>
-                        <!-- Search input -->
-                        <div class="px-2 py-1.5 border-b border-stone-100">
-                            <input aria-label="Search or create tag" type="text" x-ref="tagSearchInput" x-model="tagSearch"
-                                   @keydown.enter.prevent="if (tagSearch.trim() && !filteredTags.includes(tagSearch.trim())) { createTag(); } else if (filteredTags.length === 1) { toggleTag(filteredTags[0]); tagSearch = ''; }"
-                                   class="w-full text-sm px-2 py-1.5 rounded-lg border border-stone-200 outline-none focus:border-orange-400 transition-colors"
-                                   placeholder="Search or create tag...">
-                        </div>
-                        <!-- Tag list -->
-                        <template x-for="tag in filteredTags" :key="tag">
-                            <label class="flex items-center gap-2 px-3 py-1.5 text-sm text-stone-700 hover:bg-stone-50 cursor-pointer rounded-md mx-1">
-                                <input type="checkbox" class="rounded accent-orange-500"
-                                       :checked="tags.includes(tag)"
-                                       @change="toggleTag(tag)">
-                                <span x-text="tag"></span>
-                            </label>
-                        </template>
-                        <!-- No results / Create -->
-                        <template x-if="tagSearch.trim() && !filteredTags.length">
-                            <button type="button" @click="createTag()"
-                                    class="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-stone-600 hover:bg-stone-50 rounded-md mx-1">
-                                <svg class="w-3.5 h-3.5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-                                Create "<span x-text="tagSearch.trim()" class="font-semibold"></span>"
-                            </button>
-                        </template>
-                        <template x-if="tagSearch.trim() && filteredTags.length && !filteredTags.includes(tagSearch.trim())">
-                            <div class="border-t border-stone-100 mt-1 pt-1">
-                                <button type="button" @click="createTag()"
-                                        class="flex items-center gap-2 w-full px-3 py-1.5 text-sm text-stone-600 hover:bg-stone-50 rounded-md mx-1">
-                                    <svg class="w-3.5 h-3.5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-                                    Create "<span x-text="tagSearch.trim()" class="font-semibold"></span>"
-                                </button>
-                            </div>
-                        </template>
-                        <template x-if="!tagSearch.trim() && !allTags.length">
-                            <div class="px-3 py-2 text-xs text-stone-400">No tags yet. Type to create one.</div>
-                        </template>
-                        <!-- Create new tag -->
-                        <div class="border-t border-stone-100 px-1 py-1">
-                            <button type="button" @click="tagDropdownOpen = false; showCreateTagModal = true; newTagName = tagSearch; tagSearch = ''; $nextTick(() => $refs.newTagNameInput.focus())"
-                                    class="flex items-center gap-2 w-full px-2.5 py-1.5 text-sm text-stone-600 hover:bg-stone-50 rounded-md cursor-pointer transition-colors">
-                                <svg class="w-3.5 h-3.5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
-                                Create new tag
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Create Tag Modal (teleported to body to escape stacking contexts) -->
-                    <template x-teleport="body">
-                        <div x-show="showCreateTagModal" x-cloak class="fixed inset-0 z-[200] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Create new tag" x-pd-dialog="showCreateTagModal">
-                            <div class="fixed inset-0 bg-black/30" @click="showCreateTagModal = false"></div>
-                            <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6" @click.stop>
-                                <h3 class="text-base font-semibold text-stone-800 mb-4">Create new tag</h3>
-                                <input aria-label="Tag name" type="text" x-ref="newTagNameInput" x-model="newTagName"
-                                       @keydown.enter.prevent="if(newTagName.trim()) { _persistTag(newTagName.trim()); showCreateTagModal = false; newTagName = ''; }"
-                                       class="w-full text-sm px-3 py-2.5 rounded-xl border border-stone-200 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all"
-                                       placeholder="Tag name...">
-                                <div class="flex justify-end gap-2 mt-4">
-                                    <button type="button" @click="showCreateTagModal = false; newTagName = ''"
-                                            class="px-4 py-2 text-sm font-medium text-stone-600 hover:bg-stone-100 rounded-lg cursor-pointer transition-colors">
-                                        Cancel
-                                    </button>
-                                    <button type="button"
-                                            @click="if(newTagName.trim()) { _persistTag(newTagName.trim()); showCreateTagModal = false; newTagName = ''; }"
-                                            class="px-4 py-2 text-sm font-semibold text-white rounded-lg transition-colors bg-[color:var(--primary)]"
-                                           
-                                            :class="newTagName.trim() ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'">
-                                        Create
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </template>
-                </div>
-
-                <!-- Internal Notes (hidden from client/viewer roles) -->
-                {% if can_view_internal_notes %}
-                <div>
-                    <div class="flex items-center gap-2 mb-2">
-                        <label class="text-sm font-semibold text-stone-500 uppercase tracking-wider">Notes</label>
-                        <span class="text-[10px] font-semibold text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full uppercase tracking-wider">Internal team only</span>
-                    </div>
-                    <textarea aria-label="Internal notes" name="internal_notes"
-                              class="w-full text-sm font-normal px-4 py-3 rounded-xl border border-dashed border-stone-200 bg-stone-50/80 text-stone-600 outline-none focus:border-stone-300 transition-all duration-150 resize-none"
-                              placeholder="Internal team notes - not visible to clients…"
-                              rows="2">{{ form.internal_notes.value|default:"" }}</textarea>
-                </div>
-                {% endif %}
+                </div><!-- /pane-channel -->
             </div>
 
-            <!-- ── Action Bar ─────────────────────────────────────── -->
+            <!-- ── Footer: when it goes out, then Delete / Save draft / the Schedule split button ─────────── -->
             <div class="action-bar">
+                <div class="pd-footer-meta">
+                    {% if not post_is_readonly %}
+                    <button type="button" id="publish-summary" class="pd-chip" aria-haspopup="true" aria-controls="publish-popover"
+                            :disabled="selectedAccounts.length === 0"
+                            title="Change when this post goes out">
+                        <svg class="w-3.5 h-3.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                        <span id="publish-mode-label">Next available slot</span>
+                    </button>
+                    {% endif %}
+                    <div id="autosave-status" class="text-xs text-ink-3 hidden sm:flex items-center gap-1.5 min-w-0">
+                        <span class="w-1.5 h-1.5 rounded-full flex-shrink-0" :class="lastSaved ? 'bg-[var(--success-500)]' : 'bg-[var(--text-ghost)]'"></span>
+                        <span class="truncate whitespace-nowrap" x-text="lastSaved ? 'Saved ' + lastSaved : 'Unsaved'" :title="lastSaved ? 'Draft saved at ' + lastSaved : 'Not saved yet'"></span>
+                    </div>
+                    <span class="pd-chip is-bad" x-show="overLimitNames().length" x-cloak role="status"
+                          x-text="overLimitNames().length === 1 ? '1 channel over its limit' : overLimitNames().length + ' channels over their limit'"></span>
+                </div>
+
+                <div class="pd-footer-actions">
                 {% if is_edit %}
                 <!-- Delete Post -->
                 <button type="button" @click="$dispatch('open-delete-modal')" aria-label="Delete post"
-                        class="inline-flex items-center gap-1.5 px-2 sm:px-3 py-2 text-sm font-semibold text-red-500 hover:text-red-600 rounded-lg hover:bg-red-50 transition-all duration-150 cursor-pointer flex-shrink-0">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                        class="pd-foot-btn pd-foot-btn--danger">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                     <span class="max-sm:sr-only">Delete</span>
                 </button>
                 {% endif %}
 
-                <!-- Autosave indicator -->
-                <div id="autosave-status" class="text-xs text-stone-400 me-auto hidden sm:flex items-center gap-1.5 min-w-0">
-                    <span class="w-1.5 h-1.5 rounded-full bg-stone-300 flex-shrink-0" :class="{ 'bg-emerald-400': lastSaved }"></span>
-                    <span class="truncate whitespace-nowrap" x-text="lastSaved ? 'Saved ' + lastSaved : 'Unsaved'" :title="lastSaved ? 'Draft saved at ' + lastSaved : 'Not saved yet'"></span>
-                </div>
-                <div class="me-auto sm:hidden"></div>
-
                 {% if not post_is_readonly %}
                 <!-- Save Draft -->
-                <button type="submit" name="action" value="save_draft"
-                        class="inline-flex items-center gap-1.5 px-2 sm:px-4 py-2 text-sm font-semibold text-stone-600 hover:text-stone-800 rounded-lg hover:bg-stone-100 transition-all duration-150 cursor-pointer flex-shrink-0">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
-                    <span class="max-sm:sr-only">Save Draft</span>
+                <button type="submit" name="action" value="save_draft" class="pd-foot-btn" title="Save draft (Ctrl+S)">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
+                    <span class="max-sm:sr-only">Save draft</span>
                 </button>
                 {% endif %}
 
                 {% if show_submit_button %}
                 <button type="submit" name="action" value="submit_for_approval"
                         :disabled="selectedAccounts.length === 0"
-                        :class="selectedAccounts.length === 0 && 'opacity-50 cursor-not-allowed'"
-                        class="inline-flex items-center gap-1.5 px-2 sm:px-4 py-2 text-sm font-semibold text-orange-600 hover:text-orange-700 rounded-lg hover:bg-orange-50 transition-all duration-150 cursor-pointer flex-shrink-0">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                    <span class="hidden sm:inline">Submit for Approval</span>
-                    <span class="sm:hidden">For Approval</span>
+                        class="pd-foot-btn">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                    <span class="hidden sm:inline">Submit for approval</span>
+                    <span class="sm:hidden">For approval</span>
                 </button>
                 {% endif %}
 
                 {% if show_resubmit_button %}
                 <button type="submit" name="action" value="resubmit_for_approval"
                         :disabled="selectedAccounts.length === 0"
-                        :class="selectedAccounts.length === 0 && 'opacity-50 cursor-not-allowed'"
-                        class="inline-flex items-center gap-1.5 px-2 sm:px-4 py-2 text-sm font-semibold text-orange-600 hover:text-orange-700 rounded-lg hover:bg-orange-50 transition-all duration-150 cursor-pointer flex-shrink-0">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>
+                        class="pd-foot-btn">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>
                     <span class="max-sm:sr-only">Resubmit</span>
                 </button>
                 {% endif %}
 
                 {% if not post_is_readonly %}
-                <!-- Publish split-button -->
-                <div class="relative inline-flex flex-shrink-0" id="publish-anchor">
-                    <!-- Mode selector (left) -->
-                    <button type="button" id="publish-mode-btn" aria-haspopup="true" aria-expanded="false" aria-controls="publish-popover"
-                            :disabled="selectedAccounts.length === 0"
-                            :class="selectedAccounts.length === 0 && 'opacity-50 cursor-not-allowed'"
-                            class="inline-flex items-center gap-1.5 ps-2 sm:ps-3 pe-1.5 sm:pe-2 py-2 text-sm font-semibold text-orange-700 bg-orange-100 rounded-s-lg hover:bg-orange-200 border border-orange-200 border-e-0 transition-all duration-150 cursor-pointer">
-                        <svg id="publish-mode-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                        <span id="publish-mode-label" class="max-sm:sr-only">Next available</span>
-                        <svg class="w-3 h-3 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
-                    </button>
-                    <!-- Action button (right) -->
+                <!-- Schedule split button: the main button does what the label says, the arrow picks another way out -->
+                <div class="pd-split" id="publish-anchor">
                     <button type="submit" id="publish-action-btn" name="action" value="add_to_queue"
                             :disabled="selectedAccounts.length === 0"
-                            :class="selectedAccounts.length === 0 && 'opacity-50 cursor-not-allowed'"
-                            class="inline-flex items-center gap-1.5 ps-3 sm:ps-4 pe-3 sm:pe-5 py-2 text-sm font-semibold text-white bg-orange-500 rounded-e-lg hover:bg-orange-600 border border-orange-500 hover:border-orange-600 shadow-sm transition-all duration-150 cursor-pointer">
-                        <span id="publish-action-label">Add to Queue</span>
+                            class="pd-split-main">
+                        <span id="publish-action-label">Add to queue</span>
                     </button>
+                    <button type="button" id="publish-mode-btn" aria-haspopup="true" aria-expanded="false" aria-controls="publish-popover"
+                            aria-label="More ways to publish"
+                            :disabled="selectedAccounts.length === 0"
+                            class="pd-split-toggle">
+                        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M5 15l7-7 7 7"/></svg>
+                    </button>
+                    <div id="publish-backdrop" class="pd-split-backdrop hidden" aria-hidden="true"></div>
 
-                    <!-- Mode popover - positioned above -->
-                    <div id="publish-popover" class="hidden absolute bottom-full end-0 mb-2 w-72 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-xl border border-stone-200/80" style="z-index: 50;">
-                            <!-- Main menu -->
-                            <div id="publish-menu" class="p-1.5">
-                                <!-- Next Available -->
-                                <button type="button" data-mode="add_to_queue" data-label="Next available" data-action-label="Add to Queue"
-                                        data-icon="clock"
-                                        class="publish-mode-option w-full flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-stone-50 transition-colors text-start cursor-pointer">
-                                    <div class="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                        <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                    </div>
-                                    <div>
-                                        <div class="text-sm font-semibold text-stone-800">Next Available</div>
-                                        <div class="text-xs text-stone-400 mt-0.5">Place in next available slot</div>
-                                    </div>
-                                </button>
+                    <!-- Menu: above the button on desktop, a bottom sheet on phones -->
+                    <div id="publish-popover" class="pd-split-pop hidden">
+                        <!-- Main menu -->
+                        <div id="publish-menu" class="p-1.5">
+                            <button type="button" data-mode="add_to_queue" data-label="Next available slot" data-action-label="Add to queue"
+                                    class="publish-mode-option pd-split-item">
+                                <span class="pd-split-icon"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></span>
+                                <span><span class="t block">Add to queue</span><span class="d block">Next available slot</span></span>
+                            </button>
+                            <button type="button" data-mode="add_to_queue_priority" data-label="Top of the queue" data-action-label="Add to top of queue"
+                                    class="publish-mode-option pd-split-item">
+                                <span class="pd-split-icon"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"/></svg></span>
+                                <span><span class="t block">Add to top of queue</span><span class="d block">Goes out before everything queued</span></span>
+                            </button>
+                            <button type="button" data-mode="schedule" id="publish-schedule-btn"
+                                    class="publish-mode-option pd-split-item">
+                                <span class="pd-split-icon"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg></span>
+                                <span><span class="t block">Schedule for&hellip;</span><span class="d block">Pick a date and time</span></span>
+                            </button>
+                            <button type="button" data-mode="publish_now" id="publish-now-btn"
+                                    class="publish-mode-option pd-split-item">
+                                <span class="pd-split-icon pd-split-icon--warn"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M5 3l14 9-14 9V3z"/></svg></span>
+                                <span><span class="t block">Post now</span><span class="d block">Publish right away (asks first)</span></span>
+                            </button>
+                            <button type="button" data-mode="save_draft" id="publish-draft-btn"
+                                    class="publish-mode-option pd-split-item">
+                                <span class="pd-split-icon"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg></span>
+                                <span><span class="t block">Save draft</span><span class="d block">Keep it for later</span></span>
+                            </button>
+                        </div>
 
-                                <!-- Prioritize -->
-                                <button type="button" data-mode="add_to_queue_priority" data-label="Prioritize" data-action-label="Prioritize"
-                                        data-icon="priority"
-                                        class="publish-mode-option w-full flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-stone-50 transition-colors text-start cursor-pointer">
-                                    <div class="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                        <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"/></svg>
-                                    </div>
-                                    <div>
-                                        <div class="text-sm font-semibold text-stone-800">Prioritize</div>
-                                        <div class="text-xs text-stone-400 mt-0.5">Add to top of queue</div>
-                                    </div>
+                        <!-- Schedule sub-view -->
+                        <div id="publish-schedule-view" class="hidden p-4 max-h-[75dvh] overflow-y-auto">
+                            <div class="flex items-center gap-2 mb-4">
+                                <button aria-label="Back" type="button" id="publish-schedule-back" class="w-8 h-8 rounded-md hover:bg-surface-2 flex items-center justify-center transition-colors">
+                                    <svg class="w-4 h-4 text-ink-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
                                 </button>
-
-                                <!-- Now -->
-                                <button type="button" data-mode="publish_now" data-label="Now" data-action-label="Publish Now"
-                                        data-icon="play"
-                                        class="publish-mode-option w-full flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-stone-50 transition-colors text-start cursor-pointer">
-                                    <div class="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                        <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3l14 9-14 9V3z"/></svg>
-                                    </div>
-                                    <div>
-                                        <div class="text-sm font-semibold text-stone-800">Now</div>
-                                        <div class="text-xs text-stone-400 mt-0.5">Publish immediately</div>
-                                    </div>
-                                </button>
-
-                                <!-- Set Date and Time -->
-                                <button type="button" data-mode="schedule" data-label="Schedule" data-action-label="Schedule Post"
-                                        data-icon="calendar"
-                                        class="publish-mode-option w-full flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-stone-50 transition-colors text-start cursor-pointer"
-                                        id="publish-schedule-btn">
-                                    <div class="w-8 h-8 rounded-lg bg-violet-50 flex items-center justify-center flex-shrink-0 mt-0.5">
-                                        <svg class="w-4 h-4 text-violet-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                                    </div>
-                                    <div>
-                                        <div class="text-sm font-semibold text-stone-800">Set Date and Time</div>
-                                        <div class="text-xs text-stone-400 mt-0.5">Choose a specific time</div>
-                                    </div>
-                                </button>
+                                <span class="text-sm font-semibold text-ink">Schedule post</span>
                             </div>
 
-                            <!-- Schedule sub-view -->
-                            <div id="publish-schedule-view" class="hidden p-4 max-h-[75vh] overflow-y-auto">
-                                <div class="flex items-center gap-2 mb-4">
-                                    <button aria-label="Back" type="button" id="publish-schedule-back" class="w-6 h-6 rounded-md hover:bg-stone-100 flex items-center justify-center transition-colors">
-                                        <svg class="w-4 h-4 text-stone-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
-                                    </button>
-                                    <span class="text-sm font-semibold text-stone-800">Schedule Post</span>
+                            <div class="space-y-3">
+                                <div>
+                                    <label class="block text-xs font-medium text-ink-2 mb-1">Date</label>
+                                    <input aria-label="Schedule date" type="date" name="scheduled_date" class="form-datetime" value="{{ form.scheduled_date.value|default:'' }}">
                                 </div>
-
-                                <div class="space-y-3">
-                                    <div>
-                                        <label class="block text-xs font-medium text-stone-500 mb-1">Date</label>
-                                        <input aria-label="Schedule date" type="date" name="scheduled_date" class="form-datetime" value="{{ form.scheduled_date.value|default:'' }}">
-                                    </div>
-                                    <div>
-                                        <label class="block text-xs font-medium text-stone-500 mb-1">Time</label>
-                                        <input aria-label="Schedule time" type="time" name="scheduled_time" class="form-datetime" value="{{ form.scheduled_time.value|default:'' }}">
-                                    </div>
-                                    <div class="text-xs text-stone-400 flex items-center gap-1">
-                                        <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                                        Timezone: {{ workspace.effective_timezone }}
-                                    </div>
-                                    <div id="best-time-chips"
-                                         hx-get="{% url 'calendar:best_time_chips' workspace_id=workspace.id %}"
-                                         hx-trigger="publish-mode-change[detail.mode=='schedule'] from:window"
-                                         hx-include="[name='selected_accounts']"
-                                         hx-swap="innerHTML"></div>
+                                <div>
+                                    <label class="block text-xs font-medium text-ink-2 mb-1">Time</label>
+                                    <input aria-label="Schedule time" type="time" name="scheduled_time" class="form-datetime" value="{{ form.scheduled_time.value|default:'' }}">
                                 </div>
-
-                                {% include "composer/partials/repeat_panel.html" %}
-
-                                <div id="schedule-error" class="hidden text-xs text-red-500 mt-1"></div>
-
-                                {% if not post_is_scheduled %}
-                                <p class="mt-3 text-xs text-stone-400 leading-relaxed">
-                                    Saving as a draft keeps this as a <span class="font-medium text-stone-500">proposed</span> time. Use <span class="font-medium text-stone-500">Set Schedule</span> to publish at this time.
-                                </p>
-                                {% endif %}
-
-                                <button type="button" id="publish-schedule-confirm" class="mt-4 w-full py-2 text-sm font-semibold text-white bg-orange-500 rounded-lg hover:bg-orange-600 transition-colors cursor-pointer">
-                                    Set Schedule
-                                </button>
+                                <div class="text-xs text-ink-3 flex items-center gap-1">
+                                    <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                                    Timezone: {{ workspace.effective_timezone }}
+                                </div>
+                                <div id="best-time-chips"
+                                     hx-get="{% url 'calendar:best_time_chips' workspace_id=workspace.id %}"
+                                     hx-trigger="publish-mode-change[detail.mode=='schedule'] from:window"
+                                     hx-include="[name='selected_accounts']"
+                                     hx-swap="innerHTML"></div>
                             </div>
+
+                            {% include "composer/partials/repeat_panel.html" %}
+
+                            <div id="schedule-error" role="alert" class="hidden text-xs text-bad mt-1"></div>
+
+                            {% if not post_is_scheduled %}
+                            <p class="mt-3 text-xs text-ink-3 leading-relaxed">
+                                Saving as a draft keeps this as a <span class="font-medium text-ink-2">proposed</span> time. Use <span class="font-medium text-ink-2">Set schedule</span> to publish at this time.
+                            </p>
+                            {% endif %}
+
+                            <button type="button" id="publish-schedule-confirm" class="btn-brand btn-lg mt-4 w-full">
+                                Set schedule
+                            </button>
+                        </div>
                     </div>
                 </div>
 
@@ -1695,6 +1951,7 @@
                 <input type="hidden" name="queue_id" value="">
                 <input type="hidden" name="queue_priority" value="">
                 {% endif %}
+                </div>
             </div>
         </form>
 
@@ -1816,7 +2073,8 @@
              hx-swap="none"
              style="display:none;"></div>
         {% endif %}
-    </div>
+    </div><!-- /pd-composer-scroll -->
+    </div><!-- /pd-composer-edit -->
 
     <!-- ════════════════════════════════════════════════════════════
          RIGHT PANEL - Live Preview
@@ -1831,25 +2089,24 @@
          x-transition:leave-start="opacity-100"
          x-transition:leave-end="opacity-0"
          class="panel-right-backdrop" data-pd-backdrop></div>
-    <div id="preview-panel-drawer" class="panel-right border-s border-stone-200 bg-stone-50 lg:bg-stone-50 flex flex-col"
+    <div id="preview-panel-drawer" class="panel-right"
          :class="{ 'is-open': showPreviewPanel }"
          :role="previewIsDrawer ? 'dialog' : null" :aria-modal="previewIsDrawer ? 'true' : null" aria-label="Post preview"
          x-pd-dialog="showPreviewPanel && previewIsDrawer" data-dialog-close="showPreviewPanel = false">
-        <div class="px-4 py-3 border-b border-stone-100 flex items-center justify-between">
-            <h3 class="text-xs font-semibold text-stone-500 uppercase tracking-wider">Preview</h3>
-            <div class="flex items-center gap-2">
-                <span class="text-xs text-stone-400 tabular-nums"
-                      x-show="selectedAccounts.length > 0" x-cloak
-                      x-text="selectedAccounts.length + (selectedAccounts.length === 1 ? ' platform' : ' platforms')">
-                </span>
-                <button id="preview-close-btn" aria-label="Close preview" type="button" @click="showPreviewPanel = false"
-                        class="lg:hidden w-7 h-7 rounded-md text-stone-400 hover:text-stone-600 hover:bg-stone-100 flex items-center justify-center transition-colors cursor-pointer">
-                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
-                </button>
-            </div>
+        <span class="pd-sheet-grab" aria-hidden="true"></span>
+        <div class="pd-pane-bar">
+            <h2 class="pd-pane-title">Post preview</h2>
+            <span class="text-xs text-ink-3 tabular-nums"
+                  x-show="selectedAccounts.length > 0" x-cloak
+                  x-text="selectedAccounts.length + (selectedAccounts.length === 1 ? ' channel' : ' channels')">
+            </span>
+            <button id="preview-close-btn" aria-label="Close preview" type="button" @click="showPreviewPanel = false"
+                    class="xl:hidden ms-auto w-10 h-10 sm:w-8 sm:h-8 rounded-md text-ink-3 hover:text-ink hover:bg-surface-2 flex items-center justify-center transition-colors cursor-pointer">
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+            </button>
         </div>
 
-        <div id="preview-panel" class="flex-1 overflow-y-auto p-4 space-y-4 panel-scroll"
+        <div id="preview-panel" class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-4 panel-scroll"
              hx-post="{% url 'composer:preview' workspace_id=workspace.id %}"
              hx-trigger="previewUpdate from:body"
              hx-sync="this:replace"
@@ -1859,7 +2116,7 @@
         </div>
     </div>
 
-    </div><!-- /panels -->
+    </div><!-- /pd-composer -->
 
     <!-- ════════════════════════════════════════════════════════════
          MEDIA PICKER MODAL
@@ -2280,7 +2537,9 @@ function providerSettings(accId, workspaceId, liveExtras) {
 {{ account_sets|json_script:"composer-account-sets" }}
 <script src="{% static 'js/caption-count.js' %}"></script>
 <script src="{% static 'js/composer-links.js' %}"></script>
+<script src="{% static 'js/composer-tabs.js' %}"></script>
 {{ platform_extras|json_script:"composer-platform-extras" }}
+{{ platform_overrides|json_script:"composer-platform-overrides" }}
 {{ media_items|json_script:"composer-media-items" }}
 {{ thread_parts|json_script:"composer-thread-parts" }}
 <script src="{% static 'js/composer-inserts.js' %}"></script>
@@ -2302,6 +2561,7 @@ function composerApp() {
         // Per-account custom captions, bound to the override textareas so the
         // AI assistant's "Adapt for each network" can fill them.
         overrideCaptions: {},
+        overrideTitles: {},
         advancedOpen: {},
         platformExtras: JSON.parse(document.getElementById('composer-platform-extras').textContent) || {},
         showMediaPicker: false,
@@ -2309,10 +2569,17 @@ function composerApp() {
         thumbnailPickerAccId: null,
         thumbnailUploading: {},
         showPreviewPanel: false,
-        // Below lg the preview is an off-canvas drawer (a modal); from lg it is a docked column.
-        previewIsDrawer: !window.matchMedia('(min-width: 1024px)').matches,
+        // The open tab: 'global' (All channels) or a selected channel's id.
+        activeTab: 'global',
+        // The action a menu item submits with, until that request finishes (see submitAction).
+        pendingAction: '',
+        _invalidHandled: false,
+        // Below xl the preview is an off-canvas drawer (a modal); from xl it is a docked column.
+        previewIsDrawer: !window.matchMedia('(min-width: 1280px)').matches,
         showSaveToast: false,
         formError: '',
+        // What the last save was refused for. Stays on screen (unlike the toast) until fixed or dismissed.
+        formIssues: [],
         lastSaved: null,
         previewTimer: null,
         autosavedPostId: '{{ post.id|default:"" }}',
@@ -2363,6 +2630,87 @@ function composerApp() {
         // component instead of the iteration scope.
         _filmstripRun: 0,
 
+        get onChannelTab() { return this.activeTab !== 'global'; },
+
+        // ── Tabs ────────────────────────────────────────────────────────
+        tabOrder() {
+            return window.composerTabs.tabOrder(Object.keys(this.charLimits), this.selectedAccounts);
+        },
+        selectTab(id) {
+            this.activeTab = window.composerTabs.resolveActive(this.tabOrder(), id);
+            this.$nextTick(() => {
+                this.highlightPreview();
+                document.getElementById('tab-' + this.activeTab)?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+            });
+        },
+        onTabKey(event) {
+            if (!event.target.closest || !event.target.closest('[role="tab"]')) return;
+            const next = window.composerTabs.nextTab(this.tabOrder(), this.activeTab, event.key, document.documentElement.dir === 'rtl');
+            if (!next) return;
+            event.preventDefault();
+            this.selectTab(next);
+            this.$nextTick(() => document.getElementById('tab-' + next)?.focus());
+        },
+        // The preview card of the channel being edited stands out, and scrolls into view.
+        highlightPreview() {
+            const panel = document.getElementById('preview-panel');
+            if (!panel) return;
+            panel.querySelectorAll('[data-preview-account]').forEach((card) => {
+                card.classList.toggle('is-active', this.onChannelTab && card.dataset.previewAccount === this.activeTab);
+            });
+            const active = panel.querySelector('.is-active');
+            if (active) active.scrollIntoView({ block: 'nearest', behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
+        },
+        // A required field inside a tab that is not showing cannot be focused by the browser: open its tab, then
+        // show the message there.
+        onInvalidField(event) {
+            const el = event.target;
+            if (this._invalidHandled || !el || !el.closest) return;
+            const channel = el.closest('[data-channel-panel]');
+            const target = channel ? channel.dataset.channelPanel : (el.closest('#pane-global') && this.onChannelTab ? 'global' : null);
+            if (!target || target === this.activeTab) return;
+            this._invalidHandled = true;
+            this.selectTab(target);
+            this.$nextTick(() => { this._invalidHandled = false; if (el.reportValidity) el.reportValidity(); });
+        },
+
+        // ── Per-channel counts: the composer's own counting rule (wireLength), shown per channel ──
+        channelText(accId) {
+            return window.composerTabs.effectiveCaption(this.caption, this.overrideCaptions[accId], !!this.overrides[accId]);
+        },
+        channelLimit(accId) { return this.charLimits[accId]?.limit || null; },
+        channelCount(accId) { return this.wireLength(this.channelText(accId), accId); },
+        channelStanding(accId) { return window.composerTabs.standing(this.channelCount(accId), this.channelLimit(accId)); },
+        channelOver(accId) { return this.channelStanding(accId).over; },
+        channelNear(accId) { return this.channelStanding(accId).near; },
+        limitedChannels() { return this.selectedAccounts.filter((id) => this.channelLimit(id)); },
+        overLimitNames() {
+            return this.selectedAccounts.filter((id) => this.channelOver(id)).map((id) => this.charLimits[id]?.name || 'A channel');
+        },
+        // "Customise for this channel" starts from the shared caption, so nothing is lost on the way.
+        customise(accId) {
+            this.overrides[accId] = true;
+            if (!(this.overrideCaptions[accId] || '').trim()) this.overrideCaptions[accId] = this.caption;
+            this.debouncedPreviewUpdate();
+            this.$nextTick(() => document.getElementById('override-caption-' + accId)?.focus());
+        },
+        revertOverride(accId) {
+            const go = () => {
+                this.overrides[accId] = false;
+                this.overrideCaptions[accId] = '';
+                this.overrideTitles[accId] = '';
+                this.threadParts.forEach((part) => { if (part.caption_overrides) delete part.caption_overrides[accId]; });
+                this.debouncedPreviewUpdate();
+            };
+            const own = (this.overrideCaptions[accId] || '').trim();
+            if (!own || own === this.caption.trim()) { go(); return; }
+            window.pdConfirm.ask({
+                title: 'Use the shared content?',
+                message: 'The custom text for ' + (this.charLimits[accId]?.name || 'this channel') + ' will be discarded and it will post the shared caption.',
+                label: 'Use shared content', cancel: 'Keep custom text', variant: 'danger',
+            }).then((yes) => { if (yes) go(); });
+        },
+
         shortenOn() {
             return window.composerLinks.shortenActive(this.linkPrefs.mode, this.shortenLinks);
         },
@@ -2379,7 +2727,7 @@ function composerApp() {
         // "Ask" preference (Postiz's prompt): scheduling a post with a link asks once whether to shorten it.
         onLinkConfirm(evt) {
             const submitter = evt.detail.triggeringEvent && evt.detail.triggeringEvent.submitter;
-            const action = submitter ? submitter.value : '';
+            const action = submitter ? submitter.value : this.pendingAction;
             if (!window.composerLinks.needsPrompt({
                 mode: this.linkPrefs.mode, choice: this.shortenLinks, texts: this.linkTexts(),
                 action, shortPrefix: this.linkPrefs.short_prefix,
@@ -2732,14 +3080,18 @@ function composerApp() {
         },
 
         init() {
-            const docked = window.matchMedia('(min-width: 1024px)');
+            const docked = window.matchMedia('(min-width: 1280px)');
             docked.addEventListener('change', (e) => {
                 this.previewIsDrawer = !e.matches;
                 if (e.matches) this.showPreviewPanel = false;
             });
-            // Initialize overrides map
+            // Initialize overrides map; a channel with saved text of its own opens as customised.
+            const saved = JSON.parse(document.getElementById('composer-platform-overrides').textContent) || {};
             this.selectedAccounts.forEach(id => {
-                this.overrides[id] = false;
+                const own = saved[id];
+                this.overrides[id] = !!(own && (own.caption || own.title || own.first_comment));
+                if (own && own.caption) this.overrideCaptions[id] = own.caption;
+                if (own && own.title) this.overrideTitles[id] = own.title;
                 this.advancedOpen[id] = false;
                 if (!this.platformExtras[id]) this.platformExtras[id] = {};
             });
@@ -2794,6 +3146,7 @@ function composerApp() {
             document.body.addEventListener('previewUpdate', syncVideoAttached);
             document.body.addEventListener('htmx:afterSwap', (e) => {
                 if (e.target && e.target.id === 'media-list') syncVideoAttached();
+                if (e.target && e.target.id === 'preview-panel') this.highlightPreview();
             });
         },
 
@@ -2802,7 +3155,11 @@ function composerApp() {
             if (idx > -1) {
                 this.selectedAccounts.splice(idx, 1);
                 delete this.overrides[id];
+                // Deselecting drops the channel's own text with its saved post, so selecting it again starts shared.
+                delete this.overrideCaptions[id];
+                delete this.overrideTitles[id];
                 delete this.advancedOpen[id];
+                if (this.activeTab === id) this.activeTab = 'global';
             } else {
                 this.selectedAccounts.push(id);
                 this.overrides[id] = false;
@@ -3289,6 +3646,35 @@ function composerApp() {
             actionInput.remove();
         },
 
+        // Submit the form as a given action without a button of its own (the split-button menu). The hidden input
+        // stays until the request finishes so the link-shortening prompt and the server both see the action.
+        submitAction(action) {
+            const form = document.getElementById('composer-form');
+            this.clearPendingAction();
+            this.pendingAction = action;
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = 'action';
+            input.value = action;
+            input.setAttribute('data-pending-action', '1');
+            form.appendChild(input);
+            htmx.trigger(form, 'submit');
+        },
+        clearPendingAction() {
+            this.pendingAction = '';
+            document.querySelectorAll('#composer-form input[data-pending-action]').forEach((input) => input.remove());
+        },
+        // "Post now" publishes at once and cannot be taken back: always ask first.
+        publishNow() {
+            if (!this.selectedAccounts.length) return;
+            const n = this.selectedAccounts.length;
+            window.pdConfirm.ask({
+                title: 'Post now?',
+                message: 'This publishes the post to ' + n + (n === 1 ? ' channel' : ' channels') + ' right away. You cannot undo it.',
+                label: 'Post now', cancel: 'Not yet', variant: 'danger',
+            }).then((yes) => { if (yes) this.submitAction('publish_now'); });
+        },
+
         // Point every save path at a post once it exists, so later saves update it instead of
         // creating another draft (first autosave, or the first explicit Save Draft of a new post).
         adoptPostId(postId) {
@@ -3308,17 +3694,25 @@ function composerApp() {
             this.uploadUrl = `/workspace/{{ workspace.id }}/compose/${postId}/upload-media/`;
         },
 
+        showFormIssues(messages) {
+            this.formIssues = messages.map(String);
+            this.$nextTick(() => document.getElementById('form-issues')?.scrollIntoView({ block: 'nearest' }));
+        },
+
         onFormSaved(event) {
             // Only react to the form's own submit, not htmx requests bubbling from
             // child elements (e.g. the pending-media remove button).
             if (event.detail.elt !== event.currentTarget) return;
+            const pending = this.pendingAction;
+            this.clearPendingAction();
             const xhr = event.detail.xhr;
             if (event.detail.successful) {
+                this.formIssues = [];
                 // Act on the button that was pressed (Save Draft, Submit for Approval, the publish
                 // split button), not on whatever mode the publish button happens to show.
                 let action = '';
                 try { action = event.detail.requestConfig.formData.get('action') || ''; } catch (e) { /* no form data */ }
-                if (!action) action = document.getElementById('publish-action-btn')?.value;
+                if (!action) action = pending || document.getElementById('publish-action-btn')?.value;
                 if (action === 'schedule' || action === 'publish_now' || action === 'add_to_queue' || action === 'add_to_queue_priority') {
                     // Redirect to calendar after scheduling/publishing/queuing
                     window.location.href = '{% url "calendar:calendar" workspace_id=workspace.id %}';
@@ -3339,14 +3733,9 @@ function composerApp() {
             } else if (xhr && xhr.status >= 400) {
                 try {
                     const data = JSON.parse(xhr.responseText);
-                    if (data.errors) {
-                        const msgs = Object.values(data.errors).flat().join('\n');
-                        this.formError = msgs;
-                        setTimeout(() => { this.formError = ''; }, 5000);
-                    }
+                    if (data.errors) this.showFormIssues(Object.values(data.errors).flat());
                 } catch (e) {
-                    this.formError = 'Something went wrong. Please try again.';
-                    setTimeout(() => { this.formError = ''; }, 5000);
+                    this.showFormIssues(['Something went wrong. Please try again.']);
                 }
             }
         },
@@ -3584,7 +3973,8 @@ function repeatPanel() {
     const anchor = document.getElementById('publish-anchor');
     const modeBtn = document.getElementById('publish-mode-btn');
     const modeLabel = document.getElementById('publish-mode-label');
-    const modeIcon = document.getElementById('publish-mode-icon');
+    const summary = document.getElementById('publish-summary');
+    const backdrop = document.getElementById('publish-backdrop');
     const actionBtn = document.getElementById('publish-action-btn');
     const actionLabel = document.getElementById('publish-action-label');
     const popover = document.getElementById('publish-popover');
@@ -3594,16 +3984,9 @@ function repeatPanel() {
     const scheduleConfirm = document.getElementById('publish-schedule-confirm');
     if (!modeBtn || !popover) return;
 
-    // Icon SVG paths by key
-    const icons = {
-        play: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3l14 9-14 9V3z"/>',
-        clock: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/>',
-        priority: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"/>',
-        calendar: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>',
-    };
-
     function showPopover() {
         popover.classList.remove('hidden');
+        if (backdrop) backdrop.classList.remove('hidden');
         modeBtn.setAttribute('aria-expanded', 'true');
         var first = menu.querySelector('button:not([disabled])');
         if (first) first.focus({ preventScroll: true });
@@ -3612,6 +3995,7 @@ function repeatPanel() {
         // Focus would be lost inside the hidden popover: hand it back to the toggle.
         var hadFocus = popover.contains(document.activeElement);
         popover.classList.add('hidden');
+        if (backdrop) backdrop.classList.add('hidden');
         modeBtn.setAttribute('aria-expanded', 'false');
         showMenu();
         if (hadFocus) modeBtn.focus({ preventScroll: true });
@@ -3624,16 +4008,24 @@ function repeatPanel() {
         window.dispatchEvent(new CustomEvent('publish-mode-change', { detail: { mode: 'schedule' } }));
     }
 
-    function setMode(mode, label, actionLabelText, iconKey) {
+    // The main button does this; the summary chip on the left names when that is.
+    function setMode(mode, label, actionLabelText) {
         modeLabel.textContent = label;
         actionLabel.textContent = actionLabelText;
         actionBtn.value = mode;
         // The Repeat control (repeat_panel.html) stands down for queue actions.
         window.dispatchEvent(new CustomEvent('publish-mode-change', { detail: { mode: mode } }));
-        if (icons[iconKey]) {
-            modeIcon.innerHTML = icons[iconKey];
-        }
     }
+
+    // The summary chip opens the same menu straight on the date and time.
+    if (summary) {
+        summary.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (modeBtn.disabled) return;
+            popover.classList.contains('hidden') ? (showPopover(), showSchedule()) : hidePopover();
+        });
+    }
+    if (backdrop) backdrop.addEventListener('click', hidePopover);
 
     // Toggle popover on mode button click
     modeBtn.addEventListener('click', function(e) {
@@ -3651,7 +4043,13 @@ function repeatPanel() {
                 showSchedule();
                 return;
             }
-            setMode(mode, opt.dataset.label, opt.dataset.actionLabel, opt.dataset.icon);
+            // These two act at once instead of arming the main button. "Post now" asks first (composerApp.publishNow).
+            if (mode === 'publish_now' || mode === 'save_draft') {
+                hidePopover();
+                window.dispatchEvent(new CustomEvent(mode === 'publish_now' ? 'composer-post-now' : 'composer-save-draft'));
+                return;
+            }
+            setMode(mode, opt.dataset.label, opt.dataset.actionLabel);
             hidePopover();
         });
     });
@@ -3706,7 +4104,7 @@ function repeatPanel() {
                 return;
             }
             if (errEl) { errEl.classList.add('hidden'); }
-            setMode('schedule', scheduleLabel(dateVal, timeVal), 'Schedule Post', 'calendar');
+            setMode('schedule', scheduleLabel(dateVal, timeVal), 'Schedule post');
             hidePopover();
         });
     }
@@ -3714,7 +4112,7 @@ function repeatPanel() {
     // Close on outside click - use mousedown to avoid race with button click
     // Exclude Flatpickr calendar dropdowns (appended to <body>)
     document.addEventListener('mousedown', function(e) {
-        if (!popover.classList.contains('hidden') && !anchor.contains(e.target) && !e.target.closest('.flatpickr-calendar')) {
+        if (!popover.classList.contains('hidden') && !anchor.contains(e.target) && !(summary && summary.contains(e.target)) && !e.target.closest('.flatpickr-calendar')) {
             hidePopover();
         }
     });
@@ -3734,7 +4132,7 @@ function repeatPanel() {
     var schedDateInput = document.querySelector('input[name="scheduled_date"]');
     var schedTimeInput = document.querySelector('input[name="scheduled_time"]');
     if (schedDateInput && schedDateInput.value && schedTimeInput && schedTimeInput.value && !prefillIsProposed) {
-        setMode('schedule', scheduleLabel(schedDateInput.value, schedTimeInput.value), 'Schedule Post', 'calendar');
+        setMode('schedule', scheduleLabel(schedDateInput.value, schedTimeInput.value), 'Schedule post');
     }
 })();
 </script>

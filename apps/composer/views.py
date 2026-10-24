@@ -305,12 +305,20 @@ def _sync_platform_posts(request, post, workspace, initial_status=None):
             social_account=account,
             defaults=defaults,
         )
-        override_title = request.POST.get(f"override_title_{acc_id}", "").strip()
-        override_caption = request.POST.get(f"override_caption_{acc_id}", "").strip()
-        override_comment = request.POST.get(f"override_comment_{acc_id}", "").strip()
-        pp.platform_specific_title = override_title if override_title else None
-        pp.platform_specific_caption = override_caption if override_caption else None
-        pp.platform_specific_first_comment = override_comment if override_comment else None
+        # A channel's own text is only changed by what the form says about it: a field that was not submitted
+        # keeps its saved value, a submitted blank clears it, and override_reset_<id> (the composer's "Back to
+        # shared content") clears all of them.
+        reset = request.POST.get(f"override_reset_{acc_id}") == "1"
+        for field, key in (
+            ("platform_specific_title", "override_title"),
+            ("platform_specific_caption", "override_caption"),
+            ("platform_specific_first_comment", "override_comment"),
+        ):
+            name = f"{key}_{acc_id}"
+            if reset:
+                setattr(pp, field, None)
+            elif name in request.POST:
+                setattr(pp, field, request.POST[name].strip() or None)
 
         # Per-platform extras
         if account.platform == "youtube":
@@ -1042,6 +1050,16 @@ def compose(request, workspace_id, post_id=None):
         selected_account_ids = [pp.social_account_id for pp in scoped_platform_posts]
         media_attachments = post.media_attachments.select_related("media_asset").all()
         platform_extras = {str(pp.social_account_id): (pp.platform_extra or {}) for pp in platform_post_list}
+        # Each channel's own text, so reopening shows it as customised and saving it back does not lose it.
+        platform_overrides = {
+            str(pp.social_account_id): {
+                "title": pp.platform_specific_title or "",
+                "caption": pp.platform_specific_caption or "",
+                "first_comment": pp.platform_specific_first_comment or "",
+            }
+            for pp in platform_post_list
+            if pp.platform_specific_title or pp.platform_specific_caption or pp.platform_specific_first_comment
+        }
         template_data = None
     else:
         post = None
@@ -1075,6 +1093,7 @@ def compose(request, workspace_id, post_id=None):
         selected_account_ids = []
         media_attachments = []
         platform_extras = {}
+        platform_overrides = {}
 
     # Clear any stale pending media from previous compose sessions.
     # Each compose page load starts fresh; the upload flow re-populates
@@ -1318,6 +1337,7 @@ def compose(request, workspace_id, post_id=None):
         "social_accounts": social_accounts,
         "selected_account_ids": [str(aid) for aid in selected_account_ids],
         "platform_extras": platform_extras,
+        "platform_overrides": platform_overrides,
         "media_attachments": media_attachments,
         "media_items": media_items,
         "char_limits": char_limits,
