@@ -3146,6 +3146,79 @@ def remove_media(request, workspace_id, post_id, media_id):
     return response
 
 
+def _step_in_order(items, target, direction):
+    """Return ``items`` with ``target`` moved one place earlier or later.
+
+    The keyboard and touch alternative to dragging media into order. A target
+    already at the edge, an unknown target or an unknown direction leaves the
+    order as it was.
+    """
+    ordered = list(items)
+    if target not in ordered or direction not in ("earlier", "later"):
+        return ordered
+    index = ordered.index(target)
+    neighbour = index - 1 if direction == "earlier" else index + 1
+    if 0 <= neighbour < len(ordered):
+        ordered[index], ordered[neighbour] = ordered[neighbour], ordered[index]
+    return ordered
+
+
+@login_required
+@require_permission("create_posts")
+@require_POST
+def reorder_media(request, workspace_id, post_id, media_id):
+    """Move one media attachment a place earlier or later in the post's order."""
+    workspace = _get_workspace(request, workspace_id)
+    post = get_object_or_404(Post, id=post_id, workspace=workspace)
+    attachments = list(post.media_attachments.select_related("media_asset").order_by("position", "id"))
+    target = next((a for a in attachments if a.id == media_id), None)
+    if target is None:
+        raise Http404("Media attachment not found.")
+    ordered = _step_in_order(attachments, target, request.POST.get("direction"))
+    changed = []
+    for position, attachment in enumerate(ordered):
+        if attachment.position != position:
+            attachment.position = position
+            changed.append(attachment)
+    if changed:
+        PostMedia.objects.bulk_update(changed, ["position"])
+        # Option A: changing media on an approved post sends it back for re-approval.
+        _revert_approved_to_review(post)
+
+    response = render(
+        request,
+        "composer/partials/media_list.html",
+        {"media_attachments": ordered, "post": post, "workspace": workspace},
+    )
+    response["HX-Trigger"] = "previewUpdate"
+    return response
+
+
+@login_required
+@require_permission("create_posts")
+@require_POST
+def reorder_pending_media(request, workspace_id, asset_id):
+    """Same as ``reorder_media`` for uploads waiting in the session before the post is saved."""
+    workspace = _get_workspace(request, workspace_id)
+
+    from apps.media_library.models import MediaAsset
+
+    session_key = f"pending_media_{workspace.id}"
+    pending = request.session.get(session_key, [])
+    ordered_ids = _step_in_order(pending, str(asset_id), request.POST.get("direction"))
+    if ordered_ids != pending:
+        request.session[session_key] = ordered_ids
+
+    assets = {str(a.id): a for a in MediaAsset.objects.filter(id__in=ordered_ids, workspace=workspace)}
+    response = render(
+        request,
+        "composer/partials/media_list_pending.html",
+        {"pending_assets": [assets[i] for i in ordered_ids if i in assets], "workspace": workspace},
+    )
+    response["HX-Trigger"] = "previewUpdate"
+    return response
+
+
 @login_required
 @require_POST
 def remove_pending_media(request, workspace_id, asset_id):

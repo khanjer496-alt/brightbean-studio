@@ -24,8 +24,8 @@
         </div>
         <div class="flex items-center gap-2">
             <button @click="showAddModal = true; $nextTick(() => $refs.customUrlInput.focus())"
-                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white rounded-full transition-all duration-150 cursor-pointer"
-                    style="background: var(--primary);">
+                    class="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white rounded-full transition-all duration-150 cursor-pointer bg-[color:var(--primary)]"
+                   >
                 <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
                 Add Feed
             </button>
@@ -66,16 +66,16 @@
             </div>
 
             <div class="relative flex-shrink-0">
-                <button type="button"
+                <button aria-label="Feed options" type="button"
                         @click="openFeedMenu = !openFeedMenu"
                         class="w-8 h-8 inline-flex items-center justify-center rounded-full text-stone-500 hover:text-stone-700 hover:bg-stone-100 transition-colors cursor-pointer">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
                 </button>
                 <div x-show="openFeedMenu" x-cloak x-transition
-                     class="absolute right-0 top-[calc(100%+6px)] min-w-[140px] bg-white border border-stone-200 rounded-lg shadow-lg p-1 z-20">
+                     class="absolute end-0 top-[calc(100%+6px)] min-w-[140px] bg-white border border-stone-200 rounded-lg shadow-lg p-1 z-20">
                     <button type="button"
                             @click="openFeedMenu = false; showDeleteFeedModal = true"
-                            class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer">
+                            class="w-full text-start px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer">
                         Delete Feed
                     </button>
                 </div>
@@ -84,7 +84,7 @@
 
         <div x-show="showDeleteFeedModal" x-cloak
              class="fixed inset-0 z-[230] flex items-center justify-center"
-             @keydown.escape.window="showDeleteFeedModal = false">
+             @keydown.escape.window="showDeleteFeedModal = false" role="dialog" aria-modal="true" aria-label="Delete feed" x-a11y-modal="showDeleteFeedModal">
             <div class="fixed inset-0 bg-black/30" @click="showDeleteFeedModal = false"></div>
             <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-[420px] mx-4 p-6" @click.stop>
                 <h3 class="text-lg font-semibold text-stone-800 mb-2">Delete Feed</h3>
@@ -114,14 +114,14 @@
     </div>
     {% endif %}
 
-    <div id="feed-events-list" class="space-y-3 flex-1 min-h-0 overflow-y-auto pr-1">
+    <div id="feed-events-list" class="space-y-3 flex-1 min-h-0 overflow-y-auto pe-1">
         {% include "composer/partials/feed_events_batch.html" with show_empty=True %}
     </div>
 </div>
 {% else %}
 <!-- Empty state -->
 <div class="flex flex-col lg:flex-row items-center justify-center gap-8 py-12">
-    <div class="flex flex-col items-center lg:items-start text-center lg:text-left max-w-md">
+    <div class="flex flex-col items-center lg:items-start text-center lg:text-start max-w-md">
         <h2 class="text-lg font-semibold text-stone-800 mb-2">Add your First Feed</h2>
         <p class="text-sm text-stone-500 mb-6">Subscribe to your favorite blogs, websites, or creators to get the latest content ideas.</p>
 
@@ -149,12 +149,12 @@
 <!-- Add Feed Modal -->
 <div x-show="showAddModal" x-cloak
      class="fixed inset-0 z-[220] flex items-center justify-center"
-     @keydown.escape.window="showAddModal = false">
+     @keydown.escape.window="showAddModal = false" role="dialog" aria-modal="true" aria-label="Add feed" x-a11y-modal="showAddModal">
     <div class="fixed inset-0 bg-black/30" @click="showAddModal = false"></div>
     <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-[560px] mx-4 p-6" @click.stop>
-        <button type="button"
+        <button aria-label="Close" type="button"
                 @click="showAddModal = false"
-                class="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-stone-400 hover:text-stone-600 hover:bg-stone-100 rounded-full transition-all cursor-pointer">
+                class="absolute top-4 end-4 w-8 h-8 flex items-center justify-center text-stone-400 hover:text-stone-600 hover:bg-stone-100 rounded-full transition-all cursor-pointer">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
 
@@ -178,7 +178,7 @@
             <input type="hidden" name="feed_id" value="{{ selected_feed_id }}">
             <div>
                 <label class="block text-xs font-semibold text-stone-600 mb-1.5">RSS URL</label>
-                <input type="url"
+                <input aria-label="Feed URL" type="url"
                        name="rss_url"
                        x-ref="customUrlInput"
                        x-model="customUrl"
@@ -193,8 +193,8 @@
                     Cancel
                 </button>
                 <button type="submit"
-                        class="px-4 py-2 text-sm font-semibold text-white rounded-xl transition-colors cursor-pointer"
-                        style="background: var(--primary);"
+                        class="px-4 py-2 text-sm font-semibold text-white rounded-xl transition-colors cursor-pointer bg-[color:var(--primary)]"
+                       
                         :class="customUrl.trim() ? '' : 'opacity-50 cursor-not-allowed'">
                     Add Feed
                 </button>

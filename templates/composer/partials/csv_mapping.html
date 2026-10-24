@@ -3,7 +3,7 @@
 <div class="space-y-6">
     <div class="bg-white rounded-xl border border-stone-200 p-6">
         <div class="flex items-center gap-3 mb-4">
-            <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white" style="background: var(--primary);">2</div>
+            <div class="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white bg-[color:var(--primary)]">2</div>
             <h2 class="text-sm font-semibold text-stone-800">Map Columns</h2>
         </div>
 
@@ -20,7 +20,7 @@
                     <thead>
                         <tr class="bg-stone-50">
                             {% for header in headers %}
-                            <th class="px-3 py-2 text-left font-semibold text-stone-600 border-b border-stone-200 whitespace-nowrap">{{ header }}</th>
+                            <th class="px-3 py-2 text-start font-semibold text-stone-600 border-b border-stone-200 whitespace-nowrap">{{ header }}</th>
                             {% endfor %}
                         </tr>
                     </thead>
@@ -48,7 +48,7 @@
                 {% for field in field_choices %}
                 <div>
                     <label class="block text-[11px] font-semibold text-stone-500 mb-1 uppercase tracking-wide">{{ field }}</label>
-                    <select name="map_{{ field }}" class="form-input w-full text-xs py-1.5">
+                    <select aria-label="Map column {{ field }}" name="map_{{ field }}" class="form-input w-full text-xs py-1.5">
                         <option value="">- Skip -</option>
                         {% for header in headers %}
                         <option value="{{ forloop.counter0 }}">{{ header }}</option>

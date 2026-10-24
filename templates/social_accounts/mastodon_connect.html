@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block page_title %}Connect Mastodon{% endblock %}
+{% block title %}Connect Mastodon - {{ brand_short_name }}{% endblock %}
 {% block content %}
 <div class="max-w-lg">
     <!-- Header -->
@@ -23,11 +23,11 @@
         <div>
             <label for="instance_url" class="block text-sm font-semibold text-stone-700 mb-1.5">Profile URL</label>
             <div class="relative">
-                <div class="absolute inset-y-0 left-0 pl-3.5 flex items-center pointer-events-none">
+                <div class="absolute inset-y-0 start-0 ps-3.5 flex items-center pointer-events-none">
                     <span class="text-sm text-stone-400">https://</span>
                 </div>
                 <input type="text" id="instance_url" name="instance_url" placeholder="mastodon.social@yourusername" required
-                       class="w-full pl-[4rem] pr-4 py-2.5 text-sm border-2 border-stone-200 rounded-xl bg-white text-stone-900 placeholder-stone-400 focus:border-orange-500 focus:ring-0 focus:outline-none transition-colors">
+                       class="w-full ps-[4rem] pe-4 py-2.5 text-sm border-2 border-stone-200 rounded-xl bg-white text-stone-900 placeholder-stone-400 focus:border-orange-500 focus:ring-0 focus:outline-none transition-colors">
             </div>
             <p class="text-xs text-stone-400 mt-1.5">The Mastodon instance where your account lives</p>
         </div>

@@ -141,11 +141,11 @@
                     <div><dt class="text-xs text-ink-3">Visitors (est.)</dt><dd class="m-0 text-xl font-semibold text-ink">{{ stats.totals.unique_visitors }}</dd></div>
                     <div><dt class="text-xs text-ink-3">Clicks</dt><dd class="m-0 text-xl font-semibold text-ink">{{ stats.totals.clicks }}</dd></div>
                 </dl>
-                <table class="w-full border-collapse text-left text-[13px]">
-                    <caption class="mb-1 text-left text-xs text-ink-3">Clicks per link, last {{ stats.days }} days</caption>
-                    <thead><tr class="border-b border-line text-xs text-ink-3"><th scope="col" class="py-1 pr-2 font-semibold">Link</th><th scope="col" class="py-1 pr-2 text-right font-semibold">Clicks</th><th scope="col" class="py-1 text-right font-semibold">Visitors (est.)</th></tr></thead>
+                <table class="w-full border-collapse text-start text-[13px]">
+                    <caption class="mb-1 text-start text-xs text-ink-3">Clicks per link, last {{ stats.days }} days</caption>
+                    <thead><tr class="border-b border-line text-xs text-ink-3"><th scope="col" class="py-1 pe-2 font-semibold">Link</th><th scope="col" class="py-1 pe-2 text-end font-semibold">Clicks</th><th scope="col" class="py-1 text-end font-semibold">Visitors (est.)</th></tr></thead>
                     <tbody>
-                        {% for row in stats.links %}<tr class="border-b border-line"><th scope="row" class="py-2 pr-2 font-normal text-ink">{{ row.title }}</th><td class="py-2 pr-2 text-right text-ink">{{ row.clicks }}</td><td class="py-2 text-right text-ink">{{ row.unique_clicks }}</td></tr>
+                        {% for row in stats.links %}<tr class="border-b border-line"><th scope="row" class="py-2 pe-2 font-normal text-ink">{{ row.title }}</th><td class="py-2 pe-2 text-end text-ink">{{ row.clicks }}</td><td class="py-2 text-end text-ink">{{ row.unique_clicks }}</td></tr>
                         {% empty %}<tr><td colspan="3" class="py-3 text-ink-3">No clicks yet.</td></tr>{% endfor %}
                     </tbody>
                 </table>

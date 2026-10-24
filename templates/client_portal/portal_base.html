@@ -39,7 +39,7 @@
 
                 <!-- Right: Nav + logout -->
                 <div class="flex items-center gap-1">
-                    <nav class="hidden sm:flex items-center gap-0.5 mr-3">
+                    <nav class="hidden sm:flex items-center gap-0.5 me-3">
                         <a href="{% url 'client_portal:dashboard' %}"
                            class="px-3 py-1.5 text-[0.8125rem] font-medium rounded-full transition-colors {% if request.resolver_match.url_name == 'dashboard' %}text-white{% else %}hover:bg-black/[0.04]{% endif %}"
                            {% if request.resolver_match.url_name == 'dashboard' %}style="background: var(--primary); color: white;"{% else %}style="color: var(--text-secondary);"{% endif %}>

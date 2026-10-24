@@ -71,7 +71,7 @@
                         <input type="checkbox" name="kind_{{ item.spec.key }}" value="1" x-model="on" class="mt-1 h-5 w-5 shrink-0">
                         <span><span class="block text-sm font-semibold text-ink">{{ item.spec.label }}</span><span class="block text-xs text-ink-3">{{ item.spec.help }}</span></span>
                     </label>
-                    <div x-show="on" x-cloak class="mt-2 pl-8">
+                    <div x-show="on" x-cloak class="mt-2 ps-8">
                         {% if item.spec.needs_accounts %}
                             {% if item.accounts %}
                             <fieldset class="m-0 border-0 p-0">

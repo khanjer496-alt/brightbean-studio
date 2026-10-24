@@ -50,13 +50,13 @@ Usage: {% include "social_accounts/partials/_account_card.html" with account=acc
             {% endif %}
 
             <!-- Disconnect -->
-            <button @click="confirmDisconnect = true" class="inline-flex items-center p-1.5 text-stone-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors cursor-pointer" title="Disconnect">
+            <button aria-label="Disconnect account" @click="confirmDisconnect = true" class="inline-flex items-center p-1.5 text-stone-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition-colors cursor-pointer" title="Disconnect">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
             </button>
 
             <!-- Disconnect confirmation -->
             <div x-show="confirmDisconnect" x-cloak @click.away="confirmDisconnect = false"
-                 class="absolute right-4 top-12 z-10 w-72 bg-white rounded-xl shadow-xl border border-stone-200 p-4">
+                 class="absolute end-4 top-12 z-10 w-72 bg-white rounded-xl shadow-xl border border-stone-200 p-4">
                 <p class="text-sm text-stone-700 mb-2">Disconnect <strong>{{ account.account_name|default:account.account_handle }}</strong>?</p>
                 {% comment %}
                 Say what disconnect really does; the privacy policy promises it
