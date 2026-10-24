@@ -99,6 +99,7 @@ Generated from the tool registry (`apps/mcp`). Annotations come from the capabil
 | `list_templates` | read_calendar | yes | no | no | List the workspace's reusable post templates (name, caption, first comment, tags, category, target accounts and media), A-Z. |
 | `list_webhook_deliveries` | read_settings | yes | no | no | List an endpoint's recent deliveries, newest first, with status code, duration, attempt count, the request payload and a truncated response. |
 | `list_webhook_endpoints` | read_settings | yes | no | no | List the workspace's outbound webhook endpoints (never the secrets). |
+| `pause_account` | write_settings | no | yes | no | Pause publishing to a connected account; scheduled posts wait until it is resumed. |
 | `pause_evergreen_item` | schedule_posts | no | yes | no | Pause an evergreen item so it is skipped when queues are filled, or resume it with paused false. |
 | `remove_competitor` | write_settings | no | yes | no | Stop tracking a competitor and delete its history. |
 | `remove_from_evergreen` | schedule_posts | no | yes | no | Take an item out of the evergreen library. |
@@ -106,6 +107,7 @@ Generated from the tool registry (`apps/mcp`). Annotations come from the capabil
 | `rename_tag` | draft_posts | no | yes | no | Rename a tag everywhere it is used (posts and ideas); 409 if the new name exists. |
 | `request_media_upload` | upload_media | no | no | no | Step 1 of uploading large media (video, or any file >1 MB) over MCP — no REST API key required. |
 | `resend_webhook_delivery` | write_settings | no | no | yes | Send a delivery again: same payload, same delivery id, fresh retry schedule. |
+| `resume_account` | write_settings | no | no | no | Resume publishing to a paused account. |
 | `resume_thread` | schedule_posts | no | no | yes | Resume a thread that stopped part-way (a platform post whose thread_status is 'partial'). |
 | `review_post` | manage_approvals | no | yes | yes | Decide a post that is waiting for review, as the person behind this key (find them with list_approvals). |
 | `rotate_webhook_secret` | write_settings | no | yes | no | Replace a webhook endpoint's signing secret. |

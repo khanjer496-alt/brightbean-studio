@@ -52,6 +52,56 @@
         ]
       }
     },
+    "/api/v1/accounts/{account_id}/pause": {
+      "post": {
+        "operationId": "AccountsPauseAccount",
+        "summary": "Pause publishing to an account its scheduled posts are held until it is resumed",
+        "x-ms-visibility": "important",
+        "description": "Pause publishing to an account its scheduled posts are held until it is resumed.",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uuid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
+    "/api/v1/accounts/{account_id}/resume": {
+      "post": {
+        "operationId": "AccountsResumeAccount",
+        "summary": "Resume publishing to an account held posts go out overdue ones first",
+        "x-ms-visibility": "important",
+        "description": "Resume publishing to an account held posts go out overdue ones first.",
+        "parameters": [
+          {
+            "name": "account_id",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uuid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "accounts"
+        ]
+      }
+    },
     "/api/v1/posts/": {
       "get": {
         "operationId": "PostsListPosts",
@@ -3872,9 +3922,14 @@
           "description": "True when the platform can auto-post a first comment after publish. False for TikTok, Pinterest, Bluesky, Google Business. LinkedIn Personal returns false when authorized via OIDC instead of the Community Management API. If false, ``first_comment`` is silently dropped at publish time.",
           "type": "boolean"
         },
+        "paused": {
+          "default": false,
+          "description": "True while a workspace member has paused publishing to this account. Posts scheduled to it are held (see ``held_reason`` on the post's platform entry) and go out when it is resumed.",
+          "type": "boolean"
+        },
         "requires_video": {
           "default": false,
-          "description": "True when the platform publishes only video (TikTok, YouTube). Scheduling a post with no video in ``media_asset_ids`` is rejected with 422.",
+          "description": "True when the platform publishes only video (YouTube). Scheduling a post with no video in ``media_asset_ids`` is rejected with 422.",
           "type": "boolean"
         },
         "requires_media": {
@@ -4129,6 +4184,11 @@
           "additionalProperties": true,
           "description": "The per-post settings this account's platform declares, as saved.",
           "type": "object"
+        },
+        "held_reason": {
+          "default": "",
+          "description": "Why a scheduled post is not being sent: publishing to its account is paused. It stays scheduled and goes out when a workspace member resumes the account. Empty otherwise.",
+          "type": "string"
         }
       },
       "required": [
