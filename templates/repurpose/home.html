@@ -7,7 +7,7 @@
     <p class="m-0 mt-1 max-w-2xl text-[13px] text-ink-3">Turn one article, document, post or video into threads, posts, carousels, scripts and more. Everything comes back for your review as drafts or ideas, and nothing is published.</p>
 
     {% if not ai_enabled %}
-    <p class="mt-6 rounded-xl border border-line bg-surface-1 p-4 text-sm text-ink-2">The AI assistant isn't set up for this organization yet. An organization admin can add a key under Organization &rarr; AI assistant.</p>
+    <div class="mt-6">{% include "ai_writer/partials/connect_ai.html" %}</div>
     {% else %}
 
     {% if error %}

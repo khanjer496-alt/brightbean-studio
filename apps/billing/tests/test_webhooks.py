@@ -113,11 +113,11 @@ class TestIdempotency:
 
     def test_out_of_order_snapshot_is_ignored(self, stripe_sub):
         client = Client()
-        post_event(client, _event("customer.subscription.updated", _subscription(price="price_agency_m"), "evt_new"))
-        stale = _event("customer.subscription.updated", _subscription(price="price_creator_m"), "evt_old", NOW - 60)
+        post_event(client, _event("customer.subscription.updated", _subscription(price="price_ultimate_m"), "evt_new"))
+        stale = _event("customer.subscription.updated", _subscription(price="price_starter_m"), "evt_old", NOW - 60)
         post_event(client, stale)
         stripe_sub.refresh_from_db()
-        assert stripe_sub.plan == "agency"
+        assert stripe_sub.plan == "ultimate"
 
 
 @pytest.mark.django_db
@@ -135,28 +135,28 @@ class TestLifecycle:
         )
         with mock.patch("apps.billing.services.stripe") as stripe_mock:
             stripe_mock.Subscription.retrieve.return_value = _subscription(
-                sub_id="sub_9", customer="cus_9", price="price_agency_y"
+                sub_id="sub_9", customer="cus_9", price="price_ultimate_y"
             )
             assert post_event(Client(), event).status_code == 200
         stripe_mock.Subscription.retrieve.assert_called_once_with("sub_9", api_key="sk_test_fake")
         sub = Subscription.objects.get(organization=organization)
-        assert (sub.plan, sub.interval, sub.status) == ("agency", "year", Subscription.Status.ACTIVE)
+        assert (sub.plan, sub.interval, sub.status) == ("ultimate", "year", Subscription.Status.ACTIVE)
         assert (sub.stripe_customer_id, sub.stripe_subscription_id) == ("cus_9", "sub_9")
         assert sub.current_period_end is not None
 
     def test_subscription_created_finds_org_by_metadata(self, billing, organization):
         obj = _subscription(
-            sub_id="sub_new", price="price_creator_m", metadata={"organization_id": str(organization.id)}
+            sub_id="sub_new", price="price_starter_m", metadata={"organization_id": str(organization.id)}
         )
         post_event(Client(), _event("customer.subscription.created", obj))
         sub = Subscription.objects.get(organization=organization)
-        assert (sub.plan, sub.stripe_subscription_id) == ("creator", "sub_new")
+        assert (sub.plan, sub.stripe_subscription_id) == ("starter", "sub_new")
 
     def test_subscription_updated_changes_plan_and_cancellation(self, stripe_sub):
-        obj = _subscription(price="price_agency_m", cancel_at_period_end=True)
+        obj = _subscription(price="price_ultimate_m", cancel_at_period_end=True)
         post_event(Client(), _event("customer.subscription.updated", obj))
         stripe_sub.refresh_from_db()
-        assert stripe_sub.plan == "agency" and stripe_sub.cancel_at_period_end
+        assert stripe_sub.plan == "ultimate" and stripe_sub.cancel_at_period_end
 
     def test_stripe_trial_keeps_the_trial_end(self, stripe_sub):
         trial_end = NOW + 5 * 86400
@@ -349,7 +349,7 @@ class TestSecondSubscription:
             stripe_mock.Subscription.retrieve.return_value = _subscription(sub_id="sub_1")
             post_event(
                 Client(),
-                _event("customer.subscription.created", _subscription(sub_id="sub_2", price="price_agency_m")),
+                _event("customer.subscription.created", _subscription(sub_id="sub_2", price="price_ultimate_m")),
             )
         stripe_sub.refresh_from_db()
         assert (stripe_sub.stripe_subscription_id, stripe_sub.plan) == ("sub_1", "team")
@@ -371,11 +371,13 @@ class TestSecondSubscription:
             stripe_mock.Subscription.retrieve.return_value = _subscription(status="canceled", sub_id="sub_1")
             post_event(
                 client,
-                _event("customer.subscription.created", _subscription(sub_id="sub_2", price="price_agency_m"), "evt_a"),
+                _event(
+                    "customer.subscription.created", _subscription(sub_id="sub_2", price="price_ultimate_m"), "evt_a"
+                ),
             )
         post_event(client, _event("customer.subscription.deleted", _subscription(status="canceled"), "evt_b", NOW + 5))
         stripe_sub.refresh_from_db()
-        assert (stripe_sub.stripe_subscription_id, stripe_sub.plan) == ("sub_2", "agency")
+        assert (stripe_sub.stripe_subscription_id, stripe_sub.plan) == ("sub_2", "ultimate")
         assert stripe_sub.status == Subscription.Status.ACTIVE
 
     def test_stripe_unreachable_while_checking_is_retried(self, stripe_sub):

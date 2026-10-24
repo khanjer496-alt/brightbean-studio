@@ -2,17 +2,18 @@
 
 The composer's HTMX views, the Agent API and the MCP tools all call these
 functions, so a caption generated from any surface goes through the same
-prompt, the same brand voice, the same plan allowance and the same
+prompt, the same brand voice, the same daily safety cap and the same
 character-limit enforcement.
 
 Every action:
 
 1. resolves the organization's provider (``client.resolve_ai``) — its own
-   key if it saved one, otherwise the platform key;
-2. reserves the most provider calls it can make against the day's budget —
-   the plan's allowance on the platform key, a fixed safety cap
-   (``AI_ORGANIZATION_KEY_DAILY_CAP``) on the organization's own key — and
-   refuses up front if they don't fit, so no action overshoots it;
+   key if it saved one, otherwise the platform key where
+   ``AI_PLATFORM_KEY_FOR_CUSTOMERS`` allows it (self-hosted and dev only);
+2. on the organization's own key, reserves the most provider calls it can
+   make against a fixed daily safety cap (``AI_ORGANIZATION_KEY_DAILY_CAP``)
+   and refuses up front if they don't fit, so a runaway loop stops. No plan
+   includes or limits AI: the organization's provider bills it;
 3. sends one prompt whose system part carries the workspace's brand voice
    and the rule that quoted material is data, never instructions;
 4. writes an ``AIRequestLog`` row, answered or not;
@@ -37,7 +38,6 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.html import strip_tags
 
-from apps.billing.entitlements import ai_requests_remaining, check_can_use_ai
 from providers import writing_style_for
 
 from .client import AIConfig, AIDailyCapError, AIError, AINotConfiguredError, AIResponseError, resolve_ai
@@ -281,9 +281,9 @@ def _start(ctx: AIContext, *, reserve: int = 1, max_calls: int | None = None) ->
     (default ``reserve``) while the day's budget lasts — a best-effort
     shorten pass is skipped rather than run past it.
 
-    On the platform key the budget is the plan's daily allowance. On the
-    organization's own key the allowance doesn't apply (their provider bills
-    them), but a fixed daily safety cap does, so a runaway script stops.
+    On the organization's own key a fixed daily safety cap applies, so a
+    runaway script stops; their provider bills the usage. The platform key
+    (self-hosted and dev installs only) has no daily budget.
     """
     max_calls = max(max_calls or reserve, reserve)
     config = resolve_ai(ctx.organization)
@@ -294,8 +294,7 @@ def _start(ctx: AIContext, *, reserve: int = 1, max_calls: int | None = None) ->
         if remaining < reserve:
             raise AIDailyCapError()
     else:
-        check_can_use_ai(ctx.organization, reserve)
-        remaining = ai_requests_remaining(ctx.organization)
+        remaining = None
     return AIRun(config=config, remaining=max_calls if remaining is None else min(remaining, max_calls))
 
 

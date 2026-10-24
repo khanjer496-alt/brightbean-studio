@@ -52,8 +52,8 @@ def api_client(owner, workspace, account):
 @pytest.fixture
 def one_post_agency(monkeypatch, organization):
     """Agency, but with a one-post monthly allowance so the post limit is reachable."""
-    monkeypatch.setitem(PLANS, "agency", dataclasses.replace(PLANS["agency"], max_scheduled_posts_per_month=1))
-    set_plan(organization, "agency")
+    monkeypatch.setitem(PLANS, "ultimate", dataclasses.replace(PLANS["ultimate"], max_scheduled_posts_per_month=1))
+    set_plan(organization, "ultimate")
 
 
 def _use_api_calls(workspace, count):
@@ -96,7 +96,7 @@ def _mcp(client, method, params=None):
 class TestRestApi:
     def test_api_works_on_every_plan_and_during_the_trial(self, billing, organization, api_client):
         assert api_client.get("/api/v1/me/").status_code == 200  # trialing
-        for plan in ("free", "creator", "team", "agency"):
+        for plan in ("free", "starter", "team", "ultimate"):
             set_plan(organization, plan)
             assert api_client.get("/api/v1/me/").status_code == 200, plan
         expire_trial(organization)
@@ -115,7 +115,7 @@ class TestRestApi:
         assert body["upgrade_url"] == "https://studio.example.com/organizations/billing/"
         assert 0 < int(response["Retry-After"]) <= 86400
 
-        set_plan(organization, "creator")
+        set_plan(organization, "starter")
         assert api_client.get("/api/v1/me/").status_code == 200
 
     def test_no_daily_allowance_when_billing_disabled(self, workspace, api_client):

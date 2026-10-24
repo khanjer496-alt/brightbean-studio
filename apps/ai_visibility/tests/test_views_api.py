@@ -99,14 +99,14 @@ class TestPage:
         html = client.get(url("index", workspace)).content.decode()
         assert "Set up your report" in html and "AI visibility</a>" in html
 
-    def test_free_and_creator_plans_see_the_upgrade_state(self, client, owner, workspace, profile):
-        set_plan(workspace.organization, "creator")
+    def test_free_plan_sees_the_upgrade_state(self, client, owner, workspace, profile):
+        set_plan(workspace.organization, "free")
         html = client.get(url("index", workspace)).content.decode()
         assert "isn't in your plan" in html and url("save", workspace) not in html
 
     def test_warns_when_ai_is_not_configured(self, client, owner, workspace, profile, settings):
         settings.ANTHROPIC_API_KEY = ""
-        assert "AI isn't set up" in client.get(url("index", workspace)).content.decode()
+        assert "Connect your AI" in client.get(url("index", workspace)).content.decode()
 
     def test_members_without_view_analytics_and_strangers_are_refused(self, client, workspace, profile):
         other = Workspace.objects.create(organization=Organization.objects.create(name="O"), name="Other")
@@ -153,7 +153,7 @@ class TestActions:
     def test_run_now_shows_why_it_cannot_run(self, client, owner, workspace, profile, settings):
         settings.ANTHROPIC_API_KEY = ""
         r = client.post(url("run", workspace), follow=True)
-        assert "isn't set up" in r.content.decode() and not VisibilityRun.objects.exists()
+        assert "Connect your AI" in r.content.decode() and not VisibilityRun.objects.exists()
 
     def test_save_idea_adds_it_to_the_ideas_board_once(self, client, owner, workspace, report):
         target = url("save_idea", workspace, run_id=report.id)
@@ -234,7 +234,7 @@ class TestApiMcp:
         assert api_client(workspace, ["create_posts"]).get("/api/v1/ai-visibility/").status_code == 403
 
     def test_plan_gate(self, workspace, report):
-        set_plan(workspace.organization, "creator")
+        set_plan(workspace.organization, "free")
         r = api_client(workspace, ["view_analytics"]).get("/api/v1/ai-visibility/")
         assert r.status_code == 403 and "AI visibility" in r.json()["detail"]
 

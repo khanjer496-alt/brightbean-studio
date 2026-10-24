@@ -3,9 +3,11 @@
 Usage:
     STRIPE_SECRET_KEY=sk_test_... python manage.py billing_create_stripe_prices
 
-One Product per paid plan, with a monthly and a yearly Price from the amounts
-in ``apps/billing/plans.py``. Safe to run again: each Price carries a
-``lookup_key`` and an existing active one is reused rather than duplicated.
+One Product per paid plan ("PostDelegate Starter", "PostDelegate Team", ...),
+with a monthly and a yearly Price from the amounts in ``apps/billing/plans.py``.
+Safe to run again: each Price carries a ``lookup_key`` and an existing active
+one with the right amount is reused rather than duplicated; if the plan's
+amount has changed, a new Price is created and the lookup key moves to it.
 Prints the ``STRIPE_PRICE_*`` lines to paste into the environment.
 
 Refuses a live-mode key unless ``--live`` is passed, so a test run can't
@@ -42,9 +44,11 @@ class Command(BaseCommand):
             product_id = None
             for interval in Interval:
                 lookup_key = f"postdelegate_{slug}_{interval}"
+                amount = plan.price_cents(interval)
                 existing = stripe.Price.list(api_key=api_key, lookup_keys=[lookup_key], active=True, limit=1)
-                if existing["data"]:
-                    price = existing["data"][0]
+                current = existing["data"][0] if existing["data"] else None
+                if current is not None and current.get("unit_amount", amount) == amount:
+                    price = current
                     self.stdout.write(f"Reusing {lookup_key}: {price['id']}")
                 else:
                     if product_id is None:
@@ -53,10 +57,12 @@ class Command(BaseCommand):
                         api_key=api_key,
                         product=product_id,
                         currency=CURRENCY,
-                        unit_amount=plan.price_cents(interval),
+                        unit_amount=amount,
                         recurring={"interval": str(interval)},
                         lookup_key=lookup_key,
-                        metadata={"plan": slug, "interval": str(interval)},
+                        # An old price under this key (a since-changed amount) gives it up.
+                        transfer_lookup_key=current is not None,
+                        metadata={"plan": slug, "plan_name": plan.name, "interval": str(interval)},
                     )
                     self.stdout.write(f"Created {lookup_key}: {price['id']}")
                 env_lines.append(f"STRIPE_PRICE_{slug.upper()}_{_ENV_SUFFIX[interval]}={price['id']}")
@@ -82,6 +88,6 @@ class Command(BaseCommand):
             api_key=api_key,
             name=f"{settings.BRAND_NAME} {plan.name}",
             description=plan.tagline,
-            metadata={"plan": plan.slug},
+            metadata={"plan": plan.slug, "plan_name": plan.name},
         )
         return product["id"]

@@ -318,7 +318,7 @@ def start_run(profile: VisibilityProfile, *, trigger: str, user=None) -> Visibil
             ).exists()
             if recent:
                 raise VisibilityError(
-                    "You've already run a report in the last 24 hours. Each one uses AI requests from your allowance.",
+                    "You've already run a report in the last 24 hours. Each one uses requests on your AI connection.",
                     code="visibility_cooldown",
                     status=429,
                 )
@@ -567,9 +567,9 @@ def run_due(now=None, *, deadline=None) -> dict[str, int]:
             continue
         execute_run(run)
         stats["ran"] += 1
-        if run.error_code in ("ai_request_limit", "ai_daily_cap"):
+        if run.error_code == "ai_daily_cap":
             VisibilityProfile.objects.filter(pk=profile.pk).update(
-                skip_reason="Not enough AI requests left in the allowance to run the report."
+                skip_reason="Your AI connection reached today's safety limit before the report finished."
             )
     return stats
 

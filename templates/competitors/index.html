@@ -17,7 +17,7 @@
         {% if not plan_enabled %}
         <section class="rounded-xl border border-line bg-surface-1 p-8 text-center" aria-labelledby="plan-heading">
             <h2 id="plan-heading" class="m-0 text-lg font-semibold text-ink">Competitor benchmarking isn't in your plan</h2>
-            <p class="mx-auto mt-2 max-w-md text-[13px] text-ink-3">Track up to 3 competitors per network on Creator, 10 on Team and 25 on Agency.</p>
+            <p class="mx-auto mt-2 max-w-md text-[13px] text-ink-3">Included in every paid plan: track up to 3 competitors per network on Starter, 6 on Team, 15 on Pro and 30 on Ultimate.</p>
             {% if billing_enabled %}<a href="{% url 'billing:overview' %}" class="btn-brand mt-4 inline-flex min-h-11 w-auto items-center px-5 py-2">See plans</a>{% endif %}
         </section>
         {% elif can_manage %}

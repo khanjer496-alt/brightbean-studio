@@ -22,7 +22,7 @@ PostDelegate is a social media scheduler. This skill teaches you to work through
 
 ## Start every session
 
-1. `get_usage`: plan limits and what is used (scheduled posts this month, AI requests today). If a batch would exceed a limit, say so before starting.
+1. `get_usage`: plan limits and what is used (scheduled posts this month, API & MCP calls today). If a batch would exceed a limit, say so before starting.
 2. `list_accounts`: the connected channels, with `char_limit`, `supports_first_comment`, `requires_media`, `requires_video` and `connection_status`. Skip accounts that are not `connected` and say why.
 3. `get_brand_voice` (and `get_brand_kit` for visual requests): tone, words to use and avoid, example posts. Write in it. If it is empty, ask the user for two sentences on tone before drafting at volume.
 

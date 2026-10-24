@@ -32,7 +32,7 @@
 </ul>
 
 {% if trial %}
-<p class="mb-6 text-sm text-ink-3">Your {{ trial.plan }} trial has {{ trial.days_left }} days left. No card needed.</p>
+<p class="mb-6 text-sm text-ink-3">Your {{ trial.trial_days }}-day free trial of {{ trial.plan }} has {{ trial.days_left }} days left. No card required.</p>
 {% endif %}
 
 <a href="{% url 'calendar:calendar' workspace_id=workspace.id %}" class="btn-brand min-h-11 w-full sm:w-auto sm:px-8">Go to my calendar</a>

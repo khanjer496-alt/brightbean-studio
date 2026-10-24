@@ -54,7 +54,11 @@ def _trial_banner(workspace):
     if not subscription.is_trialing:
         return None
     days_left = max((subscription.trial_ends_at - timezone.now()).days, 0)
-    return {"plan": subscription.effective_plan().name, "days_left": days_left}
+    return {
+        "plan": subscription.effective_plan().name,
+        "days_left": days_left,
+        "trial_days": settings.BILLING_TRIAL_DAYS,
+    }
 
 
 def _render_step(request, flow, step, extra=None):

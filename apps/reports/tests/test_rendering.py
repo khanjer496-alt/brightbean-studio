@@ -222,16 +222,16 @@ class TestAiSummary:
         fake_claude.queue(AIRateLimitError())
         assert build(definition)["ai_summary"]["source"] == "fallback"
 
-    def test_counts_against_the_daily_allowance(self, definition, seeded, workspace, fake_claude, settings):
+    def test_falls_back_without_the_organizations_own_ai(self, definition, seeded, workspace, fake_claude, settings):
         settings.BILLING_ENABLED = True
         settings.ANTHROPIC_API_KEY = "sk-ant-test"
-        set_plan(workspace.organization, "agency")
+        set_plan(workspace.organization, "ultimate")
         fake_claude.queue({"text": "Fine."})
         build(definition)
         assert AIRequestLog.objects.count() == 1
-        # Out of allowance: no call, honest fallback.
-        with patch("apps.billing.entitlements.ai_requests_remaining", return_value=0):
-            data = build(definition)
+        # Hosted mode: the platform key never powers customer AI. No call, honest fallback.
+        settings.AI_PLATFORM_KEY_FOR_CUSTOMERS = False
+        data = build(definition)
         assert data["ai_summary"]["source"] == "fallback" and len(fake_claude.calls) == 1
 
     def test_preview_never_calls_the_provider(self, definition, seeded, with_key, fake_claude):

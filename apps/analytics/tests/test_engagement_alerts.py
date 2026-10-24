@@ -155,14 +155,14 @@ def test_default_preferences_deliver_in_app(workspace, account):
 @pytest.mark.django_db
 def test_organizations_without_the_analytics_feature_are_skipped(settings, workspace, account):
     settings.BILLING_ENABLED = True
-    set_plan(workspace.organization, "creator")
+    set_plan(workspace.organization, "free")
     make_member(workspace, "owner@example.com")
     history(workspace, account, [10, 12, 8, 11, 9, 10])
     star(workspace, account, 45)
     assert send_engagement_alerts(NOW) == 0
     assert not EngagementAlert.objects.exists()
 
-    set_plan(workspace.organization, "team")
+    set_plan(workspace.organization, "starter")
     assert send_engagement_alerts(NOW) == 1
 
 

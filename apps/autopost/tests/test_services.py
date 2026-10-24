@@ -416,15 +416,11 @@ class TestAIMode:
         assert Post.objects.get().caption.startswith("Big news")
         assert fake_claude.calls == []
 
-    def test_daily_ai_allowance_is_respected(
-        self, workspace, feed, account, web, full_auto, ai_key, fake_claude, monkeypatch
+    def test_without_the_organizations_own_ai_it_falls_back_to_the_feed_text(
+        self, workspace, feed, account, web, full_auto, ai_key, fake_claude, settings
     ):
-        from apps.billing.entitlements import PlanLimitError
-
-        def spent(*args, **kwargs):
-            raise PlanLimitError("Daily AI allowance used", code="ai")
-
-        monkeypatch.setattr("apps.ai_writer.services.check_can_use_ai", spent)
+        # Hosted mode: the platform key never powers customer AI.
+        settings.AI_PLATFORM_KEY_FOR_CUSTOMERS = False
         autopost = enable(workspace, feed, [account], mode="ai", destination="draft")
         web.feed(rss(item("Big news", "https://blog.example/1")))
         services.poll(autopost)

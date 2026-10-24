@@ -53,6 +53,9 @@ SIGNUP_MODE = "open"
 # for the whole suite (or let a test reach the provider). Tests that want it
 # use the `settings` fixture and mock the provider client.
 ANTHROPIC_API_KEY = ""
+# Existing tests exercise the shared platform key (the self-hosted setup); tests of
+# the hosted own-connection-only mode turn this off.
+AI_PLATFORM_KEY_FOR_CUSTOMERS = True
 AI_PROVIDER = "anthropic"
 AI_MODEL = "claude-opus-5-5"
 

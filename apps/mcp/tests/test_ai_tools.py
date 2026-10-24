@@ -103,5 +103,5 @@ def test_errors_are_readable(setup, settings, fake_claude):
     client, _account, _user = setup
     settings.ANTHROPIC_API_KEY = ""
     body = _call(client, "generate_caption", {"prompt": "launch"})
-    assert "isn't set up" in body["error"]["message"]
+    assert "Connect your AI" in body["error"]["message"]
     assert fake_claude.calls == []

@@ -5,7 +5,7 @@
 
 {% if trial %}
 <p class="mb-6 rounded-xl border border-line bg-surface-1 px-4 py-3 text-sm text-ink-2">
-    Your {{ trial.plan }} trial is on: {{ trial.days_left }} days to try everything, no card needed.
+    Your {{ trial.trial_days }}-day free trial is on, no card required: {{ trial.days_left }} days of every {{ trial.plan }} feature, then Free unless you choose a plan.
 </p>
 {% endif %}
 

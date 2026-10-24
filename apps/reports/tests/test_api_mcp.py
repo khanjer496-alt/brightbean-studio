@@ -108,7 +108,7 @@ class TestRest:
 
     def test_plan_gate(self, api, definition, settings, workspace):
         settings.BILLING_ENABLED = True
-        set_plan(workspace.organization, "team")
+        set_plan(workspace.organization, "free")
         assert api.get("/api/v1/reports/").status_code in (402, 403)
 
     def test_requires_auth(self, definition):

@@ -50,7 +50,7 @@ def test_page_renders_with_accessible_form(owner_client, workspace, bluesky):
 
 def test_page_says_when_ai_is_off(owner_client, workspace, settings):
     settings.ANTHROPIC_API_KEY = ""
-    assert "isn't set up" in owner_client.get(url(workspace, "home")).content.decode()
+    assert "Connect your AI" in owner_client.get(url(workspace, "home")).content.decode()
 
 
 def test_text_run_end_to_end(owner_client, workspace, bluesky, fake_claude):

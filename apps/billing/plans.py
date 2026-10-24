@@ -1,8 +1,13 @@
 """The plans PostDelegate sells, as data.
 
-Every plan is priced per organization and includes unlimited users — seats
-are never a limit, so nothing here counts members. A limit of ``None`` means
-unlimited.
+Every plan is priced per organization. Paid plans include every feature and
+differ only in how much: channels, workspaces, team members and the usage
+allowances. AI is not part of any plan: every AI feature runs on the
+organization's own AI connection (``apps.ai_writer``), so there is no AI
+allowance here — only the per-organization safety cap in settings. Free
+keeps the advanced features (approvals, inbox, analytics, the client portal,
+white-label reports, competitors, AI visibility) locked.
+A limit of ``None`` means unlimited.
 
 Nothing outside ``apps.billing`` reads these directly: views, the API and MCP
 ask ``apps.billing.entitlements`` what an organization may do, so a plan's
@@ -47,8 +52,9 @@ class Interval(StrEnum):
     YEAR = "year"
 
 
-# Annual billing charges ten months: two months free.
-ANNUAL_MONTHS_CHARGED = 10
+# Every paid plan includes every feature: paid plans differ only in how much
+# (channels, workspaces, members and the daily or monthly allowances).
+ALL_FEATURES = frozenset(Feature)
 
 
 @dataclass(frozen=True)
@@ -57,16 +63,18 @@ class Plan:
     name: str
     tagline: str
     monthly_price_cents: int
+    # What one year costs when billed yearly (20% off the monthly price).
+    annual_price_cents: int
     max_channels: int | None
     max_workspaces: int | None
     max_scheduled_posts_per_month: int | None
     # Agent API and MCP calls per UTC day, counted across the organization.
     # Agent access is on every plan; plans differ only in how much of it.
     max_api_calls_per_day: int | None
-    # AI writing-assistant requests per UTC day, counted across the
-    # organization. Requests made with the organization's own provider key
-    # don't count — that usage is billed to them, not to us.
-    max_ai_requests_per_day: int | None
+    # People in the organization, owner included; client-role users count.
+    # Members already over the limit after a downgrade are kept; only new
+    # invitations are refused.
+    max_members: int | None = None
     features: frozenset[Feature] = field(default_factory=frozenset)
     # Link-in-bio pages a workspace's organization may keep (apps.linkinbio), and whether
     # its public pages carry the product's badge. Free: one badged page; paid plans: more, unbranded.
@@ -87,9 +95,14 @@ class Plan:
     def is_free(self) -> bool:
         return self.monthly_price_cents == 0
 
+    @property
+    def annual_monthly_price_cents(self) -> int:
+        """The yearly price spread over twelve months, as shown beside the monthly one."""
+        return self.annual_price_cents // 12
+
     def price_cents(self, interval: str) -> int:
         if interval == Interval.YEAR:
-            return self.monthly_price_cents * ANNUAL_MONTHS_CHARGED
+            return self.annual_price_cents
         return self.monthly_price_cents
 
     def stripe_price_id(self, interval: str) -> str:
@@ -100,39 +113,46 @@ class Plan:
 
 
 FREE = "free"
-CREATOR = "creator"
+STARTER = "starter"
 TEAM = "team"
-AGENCY = "agency"
+PRO = "pro"
+ULTIMATE = "ultimate"
 
+# Allowances scale with the plan: Starter is the base, Team 2x, Pro 5x and
+# Ultimate 10x. Free is a small taste of each.
 PLANS: dict[str, Plan] = {
     FREE: Plan(
         slug=FREE,
         name="Free",
         tagline="For trying PostDelegate on a few channels.",
         monthly_price_cents=0,
+        annual_price_cents=0,
         max_channels=3,
         max_workspaces=1,
         max_scheduled_posts_per_month=30,
         max_api_calls_per_day=100,
-        max_ai_requests_per_day=20,
+        max_members=2,
         max_bio_pages=1,
         bio_badge=True,
         max_competitors_per_network=0,
         max_short_links_per_month=100,
         max_account_sets=2,
     ),
-    CREATOR: Plan(
-        slug=CREATOR,
-        name="Creator",
-        tagline="For creators publishing every day.",
-        monthly_price_cents=1200,
-        max_channels=10,
+    STARTER: Plan(
+        slug=STARTER,
+        name="Starter",
+        tagline="For one brand and a client to approve.",
+        monthly_price_cents=1900,
+        annual_price_cents=18000,
+        max_channels=5,
         max_workspaces=2,
         max_scheduled_posts_per_month=None,
-        max_api_calls_per_day=1_000,
-        max_ai_requests_per_day=200,
+        max_api_calls_per_day=2_000,
+        max_members=2,
+        features=ALL_FEATURES,
         max_bio_pages=3,
         max_competitors_per_network=3,
+        max_visibility_prompts=3,
         max_short_links_per_month=2_000,
         max_account_sets=10,
     ),
@@ -141,46 +161,57 @@ PLANS: dict[str, Plan] = {
         name="Team",
         tagline="For teams that review before they publish.",
         monthly_price_cents=2900,
-        max_channels=25,
+        annual_price_cents=27600,
+        max_channels=10,
         max_workspaces=5,
         max_scheduled_posts_per_month=None,
-        max_api_calls_per_day=10_000,
-        max_ai_requests_per_day=1_000,
-        features=frozenset({Feature.APPROVALS, Feature.INBOX, Feature.ANALYTICS, Feature.AI_VISIBILITY}),
-        max_bio_pages=10,
-        max_competitors_per_network=10,
+        max_api_calls_per_day=4_000,
+        features=ALL_FEATURES,
+        max_bio_pages=6,
+        max_competitors_per_network=6,
         max_visibility_prompts=5,
+        max_short_links_per_month=4_000,
+        max_account_sets=20,
+    ),
+    PRO: Plan(
+        slug=PRO,
+        name="Pro",
+        tagline="For growing teams and small agencies.",
+        monthly_price_cents=3900,
+        annual_price_cents=37200,
+        max_channels=30,
+        max_workspaces=15,
+        max_scheduled_posts_per_month=None,
+        max_api_calls_per_day=10_000,
+        features=ALL_FEATURES,
+        max_bio_pages=15,
+        max_competitors_per_network=15,
+        max_visibility_prompts=10,
+        max_short_links_per_month=10_000,
         max_account_sets=50,
     ),
-    AGENCY: Plan(
-        slug=AGENCY,
-        name="Agency",
+    ULTIMATE: Plan(
+        slug=ULTIMATE,
+        name="Ultimate",
         tagline="For agencies running many clients.",
         monthly_price_cents=7900,
+        annual_price_cents=75600,
         max_channels=100,
         max_workspaces=None,
         max_scheduled_posts_per_month=None,
-        max_api_calls_per_day=100_000,
-        max_ai_requests_per_day=5_000,
-        features=frozenset(
-            {
-                Feature.APPROVALS,
-                Feature.INBOX,
-                Feature.ANALYTICS,
-                Feature.CLIENT_PORTAL,
-                Feature.BRANDED_REPORTS,
-                Feature.AI_VISIBILITY,
-            }
-        ),
-        max_bio_pages=None,
-        max_competitors_per_network=25,
+        max_api_calls_per_day=20_000,
+        features=ALL_FEATURES,
+        max_bio_pages=30,
+        max_competitors_per_network=30,
         max_visibility_prompts=15,
+        max_short_links_per_month=20_000,
+        max_account_sets=100,
     ),
 }
 
-# The plan a new organization trials, and the order plans are shown in.
-TRIAL_PLAN = TEAM
-PLAN_ORDER = (FREE, CREATOR, TEAM, AGENCY)
+# The plan a new organization trials (no card), and the order plans are shown in.
+TRIAL_PLAN = ULTIMATE
+PLAN_ORDER = (FREE, STARTER, TEAM, PRO, ULTIMATE)
 PAID_PLANS = tuple(slug for slug in PLAN_ORDER if not PLANS[slug].is_free)
 PLAN_CHOICES = [(slug, PLANS[slug].name) for slug in PLAN_ORDER]
 

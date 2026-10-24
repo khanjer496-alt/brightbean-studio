@@ -1,12 +1,13 @@
 {% extends "layouts/settings.html" %}
 {% block page_title %}Plan & billing{% endblock %}
 {% block content %}
-<div class="max-w-5xl" x-data="{ interval: '{{ current_interval }}' }">
+<div class="max-w-6xl" x-data="{ interval: '{{ current_interval }}' }">
     <div class="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
         <div>
             <h2 class="text-xl font-semibold pd-billing-heading">Plan &amp; billing</h2>
             <p class="text-sm mt-1 max-w-xl pd-billing-faint">
-                Every plan is priced per organization and includes unlimited team members.
+                Every plan is priced per organization. Paid plans include every feature and differ only in channels,
+                workspaces, team members and usage allowances. AI runs on your own AI provider key, billed by your provider with nothing added by us. New organizations get a {{ trial_days }}-day free trial of Ultimate, no card required.
             </p>
         </div>
         {% if subscription.stripe_customer_id and stripe_configured %}
@@ -31,8 +32,9 @@
     </div>
     {% elif subscription.is_trialing and not subscription.stripe_subscription_id %}
     <div class="pd-billing-notice text-sm mb-6" role="status">
-        <strong>{{ subscription.trial_days_left }} day{{ subscription.trial_days_left|pluralize }} left in your {{ current_plan.name }} trial.</strong>
-        It ends on {{ subscription.trial_ends_at|date:"F j" }}. Choose a plan to keep its features — subscribing now doesn't cut the trial short.
+        <strong>{{ subscription.trial_days_left }} day{{ subscription.trial_days_left|pluralize }} left in your {{ trial_days }}-day free trial of {{ current_plan.name }}.</strong>
+        No card required. It ends on {{ subscription.trial_ends_at|date:"F j" }}, then this organization moves to Free unless you choose a plan.
+        Nothing is deleted, and subscribing now doesn't cut the trial short.
     </div>
     {% elif subscription.cancel_at_period_end and subscription.current_period_end %}
     <div class="pd-billing-notice pd-billing-notice--warning text-sm mb-6" role="status">
@@ -100,11 +102,11 @@
             <fieldset class="pd-billing-toggle">
                 <legend class="sr-only">Billing period</legend>
                 <label><input type="radio" class="sr-only" name="billing-interval" value="month" x-model="interval">Monthly</label>
-                <label><input type="radio" class="sr-only" name="billing-interval" value="year" x-model="interval">Yearly · 2 months free</label>
+                <label><input type="radio" class="sr-only" name="billing-interval" value="year" x-model="interval">Yearly · save 20%</label>
             </fieldset>
         </div>
 
-        <ul class="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" role="list">
+        <ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5" role="list">
             {% for entry in plans %}
             {% with plan=entry.plan %}
             <li class="pd-billing-card p-5 flex flex-col {% if entry.is_current %}pd-billing-card--current{% endif %}">
@@ -124,8 +126,9 @@
                         <span class="text-sm pd-billing-faint">/ month</span>
                     </span>
                     <span x-show="interval === 'year'" x-cloak>
-                        <span class="pd-billing-price">${{ entry.annual_price }}</span>
-                        <span class="text-sm pd-billing-faint">/ year</span>
+                        <span class="pd-billing-price">${{ entry.annual_monthly_price }}</span>
+                        <span class="text-sm pd-billing-faint">/ month</span>
+                        <span class="block text-xs pd-billing-faint mt-1">Billed ${{ entry.annual_price }} yearly</span>
                     </span>
                     {% endif %}
                 </p>
@@ -137,12 +140,19 @@
                         <span>{{ line }}</span>
                     </li>
                     {% endfor %}
+                    {% if entry.has_every_feature %}
+                    <li class="flex gap-2">
+                        <svg class="pd-billing-check mt-0.5" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+                        <span>Every feature: approvals, client portal, inbox, analytics, white-label reports, competitors, AI visibility, automations, API &amp; MCP</span>
+                    </li>
+                    {% else %}
                     {% for feature in entry.features %}
                     <li class="flex gap-2">
                         <svg class="pd-billing-check mt-0.5" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
                         <span>{{ feature }}</span>
                     </li>
                     {% endfor %}
+                    {% endif %}
                 </ul>
 
                 {% if plan.is_free %}
@@ -179,7 +189,7 @@
             {% endfor %}
         </ul>
         <p class="text-xs pd-billing-faint mt-4">
-            Prices in USD. Plan changes are prorated. Promotion codes can be entered at checkout.
+            Prices in USD. Yearly billing is 20% off. Plan changes are prorated. Promotion codes can be entered at checkout.
             Downgrading never deletes anything: if you're over the new plan's limits you just can't add more until you're under them.
         </p>
     </section>

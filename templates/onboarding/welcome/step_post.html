@@ -61,6 +61,8 @@
                     hx-disabled-elt="this">Write with AI</button>
         </div>
     </div>
+    {% else %}
+    {% include "ai_writer/partials/connect_ai.html" %}
     {% endif %}
 
     {% include "onboarding/welcome/_caption_field.html" with error="" %}

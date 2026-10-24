@@ -28,30 +28,37 @@ def _schedule(account, when=None, status="scheduled"):
     )
 
 
+SLUGS = ("free", "starter", "team", "pro", "ultimate")
+
+
 class TestPlans:
     def test_prices_and_annual_discount(self):
-        assert [PLANS[s].monthly_price_cents for s in ("free", "creator", "team", "agency")] == [0, 1200, 2900, 7900]
-        # Annual billing is ten months: two months free.
-        assert PLANS["team"].price_cents(Interval.YEAR) == 29000
+        assert [PLANS[s].monthly_price_cents for s in SLUGS] == [0, 1900, 2900, 3900, 7900]
+        # Yearly billing is 20% off, shown as a per-month price.
+        assert [PLANS[s].price_cents(Interval.YEAR) for s in SLUGS] == [0, 18000, 27600, 37200, 75600]
+        assert [PLANS[s].annual_monthly_price_cents for s in SLUGS] == [0, 1500, 2300, 3100, 6300]
 
     def test_limits_and_features(self):
-        free, creator, team, agency = (PLANS[s] for s in ("free", "creator", "team", "agency"))
-        assert (free.max_channels, free.max_workspaces, free.max_scheduled_posts_per_month) == (3, 1, 30)
-        assert (creator.max_channels, creator.max_workspaces, creator.max_scheduled_posts_per_month) == (10, 2, None)
-        assert (team.max_channels, team.max_workspaces) == (25, 5)
-        assert (agency.max_channels, agency.max_workspaces) == (100, None)
-        assert team.features == {Feature.APPROVALS, Feature.INBOX, Feature.ANALYTICS, Feature.AI_VISIBILITY}
-        assert {Feature.CLIENT_PORTAL, Feature.BRANDED_REPORTS, Feature.AI_VISIBILITY} <= agency.features
-        assert [p.max_competitors_per_network for p in (free, creator, team, agency)] == [0, 3, 10, 25]
-        assert [p.max_visibility_prompts for p in (free, creator, team, agency)] == [0, 0, 5, 15]
-        assert not free.features and not creator.features
+        free, starter, team, pro, ultimate = (PLANS[s] for s in SLUGS)
+        plans = (free, starter, team, pro, ultimate)
+        assert [p.max_channels for p in plans] == [3, 5, 10, 30, 100]
+        assert [p.max_workspaces for p in plans] == [1, 2, 5, 15, None]
+        assert [p.max_members for p in plans] == [2, 2, None, None, None]
+        assert [p.max_scheduled_posts_per_month for p in plans] == [30, None, None, None, None]
+        # Every paid plan includes every feature; Free keeps the advanced ones locked.
+        assert not free.features
+        assert all(p.features == set(Feature) for p in plans[1:])
+        assert [p.max_competitors_per_network for p in plans] == [0, 3, 6, 15, 30]
+        assert [p.max_visibility_prompts for p in plans] == [0, 3, 5, 10, 15]
+        assert [p.max_bio_pages for p in plans] == [1, 3, 6, 15, 30]
+        assert [p.max_short_links_per_month for p in plans] == [100, 2_000, 4_000, 10_000, 20_000]
         # Agent access is on every plan; only the daily volume differs.
-        assert [p.max_api_calls_per_day for p in (free, creator, team, agency)] == [100, 1_000, 10_000, 100_000]
-        assert [p.max_ai_requests_per_day for p in (free, creator, team, agency)] == [20, 200, 1_000, 5_000]
+        assert [p.max_api_calls_per_day for p in plans] == [100, 2_000, 4_000, 10_000, 20_000]
 
-    def test_no_plan_limits_seats(self):
+    def test_no_plan_includes_ai(self):
+        # AI runs on the organization's own connection, never on a plan allowance.
         for plan in PLANS.values():
-            assert not any("member" in name or "seat" in name for name in vars(plan))
+            assert not any(name.startswith("max_ai") for name in vars(plan))
 
     def test_price_ids_map_back_to_plans(self, billing):
         assert plan_for_price_id("price_team_y") == (PLANS["team"], Interval.YEAR)
@@ -64,8 +71,8 @@ class TestBillingDisabled:
     def test_everything_unlimited_and_no_rows_written(self, organization, workspace):
         ent = entitlements.get_entitlements(organization)
         assert ent.unlimited and ent.has(Feature.ANALYTICS) and ent.max_api_calls_per_day is None
-        assert ent.max_ai_requests_per_day is None
-        entitlements.check_can_use_ai(organization)
+        assert ent.max_members is None
+        entitlements.check_can_add_member(organization)
         make_channels(workspace, 5)
         entitlements.check_can_add_channel(organization)
         entitlements.check_can_add_workspace(organization)
@@ -82,11 +89,11 @@ class TestBillingDisabled:
 
 @pytest.mark.django_db
 class TestSubscriptionState:
-    def test_new_org_trials_team(self, billing, organization):
+    def test_new_org_trials_ultimate_for_14_days(self, billing, organization):
         sub = entitlements.get_subscription(organization)
-        assert sub.status == Subscription.Status.TRIALING
+        assert sub.status == Subscription.Status.TRIALING and not sub.stripe_subscription_id
         assert sub.is_trialing and sub.trial_days_left == 14
-        assert entitlements.get_entitlements(organization).plan.slug == "team"
+        assert entitlements.get_entitlements(organization).plan.slug == "ultimate"
 
     def test_expired_trial_is_free(self, billing, organization):
         expire_trial(organization)
@@ -95,18 +102,18 @@ class TestSubscriptionState:
     def test_grace_period_keeps_the_paid_plan_then_lapses(self, billing, organization):
         sub = set_plan(
             organization,
-            "agency",
+            "ultimate",
             status=Subscription.Status.PAST_DUE,
             stripe_subscription_id="sub_1",
             grace_until=timezone.now() + timedelta(days=2),
         )
-        assert entitlements.get_entitlements(organization).plan.slug == "agency"
+        assert entitlements.get_entitlements(organization).plan.slug == "ultimate"
         sub.grace_until = timezone.now() - timedelta(minutes=1)
         sub.save()
         assert entitlements.get_entitlements(organization).plan.slug == "free"
 
     def test_canceled_is_free(self, billing, organization):
-        set_plan(organization, "agency", status=Subscription.Status.CANCELED)
+        set_plan(organization, "ultimate", status=Subscription.Status.CANCELED)
         assert entitlements.get_entitlements(organization).plan.slug == "free"
 
 
@@ -131,18 +138,24 @@ class TestLimits:
         entitlements.check_can_add_workspace(organization)
 
     def test_unlimited_workspaces_on_agency(self, billing, organization):
-        set_plan(organization, "agency")
+        set_plan(organization, "ultimate")
         for i in range(8):
             Workspace.objects.create(organization=organization, name=f"W{i}")
         entitlements.check_can_add_workspace(organization)
 
     def test_feature_names_the_cheapest_plan_with_it(self, billing, organization):
-        set_plan(organization, "creator")
-        with pytest.raises(PlanLimitError, match="Upgrade to Team or higher") as exc:
+        expire_trial(organization)
+        with pytest.raises(PlanLimitError, match="Upgrade to Starter or higher") as exc:
             entitlements.require_feature(organization, Feature.INBOX)
         assert exc.value.feature == "inbox"
-        with pytest.raises(PlanLimitError, match="Upgrade to Agency"):
+        with pytest.raises(PlanLimitError, match="Upgrade to Starter"):
             entitlements.require_feature(organization, Feature.CLIENT_PORTAL)
+
+    def test_every_paid_plan_has_every_feature(self, billing, organization):
+        for slug in SLUGS[1:]:
+            set_plan(organization, slug)
+            for feature in Feature:
+                entitlements.require_feature(organization, feature)
 
     def test_usage_summary_flags_overage(self, billing, organization, workspace):
         expire_trial(organization)
@@ -152,6 +165,8 @@ class TestLimits:
         assert rows["workspaces"]["at_limit"] and not rows["workspaces"]["over_by"]
         assert (rows["api_calls"]["used"], rows["api_calls"]["limit"], rows["api_calls"]["over_by"]) == (0, 100, 0)
         assert rows["posts"]["limit"] == 30
+        assert rows["members"]["limit"] == 2
+        assert "ai_requests" not in rows
 
 
 @pytest.mark.django_db

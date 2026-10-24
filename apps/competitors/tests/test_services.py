@@ -146,7 +146,7 @@ class TestFetchProfileErrors:
 
 
 class TestPlanLimits:
-    @pytest.mark.parametrize("plan,limit", [("free", 0), ("creator", 3), ("team", 10), ("agency", 25)])
+    @pytest.mark.parametrize("plan,limit", [("free", 0), ("starter", 3), ("team", 6), ("pro", 15), ("ultimate", 30)])
     def test_limit_per_network(self, workspace, bsky, read, plan, limit):
         set_plan(workspace.organization, plan)
         for i in range(limit):
@@ -159,7 +159,7 @@ class TestPlanLimits:
         assert Competitor.objects.count() == limit
 
     def test_limit_is_per_network(self, workspace, bsky, read):
-        set_plan(workspace.organization, "creator")
+        set_plan(workspace.organization, "starter")
         make_account(workspace, "mastodon", "Masto")
         for i in range(3):
             services.add_competitor(workspace, "bluesky", f"rival{i}.bsky.social")
@@ -167,7 +167,7 @@ class TestPlanLimits:
         assert Competitor.objects.filter(platform="mastodon").count() == 1
 
     def test_removing_frees_a_slot(self, workspace, bsky, read):
-        set_plan(workspace.organization, "creator")
+        set_plan(workspace.organization, "starter")
         added = [services.add_competitor(workspace, "bluesky", f"r{i}.bsky.social") for i in range(3)]
         services.remove_competitor(workspace, added[0].id)
         services.add_competitor(workspace, "bluesky", "new.bsky.social")

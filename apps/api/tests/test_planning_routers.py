@@ -441,7 +441,7 @@ class TestUsage:
         body = world.bare.get(self.URL).json()
         assert body["billing_enabled"] is False and body["plan_slug"] is None
         keys = {m["key"] for m in body["usage"]}
-        assert keys == {"channels", "workspaces", "posts", "api_calls", "ai_requests"}
+        assert keys == {"channels", "workspaces", "members", "posts", "api_calls"}
         assert all(m["limit"] is None and m["at_limit"] is False for m in body["usage"])
         assert {m["key"]: m["used"] for m in body["usage"]}["channels"] == 2
 

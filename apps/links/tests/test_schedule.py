@@ -367,7 +367,7 @@ class TestPlanLimit:
             )
         with pytest.raises(services.LinkError, match="short links a month"):
             services.create_short_link(workspace, "https://example.com/more")
-        set_plan(workspace.organization, "agency")
+        set_plan(workspace.organization, "ultimate")
         assert services.create_short_link(workspace, "https://example.com/more")
 
 

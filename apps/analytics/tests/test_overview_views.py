@@ -198,10 +198,10 @@ def test_anonymous_users_are_sent_to_login(client, workspace):
 @pytest.mark.django_db
 def test_new_pages_are_gated_by_the_plan(settings, owner_client, workspace, seeded):
     settings.BILLING_ENABLED = True
-    set_plan(workspace.organization, "creator")
+    set_plan(workspace.organization, "free")
     for target in (url("index", workspace), url("compare", workspace), url("export", workspace, kind="overview")):
         assert owner_client.get(target).status_code == 402
-    set_plan(workspace.organization, "team")
+    set_plan(workspace.organization, "starter")
     assert owner_client.get(url("export", workspace, kind="overview")).status_code == 200
 
 

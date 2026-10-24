@@ -16,7 +16,7 @@ router = Router(tags=["usage"])
     response=UsageResponse,
     summary="Read plan limits and usage",
     description=(
-        "Channels, workspaces, scheduled posts this month, API & MCP calls today and AI requests today, each with its "
+        "Channels, workspaces, team members, scheduled posts this month and API & MCP calls today, each with its "
         "limit (`null` = unlimited). Self-hosted installs report `billing_enabled: false` and no limits."
     ),
 )
