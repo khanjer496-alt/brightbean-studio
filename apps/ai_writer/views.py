@@ -14,6 +14,7 @@ from __future__ import annotations
 import functools
 import logging
 
+from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, HttpResponse, JsonResponse
@@ -28,7 +29,15 @@ from apps.members.models import OrgMembership
 from apps.social_accounts.models import SocialAccount
 
 from . import services
-from .client import AI_PROVIDERS, PROVIDER_CHOICES, AIError, ai_available, platform_key_for_customers
+from .client import (
+    AI_PROVIDERS,
+    AIError,
+    AIResponseError,
+    ai_available,
+    check_connection,
+    platform_key_for_customers,
+    validate_base_url,
+)
 from .models import OrganizationAIKey
 from .services import AIContext
 
@@ -195,6 +204,84 @@ def thread(request, ctx):
 # ---------------------------------------------------------------------------
 
 
+def _provider_options() -> list[dict]:
+    """What the settings form needs to know about each provider."""
+    options = []
+    for name, cls in AI_PROVIDERS.items():
+        presets = [
+            {
+                "key": key,
+                "label": label,
+                # A local server's address only works where private addresses are allowed.
+                "base_url": base_url if not local or settings.AI_ALLOW_PRIVATE_BASE_URLS else "https://",
+                "local": local,
+            }
+            for key, label, base_url, local in cls.presets
+        ]
+        options.append(
+            {
+                "name": name,
+                "label": cls.label,
+                "needs_base_url": cls.needs_base_url,
+                "default_model": cls.default_model,
+                "key_placeholder": cls.key_placeholder,
+                "presets": presets,
+            }
+        )
+    return options
+
+
+def _connection_from_form(request, org_key):
+    """The connection the settings form describes, ready to try or save.
+
+    Returns ``(provider_instance, fields)``; raises ``AIError`` (or ``ValueError``
+    with a message for the admin) when the form isn't usable. A blank key keeps
+    the stored one when the provider hasn't changed.
+    """
+    name = request.POST.get("provider", "")
+    provider_cls = AI_PROVIDERS.get(name)
+    if provider_cls is None:
+        raise ValueError("Choose a supported AI provider.")
+    api_key = request.POST.get("api_key", "").strip()
+    if not api_key and org_key and org_key.provider == name:
+        try:
+            api_key = OrganizationAIKey.objects.get(pk=org_key.pk).api_key
+        except ValueError:
+            raise ValueError("The stored key can't be read any more. Paste the key again.") from None
+    if len(api_key) < provider_cls.min_key_length or any(ch.isspace() for ch in api_key):
+        raise ValueError("That doesn't look like an API key. Paste the full key from your provider.")
+    base_url = validate_base_url(request.POST.get("base_url", "")) if provider_cls.needs_base_url else ""
+    model = request.POST.get("model", "").strip()
+    if len(model) > 100 or any(ch.isspace() for ch in model):
+        raise ValueError("That doesn't look like a model name. Copy it exactly from your provider.")
+    if provider_cls.needs_base_url and not model:
+        raise ValueError("Enter the model name your AI service should use.")
+    fields = {"provider": name, "api_key": api_key, "key_hint": api_key[-4:], "base_url": base_url, "model": model}
+    return provider_cls(api_key=api_key, model=model or provider_cls.default_model, base_url=base_url), fields
+
+
+@login_required
+@require_org_role(OrgMembership.OrgRole.ADMIN)
+@require_POST
+def connection_test(request):
+    """Try the connection the form describes with one tiny request, without saving it."""
+    org_key = OrganizationAIKey.objects.filter(organization=request.org).defer("api_key").first()
+    try:
+        provider, _fields = _connection_from_form(request, org_key)
+        check_connection(provider)
+    except (ValueError, AIError) as exc:
+        return render(request, "ai_writer/partials/connection_result.html", {"ok": False, "message": _message(exc)})
+    return render(
+        request,
+        "ai_writer/partials/connection_result.html",
+        {"ok": True, "message": f"Connected. {provider.label} answered using the model {provider.model}."},
+    )
+
+
+def _message(exc: Exception) -> str:
+    return getattr(exc, "message", None) or str(exc)
+
+
 @login_required
 @require_org_role(OrgMembership.OrgRole.ADMIN)
 @require_http_methods(["GET", "POST"])
@@ -203,6 +290,12 @@ def org_settings(request):
     # The key itself is never needed here (only its hint), so it isn't loaded
     # or decrypted — the page works even if it can no longer be decrypted.
     org_key = OrganizationAIKey.objects.filter(organization=org).defer("api_key").first()
+    form = {
+        "provider": org_key.provider if org_key else "anthropic",
+        "base_url": org_key.base_url if org_key else "",
+        "model": org_key.model if org_key else "",
+    }
+    save_error = ""
 
     if request.method == "POST":
         action = request.POST.get("action")
@@ -212,24 +305,23 @@ def org_settings(request):
             messages.success(request, "Your organization's AI key was removed.")
             return redirect("ai_writer_org:settings")
 
-        provider = request.POST.get("provider", "anthropic")
-        api_key = request.POST.get("api_key", "").strip()
-        if provider not in AI_PROVIDERS:
-            messages.error(request, "Choose a supported AI provider.")
-        elif len(api_key) < 20 or any(ch.isspace() for ch in api_key):
-            messages.error(request, "That doesn't look like an API key. Paste the full key from your provider.")
+        form = {key: request.POST.get(key, "").strip() for key in ("provider", "base_url", "model")}
+        try:
+            provider, fields = _connection_from_form(request, org_key)
+            if not request.POST.get("save_anyway"):
+                check_connection(provider)
+        except AIResponseError as exc:
+            # It answered, just not in a shape the check expected (common with small models):
+            # let the admin decide rather than refusing to save.
+            save_error = f"{_message(exc)} Tick “Save anyway” to keep these settings, or pick another model."
+        except (ValueError, AIError) as exc:
+            save_error = f"Not saved. {_message(exc)}"
         else:
             OrganizationAIKey.objects.update_or_create(
-                organization=org,
-                defaults={
-                    "provider": provider,
-                    "api_key": api_key,
-                    "key_hint": api_key[-4:],
-                    "updated_by": request.user,
-                },
+                organization=org, defaults={**fields, "updated_by": request.user}
             )
-            messages.success(request, "Saved. The AI assistant now uses your organization's key.")
-        return redirect("ai_writer_org:settings")
+            messages.success(request, "Saved. The AI assistant now uses your organization's connection.")
+            return redirect("ai_writer_org:settings")
 
     return render(
         request,
@@ -238,7 +330,10 @@ def org_settings(request):
             "organization": org,
             "settings_active": "ai",
             "org_key": org_key,
-            "provider_choices": PROVIDER_CHOICES,
+            "form": form,
+            "save_error": save_error,
+            "provider_options": _provider_options(),
+            "chatgpt_signin_enabled": settings.AI_CHATGPT_SIGNIN_ENABLED,
             "platform_key_configured": platform_key_for_customers(),
             "ai_enabled": ai_available(org),
         },

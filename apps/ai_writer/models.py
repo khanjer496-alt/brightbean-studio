@@ -38,6 +38,10 @@ class OrganizationAIKey(models.Model):
     # Assign plaintext; EncryptedTextField encrypts on save and decrypts on
     # load, so calling encrypt() here would double-encrypt.
     api_key = EncryptedTextField()
+    # Only for providers that need one ("any OpenAI-compatible service"); blank otherwise.
+    base_url = models.URLField(max_length=300, blank=True, default="")
+    # Blank means the provider's default model.
+    model = models.CharField(max_length=100, blank=True, default="")
     # Last four characters, so the settings page can show which key is
     # stored without ever rendering it.
     key_hint = models.CharField(max_length=8, blank=True, default="")
