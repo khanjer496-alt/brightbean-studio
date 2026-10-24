@@ -10,8 +10,8 @@
          x-data="{ selected: [], all: {{ cards|length }}, ids: [{% for c in cards %}'{{ c.post.id }}'{% if not forloop.last %},{% endif %}{% endfor %}],
                    toggleAll(on) { this.selected = on ? [...this.ids] : []; } }">
         <div class="mb-6">
-            <h1 class="text-[1.375rem] font-bold tracking-tight text-stone-900">Review all ({{ cards|length }})</h1>
-            <p class="mt-0.5 text-[0.875rem] text-stone-600">Check what each network will publish, then approve in one go or leave a note on any post.</p>
+            <h1 class="text-[1.375rem] font-bold tracking-tight" style="color: var(--text-primary);">Review all ({{ cards|length }})</h1>
+            <p class="mt-0.5 text-[0.875rem]" style="color: var(--text-secondary);">Check what each network will publish, then approve in one go or leave a note on any post.</p>
             {% if earliest_due_at %}
             <p class="mt-2 inline-flex rounded-full bg-orange-50 px-3 py-1 text-[0.75rem] font-semibold text-orange-700" data-deadline>Needs approval by {% timezone workspace.effective_timezone|default:"UTC" %}{{ earliest_due_at|date:"D g:i A" }}{% endtimezone %}</p>
             {% endif %}
@@ -43,7 +43,7 @@
                     <input type="hidden" name="fp_{{ c.post.id }}" value="{{ c.fingerprint }}">
 
                     {% with previews=c.previews media_items=c.media_items %}
-                    <details class="mb-3">
+                    <details class="mb-3" open>
                         <summary class="min-h-11 cursor-pointer py-2 text-sm font-medium text-stone-700">What each network will publish</summary>
                         {% include "composer/partials/approver_previews.html" %}
                     </details>
@@ -67,8 +67,8 @@
         </form>
         {% else %}
         <div class="py-20 text-center">
-            <p class="font-medium text-stone-600">All caught up</p>
-            <p class="mt-1 text-sm text-stone-500">No posts are waiting for your review right now.</p>
+            <p class="font-medium" style="color: var(--text-secondary);">All caught up</p>
+            <p class="mt-1 text-sm" style="color: var(--text-tertiary);">No posts are waiting for your review right now.</p>
         </div>
         {% endif %}
     </div>

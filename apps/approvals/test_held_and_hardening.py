@@ -5,6 +5,7 @@ from datetime import timedelta
 from unittest import mock
 
 from django.core import mail, signing
+from django.core.cache import cache
 from django.urls import reverse
 from django.utils import timezone
 
@@ -38,6 +39,11 @@ def held_action(ws, post, account, **extra):
 
 
 class LinkHardeningTests(OneTapBase):
+    def setUp(self):
+        super().setUp()
+        # The link and picture views are rate limited per address through the cache.
+        cache.clear()
+
     def test_token_is_bound_to_its_decision(self):
         post = self.make_post()
         self.links_for(post, self.reviewer)
@@ -108,13 +114,13 @@ class LinkHardeningTests(OneTapBase):
         services._notify_reviewers(
             self.ws, self.author, post=post, event_type="post_submitted", title="Review", body="Please"
         )
-        message = mail.outbox[-1]
+        message = next(m for m in mail.outbox if m.to == [self.reviewer.email])
         self.assertEqual(message.attachments, [])
         html = message.alternatives[0][0]
         src = re.search(r'<img src="([^"]+)"', html).group(1)
         self.assertIn("/approve-link/media/", src)
         redirect = self.client.get(self.path(src))
-        self.assertEqual(redirect.status_code, 302)
+        self.assertEqual(redirect.status_code, 302, redirect.content[:200])
         self.assertEqual(self.client.get(self.path(src) + "x").status_code, 404)
         self.assertIn("color-scheme", html)
         self.assertNotIn("&#x27;", message.body)
@@ -132,6 +138,7 @@ class DeadlineIdempotencyTests(OneTapBase):
 class HeldFromEmailTests(OneTapBase):
     # Approving held agent work schedules it, which a workspace with an approval workflow refuses.
     mode = "none"
+
     def setUp(self):
         super().setUp()
         self.post = Post.objects.create(workspace=self.ws, author=self.author, caption="Agent wrote this")

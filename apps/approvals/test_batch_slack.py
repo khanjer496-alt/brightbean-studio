@@ -60,7 +60,7 @@ class PreviewTests(OneTapBase):
         from apps.composer.previews import post_previews
 
         html = render_to_string("composer/partials/approver_previews.html", post_previews(post))
-        self.assertIn("Linkedin_Personal Preview", html)
+        self.assertIn("LinkedIn (Personal Profile) Preview", html)
         self.assertIn("Bluesky Preview", html)
         self.assertNotIn("style=", html)
 

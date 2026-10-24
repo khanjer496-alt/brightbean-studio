@@ -54,7 +54,7 @@ can_approve, display_timezone, and the parent Alpine scope (selectedPosts, diffO
             {# expanded preview #}
             <div x-show="expanded" x-cloak class="mt-3 pt-3 border-t border-stone-100 anim-collapse">
                 {# what each network will publish: the composer's own preview cards, loaded when opened #}
-                <div class="mb-3" hx-get="{% url 'approvals:post_previews' workspace_id=workspace.id post_id=post.id %}" hx-trigger="intersect once" hx-swap="innerHTML">
+                <div class="mb-3" hx-get="{% url 'approvals:post_previews' workspace_id=workspace.id post_id=post.id %}" hx-trigger="intersect once" hx-target="this" hx-select="[data-approver-previews]" hx-swap="innerHTML">
                     <p class="text-[0.8125rem] text-stone-400" role="status">Loading what each network will publish…</p>
                 </div>
                 {% if post.visible_comments %}
