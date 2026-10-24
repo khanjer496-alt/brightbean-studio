@@ -1,7 +1,7 @@
 """Short links, UTM tagging and click counting shared by the composer, the redirect, the REST API and MCP.
 
-Links are made when a post is *scheduled*, once per account, so each network gets its own ``utm_source``
-and its own short link (:func:`prepare_platform_post`). Nothing here reads a request except
+Links are made when an account's copy of a post is sent for review or *scheduled*, so each network gets its
+own ``utm_source`` and its own short link, and reviewers approve the final text (:func:`prepare_platform_post`). Nothing here reads a request except
 :func:`record_hit`, which turns the visitor into a throw-away token: address and browser are hashed under a
 random salt that exists only in the cache for about two days, used to dedupe and rate-limit there, and never
 written to the database or the logs.
@@ -367,6 +367,48 @@ def composer_prefs(workspace, post=None) -> dict:
 # Schedule time
 # ---------------------------------------------------------------------------
 
+# A copy's links are prepared when it is submitted for review (so reviewers and the approval fingerprint see the
+# final addresses) and when it is scheduled.
+PREPARE_STATUSES = ("pending_review", "scheduled")
+
+
+def _short_for(target, ctx) -> str:
+    """The short address for ``target`` in this copy: reused when one exists, else made now.
+
+    An external service that fails falls back to a built-in link (still counted, still short); a plan limit or
+    a refused address leaves the tagged address as it is. Either way ``ctx["problems"]`` says why.
+    """
+    existing = ctx["existing"].get(target)
+    if existing is not None:
+        return existing
+    made = {
+        "platform_post": ctx["pp"],
+        "post": ctx["pp"].post,
+        "social_account": ctx["pp"].social_account,
+    }
+    try:
+        existing = create_short_link(ctx["workspace"], target, link_settings=ctx["settings"], **made).short_url
+    except shorteners.ShortenerError as exc:
+        logger.warning("Link service failed for platform post %s; using a built-in link: %s", ctx["pp"].pk, exc)
+        builtin = LinkSettings(
+            workspace=ctx["workspace"],
+            provider=LinkSettings.Provider.BUILTIN,
+            custom_short_domain=ctx["settings"].custom_short_domain,
+        )
+        try:
+            existing = create_short_link(ctx["workspace"], target, link_settings=builtin, **made).short_url
+            ctx["problems"].append(f"{exc} A built-in short link was used instead.")
+        except LinkError as inner:
+            ctx["problems"].append(f"{exc} The link was left as typed.")
+            logger.warning("Link not shortened for platform post %s: %s", ctx["pp"].pk, inner)
+            existing = target
+    except LinkError as exc:
+        logger.warning("Link not shortened for platform post %s: %s", ctx["pp"].pk, exc)
+        ctx["problems"].append(f"{exc.message} The link was left as typed.")
+        existing = target
+    ctx["existing"][target] = existing
+    return existing
+
 
 def _rewrite(text, ctx) -> str:
     urls = extract_urls(text)
@@ -378,87 +420,158 @@ def _rewrite(text, ctx) -> str:
             continue
         target = apply_utm(url, ctx["utm"]) if ctx["utm"] else url
         if ctx["shorten"]:
-            existing = ctx["existing"].get(target)
-            if existing is None:
-                try:
-                    existing = create_short_link(
-                        ctx["workspace"],
-                        target,
-                        platform_post=ctx["pp"],
-                        post=ctx["pp"].post,
-                        social_account=ctx["pp"].social_account,
-                        link_settings=ctx["settings"],
-                    ).short_url
-                except (LinkError, shorteners.ShortenerError) as exc:
-                    logger.warning("Link not shortened for platform post %s: %s", ctx["pp"].pk, exc)
-                    existing = target
-                ctx["existing"][target] = existing
-            target = existing
+            target = _short_for(target, ctx)
         if target != url:
             mapping[url] = target
     return _replace_urls(text, mapping)
 
 
+def _approval_locked(pp) -> bool:
+    """True when ``pp`` carries final-approval proof for exactly its current content.
+
+    Such a copy is published as approved: its links are never rewritten afterwards, even if the workspace's link
+    settings changed since, because the publisher would refuse content that no longer matches the approval.
+    """
+    if not pp.approval_fingerprint:
+        return False
+    from apps.approvals.policy import publish_fingerprint
+
+    return pp.approval_fingerprint == publish_fingerprint(pp)
+
+
 def prepare_platform_post(pp) -> bool:
     """Tag and shorten the links in one account's copy of a post. Returns True when any text changed.
 
-    Safe to call again: an address that already carries its UTM parameters is left alone and one that is
-    already short is skipped, so re-scheduling never makes a second link.
+    The result is saved as the copy's caption (and first comment) override, so what reviewers see, what the
+    approval fingerprint covers and what is published are the same text. Safe to call again: an address that
+    already carries its UTM parameters is left alone, one that is already short is skipped and a link made
+    earlier for this copy is reused, so re-saving never makes a second link. An override we wrote from the
+    post's own caption is re-derived from that caption, so editing the post later isn't hidden behind it.
     """
     from apps.composer.models import PlatformPost, PlatformPostPart
 
+    from .models import PreparedCopy
+
+    if pp.status not in PREPARE_STATUSES:
+        return False
+    # Under review the old proof is about to be cleared; once scheduled, approved content is final.
+    if pp.status == "scheduled" and _approval_locked(pp):
+        return False
     post = pp.post
-    texts = [pp.effective_caption or "", pp.effective_first_comment or ""]
-    if not any("http" in t for t in texts) and not post.thread_parts.exists():
-        return False
+    record = PreparedCopy.objects.filter(platform_post=pp).first()
     link_settings = find_settings(post.workspace_id)
-    if link_settings is None:
-        return False
     shorten = effective_shorten(post, link_settings)
-    if not shorten and not link_settings.utm_enabled:
-        return False
+    active = link_settings is not None and (shorten or link_settings.utm_enabled)
+    if record is None:
+        texts = [pp.effective_caption or "", pp.effective_first_comment or ""]
+        if not active or (not any("http" in t for t in texts) and not post.thread_parts.exists()):
+            return False
     ctx = {
         "pp": pp,
         "workspace": post.workspace,
         "settings": link_settings,
         "shorten": shorten,
-        "utm": utm_params(link_settings, post, pp.social_account) if link_settings.utm_enabled else {},
+        "utm": utm_params(link_settings, post, pp.social_account) if active and link_settings.utm_enabled else {},
         "existing": {
             link.destination_url: link.short_url for link in ShortLink.objects.filter(platform_post=pp, is_active=True)
         },
+        "problems": [],
     }
-    changed = False
-    updates = {}
-    caption = _rewrite(pp.effective_caption or "", ctx)
-    if caption != (pp.effective_caption or ""):
-        updates["platform_specific_caption"] = caption
-    comment = _rewrite(pp.effective_first_comment or "", ctx)
-    if comment != (pp.effective_first_comment or ""):
-        updates["platform_specific_first_comment"] = comment
+    updates: dict = {}
+    derived: dict = {}
+    for field, base in (("caption", post.caption), ("first_comment", post.first_comment)):
+        override_name = f"platform_specific_{field}"
+        override = getattr(pp, override_name)
+        ours = record is not None and getattr(record, field) is not None and override == getattr(record, field)
+        # Our own earlier rewrite stands for the post's text: start again from that text as it is now.
+        source = base if (ours or override is None) else override
+        rewritten = _rewrite(source or "", ctx) if active else (source or "")
+        if ours or override is None:
+            value = rewritten if rewritten != (base or "") else None
+            derived[field] = value
+        else:
+            value = rewritten
+            derived[field] = None
+        if value != override:
+            updates[override_name] = value
+    changed = bool(updates)
     if updates:
         PlatformPost.objects.filter(pk=pp.pk).update(**updates)
         for name, value in updates.items():
             setattr(pp, name, value)
-        changed = True
-    for part in post.thread_parts.all():
-        state = PlatformPostPart.objects.filter(platform_post=pp, part=part).first()
-        if state is not None and state.status != PlatformPostPart.Status.PENDING:
-            continue
-        current = state.effective_caption if state is not None else part.caption
-        rewritten = _rewrite(current or "", ctx)
-        if rewritten != (current or ""):
-            if state is None:
-                PlatformPostPart.objects.create(platform_post=pp, part=part, platform_specific_caption=rewritten)
-            else:
-                PlatformPostPart.objects.filter(pk=state.pk).update(platform_specific_caption=rewritten)
-            changed = True
+    if active:
+        for part in post.thread_parts.all():
+            state = PlatformPostPart.objects.filter(platform_post=pp, part=part).first()
+            if state is not None and state.status != PlatformPostPart.Status.PENDING:
+                continue
+            current = state.effective_caption if state is not None else part.caption
+            rewritten = _rewrite(current or "", ctx)
+            if rewritten != (current or ""):
+                if state is None:
+                    PlatformPostPart.objects.create(platform_post=pp, part=part, platform_specific_caption=rewritten)
+                else:
+                    PlatformPostPart.objects.filter(pk=state.pk).update(platform_specific_caption=rewritten)
+                changed = True
+    if ctx["existing"]:
+        _drop_unused_links(pp)
+    problem = " ".join(dict.fromkeys(ctx["problems"]))[:300]
+    if any(derived.values()) or problem or record is not None:
+        PreparedCopy.objects.update_or_create(
+            platform_post=pp,
+            defaults={
+                "caption": derived.get("caption"),
+                "first_comment": derived.get("first_comment"),
+                "problem": problem,
+            },
+        )
     return changed
 
 
+def _drop_unused_links(pp) -> None:
+    """Delete links made for this copy that its text no longer uses and nobody ever opened.
+
+    The copy hasn't gone out, so such a link was never public: it came from text that was edited since (an
+    autosave caught a half-typed address, a link was removed). Keeping it would only use up the plan allowance.
+    """
+    from apps.composer.models import PlatformPostPart
+
+    texts = [pp.effective_caption or "", pp.effective_first_comment or ""]
+    texts += [
+        state.effective_caption or ""
+        for state in PlatformPostPart.objects.filter(platform_post=pp).select_related("part")
+    ]
+    texts += [part.caption or "" for part in pp.post.thread_parts.all()]
+    blob = "\n".join(texts)
+    unused = [
+        link.pk
+        for link in ShortLink.objects.filter(platform_post=pp, stats__isnull=True).distinct()
+        if link.short_url not in blob
+    ]
+    if unused:
+        ShortLink.objects.filter(pk__in=unused).delete()
+
+
 def prepare_post(post) -> None:
-    """:func:`prepare_platform_post` for each of ``post``'s scheduled accounts (used once thread parts exist)."""
-    for pp in post.platform_posts.select_related("social_account", "post").filter(status="scheduled"):
+    """:func:`prepare_platform_post` for each copy of ``post`` under review or scheduled.
+
+    Called when the post's own text changes (and once thread parts exist), so the copies follow the edit.
+    """
+    for pp in post.platform_posts.select_related("social_account", "post").filter(status__in=PREPARE_STATUSES):
         prepare_platform_post(pp)
+
+
+def link_problems(workspace) -> list:
+    """Copies still waiting to go out whose links couldn't all be shortened as chosen, newest first."""
+    from .models import PreparedCopy
+
+    return list(
+        PreparedCopy.objects.filter(
+            platform_post__post__workspace=workspace, platform_post__status__in=PREPARE_STATUSES
+        )
+        .exclude(problem="")
+        .select_related("platform_post__post", "platform_post__social_account")
+        .order_by("-updated_at")[:20]
+    )
 
 
 # ---------------------------------------------------------------------------

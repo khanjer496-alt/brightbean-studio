@@ -153,6 +153,7 @@ def link_list(request, workspace_id):
             "settings_active": "links",
             "links": links,
             "summary": summary,
+            "problems": services.link_problems(request.workspace),
             "can_create": perms.get("create_posts", False),
             "can_manage": any(perms.get(k, False) for k in ("manage_workspace_settings", "manage_social_accounts")),
         },

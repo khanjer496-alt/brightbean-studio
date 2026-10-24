@@ -291,3 +291,32 @@ class TestRepurpose:
         services.create_set(workspace, name="Client A", account_ids=[linkedin.id])
         html = login(owner).get(reverse("repurpose:home", kwargs={"workspace_id": workspace.id})).content.decode()
         assert 'name="set_post"' in html and "Client A" in html
+
+
+class TestDefaultValues:
+    def test_choice_and_switch_defaults_are_checked_per_platform(self, workspace, tiktok):
+        with pytest.raises(services.SetError, match="privacy_level must be one of"):
+            services.create_set(
+                workspace,
+                name="T",
+                account_ids=[tiktok.id],
+                defaults={str(tiktok.id): {"privacy_level": "EVERYONE_PLEASE"}},
+            )
+        with pytest.raises(services.SetError, match="true or false"):
+            services.create_set(
+                workspace, name="T", account_ids=[tiktok.id], defaults={str(tiktok.id): {"disable_duet": "yes"}}
+            )
+        made = services.create_set(
+            workspace,
+            name="T",
+            account_ids=[tiktok.id],
+            defaults={str(tiktok.id): {"privacy_level": "SELF_ONLY", "disable_duet": True}},
+        )
+        assert made.defaults == {str(tiktok.id): {"privacy_level": "SELF_ONLY", "disable_duet": True}}
+
+    def test_the_form_offers_choices_and_switches(self):
+        fields = {f["key"]: f for f in services.default_fields("tiktok")}
+        assert fields["privacy_level"]["kind"] == "select"
+        assert {"value": "SELF_ONLY", "label": "SELF_ONLY"} in fields["privacy_level"]["choices"]
+        assert fields["disable_duet"]["kind"] == "checkbox"
+        assert {f["key"]: f for f in services.default_fields("pinterest")}["board_id"]["kind"] == "text"

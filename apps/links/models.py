@@ -135,3 +135,27 @@ class LinkDailyStat(models.Model):
         db_table = "links_daily_stat"
         constraints = [models.UniqueConstraint(fields=["link", "day", "kind"], name="links_stat_unique")]
         indexes = [models.Index(fields=["day"], name="links_stat_day")]
+
+
+class PreparedCopy(models.Model):
+    """What link preparation last wrote into one account's copy of a post.
+
+    Tagged and shortened text is saved as the account's caption override, so the
+    publisher, previews and the approval fingerprint all see the final links. Kept
+    here so a later edit of the post's own caption is not hidden behind that
+    override: when the override is still exactly what we wrote from the post's
+    caption, the next preparation starts again from the (edited) caption.
+    """
+
+    platform_post = models.OneToOneField(
+        "composer.PlatformPost", on_delete=models.CASCADE, related_name="prepared_links"
+    )
+    # The override we derived from the post's caption / first comment; None when the override is the author's own.
+    caption = models.TextField(null=True, blank=True)
+    first_comment = models.TextField(null=True, blank=True)
+    # Why a link was left long or made on the built-in service instead of the chosen one ("" when all went well).
+    problem = models.CharField(max_length=300, blank=True, default="")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "links_prepared_copy"

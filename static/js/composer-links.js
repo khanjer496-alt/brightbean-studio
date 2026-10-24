@@ -1,15 +1,16 @@
 /**
  * Composer short links: how links count against a limit once they are shortened, and when to ask.
  *
- * Loaded by composer/compose.html. Links are shortened on the server when a post is scheduled (one short
- * link per account); here the live counter only has to know their length, and the "ask" preference has to
- * decide whether to put the question to the author before scheduling. Pure functions, no DOM, so they are
+ * Loaded by composer/compose.html. Links are shortened on the server when a post is scheduled or sent for
+ * review (one short link per account); here the live counter only has to know their length, and the "ask"
+ * preference has to decide whether to put the question to the author before scheduling or submitting. Pure functions, no DOM, so they are
  * tested with node (tests/frontend/composer-links.test.cjs).
  */
 (function (root) {
     const URL_PATTERN = /https?:\/\/[^\s<>"]+/gi;
     const TRAILING = '.,!?:;)]}\'’”';
-    const SCHEDULING_ACTIONS = ['schedule', 'publish_now', 'add_to_queue', 'add_to_queue_priority'];
+    // Links are rewritten when a post is scheduled or sent for review (so reviewers approve the final links).
+    const SCHEDULING_ACTIONS = ['schedule', 'publish_now', 'add_to_queue', 'add_to_queue_priority', 'submit_for_approval', 'resubmit_for_approval'];
 
     function trimUrl(url) {
         let end = url.length;

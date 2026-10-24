@@ -7,7 +7,7 @@ from django.db import IntegrityError, transaction
 
 from apps.billing.entitlements import PlanLimitError, check_can_add_account_set
 from apps.social_accounts.models import SocialAccount
-from providers import PROVIDER_REGISTRY, account_default_keys_for
+from providers import PROVIDER_REGISTRY, account_default_choices_for, account_default_keys_for
 
 from .models import AccountSet
 
@@ -88,6 +88,7 @@ def clean_defaults(accounts, defaults) -> dict[str, dict]:
                 f"{account.get_platform_display()} can't default {', '.join(unknown)}; it offers: {offered}.",
                 "defaults",
             )
+        choices = account_default_choices_for(account.platform)
         kept = {}
         for key, value in values.items():
             if value is None or value == "":
@@ -96,6 +97,13 @@ def clean_defaults(accounts, defaults) -> dict[str, dict]:
                 raise SetError(f"The value for {key} is too long.", "defaults")
             if not isinstance(value, (str, bool, int)):
                 raise SetError(f"The value for {key} must be text or true/false.", "defaults")
+            allowed_values = choices.get(key)
+            if allowed_values is not None:
+                # ``True in (1, 0)`` is true in Python, so a switch must be a real boolean.
+                is_switch = set(allowed_values) == {True, False}
+                if (is_switch and not isinstance(value, bool)) or (not is_switch and value not in allowed_values):
+                    shown = "true or false" if is_switch else ", ".join(str(v) for v in allowed_values)
+                    raise SetError(f"{account.get_platform_display()} {key} must be one of: {shown}.", "defaults")
             kept[key] = value
         if kept:
             cleaned[str(account.id)] = kept
@@ -206,19 +214,23 @@ def default_fields(platform: str) -> list[dict]:
         return []
     declared = [field.as_dict() for field in provider_cls.post_settings]
     declared_keys = {field["key"] for field in declared}
-    extra = [
-        {
-            "key": key,
-            "label": key.replace("_", " ").capitalize(),
-            "kind": "text",
-            "choices": [],
-            "help": "",
-            "placeholder": "",
-            "options_from_provider": False,
-        }
-        for key in provider_cls.account_default_keys
-        if key not in declared_keys
-    ]
+    extra = []
+    for key in provider_cls.account_default_keys:
+        if key in declared_keys:
+            continue
+        allowed = provider_cls.account_default_choices.get(key)
+        is_switch = allowed is not None and set(allowed) == {True, False}
+        extra.append(
+            {
+                "key": key,
+                "label": key.replace("_", " ").capitalize(),
+                "kind": "checkbox" if is_switch else ("select" if allowed else "text"),
+                "choices": [] if is_switch or not allowed else [{"value": v, "label": str(v)} for v in allowed],
+                "help": "",
+                "placeholder": "",
+                "options_from_provider": False,
+            }
+        )
     return declared + extra
 
 

@@ -18,7 +18,7 @@
 
         <fieldset class="flex flex-col gap-3">
             <legend class="text-sm font-semibold mb-1 text-[var(--text-primary)]">Shorten links</legend>
-            <label for="link-shorten-mode" class="text-xs text-[var(--text-tertiary)]">Links are shortened per account when a post is scheduled, so each network gets its own short link.</label>
+            <label for="link-shorten-mode" class="text-xs text-[var(--text-tertiary)]">Links are shortened per account when a post is scheduled or sent for review, so each network gets its own short link and reviewers approve the final links.</label>
             <select id="link-shorten-mode" name="shorten_mode" class="form-input-styled text-sm">
                 {% for value, label in modes %}
                 <option value="{{ value }}"{% if link_settings.shorten_mode == value %} selected{% endif %}>{{ label }}</option>
@@ -74,7 +74,7 @@
             <legend class="text-sm font-semibold mb-1 text-[var(--text-primary)]">UTM tags</legend>
             <label class="flex items-center gap-3 min-h-11 cursor-pointer">
                 <input type="checkbox" name="utm_enabled" class="w-4 h-4"{% if link_settings.utm_enabled %} checked{% endif %}>
-                <span class="text-sm text-[var(--text-primary)]">Add UTM parameters to links when a post is scheduled</span>
+                <span class="text-sm text-[var(--text-primary)]">Add UTM parameters to links when a post is scheduled or sent for review</span>
             </label>
             <p class="text-xs text-[var(--text-tertiary)]">The source is the network each copy goes to, set automatically. A parameter already on a link is never changed.</p>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">

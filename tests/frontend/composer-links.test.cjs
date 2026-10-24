@@ -35,6 +35,7 @@ test('needsPrompt asks only in ask mode, undecided, when scheduling a post with 
   const base = { mode: 'ask', choice: '', texts: ['hi https://example.com'], action: 'schedule', shortPrefix: 'https://pd.test/s/' };
   assert.equal(links.needsPrompt(base), true);
   assert.equal(links.needsPrompt({ ...base, action: 'save_draft' }), false);
+  assert.equal(links.needsPrompt({ ...base, action: 'submit_for_approval' }), true);
   assert.equal(links.needsPrompt({ ...base, choice: '0' }), false);
   assert.equal(links.needsPrompt({ ...base, mode: 'always' }), false);
   assert.equal(links.needsPrompt({ ...base, texts: ['no links here'] }), false);

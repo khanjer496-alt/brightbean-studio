@@ -28,6 +28,21 @@
     </form>
     {% endif %}
 
+    {% if problems %}
+    <section class="mb-6 p-4 rounded-lg border border-[var(--warning-500)] bg-[var(--warning-50)]" aria-labelledby="link-problems-heading">
+        <h3 id="link-problems-heading" class="text-sm font-semibold text-[var(--warning-700)]">Some links in upcoming posts weren&rsquo;t shortened as set up</h3>
+        <ul class="mt-2 flex flex-col gap-1.5">
+            {% for item in problems %}
+            <li class="text-xs text-[var(--text-primary)]">
+                <span class="font-medium">{{ item.platform_post.social_account.account_name|default:item.platform_post.social_account.get_platform_display }}</span>
+                &middot; &ldquo;{{ item.platform_post.post.caption_snippet }}&rdquo;: {{ item.problem }}
+            </li>
+            {% endfor %}
+        </ul>
+        <p class="mt-2 text-xs text-[var(--text-secondary)]">Fix the cause, then save the post again to retry.</p>
+    </section>
+    {% endif %}
+
     {% if links %}
     <ul class="flex flex-col gap-3">
         {% for link in links %}

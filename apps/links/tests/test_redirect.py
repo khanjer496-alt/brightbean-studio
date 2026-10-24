@@ -186,7 +186,40 @@ class TestCustomShortDomain:
         # nothing else of the app is reachable there
         assert Client().get("/accounts/login/", HTTP_HOST="go.example.com", **BROWSER).status_code == 404
 
-    def test_built_in_links_use_the_custom_domain_when_set(self, workspace):
+    def test_built_in_links_use_the_custom_domain_when_set(self, workspace, settings):
+        settings.ALLOWED_HOSTS = ["*"]
+        settings.LINKS_CUSTOM_DOMAINS_ENABLED = True
+        cache.clear()
         services.update_settings(workspace, custom_short_domain="go.example.com")
         made = services.create_short_link(workspace, "https://example.com/x")
         assert made.short_url == f"https://go.example.com/s/{made.code}"
+        # the address it was made with is the one that works there
+        response = Client().get(f"/s/{made.code}", HTTP_HOST="go.example.com", **BROWSER)
+        assert response.status_code == 301 and response["Location"] == "https://example.com/x"
+
+    def test_a_workspace_domain_serves_only_its_own_links(self, workspace, settings):
+        from apps.organizations.models import Organization
+        from apps.workspaces.models import Workspace
+
+        settings.ALLOWED_HOSTS = ["*"]
+        settings.LINKS_CUSTOM_DOMAINS_ENABLED = True
+        cache.clear()
+        services.update_settings(workspace, custom_short_domain="go.example.com")
+        other = Workspace.objects.create(organization=Organization.objects.create(name="Other"), name="Other")
+        theirs = services.create_short_link(other, "https://phish.example.net/login")
+        assert Client().get(f"/{theirs.code}", HTTP_HOST="go.example.com", **BROWSER).status_code == 404
+        # still served on the app's own address
+        assert visit(theirs.code).status_code == 301
+
+
+class TestRobustness:
+    def test_a_destination_with_credentials_is_never_followed(self, link):
+        ShortLink.objects.filter(pk=link.pk).update(destination_url="https://user:pw@example.com/")
+        assert visit(link.code).status_code == 404
+
+    def test_a_counting_failure_still_redirects(self, link, monkeypatch):
+        def broken(*args, **kwargs):
+            raise RuntimeError("cache down")
+
+        monkeypatch.setattr(services, "record_hit", broken)
+        assert visit(link.code).status_code == 301

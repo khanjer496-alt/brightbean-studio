@@ -177,6 +177,10 @@ class YouTubeProvider(SocialProvider):
 
     media_rules = YOUTUBE_MEDIA_RULES
     account_default_keys = ("privacy_status", "self_declared_made_for_kids")
+    account_default_choices = {
+        "privacy_status": ("public", "unlisted", "private"),
+        "self_declared_made_for_kids": (True, False),
+    }
 
     supports_public_profile_metrics = True
     competitor_handle_hint = "@channelhandle"

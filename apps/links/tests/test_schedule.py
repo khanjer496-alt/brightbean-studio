@@ -14,7 +14,7 @@ from django.utils import timezone
 from apps.composer.models import PlatformPost, PlatformPostPart, PostPart
 from apps.composer.services import create_post, set_post_parts, thread_blocker, transition_platform_post
 from apps.links import services
-from apps.links.models import ShortLink
+from apps.links.models import PreparedCopy, ShortLink
 
 from .conftest import BROWSER, configure, schedule_post
 
@@ -259,16 +259,33 @@ class TestCounting:
 
 
 class TestExternalFailure:
-    def test_a_failing_service_leaves_the_tagged_address_in_place(self, workspace, linkedin, mock_http):
+    def test_a_failing_service_falls_back_to_a_built_in_link_and_says_so(self, workspace, owner, linkedin, mock_http):
         configure(workspace, provider="dub", api_key="key-1", utm_enabled=True)
         mock_http.reply(lambda request: httpx.Response(500))
         _, (a,) = schedule_post(workspace, [linkedin], f"Read {LONG}")
         text = schedule(a).effective_caption
-        assert (
-            text.startswith("Read https://shop.example.com/")
-            and query(services.extract_urls(text)[0])["utm_source"] == "linkedin"
-        )
-        assert ShortLink.objects.count() == 0
+        link = ShortLink.objects.get()
+        assert link.provider == "builtin" and text == f"Read {link.short_url}"
+        assert query(link.destination_url)["utm_source"] == "linkedin"
+        problem = PreparedCopy.objects.get(platform_post=a).problem
+        assert "error (500)" in problem and "built-in" in problem
+        client = Client()
+        client.force_login(owner)
+        page = client.get(reverse("links:list", kwargs={"workspace_id": workspace.id}))
+        assert "built-in short link was used instead" in page.content.decode()
+
+    def test_a_plan_limit_leaves_the_tagged_address_and_says_so(self, workspace, linkedin, monkeypatch):
+        from apps.billing.entitlements import PlanLimitError
+
+        def refuse(org):
+            raise PlanLimitError("Your plan includes 0 short links a month.", code="short_link_limit")
+
+        monkeypatch.setattr(services, "check_can_create_short_link", refuse)
+        configure(workspace, utm_enabled=True)
+        _, (a,) = schedule_post(workspace, [linkedin], f"Read {LONG}")
+        text = schedule(a).effective_caption
+        assert text.startswith("Read https://shop.example.com/") and "utm_source=linkedin" in text
+        assert "left as typed" in PreparedCopy.objects.get(platform_post=a).problem
 
     def test_an_external_service_makes_the_short_links(self, workspace, linkedin, mock_http):
         configure(workspace, provider="dub", api_key="key-1")
@@ -352,3 +369,99 @@ class TestPlanLimit:
             services.create_short_link(workspace, "https://example.com/more")
         set_plan(workspace.organization, "agency")
         assert services.create_short_link(workspace, "https://example.com/more")
+
+
+class TestEditsAfterScheduling:
+    def test_editing_the_post_caption_is_not_hidden_behind_the_rewritten_copy(self, workspace, linkedin):
+        configure(workspace)
+        post, (a,) = schedule_post(workspace, [linkedin], f"Read {LONG}")
+        first = schedule(a)
+        old_link = ShortLink.objects.get()
+        assert first.effective_caption == f"Read {old_link.short_url}"
+        # an edit through the API or an autosave changes only the post's own caption
+        post.caption = f"Now read {LONG} and https://other.example.org/page"
+        post.save(update_fields=["caption", "updated_at"])
+        a = PlatformPost.objects.get(pk=a.pk)
+        links = {link.destination_url: link.short_url for link in ShortLink.objects.all()}
+        assert a.effective_caption == f"Now read {links[LONG]} and {links['https://other.example.org/page']}"
+        assert links[LONG] == old_link.short_url  # the same address keeps its link
+
+    def test_removing_the_link_restores_the_post_text_and_drops_the_unused_link(self, workspace, linkedin):
+        configure(workspace)
+        post, (a,) = schedule_post(workspace, [linkedin], f"Read {LONG}")
+        schedule(a)
+        post.caption = "No link any more"
+        post.save()
+        a = PlatformPost.objects.get(pk=a.pk)
+        assert a.platform_specific_caption is None and a.effective_caption == "No link any more"
+        assert not ShortLink.objects.exists()
+
+    def test_turning_shortening_off_for_the_post_restores_the_typed_links(self, workspace, linkedin):
+        configure(workspace)
+        post, (a,) = schedule_post(workspace, [linkedin], f"Read {LONG}")
+        schedule(a)
+        post.shorten_links = False
+        post.save(update_fields=["shorten_links"])
+        assert PlatformPost.objects.get(pk=a.pk).effective_caption == f"Read {LONG}"
+
+    def test_an_authors_own_override_is_kept_and_only_its_links_change(self, workspace, linkedin):
+        configure(workspace)
+        post, (a,) = schedule_post(workspace, [linkedin], "Base text")
+        a.platform_specific_caption = f"Custom {LONG}"
+        a.save()
+        a = schedule(a)
+        link = ShortLink.objects.get()
+        assert a.effective_caption == f"Custom {link.short_url}"
+        post.caption = "Edited base"
+        post.save()
+        assert PlatformPost.objects.get(pk=a.pk).effective_caption == f"Custom {link.short_url}"
+
+    def test_saves_that_do_not_touch_text_do_nothing(self, workspace, linkedin, django_assert_max_num_queries):
+        configure(workspace)
+        post, (a,) = schedule_post(workspace, [linkedin], f"Read {LONG}")
+        a = schedule(a)
+        with django_assert_max_num_queries(2):  # the two UPDATEs and nothing else
+            a.save(update_fields=["scheduled_at"])
+            post.save(update_fields=["internal_notes"])
+
+
+class TestApprovals:
+    @pytest.fixture
+    def approval_workspace(self, workspace, owner):
+        workspace.approval_workflow_mode = "required_internal"
+        workspace.save(update_fields=["approval_workflow_mode"])
+        return workspace
+
+    def test_reviewers_approve_the_final_links_and_scheduling_keeps_the_approval(
+        self, approval_workspace, owner, linkedin
+    ):
+        from apps.approvals import services as approvals
+        from apps.approvals.policy import approval_allows_publish
+
+        configure(approval_workspace, utm_enabled=True)
+        post, (a,) = schedule_post(approval_workspace, [linkedin], f"Read {LONG}")
+        post.author = owner
+        post.save(update_fields=["author"])
+        approvals.submit_for_review(post, owner, approval_workspace)
+        a = PlatformPost.objects.get(pk=a.pk)
+        link = ShortLink.objects.get()
+        # what the reviewer sees is already the final text
+        assert a.status == "pending_review" and a.effective_caption == f"Read {link.short_url}"
+        approvals.approve_post(post, owner, approval_workspace)
+        a = PlatformPost.objects.get(pk=a.pk)
+        a = schedule(a)
+        assert a.effective_caption == f"Read {link.short_url}"
+        assert approval_allows_publish(a)
+        assert ShortLink.objects.count() == 1
+
+    def test_settings_changed_after_approval_never_rewrite_approved_content(self, approval_workspace, owner, linkedin):
+        from apps.approvals import services as approvals
+        from apps.approvals.policy import approval_allows_publish
+
+        post, (a,) = schedule_post(approval_workspace, [linkedin], f"Read {LONG}")
+        approvals.submit_for_review(post, owner, approval_workspace)
+        approvals.approve_post(post, owner, approval_workspace)
+        configure(approval_workspace, utm_enabled=True)  # turned on after the reviewer said yes
+        a = schedule(PlatformPost.objects.get(pk=a.pk))
+        assert a.effective_caption == f"Read {LONG}"
+        assert approval_allows_publish(a) and not ShortLink.objects.exists()
