@@ -129,6 +129,7 @@ LOCAL_APPS = [
     "apps.plugs",
     "apps.autopost",
     "apps.legal",
+    "apps.connect",
     "theme",
 ]
 
@@ -805,6 +806,10 @@ RATELIMIT_USE_CACHE = "default"
 #   MCP_OAUTH_ISSUER_URL — origin of the OAuth Authorization Server (where
 #     /oauth/authorize/ sends unauthenticated users to log in via allauth).
 MCP_PUBLIC_BASE_URL = env("MCP_PUBLIC_BASE_URL", default=APP_URL).rstrip("/")
+# GitHub ``owner/repo`` of the public Claude plugin marketplace (integrations/claude); the Connect page shows the
+# install command only when this is set. MCP_WIDGET_DOMAIN is the dedicated origin ChatGPT renders the widgets on.
+AI_PLUGIN_MARKETPLACE_REPO = env("AI_PLUGIN_MARKETPLACE_REPO", default="")
+MCP_WIDGET_DOMAIN = env("MCP_WIDGET_DOMAIN", default="").rstrip("/")
 MCP_OAUTH_ISSUER_URL = env("MCP_OAUTH_ISSUER_URL", default=APP_URL).rstrip("/")
 
 # django-oauth-toolkit's default, named so ``apps.api_keys.ConnectedApp`` can point at the (swappable) model.
@@ -830,8 +835,8 @@ OAUTH2_PROVIDER = {
     # Always show the consent screen: it is where the person narrows what the client may do, so a returning
     # client must not be waved through on an earlier grant.
     "REQUEST_APPROVAL_PROMPT": "force",
-    # Claude's OAuth callback is always https; reject non-TLS redirect URIs.
-    "ALLOWED_REDIRECT_URI_SCHEMES": ["https"],
+    # Hosted clients redirect over https; http is allowed for loopback redirects only: dynamic client registration refuses any other http URI.
+    "ALLOWED_REDIRECT_URI_SCHEMES": ["https", "http"],
 }
 
 

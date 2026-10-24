@@ -18,6 +18,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from apps.api_keys import capabilities as caps
+from apps.mcp.widgets import widget_for_tool
+
 
 @dataclass(frozen=True)
 class Tool:
@@ -31,12 +34,23 @@ class Tool:
     read_only: bool = False
 
     def to_mcp_dict(self) -> dict:
-        """Wire shape returned by ``tools/list`` per the MCP spec."""
-        return {
+        """Wire shape returned by ``tools/list`` per the MCP spec.
+
+        ``title`` and ``annotations`` come from the capability registry (``apps.api_keys.capabilities``), so a new
+        tool is annotated by the capability it is mapped to, not by a flag someone has to remember. A tool that
+        renders in a widget also names it in ``_meta``.
+        """
+        out: dict = {
             "name": self.name,
+            "title": caps.tool_title(self.name),
             "description": self.description,
             "inputSchema": self.input_schema,
+            "annotations": caps.tool_annotations(self.name),
         }
+        widget = widget_for_tool(self.name)
+        if widget is not None:
+            out["_meta"] = widget.tool_meta()
+        return out
 
 
 _REGISTRY: dict[str, Tool] = {}

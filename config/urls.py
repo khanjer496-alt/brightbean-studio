@@ -121,6 +121,7 @@ urlpatterns = [
     # Client Portal (Stream F)
     path("portal/", include("apps.client_portal.urls")),
     path("legal/", include("apps.legal.urls")),
+    path("connect/", include("apps.connect.urls")),
     path("notifications/", include("apps.notifications.urls")),
     path("onboarding/", include("apps.onboarding.urls")),
     path("organizations/media/", include("apps.media_library.urls_org")),

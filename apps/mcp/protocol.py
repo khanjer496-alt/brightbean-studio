@@ -11,7 +11,7 @@ implement (and don't need for v1):
   sampling or progress notifications.
 * Sessions — our bearer token IS the session; clients carry it in the
   ``Authorization`` header, so ``Mcp-Session-Id`` adds no value.
-* Resources, prompts, sampling — tools-only catalog for v1.
+* Prompts, sampling — tools plus the UI widget resources (``apps.mcp.widgets``).
 
 The reason for rolling our own rather than depending on the official
 ``mcp`` SDK: the SDK's HTTP transport assumes Starlette/ASGI, and the
@@ -47,6 +47,8 @@ INVALID_REQUEST = -32600
 METHOD_NOT_FOUND = -32601
 INVALID_PARAMS = -32602
 INTERNAL_ERROR = -32603
+#: MCP-specific: ``resources/read`` for a URI the server does not have.
+RESOURCE_NOT_FOUND = -32002
 
 
 class JsonRpcError(Exception):

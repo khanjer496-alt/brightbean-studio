@@ -30,12 +30,14 @@ from apps.mcp.protocol import (
     INVALID_REQUEST,
     MCP_PROTOCOL_VERSION,
     PARSE_ERROR,
+    RESOURCE_NOT_FOUND,
     SERVER_VERSION,
     JsonRpcError,
     dispatch,
     make_error,
 )
 from apps.mcp.tools import all_tools, get_tool
+from apps.mcp.widgets import WIDGETS, widget_for_uri
 
 router = Router(tags=["mcp"])
 
@@ -58,6 +60,8 @@ def _initialize(params: dict, context: dict[str, Any]) -> dict:
         "capabilities": {
             # Static tool catalog; we don't send listChanged notifications.
             "tools": {"listChanged": False},
+            # The UI widgets that a few tools render in (apps.mcp.widgets).
+            "resources": {"subscribe": False, "listChanged": False},
         },
         "serverInfo": {"name": settings.MCP_SERVER_NAME, "version": SERVER_VERSION},
     }
@@ -77,6 +81,24 @@ def _tools_list(params: dict, context: dict[str, Any]) -> dict:
     # A token limited to some capabilities is shown only the tools it can use.
     held = caps.token_capabilities(context["api_key"])
     return {"tools": [t.to_mcp_dict() for t in all_tools() if caps.allows_tool(held, t.name)]}
+
+
+def _resources_list(params: dict, context: dict[str, Any]) -> dict:
+    return {"resources": [w.resource_descriptor() for w in WIDGETS]}
+
+
+def _resources_templates_list(params: dict, context: dict[str, Any]) -> dict:
+    return {"resourceTemplates": []}
+
+
+def _resources_read(params: dict, context: dict[str, Any]) -> dict:
+    uri = params.get("uri")
+    if not isinstance(uri, str):
+        raise JsonRpcError(INVALID_PARAMS, "resources/read: 'uri' is required")
+    widget = widget_for_uri(uri)
+    if widget is None:
+        raise JsonRpcError(RESOURCE_NOT_FOUND, f"Resource not found: {uri}")
+    return {"contents": [widget.content()]}
 
 
 def _tools_call(params: dict, context: dict[str, Any]) -> dict:
@@ -153,6 +175,9 @@ METHODS = {
     "ping": _ping,
     "tools/list": _tools_list,
     "tools/call": _tools_call,
+    "resources/list": _resources_list,
+    "resources/templates/list": _resources_templates_list,
+    "resources/read": _resources_read,
 }
 
 
@@ -316,10 +341,7 @@ _SPEC_METHODS_WE_DONT_SERVE = frozenset(
         "notifications/roots/list_changed",
         "prompts/get",
         "prompts/list",
-        "resources/list",
-        "resources/read",
         "resources/subscribe",
-        "resources/templates/list",
         "resources/unsubscribe",
     }
 )

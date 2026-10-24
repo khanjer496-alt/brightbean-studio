@@ -617,6 +617,88 @@ def tool_uses_ai(name: str) -> bool:
     return name in _ONE_AI_CALL_TOOLS
 
 
+# MCP tool annotations (spec 2025-06-18 ``ToolAnnotations``), derived here so the capability a tool belongs to decides
+# how a client may treat it. Claude's connector directory and ChatGPT's app review both require them.
+#
+# * ``readOnlyHint``: the tool sits in a ``low`` risk capability (those only read), or its name is a lookup verb
+#   (``get_``/``list_``/``find_``/``search_``: the approvals and repurposing capabilities mix reads and writes).
+# * ``destructiveHint``: a write that is not purely additive. Creating something new is additive; updating, deleting,
+#   cancelling, rotating, reviewing or sending changes or discards something that was there.
+# * ``idempotentHint``: repeating a write with the same arguments has no further effect (updates, deletes, cancels).
+# * ``openWorldHint``: the tool reaches beyond the workspace: it publishes to or acts on a connected network, emails
+#   people, calls a URL the caller chose, or returns text strangers wrote (inbox).
+
+_READ_VERBS = ("get_", "list_", "find_", "search_")
+_ADDITIVE_VERBS = (
+    "create_",
+    "add_",
+    "duplicate_",
+    "request_",
+    "finalize_",
+    "upload_",
+    "generate_",
+    "adapt_",
+    "schedule_",
+    "resume_",
+    "accept_",
+    "run_",
+    "check_",
+    "resend_",
+    "send_webhook_test",
+)
+_IDEMPOTENT_VERBS = ("update_", "delete_", "remove_", "cancel_", "discard_", "pause_", "stop_", "rename_")
+
+#: Tools that act outside the workspace. Every name must be a real tool (a test enforces it).
+OPEN_WORLD_TOOLS = frozenset(
+    {
+        "schedule_post",
+        "schedule_draft",
+        "resume_thread",
+        "add_post_to_queue",
+        "send_reply",
+        "create_plug_rule",
+        "update_plug_rule",
+        "add_feed",
+        "check_feed",
+        "update_feed_autopost",
+        "create_repurpose_job",
+        "upload_media",
+        "send_webhook_test",
+        "resend_webhook_delivery",
+        "run_report",
+        "list_inbox_messages",
+        "get_inbox_message",
+    }
+)
+
+
+def tool_is_read_only(name: str) -> bool:
+    cap = _BY_KEY.get(TOOL_CAPABILITY.get(name, ""))
+    return name.startswith(_READ_VERBS) or (cap is not None and cap.risk == "low")
+
+
+def tool_annotations(name: str) -> dict[str, bool]:
+    """MCP ``annotations`` for the tool ``name``, from its capability and verb."""
+    if tool_is_read_only(name):
+        return {
+            "readOnlyHint": True,
+            "destructiveHint": False,
+            "idempotentHint": True,
+            "openWorldHint": name in OPEN_WORLD_TOOLS,
+        }
+    return {
+        "readOnlyHint": False,
+        "destructiveHint": not name.startswith(_ADDITIVE_VERBS),
+        "idempotentHint": name.startswith(_IDEMPOTENT_VERBS),
+        "openWorldHint": name in OPEN_WORLD_TOOLS,
+    }
+
+
+def tool_title(name: str) -> str:
+    """Human title for the tool: ``schedule_post`` becomes ``Schedule post``."""
+    return name.replace("_", " ").capitalize()
+
+
 # Route matching. A route is "METHOD /path/{param}"; a request is matched on its method and path.
 
 _PARAM = re.compile(r"\{[^}]+\}")

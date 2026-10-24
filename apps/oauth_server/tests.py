@@ -60,6 +60,23 @@ class TestDynamicClientRegistration:
         assert r.status_code == 400
         assert r.json()["error"] == "invalid_redirect_uri"
 
+    @pytest.mark.parametrize(
+        "uri",
+        ["http://localhost/callback", "http://127.0.0.1:33418/callback", "http://[::1]:8787/callback"],
+    )
+    def test_accepts_loopback_http_redirect(self, uri):
+        r = _register(Client(), {"redirect_uris": [uri], "token_endpoint_auth_method": "none"})
+        assert r.status_code == 201
+        assert r.json()["redirect_uris"] == [uri]
+
+    @pytest.mark.parametrize(
+        "uri",
+        ["http://localhost.evil.example/cb", "http://10.0.0.1/cb", "http://127.0.0.1/cb#frag", "ftp://127.0.0.1/cb"],
+    )
+    def test_rejects_non_loopback_http_redirect(self, uri):
+        r = _register(Client(), {"redirect_uris": [uri]})
+        assert r.status_code == 400
+
     def test_rejects_missing_redirect(self):
         r = _register(Client(), {"client_name": "x"})
         assert r.status_code == 400

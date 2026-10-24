@@ -91,11 +91,21 @@ def _dcr_rate_limited(request) -> bool:
     return global_count > _DCR_GLOBAL_LIMIT
 
 
+_LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1"})
+
+
 def _is_https_uri(value) -> bool:
+    """A redirect URI a client may register: absolute https, or http on the loopback interface (RFC 8252 §7.3).
+
+    Command-line and desktop clients (Claude Code, Cursor, VS Code) receive the code on a loopback port they pick at
+    run time; django-oauth-toolkit matches a registered loopback URI on any port.
+    """
     if not isinstance(value, str):
         return False
     parsed = urlparse(value)
-    return parsed.scheme == "https" and bool(parsed.netloc)
+    if parsed.scheme == "https":
+        return bool(parsed.netloc)
+    return parsed.scheme == "http" and parsed.hostname in _LOOPBACK_HOSTS and not parsed.fragment
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -131,7 +141,7 @@ class RegisterView(View):
         if not all(_is_https_uri(u) for u in redirect_uris):
             return _dcr_error(
                 "invalid_redirect_uri",
-                "Each redirect_uri must be an absolute https URL.",
+                "Each redirect_uri must be an absolute https URL (or http on localhost, 127.0.0.1 or [::1]).",
             )
 
         grant_types = body.get("grant_types") or ["authorization_code"]
