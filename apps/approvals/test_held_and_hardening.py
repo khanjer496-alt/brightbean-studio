@@ -103,10 +103,9 @@ class LinkHardeningTests(OneTapBase):
         from apps.composer.models import PostMedia
         from apps.media_library.models import MediaAsset
 
-        # The picture is really written to storage, so give the test its own
-        # disk and its own default storage. It used to write into the shared
-        # MEDIA_ROOT through whatever default storage the process had by then,
-        # which is what the S3 and temp-directory media suites replace.
+        # The picture is really written to storage, so the test gets its own
+        # disk and an explicit local default storage rather than the shared
+        # test_media directory, which every run in this checkout writes into.
         media_root = tempfile.mkdtemp(prefix="bb-test-media-")
         self.addCleanup(shutil.rmtree, media_root, ignore_errors=True)
         storage = override_settings(
