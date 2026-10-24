@@ -18,7 +18,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .entitlements import get_subscription
-from .models import ProcessedStripeEvent, Subscription
+from .models import LINKED_STATUSES, ProcessedStripeEvent, Subscription
 from .plans import FREE, Plan, plan_for_price_id
 
 logger = logging.getLogger(__name__)
@@ -31,11 +31,13 @@ _STRIPE_STATUS = {
     "active": Subscription.Status.ACTIVE,
     "past_due": Subscription.Status.PAST_DUE,
     "incomplete": Subscription.Status.INCOMPLETE,
+    # Stripe keeps these subscriptions, so they stay linked: ``unpaid`` gets
+    # the same grace period as ``past_due`` and then Free, ``paused`` is Free.
+    "unpaid": Subscription.Status.UNPAID,
+    "paused": Subscription.Status.PAUSED,
     # Everything else has stopped billing: the organization is on Free.
     "canceled": Subscription.Status.CANCELED,
-    "unpaid": Subscription.Status.CANCELED,
     "incomplete_expired": Subscription.Status.CANCELED,
-    "paused": Subscription.Status.CANCELED,
 }
 
 
@@ -135,6 +137,16 @@ def change_plan(org, plan: Plan, interval: str) -> Subscription:
     return sub
 
 
+def manage_existing_subscription(org) -> str:
+    """Where to send an organization that already has a Stripe subscription and wants another plan.
+
+    An ``unpaid`` or ``paused`` subscription can't be re-priced in place, and
+    a new Checkout would start a second live subscription next to it, so the
+    Customer Portal (resume, pay the open invoice, change plan) is the way.
+    """
+    return create_portal_session(org)
+
+
 def cancel_subscription_now(org) -> None:
     """End the organization's subscription today, without a refund, because the organization is being deleted.
 
@@ -222,11 +234,26 @@ def sync_subscription(obj: dict, event_created: dt.datetime | None = None) -> Su
         logger.warning("Stripe subscription %s matches no organization", obj.get("id"))
         return None
     sub = Subscription.objects.select_for_update().get(pk=sub.pk)
-    if event_created and sub.stripe_synced_at and event_created < sub.stripe_synced_at:
-        logger.info("Ignoring stale Stripe snapshot of %s", obj.get("id"))
-        return sub
+    if event_created and sub.stripe_synced_at:
+        if event_created < sub.stripe_synced_at:
+            logger.info("Ignoring stale Stripe snapshot of %s", obj.get("id"))
+            return sub
+        if event_created == sub.stripe_synced_at and obj.get("id"):
+            # Stripe stamps events to the second, so two events of one
+            # subscription can't be ordered by ``created``. Ask Stripe for the
+            # subscription as it is now instead of guessing which came first.
+            obj = _current_snapshot(obj)
 
     status = _STRIPE_STATUS.get(obj.get("status", ""), Subscription.Status.CANCELED)
+    if (
+        status in LINKED_STATUSES
+        and sub.stripe_subscription_id
+        and obj.get("id")
+        and obj["id"] != sub.stripe_subscription_id
+        and sub.status in LINKED_STATUSES
+    ):
+        _refuse_second_subscription(sub, obj["id"])
+        return sub
     # The end of a subscription that is no longer this organization's current
     # one — e.g. the extra one from a second Checkout tab, cancelled from the
     # portal — must not downgrade the subscription it is still paying for.
@@ -260,9 +287,9 @@ def sync_subscription(obj: dict, event_created: dt.datetime | None = None) -> Su
         sub.current_period_end = _subscription_period_end(obj)
         if status == Subscription.Status.TRIALING:
             sub.trial_ends_at = _from_timestamp(obj.get("trial_end")) or sub.trial_ends_at
-        if status == Subscription.Status.PAST_DUE:
+        if status in (Subscription.Status.PAST_DUE, Subscription.Status.UNPAID):
             sub.start_grace_period()
-        elif status in (Subscription.Status.ACTIVE, Subscription.Status.TRIALING):
+        else:
             sub.grace_until = None
 
     sub.status = status
@@ -274,6 +301,26 @@ def sync_subscription(obj: dict, event_created: dt.datetime | None = None) -> Su
     return sub
 
 
+def _current_snapshot(obj: dict) -> dict:
+    """The subscription as Stripe has it now; the event's own copy if Stripe can't be reached."""
+    try:
+        return _as_dict(stripe.Subscription.retrieve(obj["id"], api_key=_api_key()))
+    except (stripe.StripeError, BillingNotConfiguredError):
+        logger.warning("Could not re-read Stripe subscription %s; using the event's snapshot", obj["id"])
+        return obj
+
+
+def _refuse_second_subscription(sub: Subscription, other_id: str) -> None:
+    """Leave the linked subscription alone and tell the admins another one exists."""
+    logger.error(
+        "Organization %s already has live Stripe subscription %s; not replacing it with %s",
+        sub.organization_id,
+        sub.stripe_subscription_id,
+        other_id,
+    )
+    transaction.on_commit(lambda: _notify_second_subscription(sub, other_id))
+
+
 def _on_checkout_completed(session: dict, event_created) -> None:
     if session.get("mode") != "subscription" or not session.get("subscription"):
         return
@@ -283,6 +330,13 @@ def _on_checkout_completed(session: dict, event_created) -> None:
     )
     if sub is None:
         logger.warning("Checkout session %s matches no organization", session.get("id"))
+        return
+    if (
+        sub.stripe_subscription_id
+        and sub.stripe_subscription_id != session["subscription"]
+        and sub.status in LINKED_STATUSES
+    ):
+        _refuse_second_subscription(sub, session["subscription"])
         return
     sub.stripe_customer_id = session.get("customer") or sub.stripe_customer_id
     sub.stripe_subscription_id = session["subscription"]
@@ -322,17 +376,40 @@ def _on_payment_failed(invoice: dict, event_created) -> None:
     transaction.on_commit(lambda: _notify_payment_failed(sub))
 
 
-def _notify_payment_failed(sub: Subscription) -> None:
+def _billing_admins(org):
     from apps.members.models import OrgMembership
+
+    return OrgMembership.objects.filter(
+        organization=org,
+        org_role__in=[OrgMembership.OrgRole.OWNER, OrgMembership.OrgRole.ADMIN],
+    ).select_related("user")
+
+
+def _notify_second_subscription(sub: Subscription, other_id: str) -> None:
+    from apps.notifications.engine import notify
+    from apps.notifications.models import EventType
+
+    org = sub.organization
+    for membership in _billing_admins(org):
+        notify(
+            user=membership.user,
+            event_type=EventType.BILLING_PAYMENT_FAILED,
+            title=f"Second subscription found for {org.name}",
+            body=(
+                f"{org.name} already has a live subscription, and Stripe now shows another one ({other_id}). "
+                "We kept the first. Cancel the extra subscription from the billing portal so you aren't charged twice."
+            ),
+            data={"organization_id": str(org.id), "action_url": billing_url(absolute=True)},
+        )
+
+
+def _notify_payment_failed(sub: Subscription) -> None:
     from apps.notifications.engine import notify
     from apps.notifications.models import EventType
 
     org = sub.organization
     plan_name = sub.effective_plan().name
-    admins = OrgMembership.objects.filter(
-        organization=org,
-        org_role__in=[OrgMembership.OrgRole.OWNER, OrgMembership.OrgRole.ADMIN],
-    ).select_related("user")
+    admins = _billing_admins(org)
     grace_until = timezone.localtime(sub.grace_until)
     deadline = f"{grace_until:%B} {grace_until.day}"
     for membership in admins:

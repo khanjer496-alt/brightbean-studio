@@ -4413,6 +4413,80 @@ def csv_preview(request, workspace_id):
     )
 
 
+def _csv_scheduled_by_month(workspace, rows, mapping):
+    """Count the posts a CSV import would schedule, per month: ``{month's first scheduled_at: count}``.
+
+    Mirrors the import loop: a dated row schedules one post per connected
+    account on its platforms that can publish without media; undated rows and
+    accounts that can't publish become drafts, which the allowance ignores.
+    """
+    import zoneinfo
+    from datetime import time as time_cls
+
+    from apps.social_accounts.models import SocialAccount
+
+    if "date" not in mapping or "platforms" not in mapping:
+        return {}
+    tz = zoneinfo.ZoneInfo(workspace.effective_timezone or "UTC")
+    accounts_by_platform: dict[str, int] = {}
+    counts: dict[tuple[int, int], list] = {}
+    for row in rows:
+        if mapping["date"] >= len(row) or mapping["platforms"] >= len(row) or not row[mapping["date"]].strip():
+            continue
+        try:
+            day = datetime.strptime(row[mapping["date"]].strip(), "%Y-%m-%d").date()
+            time_str = row[mapping["time"]].strip() if "time" in mapping and mapping["time"] < len(row) else ""
+            at = datetime.combine(day, datetime.strptime(time_str, "%H:%M").time() if time_str else time_cls(9, 0))
+        except ValueError:
+            continue  # The import loop reports a row with a bad date.
+        at = at.replace(tzinfo=tz)
+        platforms = {p.strip().lower() for p in row[mapping["platforms"]].split(",") if p.strip()}
+        for platform in platforms:
+            if platform not in accounts_by_platform:
+                accounts_by_platform[platform] = sum(
+                    1
+                    for acc in SocialAccount.objects.filter(
+                        workspace=workspace,
+                        platform=platform,
+                        connection_status=SocialAccount.ConnectionStatus.CONNECTED,
+                    )
+                    if not publish_blocker(acc, media_types=set())
+                )
+            bucket = counts.setdefault((at.astimezone(UTC).year, at.astimezone(UTC).month), [at, 0])
+            bucket[1] += accounts_by_platform[platform]
+    return {at: count for at, count in counts.values() if count}
+
+
+def _reject_csv_over_plan_limit(request, workspace, csv_data, mapping):
+    """Refuse the whole import when its scheduled posts would pass the monthly allowance.
+
+    Checked before anything is written, so the import never stops partway
+    with the first rows in and the rest failing at the plan limit. The
+    alternative (importing the overflow as drafts) would quietly change what
+    the person asked to schedule; they can instead trim the file or upgrade.
+    """
+    if not billing_enabled():
+        return None
+    try:
+        for at, count in _csv_scheduled_by_month(workspace, csv_data["rows"], mapping).items():
+            check_can_schedule_posts(workspace.organization, count=count, when=at)
+    except PlanLimitError as exc:
+        request.session.pop(f"csv_import_{workspace.id}", None)
+        request.session.pop(f"csv_mapping_{workspace.id}", None)
+        return render(
+            request,
+            "composer/partials/csv_validation.html",
+            {
+                "workspace": workspace,
+                "total_rows": len(csv_data["rows"]),
+                "valid_count": 0,
+                "errors": [{"row": 1, "errors": [f"{exc.message} No posts were imported."]}],
+                "has_more_errors": False,
+            },
+        )
+    return None
+
+
 @login_required
 @require_permission("create_posts")
 @require_POST
@@ -4428,6 +4502,10 @@ def csv_confirm_import(request, workspace_id):
     media_error = _reject_csv_media(request, workspace, csv_data, mapping)
     if media_error is not None:
         return media_error
+
+    limit_error = _reject_csv_over_plan_limit(request, workspace, csv_data, mapping)
+    if limit_error is not None:
+        return limit_error
 
     from apps.social_accounts.models import SocialAccount
 
