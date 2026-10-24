@@ -9,6 +9,7 @@ urlpatterns = [
     path("", views.calendar_view, name="calendar"),
     # Drag-and-drop reschedule
     path("reschedule/", views.reschedule_post, name="reschedule"),
+    path("reschedule/<uuid:platform_post_id>/dialog/", views.reschedule_dialog, name="reschedule_dialog"),
     # Instagram-style grid preview: reorder scheduled posts by swapping their times
     path("grid/", grid_views.grid_index, name="grid_index"),
     path("grid/<uuid:account_id>/", grid_views.account_grid, name="account_grid"),
@@ -46,6 +47,11 @@ urlpatterns = [
         "queues/<uuid:queue_id>/entries/<uuid:entry_id>/remove/",
         views.queue_entry_remove,
         name="queue_entry_remove",
+    ),
+    path(
+        "queues/<uuid:queue_id>/entries/<uuid:entry_id>/move/<str:direction>/",
+        views.queue_entry_move,
+        name="queue_entry_move",
     ),
     path(
         "queues/<uuid:queue_id>/entries/<uuid:entry_id>/reslot/",

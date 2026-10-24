@@ -5,11 +5,11 @@
 {% block page_header %}
 <div class="flex items-center justify-between mb-6">
     <div>
-        <h1 class="text-base font-semibold text-stone-900" style="letter-spacing: -0.01em;">Publishing Queues</h1>
+        <h1 class="text-base font-semibold tracking-tight text-stone-900">Publishing Queues</h1>
         <p class="text-sm text-stone-500 mt-1">Auto-schedule posts into time slots by category and channel.</p>
     </div>
     <a href="{% url 'calendar:calendar' workspace_id=workspace.id %}" class="text-sm text-stone-500 hover:text-stone-700 flex items-center gap-1">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
+        <svg class="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>
         Back to Calendar
     </a>
 </div>
@@ -20,12 +20,12 @@
 
     <!-- Create Queue -->
     <div class="mb-6">
-        <button @click="showForm = !showForm" class="btn-brand text-sm py-2 px-4 flex items-center gap-1.5">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+        <button type="button" @click="showForm = !showForm" :aria-expanded="showForm ? 'true' : 'false'" aria-expanded="false" aria-controls="queue-create-form" class="btn-brand text-sm py-2 px-4 flex items-center gap-1.5">
+            <svg class="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
             Create Queue
         </button>
 
-        <form x-show="showForm" x-cloak
+        <form id="queue-create-form" x-show="showForm" x-cloak
               hx-post="{% url 'calendar:queue_create' workspace_id=workspace.id %}"
               hx-swap="none"
               @htmx:after-request="if(event.detail.successful) { showForm = false; this.reset(); }"
@@ -33,14 +33,14 @@
             {% csrf_token %}
 
             <div>
-                <label class="block text-xs font-semibold text-stone-700 mb-1">Queue Name</label>
-                <input type="text" name="name" placeholder="e.g., Educational - MWF 9am" required class="form-input w-full text-sm">
+                <label for="queue-name" class="block text-xs font-semibold text-stone-700 mb-1">Queue Name</label>
+                <input type="text" name="name" id="queue-name" placeholder="e.g., Educational - MWF 9am" required class="form-input w-full text-sm">
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                    <label class="block text-xs font-semibold text-stone-700 mb-1">Channel</label>
-                    <select name="social_account_id" required class="form-input w-full text-sm">
+                    <label for="queue-channel" class="block text-xs font-semibold text-stone-700 mb-1">Channel</label>
+                    <select name="social_account_id" id="queue-channel" required class="form-input w-full text-sm">
                         <option value="">Select channel...</option>
                         {% for acc in accounts %}
                         <option value="{{ acc.id }}">{{ acc.account_name|default:acc.account_handle }} ({{ acc.get_platform_display }})</option>
@@ -48,8 +48,8 @@
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs font-semibold text-stone-700 mb-1">Category (optional)</label>
-                    <select name="category_id" class="form-input w-full text-sm">
+                    <label for="queue-category" class="block text-xs font-semibold text-stone-700 mb-1">Category (optional)</label>
+                    <select name="category_id" id="queue-category" class="form-input w-full text-sm">
                         <option value="">Any category</option>
                         {% for cat in categories %}
                         <option value="{{ cat.id }}">{{ cat.name }}</option>
@@ -60,7 +60,7 @@
 
             <div class="flex items-center gap-2 pt-1">
                 <button type="submit" class="btn-brand text-sm py-2 px-4">Create</button>
-                <button type="button" @click="showForm = false" class="text-sm text-stone-500 hover:text-stone-700 py-2 px-3">Cancel</button>
+                <button type="button" @click="showForm = false" class="text-sm text-stone-600 hover:text-stone-800 py-2 px-3">Cancel</button>
             </div>
         </form>
     </div>
@@ -75,7 +75,7 @@
         <div id="queue-items" class="space-y-3">
             {% for queue in queues %}
             <div class="bg-white rounded-xl border border-stone-200 p-4 hover:border-stone-300 transition-colors group">
-                <div class="flex items-center justify-between">
+                <div class="flex flex-wrap items-center justify-between gap-2">
                     <div class="flex items-center gap-3">
                         <div class="w-9 h-9 rounded-lg flex items-center justify-center text-white text-sm font-bold"
                              style="background: {% if queue.category %}{{ queue.category.color }}{% else %}var(--primary){% endif %};">
@@ -96,17 +96,17 @@
                         </div>
                     </div>
                     <div class="flex items-center gap-2">
-                        <span class="text-xs text-stone-400">{{ queue.entries.count }} post{{ queue.entries.count|pluralize }}</span>
+                        <span class="text-xs text-stone-500">{{ queue.entries.count }} post{{ queue.entries.count|pluralize }}</span>
                         <a href="{% url 'calendar:queue_detail' workspace_id=workspace.id queue_id=queue.id %}"
                            class="text-xs font-semibold py-1.5 px-3 rounded-full border border-stone-200 hover:border-stone-300 text-stone-600 hover:text-stone-800 transition-colors">
                             View
                         </a>
                         <form x-data hx-post="{% url 'calendar:queue_delete' workspace_id=workspace.id queue_id=queue.id %}" hx-swap="none"
-                              class="opacity-0 group-hover:opacity-100 transition-all"
+                              class="opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-all"
                               @submit="if(!confirm('Delete this queue?')) $event.preventDefault()">
                             {% csrf_token %}
-                            <button type="submit" class="text-stone-400 hover:text-red-500 p-1">
-                                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                            <button type="submit" class="inline-flex size-8 items-center justify-center text-stone-400 hover:text-red-500" aria-label="Delete queue {{ queue.name }}">
+                                <svg class="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                             </button>
                         </form>
                     </div>

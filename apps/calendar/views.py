@@ -961,11 +961,34 @@ def _week_view_data(request, workspace, target_date, context):
     from django.utils import timezone as _tz
 
     now = _tz.now().astimezone(display_tz)
+
+    # The phone layout lists each day's busy hours instead of drawing seven columns: the same cells,
+    # regrouped by day, keeping only the hours that hold a post or an open channel slot.
+    week_agenda = []
+    for index, day in enumerate(week_days):
+        busy = [
+            {"hour": hour, **day_cells[index]}
+            for hour, day_cells in week_slots
+            if day_cells[index]["posts"] or day_cells[index]["slots"]
+        ]
+        compose_date, compose_time = _cell_compose_params(day, 9, display_tz, workspace_tz)
+        week_agenda.append(
+            {
+                "day": day,
+                "is_today": day == now.date(),
+                "is_past": day < now.date(),
+                "cells": busy,
+                "compose_date": compose_date,
+                "compose_time": compose_time,
+            }
+        )
+
     context.update(
         {
             "week_days": week_days,
             "hours": hours,
             "week_slots": week_slots,
+            "week_agenda": week_agenda,
             "today": now.date(),
             "current_hour": now.hour,
             "prev_date": (monday - timedelta(weeks=1)).isoformat(),
@@ -1116,6 +1139,45 @@ def publish_tab_sent(request, workspace_id):
     """HTMX partial: Sent tab content for the publish page."""
     workspace = _get_workspace(request, workspace_id)
     return _render_tab(request, workspace, "sent")
+
+
+@login_required
+def reschedule_dialog(request, workspace_id, platform_post_id):
+    """Keyboard- and touch-friendly alternative to dragging a chip: the date/time form for one post.
+
+    Applies the same rule as ``reschedule_post`` (``reschedule_denial``), so a user who could not drop
+    the chip cannot open this either; the refusal is rendered in the dialog instead of a bare error.
+    The form posts to ``reschedule_post``, the one place a post is actually moved.
+    """
+    import zoneinfo
+
+    workspace = _get_workspace(request, workspace_id)
+    pp = get_object_or_404(
+        PlatformPost.objects.select_related("post__workspace", "post__author", "social_account"),
+        id=platform_post_id,
+        post__workspace=workspace,
+    )
+    denial = calendar_services.reschedule_denial(pp, request.user, request.workspace_membership)
+    tz_name = workspace.effective_timezone or "UTC"
+    current = None
+    if pp.scheduled_at:
+        current = pp.scheduled_at.astimezone(zoneinfo.ZoneInfo(tz_name)).strftime("%Y-%m-%dT%H:%M")
+    response = render(
+        request,
+        "calendar/partials/_reschedule_dialog.html",
+        {
+            "workspace": workspace,
+            "pp": pp,
+            "denial_message": denial[1] if denial else "",
+            "current_value": current,
+            "timezone_name": tz_name,
+            "schedules_on_save": pp.status in _IMPLICIT_SCHEDULE_STATUSES,
+            "keeps_status": pp.status in ("pending_review", "pending_client", "approved"),
+        },
+    )
+    if denial:
+        response.status_code = denial[0]
+    return response
 
 
 @login_required
@@ -1733,6 +1795,42 @@ def queue_reorder(request, workspace_id, queue_id):
     if request.htmx:
         return HttpResponse(status=204, headers={"HX-Trigger": "queueReordered"})
     return JsonResponse({"reordered": True})
+
+
+@login_required
+@require_POST
+def queue_entry_move(request, workspace_id, queue_id, entry_id, direction):
+    """Move one queued post a place earlier or later: the keyboard alternative to drag-reorder.
+
+    Builds the order the detail page shows, swaps the entry with its neighbour and hands the result
+    to ``reorder_queue``, the same service the drag-and-drop request uses.
+    """
+    from django.db.models import F
+
+    from .services import reorder_queue
+
+    if direction not in ("up", "down"):
+        return JsonResponse({"error": "direction must be up or down."}, status=400)
+    workspace = _get_workspace(request, workspace_id)
+    queue = get_object_or_404(Queue, id=queue_id, workspace=workspace)
+    ordered = list(
+        queue.entries.order_by(F("assigned_slot_datetime").asc(nulls_last=True), "position").values_list(
+            "id", flat=True
+        )
+    )
+    if entry_id not in ordered:
+        return JsonResponse({"error": "Entry not found."}, status=404)
+    index = ordered.index(entry_id)
+    target = index - 1 if direction == "up" else index + 1
+    if 0 <= target < len(ordered):
+        ordered[index], ordered[target] = ordered[target], ordered[index]
+        reorder_queue(queue, [str(i) for i in ordered])
+        index = target
+
+    detail = {"entryId": str(entry_id), "direction": direction, "position": index + 1, "total": len(ordered)}
+    if request.htmx:
+        return HttpResponse(status=204, headers={"HX-Trigger": json.dumps({"queueReordered": detail})})
+    return JsonResponse({"moved": True, **detail})
 
 
 @login_required
