@@ -42,7 +42,7 @@
             line-height: 1.5;
             -webkit-font-smoothing: antialiased;
         }
-        .bb-wrap { width: 100%; max-width: 420px; }
+        .bb-wrap { width: 100%; max-width: 480px; }
         .bb-head { text-align: center; margin-bottom: 28px; }
         .bb-logo { width: 48px; height: 48px; object-fit: contain; }
         .bb-eyebrow {
@@ -75,6 +75,36 @@
         .bb-scopes li { display: flex; gap: 10px; align-items: flex-start; }
         .bb-scopes li + li { margin-top: 8px; }
         .bb-scopes li::before { content: "✓"; color: var(--bb-primary); font-weight: 700; }
+        .bb-caps { margin: 0 0 22px; padding: 0; border: 0; min-width: 0; }
+        .bb-caps-legend { padding: 0; font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+        .bb-caps p.bb-caps-help { font-size: 13px; margin-bottom: 10px; }
+        .bb-cap {
+            display: flex;
+            gap: 12px;
+            align-items: flex-start;
+            padding: 12px 14px;
+            margin-top: 8px;
+            background: #fafaf7;
+            border: 1px solid var(--bb-border);
+            border-radius: 10px;
+            cursor: pointer;
+        }
+        .bb-cap:hover { background: #f3f4f1; }
+        .bb-cap-box { width: 20px; height: 20px; margin: 1px 0 0; flex: none; accent-color: var(--bb-primary); }
+        .bb-cap-box:focus-visible { outline: 3px solid rgba(147,162,64,.5); outline-offset: 2px; }
+        .bb-cap-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+        .bb-cap-name { font-size: 14px; font-weight: 600; }
+        .bb-cap-desc { font-size: 13px; color: var(--bb-text-muted); }
+        .bb-cap-risk {
+            display: inline-block;
+            margin-left: 6px;
+            padding: 1px 8px;
+            border-radius: 999px;
+            background: #fef3c7;
+            color: #92400e;
+            font-size: 11px;
+            font-weight: 600;
+        }
         .bb-actions { display: flex; gap: 12px; margin-top: 4px; }
         .bb-btn {
             flex: 1;

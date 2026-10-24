@@ -25,6 +25,9 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET
 from oauth2_provider.models import get_application_model
+from oauth2_provider.views import AuthorizationView
+
+from apps.api_keys import capabilities as caps
 
 from .metadata import authorization_server_metadata, protected_resource_metadata
 
@@ -188,3 +191,67 @@ def authorization_server_metadata_view(request):
 def protected_resource_metadata_view(request):
     """RFC 9728 — served at /.well-known/oauth-protected-resource[/api/v1/mcp]."""
     return JsonResponse(protected_resource_metadata())
+
+
+def _requested_capabilities(scope: str) -> tuple[list[str], bool]:
+    """What the client asked for as ``(capabilities, explicit)``.
+
+    A client that names ``cap:`` scopes asked for exactly those. One that asks only for ``mcp`` has named
+    nothing, so every capability is on offer and the sensible ones start ticked.
+    """
+    asked = caps.from_scope(scope)
+    return (asked, True) if asked else (list(caps.CAPABILITY_KEYS), False)
+
+
+class ConsentAuthorizationView(AuthorizationView):
+    """The consent screen, with the requested capabilities listed in plain language to narrow before approving.
+
+    The ticked capabilities become ``cap:`` scopes on the grant, so the access token and its refresh tokens carry
+    the narrowed set. The screen is always shown (``REQUEST_APPROVAL_PROMPT`` is ``force``), and a client cannot
+    skip it by sending ``approval_prompt=auto``.
+    """
+
+    def get(self, request, *args, **kwargs):
+        if "approval_prompt" in request.GET:
+            request.GET = request.GET.copy()
+            request.GET.pop("approval_prompt")
+        return super().get(request, *args, **kwargs)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        form = context.get("form")
+        scope = (form.initial.get("scope") if form is not None and not form.is_bound else None) or ""
+        if form is not None and form.is_bound:
+            scope = form.data.get("scope", "")
+        offered, explicit = _requested_capabilities(scope)
+        chosen = set(self.request.POST.getlist("capability")) if self.request.method == "POST" else None
+        context["capability_choices"] = [
+            {
+                "cap": c,
+                "checked": (c.key in chosen) if chosen is not None else (explicit or c.default_on),
+            }
+            for c in caps.CAPABILITIES
+            if c.key in offered
+        ]
+        return context
+
+    def form_valid(self, form):
+        if not form.cleaned_data.get("allow"):
+            return super().form_valid(form)  # Cancel: DOT answers access_denied.
+        requested = form.cleaned_data.get("scope") or ""
+        offered, _ = _requested_capabilities(requested)
+        chosen = [k for k in caps.clean(self.request.POST.getlist("capability")) if k in offered]
+        if not chosen:
+            # Tampered or empty: re-show the screen rather than issue a grant that names no capability,
+            # which would read as "not narrowed".
+            form.add_error(None, "Choose at least one thing the app may do, or cancel.")
+            return self.render_to_response(self.get_context_data(form=form, **self._context_for(form)))
+        base = [s for s in requested.split() if not s.startswith(caps.SCOPE_PREFIX)] or ["mcp"]
+        form.cleaned_data["scope"] = " ".join([*base, *caps.scopes_for(chosen)])
+        return super().form_valid(form)
+
+    def _context_for(self, form) -> dict:
+        """The template context ``get`` builds, rebuilt from the posted form for an error re-render."""
+        application = get_application_model().objects.get(client_id=form.cleaned_data["client_id"])
+        scopes = [s for s in (form.cleaned_data.get("scope") or "").split() if s == "mcp"]
+        return {"application": application, "scopes": scopes, "scopes_descriptions": []}

@@ -25,11 +25,19 @@
                     {% if field.is_hidden %}{{ field }}{% endif %}
                 {% endfor %}
 
-                <ul class="bb-scopes">
-                    {% for scope in scopes_descriptions %}
-                        <li>{{ scope }}</li>
+                <fieldset class="bb-caps">
+                    <legend class="bb-caps-legend">{% trans "Choose what it may do" %}</legend>
+                    <p class="bb-caps-help">{% trans "Untick anything you do not want to allow. The app can only use what stays ticked, and only inside your own workspace permissions." %}</p>
+                    {% for choice in capability_choices %}
+                    <label class="bb-cap" for="cap-{{ choice.cap.key }}">
+                        <input type="checkbox" class="bb-cap-box" id="cap-{{ choice.cap.key }}" name="capability" value="{{ choice.cap.key }}"{% if choice.checked %} checked{% endif %}>
+                        <span class="bb-cap-text">
+                            <span class="bb-cap-name">{{ choice.cap.label }}{% if choice.cap.risk == "high" %} <span class="bb-cap-risk">{% trans "Can change things people see" %}</span>{% endif %}</span>
+                            <span class="bb-cap-desc">{{ choice.cap.summary }}</span>
+                        </span>
+                    </label>
                     {% endfor %}
-                </ul>
+                </fieldset>
 
                 {% if form.errors %}<div class="bb-error">{{ form.errors }}</div>{% endif %}
                 {% if form.non_field_errors %}<div class="bb-error">{{ form.non_field_errors }}</div>{% endif %}
