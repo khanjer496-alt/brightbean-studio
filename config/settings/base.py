@@ -124,6 +124,7 @@ LOCAL_APPS = [
     "apps.repurpose",
     "apps.webhooks",
     "apps.autonomy",
+    "apps.plugs",
     "apps.legal",
     "theme",
 ]

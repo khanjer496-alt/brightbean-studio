@@ -1,0 +1,63 @@
+{% comment %}
+The rule form, driven by what the account's network declares (SocialProvider.plugs; see static/js/plugs-form.js).
+Context: action_url, caps_id (id of the json_script holding the capabilities list), form (previous input),
+account (fixed account, optional; else `accounts` is the picker's list), post (the Post, optional),
+panel ("composer" to swap the composer panel), uid (unique id prefix).
+{% endcomment %}
+<form method="post" action="{{ action_url }}" class="grid gap-3 sm:grid-cols-2" x-data="plugsRuleForm('{{ caps_id }}', '{% if account %}{{ account.id }}{% else %}{{ form.account }}{% endif %}')"
+      {% if panel == "composer" %}hx-post="{{ action_url }}" hx-target="#plugs-panel" hx-swap="outerHTML"{% endif %}>
+    {% csrf_token %}
+    {% if panel %}<input type="hidden" name="panel" value="{{ panel }}">{% endif %}
+    {% if post %}<input type="hidden" name="post" value="{{ post.id }}">{% endif %}
+    {% if account %}
+    <input type="hidden" name="account" value="{{ account.id }}">
+    {% else %}
+    <div class="sm:col-span-2">
+        <label for="{{ uid }}-account" class="block text-xs font-semibold text-ink-3">Account</label>
+        <select id="{{ uid }}-account" name="account" x-model="accountId" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-white px-3 text-sm">
+            {% for a in accounts %}<option value="{{ a.id }}" {% if form.account == a.id|stringformat:"s" %}selected{% endif %}>{{ a.account_name }} ({{ a.get_platform_display }})</option>{% endfor %}
+        </select>
+    </div>
+    {% endif %}
+
+    <div>
+        <label for="{{ uid }}-trigger" class="block text-xs font-semibold text-ink-3">When the post reaches</label>
+        <div class="mt-1 flex gap-2">
+            <input id="{{ uid }}-threshold" type="number" name="threshold" min="1" max="100000000" inputmode="numeric" required value="{{ form.threshold|default:'10' }}"
+                   aria-label="Count" class="min-h-11 w-24 shrink-0 rounded-lg border border-line bg-white px-3 text-sm">
+            <select id="{{ uid }}-trigger" name="trigger" class="min-h-11 min-w-0 flex-1 rounded-lg border border-line bg-white px-3 text-sm">
+                <template x-for="t in current().triggers" :key="t.value"><option :value="t.value" x-text="t.label" :selected="t.value === '{{ form.trigger }}'"></option></template>
+            </select>
+        </div>
+    </div>
+    <div>
+        <label for="{{ uid }}-window" class="block text-xs font-semibold text-ink-3">Within (hours of publishing)</label>
+        <input id="{{ uid }}-window" type="number" name="window_hours" min="1" max="168" inputmode="numeric" required value="{{ form.window_hours|default:'24' }}"
+               class="mt-1 min-h-11 w-full rounded-lg border border-line bg-white px-3 text-sm">
+    </div>
+
+    <div>
+        <label for="{{ uid }}-action" class="block text-xs font-semibold text-ink-3">Then</label>
+        <select id="{{ uid }}-action" name="action" x-model="action" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-white px-3 text-sm">
+            <template x-for="a in actions()" :key="a.value"><option :value="a.value" :selected="a.value === action" x-text="a.label + (a.crossOnly ? ' (from another account)' : '')"></option></template>
+        </select>
+    </div>
+    <div x-show="needsReposter()" x-cloak>
+        <label for="{{ uid }}-actor" class="block text-xs font-semibold text-ink-3">Done by</label>
+        <select id="{{ uid }}-actor" name="actor_account" :disabled="!needsReposter()" class="mt-1 min-h-11 w-full rounded-lg border border-line bg-white px-3 text-sm">
+            <option value="" x-show="canOwn()">The same account</option>
+            <template x-for="r in current().reposters" :key="r.id"><option :value="r.id" x-text="r.name"></option></template>
+        </select>
+        <p class="m-0 mt-1 text-xs text-ink-3">Only accounts in this workspace on the same network.</p>
+    </div>
+    <div class="sm:col-span-2" x-show="action !== 'repost'" x-cloak>
+        <label for="{{ uid }}-message" class="block text-xs font-semibold text-ink-3">Message</label>
+        <textarea id="{{ uid }}-message" name="message" rows="3" :maxlength="current().message_max" :disabled="action === 'repost'"
+                  class="mt-1 w-full rounded-lg border border-line bg-white px-3 py-2 text-sm">{{ form.message|default:"" }}</textarea>
+        <p class="m-0 mt-1 text-xs text-ink-3">A link or call to action. Up to <span x-text="current().message_max"></span> characters.</p>
+    </div>
+    <p x-show="current().metered" x-cloak class="m-0 text-xs text-ink-3 sm:col-span-2">Reading this network's numbers is billed to your own developer app, so the post is checked at most every <span x-text="current().interval"></span> minutes.</p>
+    <div class="sm:col-span-2">
+        <button type="submit" class="btn-brand w-auto">Add automation</button>
+    </div>
+</form>

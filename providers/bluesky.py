@@ -15,10 +15,15 @@ from .exceptions import APIError, PublicProfileNotFoundError, PublishError
 from .types import (
     AccountProfile,
     AuthType,
+    CommentResult,
     MediaRules,
     MediaType,
     MentionSuggestion,
     OAuthTokens,
+    PlugAction,
+    PlugCapability,
+    PlugTarget,
+    PlugTrigger,
     PostType,
     PublicProfileMetrics,
     PublishContent,
@@ -98,6 +103,19 @@ class BlueskyProvider(SocialProvider):
         return f"https://bsky.app/profile/{match[1]}/post/{match[2]}" if match else ""
 
     mention_lookup = True
+
+    # Likes and reposts come from app.bsky.feed.getPosts; a repost is an app.bsky.feed.repost record and a
+    # quote an app.bsky.embed.record embed, both on any post (the account's own or another account's).
+    # https://docs.bsky.app/docs/advanced-guides/posts  https://docs.bsky.app/docs/tutorials/like-repost
+    # (checked 2026-10-24: the pages redirect to bsky.network and did not render for the checker; the record
+    # shapes below are the lexicon's app.bsky.feed.repost and app.bsky.embed.record.)
+    plugs = PlugCapability(
+        triggers=frozenset({PlugTrigger.LIKES, PlugTrigger.REPOSTS}),
+        own_actions=frozenset({PlugAction.REPOST, PlugAction.REPLY, PlugAction.QUOTE}),
+        cross_actions=frozenset({PlugAction.REPOST, PlugAction.QUOTE}),
+        message_max_length=300,
+        source="https://docs.bsky.app/docs/advanced-guides/posts",
+    )
 
     supports_public_profile_metrics = True
     competitor_handle_hint = "name.bsky.social"
@@ -367,6 +385,86 @@ class BlueskyProvider(SocialProvider):
             "parent": self._strong_ref(access_token, parent),
         }
         return self._create_post(access_token, content, reply=reply)
+
+    def publish_comment(self, access_token: str, post_id: str, text: str) -> CommentResult:
+        """Reply to a post: a reply whose root and parent are both that post (a top-level post is its own root)."""
+        ref = self._ref_for(access_token, post_id)
+        result = self._create_post(access_token, PublishContent(text=text), reply={"root": ref, "parent": ref})
+        return CommentResult(platform_comment_id=result.platform_post_id, extra=result.extra)
+
+    def plug_metrics(self, access_token: str, post_id: str) -> dict[str, int]:
+        data = self._request(
+            "GET",
+            f"{self.pds_url}/xrpc/app.bsky.feed.getPosts",
+            access_token=access_token,
+            params={"uris": post_id},
+        ).json()
+        posts = data.get("posts") or []
+        if not posts:
+            raise APIError("Bluesky did not return the post", platform=self.platform_name, retryable=False)
+        post = posts[0]
+        counts = {"likes": post.get("likeCount") or 0, "reposts": post.get("repostCount") or 0}
+        return {key: int(value) for key, value in counts.items() if value}
+
+    def repost_post(self, access_token: str, target: PlugTarget) -> PublishResult:
+        """Repost with an ``app.bsky.feed.repost`` record in the account's own repo."""
+        return self._create_record(
+            access_token,
+            "app.bsky.feed.repost",
+            {"subject": self._ref_for(access_token, target.platform_post_id)},
+        )
+
+    def quote_post(self, access_token: str, target: PlugTarget, text: str) -> PublishResult:
+        """A post of the account's own that embeds ``target`` (``app.bsky.embed.record``)."""
+        self._check_length(text)
+        record: dict = {"text": text}
+        facets = self._parse_facets(text, access_token)
+        if facets:
+            record["facets"] = facets
+        record["embed"] = {
+            "$type": "app.bsky.embed.record",
+            "record": self._ref_for(access_token, target.platform_post_id),
+        }
+        return self._create_record(access_token, "app.bsky.feed.post", record)
+
+    def _ref_for(self, access_token: str, uri: str) -> dict:
+        """The ``{uri, cid}`` strong ref of any post, found through the app view so another account's post works."""
+        data = self._request(
+            "GET",
+            f"{self.pds_url}/xrpc/app.bsky.feed.getPosts",
+            access_token=access_token,
+            params={"uris": uri},
+        ).json()
+        posts = data.get("posts") or []
+        if not posts or not posts[0].get("cid"):
+            raise PublishError("Could not find that Bluesky post.", platform=self.platform_name, retryable=False)
+        return {"uri": posts[0]["uri"], "cid": posts[0]["cid"]}
+
+    def _check_length(self, text: str) -> None:
+        if len(text or "") > self.max_caption_length:
+            raise PublishError(
+                f"Post text exceeds {self.max_caption_length} graphemes (got {len(text)})",
+                platform=self.platform_name,
+                retryable=False,
+            )
+
+    def _create_record(self, access_token: str, collection: str, record: dict) -> PublishResult:
+        """Write one record to the account's repo, stamped with the current time."""
+        did = self._request(
+            "GET", f"{self.pds_url}/xrpc/com.atproto.server.getSession", access_token=access_token
+        ).json()["did"]
+        record = {
+            "$type": collection,
+            **record,
+            "createdAt": datetime.now(UTC).isoformat().replace("+00:00", "Z"),
+        }
+        data = self._request(
+            "POST",
+            f"{self.pds_url}/xrpc/com.atproto.repo.createRecord",
+            access_token=access_token,
+            json={"repo": did, "collection": collection, "record": record},
+        ).json()
+        return PublishResult(platform_post_id=data.get("uri", ""), extra=data)
 
     def _strong_ref(self, access_token: str, target: PublishResult) -> dict:
         """The ``{uri, cid}`` ref a reply needs for an already-published post.

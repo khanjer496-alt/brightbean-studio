@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% load tz %}
+{% block page_title %}Automations{% endblock %}
+
+{% block content %}
+<div class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6">
+    <div>
+        <h1 class="m-0 text-xl font-semibold text-ink">Automations</h1>
+        <p class="m-0 mt-1 max-w-2xl text-[13px] text-ink-3">When a published post reaches a number of likes, reposts or views, repost it, reply under it with a link, or have another account in this workspace repost or quote it. Each rule fires once per post.</p>
+    </div>
+
+    <p class="m-0 rounded-xl border border-line bg-surface-1 p-4 text-sm text-ink-2">
+        Automations act as the platform, so the workspace's
+        <a href="{% url 'autonomy:settings' workspace_id=workspace.id %}" class="font-semibold underline">autonomy policy</a> decides what happens:
+        {% if policy.crisis_paused %}crisis pause is on, so they wait for a person.{% else %}reposts follow &ldquo;Schedule and publish&rdquo; ({{ policy.get_publish_level_display }}) and replies follow &ldquo;Reply&rdquo; ({{ policy.get_reply_level_display }}). Anything held waits in <a href="{% url 'autonomy:activity' workspace_id=workspace.id %}" class="font-semibold underline">Activity</a> for approval.{% endif %}
+    </p>
+
+    {% if error %}<p role="alert" class="m-0 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ error }}</p>{% endif %}
+
+    {% if not accounts %}
+    <p class="m-0 rounded-xl border border-line bg-surface-1 p-4 text-sm text-ink-2">None of the connected accounts is on a network that reports a post's numbers and can repost or reply, so there is nothing to automate yet. Bluesky, X, Mastodon, Threads and LinkedIn Pages can.</p>
+    {% else %}
+
+    {{ capabilities|json_script:"plugs-caps-home" }}
+
+    {% if can_manage %}
+    <section class="rounded-xl border border-line bg-surface-1 p-4" aria-labelledby="add-title">
+        <h2 id="add-title" class="m-0 text-sm font-semibold text-ink">Add a rule for every new post of an account</h2>
+        <p class="m-0 mt-1 text-xs text-ink-3">It applies to posts published after you add it. To set one on a single post, open the post in the composer.</p>
+        <div class="mt-3">
+            {% url 'plugs:rule_add' workspace_id=workspace.id as add_url %}
+            {% include "plugs/_rule_form.html" with action_url=add_url caps_id="plugs-caps-home" uid="home" %}
+        </div>
+    </section>
+    {% endif %}
+
+    <section aria-labelledby="defaults-title">
+        <h2 id="defaults-title" class="m-0 text-sm font-semibold text-ink">Rules for every new post</h2>
+        {% if defaults %}
+        <ul class="m-0 mt-2 flex list-none flex-col gap-2 p-0">
+            {% for rule in defaults %}
+            <li class="list-none">
+                <p class="m-0 mb-1 text-xs font-semibold text-ink-3">{{ rule.social_account.account_name }} &middot; {{ rule.social_account.get_platform_display }}</p>
+                <ul class="m-0 list-none p-0">{% include "plugs/_rule_item.html" with run=None %}</ul>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}<p class="m-0 mt-2 text-sm text-ink-3">None yet.</p>{% endif %}
+    </section>
+
+    <section aria-labelledby="posts-title">
+        <h2 id="posts-title" class="m-0 text-sm font-semibold text-ink">Rules on single posts</h2>
+        {% if on_posts %}
+        <ul class="m-0 mt-2 flex list-none flex-col gap-2 p-0">
+            {% for rule in on_posts %}
+            <li class="list-none">
+                <p class="m-0 mb-1 text-xs font-semibold text-ink-3"><a class="underline" href="{% url 'composer:compose_edit' workspace_id=workspace.id post_id=rule.platform_post.post_id %}">{{ rule.platform_post.post.caption|truncatechars:70|default:"(no caption)" }}</a> &middot; {{ rule.social_account.account_name }}</p>
+                <ul class="m-0 list-none p-0">{% include "plugs/_rule_item.html" with run=None %}</ul>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}<p class="m-0 mt-2 text-sm text-ink-3">None yet. Add them from a post in the composer.</p>{% endif %}
+    </section>
+
+    <section aria-labelledby="history-title">
+        <h2 id="history-title" class="m-0 text-sm font-semibold text-ink">What happened</h2>
+        {% if runs %}
+        <ul class="m-0 mt-2 flex list-none flex-col gap-2 p-0">
+            {% for run in runs %}
+            <li class="rounded-lg border border-line bg-white p-3">
+                <div class="flex flex-wrap items-center gap-2 text-xs text-ink-3">
+                    {% include "plugs/_status.html" %}
+                    <span class="font-semibold text-ink-2">{{ run.rule.summary }}</span>
+                </div>
+                <p class="m-0 mt-1 text-xs text-ink-3 break-words">{{ run.platform_post.post.caption|truncatechars:90 }} &middot; {{ run.rule.social_account.account_name }}
+                    {% if run.reached_value %}&middot; reached {{ run.reached_value|default:0 }}{% endif %}</p>
+                {% if run.detail %}<p class="m-0 mt-1 text-xs text-ink-2">{{ run.detail }}</p>{% endif %}
+                <time class="text-xs text-ink-3" datetime="{{ run.updated_at|date:'c' }}">{{ run.updated_at|timezone:workspace.effective_timezone|date:"M j, H:i" }}</time>
+            </li>
+            {% endfor %}
+        </ul>
+        {% else %}<p class="m-0 mt-2 text-sm text-ink-3">Nothing has fired yet.</p>{% endif %}
+    </section>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_js %}{% load static %}<script src="{% static 'js/plugs-form.js' %}"></script>{% endblock %}

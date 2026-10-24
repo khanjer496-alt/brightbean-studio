@@ -26,7 +26,7 @@ from .slack import SlackProvider
 from .telegram import TelegramProvider
 from .threads import ThreadsProvider
 from .tiktok import TikTokProvider
-from .types import MediaRules, PeakWindow, PostSetting, PostType, ThreadCapability
+from .types import MediaRules, PeakWindow, PlugCapability, PostSetting, PostType, ThreadCapability
 from .x import XProvider
 from .youtube import YouTubeProvider
 
@@ -186,6 +186,19 @@ def thread_capability_for(platform: str) -> ThreadCapability:
     if provider_cls is None:
         return ThreadCapability()
     return provider_cls.thread
+
+
+def plug_capability_for(platform: str) -> PlugCapability:
+    """What engagement automations may do on ``platform`` (``SocialProvider.plugs``).
+
+    Read off the provider class like ``thread_capability_for``, so the rule editor,
+    the checker and the API decide without building a provider or touching
+    credentials. An unknown platform takes none.
+    """
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    if provider_cls is None:
+        return PlugCapability()
+    return provider_cls.plugs
 
 
 def mention_lookup_for(platform: str) -> bool:

@@ -64,6 +64,7 @@ urlpatterns = [
     path("workspace/<uuid:workspace_id>/repurpose/", include("apps.repurpose.urls")),
     # Autonomy: the agent activity trail, the "going out soon" tray and the dial.
     path("workspace/<uuid:workspace_id>/activity/", include("apps.autonomy.urls")),
+    path("workspace/<uuid:workspace_id>/automations/", include("apps.plugs.urls")),
     # Outbound webhooks: endpoints and delivery log (workspace settings).
     path("workspace/<uuid:workspace_id>/webhooks/", include("apps.webhooks.urls")),
     # Shareable report links: signed token, no login.
