@@ -18,7 +18,9 @@
 }
 html[data-theme="postdelegate"] { color-scheme: dark; }
 body { color: var(--text-primary); font-family: var(--font-body); }
-button, input, textarea, select { font: inherit; }
+/* In Tailwind's base layer (it joins the layer declared by styles.css): unlayered, this reset
+   beat every layered rule, so .btn-brand and font-* / text-* utilities on controls were ignored. */
+@layer base { button, input, textarea, select { font: inherit; } }
 button, a, input, textarea, select, summary { -webkit-tap-highlight-color: transparent; }
 :where(button, a, input, textarea, select, summary):focus-visible {
   outline: 2px solid var(--brand-green-500);

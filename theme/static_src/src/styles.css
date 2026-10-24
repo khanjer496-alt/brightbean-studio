@@ -154,7 +154,7 @@ body {
    Everything here reads the shared tokens; no literal colours.
    ═══════════════════════════════════════════════════════════════ */
 .auth-bg {
-  background-color: var(--surface-page);
+  background: var(--surface-page); /* flat, like the marketing site: drops the upstream glow above */
   color: var(--text-primary);
   font-family: var(--font-body);
 }
@@ -165,7 +165,6 @@ body {
 .auth-bg .btn-social { background: var(--surface-2); border: 1px solid var(--border-input); }
 .auth-bg .btn-social:hover { background: var(--surface-3); border-color: var(--brand-400); }
 .auth-bg input[type="checkbox"] { accent-color: var(--primary); }
-.auth-bg a:not(.btn-brand):not(.btn-social) { color: var(--text-brand); }
 @media (max-width: 520px) {
   .auth-bg { padding: 1.25rem 0.75rem; }
   .auth-bg .form-input-styled { font-size: 16px; }
@@ -179,7 +178,10 @@ body {
 .pd-auth--signup { min-height: 680px; }
 .pd-story {
   padding: 56px; position: relative; overflow: hidden; color: var(--text-primary);
-  background: radial-gradient(ellipse at 15% 10%, var(--brand-200) 0%, var(--brand-50) 45%, var(--surface-page) 100%);
+  background: radial-gradient(ellipse at 15% 10%,
+    color-mix(in srgb, var(--brand-500) 38%, var(--surface-page)) 0%,
+    color-mix(in srgb, var(--brand-500) 12%, var(--surface-page)) 45%,
+    var(--surface-page) 100%);
 }
 .pd-story::after {
   content: ""; position: absolute; width: 560px; height: 360px; border-radius: 999px;

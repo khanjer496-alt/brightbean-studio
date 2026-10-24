@@ -16,12 +16,12 @@ apps.onboarding.context_processors.
        hx-trigger="ideaChanged from:body"
        hx-swap="outerHTML"
        {% endif %}
-       class="fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] right-3 z-30 sm:bottom-4 sm:right-4 {% if onboarding.checklist_hidden_on_phone %}max-sm:hidden{% endif %}">
+       class="fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] end-3 z-30 sm:bottom-4 sm:end-4 {% if onboarding.checklist_hidden_on_phone %}max-sm:hidden{% endif %}">
 
     <button type="button" x-ref="pill" x-show="!open" x-cloak
             @click="toggle(true); $nextTick(() => $refs.panel.focus())"
             aria-expanded="false" aria-controls="onboarding-checklist-panel"
-            class="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-full border border-line bg-surface-1 py-1.5 pl-3 pr-4 text-left shadow-lg hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-safe:transition-colors">
+            class="flex min-h-11 cursor-pointer items-center gap-2.5 rounded-full border border-line bg-surface-1 py-1.5 ps-3 pe-4 text-start shadow-lg hover:border-line-strong focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent motion-safe:transition-colors">
         <svg class="h-8 w-8 shrink-0 -rotate-90" viewBox="0 0 32 32" aria-hidden="true">
             <circle cx="16" cy="16" r="13" fill="none" class="stroke-surface-3" stroke-width="3"/>
             <circle cx="16" cy="16" r="13" fill="none" class="stroke-accent" stroke-width="3" stroke-linecap="round"
@@ -38,7 +38,7 @@ apps.onboarding.context_processors.
                 <p class="text-xs text-ink-3">{{ done }} of {{ total }} complete</p>
             </div>
             <div class="flex items-center gap-1">
-                <progress class="mr-1 h-1 w-14 overflow-hidden rounded-full [&::-moz-progress-bar]:bg-accent [&::-webkit-progress-bar]:bg-surface-3 [&::-webkit-progress-value]:bg-accent" max="{{ total }}" value="{{ done }}" aria-label="Checklist progress"></progress>
+                <progress class="me-1 h-1 w-14 overflow-hidden rounded-full [&::-moz-progress-bar]:bg-accent [&::-webkit-progress-bar]:bg-surface-3 [&::-webkit-progress-value]:bg-accent" max="{{ total }}" value="{{ done }}" aria-label="Checklist progress"></progress>
                 <button type="button" @click="toggle(false); $nextTick(() => $refs.pill.focus())" aria-label="Minimize checklist"
                         class="flex h-11 w-11 cursor-pointer items-center justify-center rounded-lg text-ink-3 hover:bg-surface-2 hover:text-ink sm:h-8 sm:w-8">
                     <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>

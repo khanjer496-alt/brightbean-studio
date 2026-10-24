@@ -39,6 +39,14 @@ def test_icon_button_link_and_disclosure_attributes():
     )
     assert html.startswith('<a href="/x/"')
     assert ':aria-expanded="menuOpen"' in html and 'aria-controls="menu"' in html and 'id="m"' in html
+    assert html.count('id="m"') == 1
+
+
+def test_links_that_open_a_new_tab_say_so():
+    for name in ["partials/_source_credit.html", "account/accept_terms.html"]:
+        source = (Path(settings.BASE_DIR) / "templates" / name).read_text()
+        for link in re.findall(r"<a [^>]*target=\"_blank\"[^>]*>.*?</a>", source, re.S):
+            assert "(opens in a new tab)" in link, link
 
 
 def test_modal_is_an_accessible_dialog():
