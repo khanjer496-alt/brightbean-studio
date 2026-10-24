@@ -480,3 +480,51 @@ class PublishTimeEnforcementTest(_WorkspaceMixin, TestCase):
 
         self.assertTrue(result["success"])
         dispatch.assert_called_once()
+
+
+class TestDocuments:
+    """A PDF is published only where the provider declares a documents API, and never dropped silently."""
+
+    def test_every_provider_without_a_documents_api_refuses_a_document(self):
+        from apps.composer.services import media_blocker
+
+        publishing = set()
+        for platform, provider_cls in PROVIDER_REGISTRY.items():
+            reason = media_blocker(SocialAccount(platform=platform), media_types={"document"})
+            if provider_cls.publishes_documents:
+                publishing.add(platform)
+                assert reason == "", platform
+            else:
+                assert reason, platform
+                if provider_cls.accepts_media:
+                    assert "can't publish PDF documents" in reason, platform
+        assert publishing == {"linkedin_personal", "linkedin_company"}
+
+    def test_a_document_posts_on_its_own(self):
+        from apps.composer.services import media_blocker
+
+        reason = media_blocker(SocialAccount(platform="linkedin_personal"), media_types={"document", "image"})
+        assert "on its own" in reason
+
+    def test_scheduling_a_document_to_a_network_without_documents_is_refused(self):
+        from apps.composer.services import publish_blocker
+
+        assert "can't publish PDF documents" in publish_blocker(SocialAccount(platform="x"), media_types={"document"})
+
+
+class TestChosenPostFormat:
+    """A format picked in the platform's own settings must fit the media, or it would be published as another."""
+
+    def test_a_story_without_media_is_refused(self):
+        assert _errors("facebook", [], post_type="story") == [
+            "Facebook Story needs one photo or video. Change the media, or choose another post format."
+        ]
+
+    def test_a_reel_of_an_image_is_refused(self):
+        assert "Reel needs exactly one video" in _errors("instagram", [_asset()], post_type="reel")[0]
+
+    def test_a_fitting_choice_passes(self):
+        assert not [m for m in _errors("instagram", [_video()], post_type="reel") if "needs exactly" in m]
+
+    def test_platforms_without_a_declared_format_keep_the_old_fallback(self):
+        assert _errors("linkedin", [_asset()], post_type="video") == []

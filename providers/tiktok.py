@@ -546,7 +546,8 @@ class TikTokProvider(SocialProvider):
         extra = content.extra
         inbox = extra.get("post_mode") == "MEDIA_UPLOAD"
         post_info: dict[str, str | bool | int] = {}
-        title = (content.title or content.text or "").strip()
+        # The caption goes in the description; a title is sent only when one was written, so it isn't repeated.
+        title = (content.title or "").strip()
         if title:
             post_info["title"] = title[:PHOTO_TITLE_MAX]
         if content.text:

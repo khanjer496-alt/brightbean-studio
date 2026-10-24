@@ -425,11 +425,14 @@ class TestMultipleSubreddits:
         p, calls = self._provider()
         result = p.publish_post(
             "at",
-            post_content(flair_id="primary-flair", extra_subreddits="r/learnpython | question, flask"),
+            post_content(
+                flair_id="primary-flair", extra_subreddits="r/learnpython | question | For learners; flask || For flask"
+            ),
         )
         submits = [c[2] for c in calls if c[1] == "/api/submit"]
         assert [s["sr"] for s in submits] == ["python", "learnpython", "flask"]
         assert [s.get("flair_id") for s in submits] == ["primary-flair", "f-q", None]
+        assert [s["title"] for s in submits][1:] == ["For learners", "For flask"]
         assert p._pause_between_submissions.call_count == 2
         assert result.platform_post_id == "t3_python"
         assert [a["subreddit"] for a in result.extra["also_posted"]] == ["learnpython", "flask"]
@@ -437,7 +440,7 @@ class TestMultipleSubreddits:
     def test_unknown_flair_name_fails_before_anything_is_posted(self):
         p, calls = self._provider()
         with pytest.raises(PublishError) as exc:
-            p.publish_post("at", post_content(extra_subreddits="learnpython | Nope"))
+            p.publish_post("at", post_content(extra_subreddits="learnpython | Nope | Own title"))
         assert "no flair called" in str(exc.value)
         assert not [c for c in calls if c[1] == "/api/submit"]
 
@@ -452,9 +455,16 @@ class TestMultipleSubreddits:
 
         p._api_request = api
         with pytest.raises(PublishError) as exc:
-            p.publish_post("at", post_content(extra_subreddits="flask"))
+            p.publish_post("at", post_content(extra_subreddits="flask || Own title"))
         assert exc.value.retryable is False
         assert "Posted to r/python" in str(exc.value)
+
+    def test_an_extra_subreddit_cannot_reuse_the_post_title(self):
+        p, calls = self._provider()
+        with pytest.raises(PublishError) as exc:
+            p.publish_post("at", post_content(extra_subreddits="flask || " + post_content().title.upper()))
+        assert "repeats another one" in str(exc.value)
+        assert not [c for c in calls if c[1] == "/api/submit"]
 
     def test_single_subreddit_behaviour_is_unchanged(self):
         p, calls = self._provider()
@@ -466,10 +476,12 @@ class TestMultipleSubreddits:
     @pytest.mark.parametrize(
         "extra, fragment",
         [
-            ("a1, b1, c1, d1, e1", "at most 5"),
-            ("python", "only once"),
-            ("bad name!", "isn't a subreddit"),
-            ("x", "isn't a subreddit"),
+            ("a1||t1; b1||t2; c1||t3; d1||t4; e1||t5", "at most 5"),
+            ("python || t", "only once"),
+            ("bad name! || t", "isn't a subreddit"),
+            ("x || t", "isn't a subreddit"),
+            ("flask", "title of its own"),
+            ("flask || Same; django || same", "repeats another one"),
         ],
     )
     def test_validation(self, extra, fragment):

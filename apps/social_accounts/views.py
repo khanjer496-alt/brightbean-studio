@@ -1181,10 +1181,7 @@ def set_paused(request, workspace_id, account_id):
     """
     account = get_object_or_404(SocialAccount.objects.for_workspace(workspace_id), id=account_id)
     pause = request.POST.get("paused") == "1"
-    if pause != account.is_paused:
-        account.paused_at = timezone.now() if pause else None
-        account.paused_by = request.user if pause else None
-        account.save(update_fields=["paused_at", "paused_by", "updated_at"])
+    account.set_paused(pause, by=request.user)
     if request.headers.get("HX-Request"):
         return _render_account_card(request, account, workspace_id)
     messages.success(

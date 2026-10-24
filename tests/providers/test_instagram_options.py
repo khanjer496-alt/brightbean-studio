@@ -109,9 +109,10 @@ def test_carousel_collaborators_go_on_the_parent_container():
         ({"collaborators": "a, b, c, d"}, "at most 3"),
         ({"collaborators": "bad name!"}, "valid Instagram username"),
         ({"post_type": "story", "collaborators": "alice"}, "Stories"),
-        ({"post_type": "story", "trial_reel": "MANUAL"}, "Reels only"),
+        ({"post_type": "story", "trial_reel": "MANUAL"}, "need Reel as the post format"),
+        ({"trial_reel": "MANUAL"}, "need Reel as the post format"),
         ({"trial_reel": "WHENEVER"}, "unsupported"),
-        ({"thumb_offset": "-5"}, "milliseconds"),
+        ({"post_type": "reel", "thumb_offset": "-5"}, "milliseconds"),
         ({"share_to_feed": "maybe"}, "unsupported"),
     ],
 )

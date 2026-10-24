@@ -36,7 +36,7 @@ from urllib.parse import urlencode
 from django.conf import settings
 
 from .base import SocialProvider
-from .exceptions import APIError, OAuthError, PublishError, RateLimitError
+from .exceptions import APIError, OAuthError, ProviderError, PublishError, RateLimitError
 from .types import (
     AccountProfile,
     AuthType,
@@ -230,9 +230,14 @@ class DiscordProvider(SocialProvider):
             return []
         query = query.strip()
         suggestions: list[MentionSuggestion] = []
-        members = self._bot_request(
-            "GET", f"/guilds/{guild_id}/members/search", params={"query": query, "limit": limit}
-        ).json()
+        try:
+            members = self._bot_request(
+                "GET", f"/guilds/{guild_id}/members/search", params={"query": query, "limit": limit}
+            ).json()
+        except ProviderError:
+            # A bot without the Server Members intent can't search members; its roles are still worth offering.
+            logger.info("Discord member search failed for guild %s", guild_id, exc_info=True)
+            members = []
         for member in members if isinstance(members, list) else []:
             user = member.get("user") or {}
             if not user.get("id") or user.get("bot"):

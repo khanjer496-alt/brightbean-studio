@@ -709,8 +709,8 @@ class XProvider(SocialProvider):
         root: PublishResult,
         parent: PublishResult,
     ) -> PublishResult:
-        """Publish a thread part as a reply to the part before it (never carrying the first post's poll)."""
-        extra = {k: v for k, v in content.extra.items() if k not in ("poll_options", "poll_duration")}
+        """Publish a thread part as a reply to the part before it (never carrying the first post's poll or Community)."""
+        extra = {k: v for k, v in content.extra.items() if k not in ("poll_options", "poll_duration", "community_id")}
         extra["in_reply_to_tweet_id"] = parent.platform_post_id
         return self.publish_post(access_token, replace(content, extra=extra))
 

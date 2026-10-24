@@ -34,6 +34,7 @@ from apps.api.schemas import (
     AccountAutonomyResponse,
     AccountSetResponse,
     AccountSetsListResponse,
+    AccountSummary,
     AddCompetitorRequest,
     AddEvergreenRequest,
     AddFeedRequest,
@@ -2356,6 +2357,18 @@ def add_competitor(actor: Actor, payload: AddCompetitorRequest) -> CompetitorRes
     except competitor_services.CompetitorError as exc:
         raise _competitor_error(exc) from exc
     return _competitor_response(competitor)
+
+
+def set_account_paused(actor: Actor, social_account_id: uuid.UUID, *, paused: bool) -> AccountSummary:
+    """Pause or resume publishing to an account on the key's allowlist. Needs ``manage_social_accounts``.
+
+    Posts scheduled to a paused account stay scheduled and are held (their ``held_reason`` says so); resuming
+    lets them go out, overdue ones first.
+    """
+    actor.require("manage_social_accounts")
+    account = _require_account(actor, social_account_id)
+    account.set_paused(paused, by=actor.user)
+    return AccountSummary.from_social_account(account)
 
 
 def remove_competitor(actor: Actor, competitor_id: uuid.UUID) -> DeletedResponse:

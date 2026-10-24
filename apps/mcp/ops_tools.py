@@ -1319,6 +1319,30 @@ _tool(
 )
 
 _tool(
+    "pause_account",
+    (
+        "Pause publishing to a connected account the key may use. Its scheduled posts stay scheduled but are held "
+        "(their held_reason says so) until it is resumed. Needs manage_social_accounts."
+    ),
+    ops.set_account_paused,
+    lambda a: {"_args": (_uuid_arg(a, "account_id", required=True),), "paused": True},
+    properties={"account_id": _uuid_prop("ID from list_accounts.")},
+    required=["account_id"],
+)
+
+_tool(
+    "resume_account",
+    (
+        "Resume publishing to a paused account. Posts held while it was paused go out, overdue ones first. "
+        "Needs manage_social_accounts."
+    ),
+    ops.set_account_paused,
+    lambda a: {"_args": (_uuid_arg(a, "account_id", required=True),), "paused": False},
+    properties={"account_id": _uuid_prop("ID from list_accounts.")},
+    required=["account_id"],
+)
+
+_tool(
     "get_ai_visibility_report",
     (
         "Read the latest 'how AI describes your brand' report: the share of the workspace's category prompts for "

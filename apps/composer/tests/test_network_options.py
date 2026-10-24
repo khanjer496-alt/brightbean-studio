@@ -88,7 +88,7 @@ class TestInstagramOptions:
         fields = {f["key"]: f for f in response.context["char_limits"][str(instagram.id)]["post_settings"]}
         assert list(fields) == ["post_type", "collaborators", "trial_reel", "share_to_feed", "thumb_offset"]
         assert [c["value"] for c in fields["post_type"]["choices"]] == ["story", "reel"]
-        assert fields["trial_reel"]["show_when"] == "post_type=|reel"
+        assert fields["trial_reel"]["show_when"] == "post_type=reel"
         # Music and stickers aren't in the API: the UI says so instead of offering them.
         assert "does not let apps add music" in fields["post_type"]["help"]
 
@@ -213,3 +213,23 @@ class TestTikTokOptions:
         )
         assert response.status_code == 201
         assert PlatformPost.objects.get(social_account=account).platform_extra["post_mode"] == "MEDIA_UPLOAD"
+
+
+@pytest.mark.django_db
+class TestDocumentsInTheComposer:
+    def test_scheduling_a_pdf_to_a_network_without_documents_names_it(self, client, user, workspace):
+        from apps.media_library.models import MediaAsset
+
+        client.force_login(user)
+        x = make_account(workspace, "x")
+        pdf = MediaAsset.objects.create(
+            workspace=workspace, file="test/deck.pdf", filename="deck.pdf", media_type="document", file_size=1000
+        )
+        session = client.session
+        session[f"pending_media_{workspace.id}"] = [str(pdf.id)]
+        session.save()
+        data = {"action": "schedule", "title": "T", "caption": "Body", "selected_accounts": str(x.id)}
+        response = save(client, workspace, data)
+        assert response.status_code == 400
+        assert "can't publish PDF documents" in response.json()["errors"]["media"]
+        assert not PlatformPost.objects.filter(social_account=x, status="scheduled").exists()

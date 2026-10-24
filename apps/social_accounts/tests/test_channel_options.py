@@ -239,3 +239,101 @@ class TestApiShowsPauseAndHold:
         assert api.get("/api/v1/accounts/").json()["accounts"][0]["paused"] is True
         body = api.get(f"/api/v1/posts/{pp.post_id}").json()
         assert "paused" in body["platform_posts"][0]["held_reason"]
+
+
+class TestPauseOverApiAndMcp:
+    @pytest.fixture
+    def api(self, user, manager, workspace, account):
+        from django.core.cache import cache
+        from django.test import Client
+
+        from apps.api_keys import services
+        from apps.members.models import PERMISSION_KEYS
+
+        cache.delete("agent_api:auth_fail:127.0.0.1")
+
+        class Secure(Client):
+            def generic(self, method, path, *args, **kwargs):
+                kwargs["secure"] = True
+                return super().generic(method, path, *args, **kwargs)
+
+        def client(permissions=None, accounts=(account,)):
+            key = services.issue_api_key(
+                workspace=workspace,
+                social_accounts=list(accounts),
+                issued_by=user,
+                name="pause",
+                permissions=permissions or list(PERMISSION_KEYS),
+            )
+            return Secure(HTTP_AUTHORIZATION=f"Bearer {key.plaintext_token}")
+
+        return client
+
+    def test_rest_pauses_and_resumes(self, api, account, user):
+        client = api()
+        body = client.post(f"/api/v1/accounts/{account.id}/pause").json()
+        assert body["paused"] is True
+        account.refresh_from_db()
+        assert account.is_paused and account.paused_by == user
+        assert client.post(f"/api/v1/accounts/{account.id}/resume").json()["paused"] is False
+        account.refresh_from_db()
+        assert not account.is_paused and account.paused_by is None
+
+    def test_rest_needs_account_management_and_the_allowlist(self, api, workspace, account):
+        assert api(permissions=["create_posts"]).post(f"/api/v1/accounts/{account.id}/pause").status_code == 403
+        other = SocialAccount.objects.create(
+            workspace=workspace, platform="bluesky", account_platform_id="b-2", connection_status="connected"
+        )
+        assert api().post(f"/api/v1/accounts/{other.id}/pause").status_code == 403
+        other.refresh_from_db()
+        assert not other.is_paused
+
+    def test_mcp_tools(self, api, account):
+        import json
+
+        client = api()
+
+        def call(name):
+            body = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {"name": name, "arguments": {"account_id": str(account.id)}},
+            }
+            return client.post("/api/v1/mcp/", data=json.dumps(body), content_type="application/json").json()
+
+        assert json.loads(call("pause_account")["result"]["content"][0]["text"])["paused"] is True
+        assert json.loads(call("resume_account")["result"]["content"][0]["text"])["paused"] is False
+
+    def test_capability_mapping(self):
+        from apps.api_keys import capabilities
+
+        for path in ("/api/v1/accounts/x/pause", "/api/v1/accounts/x/resume"):
+            assert capabilities.capability_for_request("POST", path) == "write_settings"
+        assert capabilities.tool_capability("pause_account") == "write_settings"
+        assert capabilities.tool_capability("resume_account") == "write_settings"
+
+
+class TestAutomationsSkipPausedAccounts:
+    def test_evergreen_does_not_fill_a_paused_account(self, workspace, account, manager):
+        from apps.calendar import evergreen
+
+        evergreen._new_item(
+            workspace=workspace,
+            social_account=account,
+            user=manager,
+            category=None,
+            interval_days=7,
+            max_repeats=None,
+            vary_with_ai=False,
+            pre_approved=False,
+            caption="Evergreen",
+        ).save()
+        account.set_paused(True, by=manager)
+        with patch.object(evergreen, "fill_account") as fill:
+            evergreen.fill_queues()
+        fill.assert_not_called()
+        account.set_paused(False)
+        with patch.object(evergreen, "fill_account", return_value=evergreen.FillResult()) as fill:
+            evergreen.fill_queues()
+        fill.assert_called_once()

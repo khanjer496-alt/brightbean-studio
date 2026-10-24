@@ -670,6 +670,8 @@ def fill_queues(*, now=None) -> FillResult:
     total = FillResult()
     accounts = SocialAccount.objects.filter(
         connection_status=SocialAccount.ConnectionStatus.CONNECTED,
+        # A paused account would only pile up held posts that all go out at once when it is resumed.
+        paused_at__isnull=True,
         evergreen_items__is_paused=False,
         workspace__is_archived=False,
         workspace__organization__deletion_requested_at__isnull=True,

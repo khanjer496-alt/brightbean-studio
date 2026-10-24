@@ -30,8 +30,9 @@ INSTAGRAM_POST_SETTINGS = (
         placeholder="Post (a lone video becomes a Reel)",
         choices=(("story", "Story"), ("reel", "Reel")),
         help=(
-            "A Story lasts 24 hours and takes one photo or video. Instagram's API does not let apps add music "
-            "from its library or Story stickers (polls, questions, links); add those in the Instagram app."
+            "A Story lasts 24 hours, takes one photo or video and carries no caption. A Reel takes one video. "
+            "Instagram's API does not let apps add music from its library or Story stickers (polls, questions, "
+            "links); add those in the Instagram app."
         ),
     ),
     PostSetting(
@@ -52,8 +53,8 @@ INSTAGRAM_POST_SETTINGS = (
             ("MANUAL", "Trial: I graduate it manually in the app"),
             ("SS_PERFORMANCE", "Trial: graduate it automatically if it performs"),
         ),
-        show_when="post_type=|reel",
-        help="A trial Reel is shown to people who don't follow you first. Applies when the post is a Reel.",
+        show_when="post_type=reel",
+        help="A trial Reel is shown to people who don't follow you first.",
     ),
     PostSetting(
         key="share_to_feed",
@@ -61,7 +62,7 @@ INSTAGRAM_POST_SETTINGS = (
         kind="select",
         placeholder="Instagram's default",
         choices=(("true", "Reels tab and profile feed"), ("false", "Reels tab only")),
-        show_when="post_type=|reel",
+        show_when="post_type=reel",
         help="Neither choice guarantees placement; Instagram still decides eligibility.",
     ),
     PostSetting(
@@ -70,7 +71,7 @@ INSTAGRAM_POST_SETTINGS = (
         kind="text",
         max_length=8,
         placeholder="0",
-        show_when="post_type=|reel",
+        show_when="post_type=reel",
         help="Milliseconds into the Reel for its cover frame. Default 0 is the first frame.",
     ),
 )
@@ -104,8 +105,10 @@ def validate_instagram_settings(settings: dict) -> str:
     trial = settings.get("trial_reel") or ""
     if trial and trial not in GRADUATION_STRATEGIES:
         return "Trial Reel has an unsupported value."
-    if post_type == "story" and (trial or settings.get("share_to_feed") or settings.get("thumb_offset")):
-        return "Trial, placement and cover frame apply to Reels only."
+    if post_type != "reel" and (
+        trial or settings.get("share_to_feed") or str(settings.get("thumb_offset") or "").strip()
+    ):
+        return "Trial Reel, Reel placement and cover frame need Reel as the post format."
     offset = str(settings.get("thumb_offset") or "").strip()
     if offset and not offset.isdigit():
         return "Cover frame must be a whole number of milliseconds."

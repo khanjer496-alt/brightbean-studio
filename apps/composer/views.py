@@ -60,7 +60,6 @@ from providers import (
     mention_lookup_for,
     post_settings_error_for,
     post_settings_for,
-    requires_media,
     thread_capability_for,
 )
 from providers.tiktok import VALID_PRIVACY_LEVELS as TIKTOK_PRIVACY_LEVELS
@@ -533,7 +532,7 @@ def _scheduled_post_allowance_error(request, post, workspace, action, form):
 def _validate_required_media(request, post, workspace, action):
     """Refuse to schedule a post without the media a selected platform needs.
 
-    TikTok and YouTube publish only video; Instagram and Pinterest need an
+    YouTube publishes only video; TikTok, Instagram and Pinterest need an
     image or a video. Their providers refuse anything else, so such a post can
     only fail — usually after its other platforms have gone out, leaving it
     half-published for the user to repair by hand.
@@ -545,13 +544,16 @@ def _validate_required_media(request, post, workspace, action):
         return None
 
     accounts = list(SocialAccount.objects.filter(id__in=selected_ids, workspace=workspace))
-    # Skip the media lookup when no selected platform cares about it.
-    if not any(requires_media(account.platform) or not accepts_media_for(account.platform) for account in accounts):
-        return None
     media_types = _composer_media_types(request, post, workspace)
     blocked = [account for account in accounts if media_blocker(account, media_types=media_types)]
     if not blocked:
         return None
+
+    # A document a network can't publish (or with other media beside it) is never dropped for the caption alone;
+    # media_blocker names the network and the fix.
+    if MediaAsset.MediaType.DOCUMENT in media_types:
+        reasons = dict.fromkeys(media_blocker(account, media_types=media_types) for account in blocked)
+        return JsonResponse({"errors": {"media": " ".join(reasons)}}, status=400)
 
     # A platform that publishes no media at all is a different fix from the rest:
     # the media has to go, not be added.

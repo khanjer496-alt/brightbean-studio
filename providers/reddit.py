@@ -99,17 +99,49 @@ def normalize_subreddit(value: str | None) -> str:
     return name if SUBREDDIT_PATTERN.fullmatch(name) else ""
 
 
-def parse_extra_subreddits(raw) -> list[tuple[str, str]]:
-    """``(subreddit, flair name)`` pairs from "a | Flair, b": names normalized, order kept, blanks skipped.
+def parse_extra_subreddits(raw) -> list[tuple[str, str, str]]:
+    """``(subreddit, flair name, title)`` triples from "a | Flair | Title; b || Title": order kept, blanks skipped.
 
-    An unreadable name stays as typed (with its flair) so validation can name it.
+    Entries are separated by semicolons or new lines (a title may contain commas). Names are normalized; an
+    unreadable one stays as typed so validation can name it.
     """
-    pairs: list[tuple[str, str]] = []
-    for entry in str(raw or "").split(","):
-        name, _bar, flair = entry.partition("|")
+    triples: list[tuple[str, str, str]] = []
+    for entry in re.split(r"[;\n]", str(raw or "")):
+        name, _bar, rest = entry.partition("|")
+        flair, _bar, title = rest.partition("|")
         if name.strip():
-            pairs.append((normalize_subreddit(name) or name.strip(), flair.strip()))
-    return pairs
+            triples.append((normalize_subreddit(name) or name.strip(), flair.strip(), title.strip()))
+    return triples
+
+
+def extra_subreddits_error(raw, *, main_subreddit: str, main_title: str = "") -> str:
+    """Why the "Also post to" list can't go out, as a sentence, or "".
+
+    Reddit's spam rules discourage the same post pushed to several communities, so each further subreddit needs
+    a title of its own, different from the post's title and from each other.
+    """
+    extras = parse_extra_subreddits(raw)
+    bad = next((name for name, _flair, _title in extras if not normalize_subreddit(name)), None)
+    if bad:
+        return f"{bad!r} isn't a subreddit name (letters, numbers and underscores, 2-21 characters)."
+    names = [main_subreddit.lower(), *(name.lower() for name, _flair, _title in extras)]
+    if len(names) > MAX_SUBREDDITS_PER_POST:
+        return f"Post to at most {MAX_SUBREDDITS_PER_POST} subreddits at a time."
+    if len(set(names)) != len(names):
+        return "Each subreddit can be listed only once."
+    titles = [main_title.strip().lower()] if main_title.strip() else []
+    for name, _flair, title in extras:
+        if not title:
+            return (
+                f"Give r/{name} a title of its own (subreddit | flair | title): Reddit treats the same post in "
+                "several communities as spam."
+            )
+        if len(title) > MAX_TITLE_LENGTH:
+            return f"The title for r/{name} can be at most {MAX_TITLE_LENGTH} characters."
+        if title.lower() in titles:
+            return f"The title for r/{name} repeats another one; Reddit treats the same post in several communities as spam."
+        titles.append(title.lower())
+    return ""
 
 
 def default_user_agent() -> str:
@@ -180,12 +212,13 @@ class RedditProvider(SocialProvider):
             key="extra_subreddits",
             label="Also post to",
             kind="text",
-            max_length=300,
-            placeholder="learnpython | Question, flask",
+            max_length=1500,
+            placeholder="learnpython | Question | A title for learnpython; flask || A title for flask",
             help=(
-                f"Up to {MAX_SUBREDDITS_PER_POST - 1} more subreddits, separated by commas, each posted "
-                f"{SUBREDDIT_SPACING_SECONDS} seconds apart. Add | and a flair name to set that subreddit's flair. "
-                "Posting the same thing to many communities can be treated as spam; keep it relevant to each."
+                f"Up to {MAX_SUBREDDITS_PER_POST - 1} more subreddits, separated by semicolons, each posted "
+                f"{SUBREDDIT_SPACING_SECONDS} seconds apart as subreddit | flair (optional) | title. Each needs a "
+                "title of its own: Reddit treats the same post in several communities as spam, and many "
+                "subreddits ban it. Only post where it fits that community's rules."
             ),
         ),
         PostSetting(key="nsfw", label="Mark as NSFW", kind="checkbox"),
@@ -395,15 +428,11 @@ class RedditProvider(SocialProvider):
             return error
         if not normalize_subreddit(settings.get("subreddit")):
             return "Subreddit must be a name like python (letters, numbers and underscores, 2-21 characters)."
-        extras = parse_extra_subreddits(settings.get("extra_subreddits"))
-        names = [normalize_subreddit(settings.get("subreddit")).lower(), *(name.lower() for name, _flair in extras)]
-        bad = next((name for name, _flair in extras if not normalize_subreddit(name)), None)
-        if bad:
-            return f"{bad!r} isn't a subreddit name (letters, numbers and underscores, 2-21 characters)."
-        if len(names) > MAX_SUBREDDITS_PER_POST:
-            return f"Post to at most {MAX_SUBREDDITS_PER_POST} subreddits at a time."
-        if len(set(names)) != len(names):
-            return "Each subreddit can be listed only once."
+        error = extra_subreddits_error(
+            settings.get("extra_subreddits"), main_subreddit=normalize_subreddit(settings.get("subreddit"))
+        )
+        if error:
+            return error
         if settings.get("post_kind") == "link":
             url = str(settings.get("link_url") or "").strip()
             parsed = urlparse(url)
@@ -460,13 +489,16 @@ class RedditProvider(SocialProvider):
                 platform=self.platform_name,
                 retryable=False,
             )
-        error = self.validate_post_settings({**extra, "link_url": content.link_url or extra.get("link_url")})
+        error = self.validate_post_settings(
+            {**extra, "link_url": content.link_url or extra.get("link_url")}
+        ) or extra_subreddits_error(extra.get("extra_subreddits"), main_subreddit=subreddit, main_title=title)
         if error:
             raise PublishError(error, platform=self.platform_name, retryable=False)
 
-        targets = [(subreddit, str(extra.get("flair_id") or ""))]
-        for name, flair_name in parse_extra_subreddits(extra.get("extra_subreddits")):
-            targets.append((name, self._flair_id_by_name(access_token, name, flair_name) if flair_name else ""))
+        targets = [(subreddit, str(extra.get("flair_id") or ""), title)]
+        for name, flair_name, own_title in parse_extra_subreddits(extra.get("extra_subreddits")):
+            flair_id = self._flair_id_by_name(access_token, name, flair_name) if flair_name else ""
+            targets.append((name, flair_id, own_title))
         link = content.link_url or extra.get("link_url")
         if extra.get("post_kind") != "link" and len(content.text or "") > MAX_TEXT_LENGTH:
             raise PublishError(
@@ -476,11 +508,11 @@ class RedditProvider(SocialProvider):
             )
 
         done: list[dict] = []
-        for index, (name, flair_id) in enumerate(targets):
+        for index, (name, flair_id, target_title) in enumerate(targets):
             if index:
                 self._pause_between_submissions(content)
             try:
-                done.append(self._submit(access_token, content, name, flair_id, link))
+                done.append(self._submit(access_token, content, name, flair_id, link, target_title))
             except Exception as exc:
                 if not done:
                     raise
@@ -521,10 +553,11 @@ class RedditProvider(SocialProvider):
             retryable=False,
         )
 
-    def _submit(self, access_token: str, content: PublishContent, subreddit: str, flair_id: str, link) -> dict:
-        """One ``/api/submit`` to ``subreddit``: ``{"subreddit", "fullname", "url"}``."""
+    def _submit(
+        self, access_token: str, content: PublishContent, subreddit: str, flair_id: str, link, title: str
+    ) -> dict:
+        """One ``/api/submit`` to ``subreddit`` under ``title``: ``{"subreddit", "fullname", "url"}``."""
         extra = content.extra
-        title = (content.title or "").strip()
         is_link = extra.get("post_kind") == "link"
         form = {
             "api_type": "json",

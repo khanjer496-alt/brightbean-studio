@@ -95,7 +95,7 @@ class AccountSummary(Schema):
     requires_video: bool = Field(
         False,
         description=(
-            "True when the platform publishes only video (TikTok, YouTube). Scheduling a post "
+            "True when the platform publishes only video (YouTube). Scheduling a post "
             "with no video in ``media_asset_ids`` is rejected with 422."
         ),
     )

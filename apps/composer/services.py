@@ -524,15 +524,24 @@ def media_types_by_post(post_ids) -> dict:
 def media_blocker(social_account, *, media_types) -> str:
     """Why ``social_account`` can't publish a post with these media, or "".
 
-    TikTok and YouTube publish only video; Instagram and Pinterest need an
+    YouTube publishes only video; TikTok, Instagram and Pinterest need an
     image or a video. Their providers refuse anything else before calling out.
     """
     from apps.media_library.models import MediaAsset
-    from providers import accepts_media_for, is_video_only, requires_media
+    from providers import accepts_media_for, is_video_only, publishes_documents_for, requires_media
 
     platform = social_account.get_platform_display()
     if media_types and not accepts_media_for(social_account.platform):
         return f"{platform} posts are text or links. Remove the media from this post, or deselect {platform}."
+    # A document is never dropped to publish the caption alone: a network without a documents API refuses it,
+    # and one with it publishes the document as the post's only attachment.
+    if MediaAsset.MediaType.DOCUMENT in media_types:
+        if not publishes_documents_for(social_account.platform):
+            return (
+                f"{platform} can't publish PDF documents. Remove the document from this post, or deselect {platform}."
+            )
+        if len(media_types) > 1:
+            return f"A document posts on its own on {platform}. Remove the other media from this post, or the document."
     if is_video_only(social_account.platform) and MediaAsset.MediaType.VIDEO not in media_types:
         return f"{platform} can only publish videos. Add a video to this post before scheduling it."
     if requires_media(social_account.platform) and not media_types:
@@ -623,6 +632,40 @@ def _duration_label(seconds: float) -> str:
     return f"{minutes} min" if not secs else f"{minutes}:{secs:02d} min"
 
 
+# What a post format a person picks in the composer needs, for one that its attachments don't fit.
+_FORMAT_NEEDS = {
+    "reel": "exactly one video",
+    "story": "one photo or video",
+    "video": "a video",
+}
+
+
+def _chosen_format_issue(social_account, assets, platform_extra: dict) -> MediaIssue | None:
+    """An error when the post format chosen in the platform's own settings doesn't fit the media, else None.
+
+    The publisher ignores a stale ``post_type`` hint and falls back to the media's own type, which is right for
+    a hint written behind the person's back but not for one they picked from the platform's settings: a Story
+    with no photo would go out as a text post, a Reel of an image as a feed post. Only platforms that declare
+    ``post_type`` as a setting are checked.
+    """
+    from apps.publisher.engine import PublishEngine
+    from providers import post_settings_for
+    from providers.types import PostType
+
+    hint = platform_extra.get("post_type") or ""
+    if hint not in _FORMAT_NEEDS or "post_type" not in {f.key for f in post_settings_for(social_account.platform)}:
+        return None
+    first = assets[0].media_type if assets else None
+    if PublishEngine._hint_matches_media(PostType(hint), len(assets), first):
+        return None
+    noun = _POST_TYPE_NOUNS.get(hint, "this format")
+    return MediaIssue(
+        MEDIA_ISSUE_ERROR,
+        f"{social_account.get_platform_display()} {noun.split(' ', 1)[1]} needs {_FORMAT_NEEDS[hint]}. "
+        "Change the media, or choose another post format.",
+    )
+
+
 def media_rule_issues(social_account, assets, *, platform_extra: dict | None = None) -> list[MediaIssue]:
     """Where ``assets`` break the media rules ``social_account``'s platform declares.
 
@@ -642,6 +685,9 @@ def media_rule_issues(social_account, assets, *, platform_extra: dict | None = N
     # The publisher drops everything but video for these (see _dispatch_to_provider).
     if is_video_only(platform):
         assets = [a for a in assets if a.media_type == MediaAsset.MediaType.VIDEO]
+    chosen = _chosen_format_issue(social_account, assets, platform_extra or {})
+    if chosen is not None:
+        return [chosen]
     if not assets:
         return []
     post_type = PublishEngine._resolve_post_type(platform, platform_extra or {}, len(assets), assets[0].media_type)
@@ -881,11 +927,15 @@ def media_change_blocker(post, *, media_types_after, assets_after=None) -> str:
     platform's blocking media rules (``media_rules_blocker``).
     """
     from apps.composer.models import PlatformPost
+    from apps.media_library.models import MediaAsset
     from providers import is_video_only
 
     children = post.platform_posts.filter(status=PlatformPost.Status.SCHEDULED).select_related("social_account")
     for child in children:
-        if media_blocker(child.social_account, media_types=media_types_after):
+        reason = media_blocker(child.social_account, media_types=media_types_after)
+        if reason and MediaAsset.MediaType.DOCUMENT in media_types_after:
+            return reason
+        if reason:
             platform = child.social_account.get_platform_display()
             need = "a video" if is_video_only(child.social_account.platform) else "an image or a video"
             return (

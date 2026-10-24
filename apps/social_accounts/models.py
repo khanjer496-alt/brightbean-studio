@@ -308,6 +308,19 @@ class SocialAccount(models.Model):
     def is_paused(self) -> bool:
         return self.paused_at is not None
 
+    def set_paused(self, paused: bool, *, by=None) -> bool:
+        """Pause or resume publishing to the account; True when that changed anything.
+
+        The one way to do it, for the account card, the REST API and MCP alike. Posts scheduled to a paused
+        account stay scheduled and are held by the publisher; resuming lets them go out as overdue.
+        """
+        if paused == self.is_paused:
+            return False
+        self.paused_at = timezone.now() if paused else None
+        self.paused_by = by if paused else None
+        self.save(update_fields=["paused_at", "paused_by", "updated_at"])
+        return True
+
     @property
     def held_post_count(self) -> int:
         """Scheduled posts waiting on this account while publishing is paused (0 when it is on)."""
