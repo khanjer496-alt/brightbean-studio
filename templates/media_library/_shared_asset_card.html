@@ -68,7 +68,7 @@
       <button type="button"
               hx-post="{% url 'media_library_org:shared_asset_delete' asset_id=asset.id %}"
               hx-headers='{"X-CSRFToken": "{{ csrf_token }}"}'
-              hx-confirm="Delete this shared asset? It will be removed for all workspaces."
+              hx-confirm="Delete this shared asset? It will be removed for all workspaces." data-confirm-title="Delete shared asset" data-confirm-label="Delete" data-confirm-variant="danger"
               hx-target="closest [data-asset-card]"
               hx-swap="outerHTML"
               @click="menuOpen = false"

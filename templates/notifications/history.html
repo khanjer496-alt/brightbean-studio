@@ -24,7 +24,7 @@
                 hx-post="{% url 'notifications:mark_all_read' %}"
                 hx-target="#notification-history-list"
                 hx-swap="innerHTML"
-                hx-confirm="Mark all notifications as read?"
+                hx-confirm="Mark all notifications as read?" data-confirm-title="Mark all as read" data-confirm-label="Mark all read"
                 class="inline-flex items-center gap-1.5 px-4 py-1.5 text-[13px] font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-full hover:bg-orange-100 hover:border-orange-300 active:bg-orange-100 transition-all duration-150 cursor-pointer"
             >
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>

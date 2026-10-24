@@ -136,7 +136,7 @@
                 <button type="button"
                         class="inline-flex size-8 items-center justify-center text-stone-500 hover:text-red-500 transition-colors"
                         hx-post="{% url 'calendar:queue_entry_remove' workspace_id=workspace.id queue_id=queue.id entry_id=entry.id %}"
-                        hx-confirm="Remove this post from the queue? Its slot will free up."
+                        hx-confirm="Remove this post from the queue? Its slot will free up." data-confirm-title="Remove from queue" data-confirm-label="Remove" data-confirm-variant="danger"
                         aria-label="Remove from queue: {{ entry.post.caption_snippet|default:'post'|truncatechars:40 }}">
                     <svg class="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>

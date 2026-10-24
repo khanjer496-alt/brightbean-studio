@@ -67,7 +67,7 @@
             {% if event %}
             {# A button, not a nested form: forms cannot nest. The CSRF header is added by base.html for every htmx request. #}
             <button type="button" hx-post="{% url 'calendar:event_delete' workspace_id=workspace.id event_id=event.id %}" hx-swap="none"
-                    hx-confirm="Delete this event?" class="min-h-8 text-xs text-bad hover:underline font-medium">Delete Event</button>
+                    hx-confirm="Delete this event?" data-confirm-title="Delete event" data-confirm-label="Delete" data-confirm-variant="danger" class="min-h-8 text-xs text-bad hover:underline font-medium">Delete Event</button>
             {% else %}
             <div></div>
             {% endif %}

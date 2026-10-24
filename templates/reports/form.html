@@ -89,7 +89,7 @@
             <div class="flex flex-wrap items-center gap-3">
                 <button type="submit" class="btn-brand inline-flex min-h-11 w-auto items-center px-6 py-2">Save report</button>
                 {% if definition %}
-                <button type="submit" form="report-delete" @click="if (!confirm('Delete this report and its history?')) $event.preventDefault()" class="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-bad px-4 text-[13px] font-semibold text-bad">Delete</button>
+                <button type="submit" form="report-delete" data-confirm="Delete this report and its history?" data-confirm-title="Delete report" data-confirm-label="Delete" data-confirm-variant="danger" class="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-bad px-4 text-[13px] font-semibold text-bad">Delete</button>
                 {% endif %}
             </div>
         </form>

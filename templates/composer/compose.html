@@ -451,7 +451,7 @@
                                     :disabled="!checked"
                                     hx-post="{% url 'composer:resume_thread' workspace_id=workspace.id post_id=post.id platform_post_id=pp.id %}"
                                     {% if pp.thread_stopped_unconfirmed %}hx-include="#resume-confirm-{{ pp.id }}"{% endif %}
-                                    hx-confirm="Resume the thread from the part where it stopped?">
+                                    hx-confirm="Resume the thread from the part where it stopped?" data-confirm-title="Resume thread" data-confirm-label="Resume">
                                 Resume thread
                             </button>
                         </div>

@@ -83,7 +83,7 @@
             {% endif %}
         {% endif %}
         {% if can_delete %}
-        <form method="post" action="{% url 'autonomy:action_run' workspace_id=workspace.id action_id=action.id verb='delete' %}" x-data @submit="if (!confirm('Delete this post from the platform? This cannot be undone.')) $event.preventDefault()">{% csrf_token %}<button type="submit" class="px-4 py-2 text-sm font-semibold text-red-700 border border-red-200 rounded-full hover:bg-red-50 cursor-pointer">Delete from platform</button></form>
+        <form method="post" action="{% url 'autonomy:action_run' workspace_id=workspace.id action_id=action.id verb='delete' %}" data-confirm="Delete this post from the platform? This cannot be undone." data-confirm-title="Delete from platform" data-confirm-label="Delete" data-confirm-variant="danger">{% csrf_token %}<button type="submit" class="px-4 py-2 text-sm font-semibold text-red-700 border border-red-200 rounded-full hover:bg-red-50 cursor-pointer">Delete from platform</button></form>
         {% endif %}
     </section>
 </div>

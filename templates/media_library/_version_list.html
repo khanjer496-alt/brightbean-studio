@@ -40,7 +40,7 @@
            
             hx-post="{% url 'media_library:version_restore' workspace_id=workspace.id asset_id=asset.id version_id=version.id %}"
             hx-target="#version-list-{{ asset.id }}"
-            hx-confirm="Restore version {{ version.version_number }}? This will create a new version.">
+            hx-confirm="Restore version {{ version.version_number }}? This will create a new version." data-confirm-title="Restore version" data-confirm-label="Restore">
       Restore
     </button>
     {% endif %}

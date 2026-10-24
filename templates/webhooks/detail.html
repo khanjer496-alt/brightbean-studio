@@ -42,15 +42,15 @@
                     Send test event
                 </button>
             </form>
-            <form x-data method="POST" action="{% url 'webhooks:rotate_secret' workspace_id=workspace.id endpoint_id=endpoint.id %}"
-                  @submit="if(!confirm('Replace the signing secret? The current one stops working at once.')) $event.preventDefault()">
+            <form method="POST" action="{% url 'webhooks:rotate_secret' workspace_id=workspace.id endpoint_id=endpoint.id %}"
+                  data-confirm="Replace the signing secret? The current one stops working at once." data-confirm-title="Rotate signing secret" data-confirm-label="Rotate" data-confirm-variant="danger">
                 {% csrf_token %}
                 <button type="submit" class="btn-neutral min-h-11 px-5 py-2 text-sm font-medium rounded-full cursor-pointer bg-[var(--neutral-100)] text-[var(--text-primary)]">
                     Rotate secret
                 </button>
             </form>
-            <form x-data method="POST" action="{% url 'webhooks:delete' workspace_id=workspace.id endpoint_id=endpoint.id %}"
-                  @submit="if(!confirm('Delete this endpoint and its delivery log?')) $event.preventDefault()">
+            <form method="POST" action="{% url 'webhooks:delete' workspace_id=workspace.id endpoint_id=endpoint.id %}"
+                  data-confirm="Delete this endpoint and its delivery log?" data-confirm-title="Delete endpoint" data-confirm-label="Delete" data-confirm-variant="danger">
                 {% csrf_token %}
                 <button type="submit" class="btn-danger-soft min-h-11 px-5 py-2 text-sm font-medium rounded-full cursor-pointer bg-bad-soft text-bad">
                     Delete endpoint

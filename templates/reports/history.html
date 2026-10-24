@@ -25,7 +25,7 @@
     {% include "reports/_runs.html" %}
     {% if can_manage and runs %}
     <form method="post" action="{% url 'reports:revoke_links' workspace_id=workspace.id report_id=definition.id %}" class="m-0 mt-6 flex flex-wrap items-center gap-3 border-t border-line pt-4"
-          onsubmit="return confirm('Stop every shared link to this report, including links already emailed?');">
+          data-confirm="Stop every shared link to this report, including links already emailed?" data-confirm-title="Revoke shared links" data-confirm-label="Revoke all" data-confirm-variant="danger">
         {% csrf_token %}
         <p class="m-0 text-xs text-ink-3">Shared links work for {{ link_days }} days without sign-in.</p>
         <button type="submit" class="inline-flex min-h-11 cursor-pointer items-center rounded-full border border-line bg-surface-0 px-4 text-[13px] font-semibold text-bad hover:text-ink">Revoke all shared links</button>
