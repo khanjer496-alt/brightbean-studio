@@ -1,0 +1,107 @@
+{% comment %}
+Channel rail on the calendar (WP3). At xl and up: a 16rem column (4.5rem collapsed) left of the grid with "Create post" and
+"Connect channel", then one row per channel, grouped by account set when the workspace has sets. Below xl the same markup
+is a horizontally scrolling avatar strip above the toolbar (CSS only, see calendar.html).
+
+A row's main part is a toggle button: it adds or removes the channel from the calendar's channel filter
+(calendarFilters.channels, the same list the Channels dropdown edits) and redraws the grid. A channel that needs
+reconnecting also gets its own Reconnect button (a POST form to the existing reconnect endpoint), never nested in the toggle.
+
+Must sit inside the calendar shell's Alpine scope (calendarApp: isSelected, toggleChannel, clearChannels).
+Context: workspace, rail_accounts, rail_groups, rail_selected, can_manage_channels, can_create_posts.
+Collapse state lives in localStorage "channelRailCollapsed" and on <html class="cal-rail-collapsed"> (set before first paint by
+the inline script below, so a collapsed rail never flashes open).
+{% endcomment %}
+<script nonce="{{ request.csp_nonce }}">try { if (localStorage.getItem('channelRailCollapsed') === '1') document.documentElement.classList.add('cal-rail-collapsed'); } catch (e) {}</script>
+<aside class="cal-rail" aria-label="Channels"
+       x-data="{ collapsed: document.documentElement.classList.contains('cal-rail-collapsed'),
+                 toggle() { this.collapsed = !this.collapsed; document.documentElement.classList.toggle('cal-rail-collapsed', this.collapsed); try { localStorage.setItem('channelRailCollapsed', this.collapsed ? '1' : '0'); } catch (e) {} } }">
+    <div class="cal-rail-head">
+        <h2 class="cal-rail-title">Channels</h2>
+        <button type="button" class="cal-rail-toggle touch-44" @click="toggle()"
+                :aria-expanded="collapsed ? 'false' : 'true'" aria-expanded="true"
+                :aria-label="collapsed ? 'Expand channels' : 'Collapse channels'" aria-label="Collapse channels"
+                :title="collapsed ? 'Expand channels' : 'Collapse channels'" title="Collapse channels">
+            <svg class="size-4 pd-icon-flip-rtl cal-rail-toggle-icon" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 19l-7-7 7-7"/></svg>
+        </button>
+    </div>
+
+    <div class="cal-rail-actions">
+        {% if can_create_posts %}
+        <a href="{% url 'composer:compose' workspace_id=workspace.id %}" class="cal-rail-btn cal-rail-btn--primary" title="Create post">
+            <svg class="size-4 shrink-0" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
+            <span class="cal-rail-label">Create post</span>
+        </a>
+        {% endif %}
+        {% if can_manage_channels %}
+        <a href="{% url 'social_accounts:connect' workspace_id=workspace.id %}" class="cal-rail-btn" title="Connect channel">
+            <svg class="size-4 shrink-0" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.07 0l3-3a5 5 0 00-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 00-7.07 0l-3 3a5 5 0 007.07 7.07l1.5-1.5"/></svg>
+            <span class="cal-rail-label">Connect channel</span>
+        </a>
+        {% endif %}
+    </div>
+
+    {% if rail_accounts %}
+    <div class="cal-rail-scroll">
+        <div class="cal-rail-clear" x-show="calendarFilters.channels.length" x-cloak>
+            <button type="button" @click="clearChannels()" class="cal-rail-clear-btn">
+                <span x-text="'Showing ' + calendarFilters.channels.length + ' of {{ rail_accounts|length }}'"></span>
+                <span class="underline underline-offset-2">Show all</span>
+            </button>
+        </div>
+        {% for group in rail_groups %}
+        <section class="cal-rail-group" x-data="{ open: true }">
+            {% if group.name %}
+            <h3 class="cal-rail-group-head">
+                <button type="button" @click="open = !open" :aria-expanded="open ? 'true' : 'false'" aria-expanded="true" aria-controls="rail-group-{{ group.key }}" class="cal-rail-group-btn touch-44">
+                    <svg class="size-3 shrink-0 transition-transform duration-150" :class="open ? 'rotate-90' : 'rtl:rotate-180'" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg>
+                    <span class="truncate">{{ group.name }}</span>
+                </button>
+            </h3>
+            {% endif %}
+            <div class="cal-collapse" :class="open || 'is-closed'" id="rail-group-{{ group.key }}" :inert="!open">
+                <ul class="cal-rail-list">
+                    {% for account in group.accounts %}
+                    <li class="channel-item">
+                        <div class="channel-row{% if account.needs_reconnect %} is-attention{% endif %}{% if account.is_paused %} is-paused{% endif %}"
+                             :class="isSelected('{{ account.id }}') && 'is-selected'" data-account-id="{{ account.id }}">
+                            <button type="button" class="channel-row-main touch-44" @click="toggleChannel('{{ account.id }}')"
+                                    :aria-pressed="isSelected('{{ account.id }}') ? 'true' : 'false'" aria-pressed="{% if account.id|stringformat:'s' in rail_selected %}true{% else %}false{% endif %}"
+                                    title="{{ account.display_name }}{% if account.needs_reconnect %} (needs reconnecting){% elif account.is_paused %} (paused){% endif %}">
+                                <span class="channel-avatar">
+                                    {% include "partials/_channel_avatar.html" with account=account px=36 badge_px=18 square=True dim=account.needs_reconnect %}
+                                    {% if account.needs_reconnect %}<span class="channel-alert" aria-hidden="true">!</span>{% endif %}
+                                </span>
+                                <span class="channel-text">
+                                    <span class="channel-name">{{ account.display_name }}</span>
+                                    <span class="channel-sub">
+                                        {% if account.needs_reconnect %}Needs reconnecting{% elif account.is_paused %}Paused{% elif account.connection_status == "token_expiring" %}Token expiring{% elif account.account_handle %}@{{ account.account_handle|cut:"@" }}{% else %}{{ account.get_platform_display }}{% endif %}
+                                    </span>
+                                </span>
+                                {% if account.is_paused or account.connection_status == "token_expiring" %}<span class="channel-dot is-warn" aria-hidden="true"></span>{% endif %}
+                                <span class="sr-only">{% if account.needs_reconnect %}Needs reconnecting. {% elif account.is_paused %}Publishing paused. {% endif %}Filter the calendar by this channel</span>
+                            </button>
+                            {% if account.needs_reconnect and can_manage_channels %}
+                            <form method="post" action="{% url 'social_accounts:reconnect' workspace_id=workspace.id account_id=account.id %}" class="channel-reconnect">
+                                {% csrf_token %}
+                                <button type="submit" class="channel-reconnect-btn touch-44" aria-label="Reconnect {{ account.display_name }}" title="Reconnect {{ account.display_name }}">
+                                    <svg class="size-3.5 shrink-0" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 11-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+                                    <span class="channel-reconnect-label">Reconnect</span>
+                                </button>
+                            </form>
+                            {% endif %}
+                        </div>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </section>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="cal-rail-empty">
+        {% url 'social_accounts:connect' workspace_id=workspace.id as connect_url %}
+        {% include "components/_empty_state.html" with key="calendar-rail" title="No channels yet" body="Connect your accounts to start scheduling." icon_svg='<path d="M10 13a5 5 0 007.07 0l3-3a5 5 0 00-7.07-7.07l-1.5 1.5"/><path d="M14 11a5 5 0 00-7.07 0l-3 3a5 5 0 007.07 7.07l1.5-1.5"/>' cta_label="Connect channel" cta_url=connect_url %}
+    </div>
+    {% endif %}
+</aside>

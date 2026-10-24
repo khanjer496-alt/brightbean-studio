@@ -39,8 +39,9 @@
 
     function dialog() { return document.getElementById(DIALOG_ID); }
 
-    function toast(tone, title) {
-        document.body.dispatchEvent(new CustomEvent('showToast', { detail: { tone: tone, title: title } }));
+    // The shared toast host in base.html: kind is 'success' (clears itself) or 'error' (stays until dismissed).
+    function toast(kind, message) {
+        window.dispatchEvent(new CustomEvent('pd-toast', { detail: { message: message, kind: kind } }));
     }
 
     // A refused request (400/403) carries the explanation as dialog markup: swap it in rather than drop it.

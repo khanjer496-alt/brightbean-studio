@@ -41,32 +41,30 @@ Context: week_days, week_slots, week_agenda, workspace.
 
 {# Wider screens: hourly grid #}
 {# Open on the first hour that has posts (else 8:00) instead of midnight, which is usually an empty screen. #}
-<div class="hidden md:block bg-white overflow-auto tab-slide-in max-h-[calc(100dvh-200px)]" tabindex="0" role="region" aria-label="Week calendar"
+<div class="cal-week hidden md:block overflow-auto tab-slide-in max-h-[calc(100dvh-200px)]" tabindex="0" role="region" aria-label="Week calendar"
      x-init="$nextTick(() => { if (window.__calKeepScroll) return; const busy = $el.querySelector('.cal-drop.has-posts'); const row = busy ? busy.closest('[data-hour]') : $el.querySelectorAll('[data-hour]')[8]; const head = $el.querySelector('[data-week-head]'); if (row) $el.scrollTop += row.getBoundingClientRect().top - $el.getBoundingClientRect().top - (head ? head.offsetHeight : 0) - 8; })">
-    <!-- Day headers -->
-    <div class="grid grid-cols-[72px_repeat(7,minmax(0,1fr))] border-b border-stone-200 sticky top-0 bg-white z-10" data-week-head>
-        <div class="border-r border-stone-200"></div>
+    <!-- Day headers: one tile per day, today's date in a filled circle -->
+    <div class="cal-week-row cal-week-head" data-week-head>
+        <div aria-hidden="true"></div>
         {% for day in week_days %}
-        <div class="px-2 py-2 text-center border-r border-stone-200 last:border-r-0 {% if day == today %}cal-week-today{% endif %}"{% if day == today %} aria-current="date"{% endif %}>
-            <div class="text-[11px] font-semibold uppercase {% if day == today %}text-accent{% else %}text-stone-500{% endif %}">{{ day|date:"D" }}</div>
-            <div class="cal-week-day-num text-sm font-semibold text-stone-700">{{ day.day }}</div>
+        <div class="cal-week-headcell {% if day == today %}is-today cal-week-today{% endif %}"{% if day == today %} aria-current="date"{% endif %}>
+            <div class="cal-week-dow">{{ day|date:"D" }}</div>
+            <div class="cal-week-day-num">{{ day.day }}</div>
         </div>
         {% endfor %}
     </div>
 
     <!-- Hour rows -->
     {% for hour, day_cells in week_slots %}
-    <div class="grid grid-cols-[72px_repeat(7,minmax(0,1fr))] border-b border-stone-100 min-h-[56px]" data-hour="{{ hour }}">
-        <div class="border-r border-stone-200 px-2 py-1 text-right">
-            <span class="text-[11px] font-medium text-stone-500 tabular-nums">{{ hour }}:00</span>
-        </div>
+    <div class="cal-week-row" data-hour="{{ hour }}">
+        <div class="cal-hour"><span>{% if hour < 10 %}0{% endif %}{{ hour }}:00</span></div>
         {% for cell in day_cells %}
-        <div class="border-r border-stone-100 last:border-r-0 p-1 cal-add-cell cal-drop {% if cell.posts or cell.slots %}has-posts{% endif %} {% if cell.day == today %}cal-week-today{% endif %}"
+        <div class="cal-slot-cell cal-add-cell cal-drop {% if cell.posts or cell.slots %}has-posts{% endif %} {% if cell.day == today %}cal-week-today{% endif %}{% if cell.day < today or cell.day == today and hour < current_hour %} cal-past{% endif %}"
              data-date="{{ cell.compose_date }}" data-time="{{ cell.compose_time }}">
             {% if cell.day > today or cell.day == today and hour >= current_hour %}
-            <a href="{% url 'composer:compose' workspace_id=workspace.id %}?scheduled_date={{ cell.compose_date }}&scheduled_time={{ cell.compose_time }}" class="cal-add-btn"
-               aria-label="Create post on {{ cell.day|date:'l, M j' }} at {{ hour }}:00">
-                <svg class="w-3 h-3" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+            <a href="{% url 'composer:compose' workspace_id=workspace.id %}?scheduled_date={{ cell.compose_date }}&scheduled_time={{ cell.compose_time }}" class="cal-add-btn cal-add-tile"
+               aria-label="Create post on {{ cell.day|date:'l, M j' }} at {% if hour < 10 %}0{% endif %}{{ hour }}:00">
+                <svg class="size-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
             </a>
             {% endif %}
             {% if cell.slots %}

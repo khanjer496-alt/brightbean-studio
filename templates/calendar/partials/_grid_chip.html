@@ -1,44 +1,71 @@
-{% comment %}
-One post chip on the month / week / day grids.
-The row is the draggable unit (SortableJS in calendar.html); inside it the selection checkbox, the
-link that opens the post and the "Reschedule…" button are separate controls, so none is nested in
-another. The button is the keyboard and touch alternative to dragging.
-Context: pp, workspace, optional show_slot_check.
+{% load tz %}{% comment %}
+One post chip on the month / week / day grids: a two-part card. A 24px strip on top (the post's first tag, else its status)
+and a body with the channel avatar and network badge, one line of text and the time. The left border carries the status colour.
+The row is the draggable unit (SortableJS in calendar.html); inside it the selection checkbox, the link that opens the post,
+the failed-post badge and the action buttons are separate controls, so none is nested in another. The actions (Duplicate,
+Reschedule, View live, Delete) replace the strip text on hover, on keyboard focus anywhere in the chip and always on touch screens.
+"Reschedule" is the keyboard and touch alternative to dragging.
+Context: pp, workspace, display_timezone, can_create_posts, optional show_slot_check, hide_time (the phone agenda shows
+the time beside the chip), extra_chip (a month-cell overflow chip: hidden until the cell's "more" button, Alpine `more`).
 {% endcomment %}
-<div class="chip-row{% if pp.is_bulk_selectable %} chip-row--selectable{% endif %}{% if pp.is_reschedulable %} is-draggable{% endif %}"{% if pp.is_reschedulable %} data-platform-post-id="{{ pp.id }}"{% endif %}>
+{% with title=pp.post.title|default:pp.post.caption_snippet %}
+<div class="chip-row cal-chip-row{% if pp.is_bulk_selectable %} chip-row--selectable{% endif %}{% if pp.is_reschedulable %} is-draggable{% endif %}{% if pp.display_status == 'failed' %} is-failed{% endif %}"{% if pp.is_reschedulable %} data-platform-post-id="{{ pp.id }}"{% endif %}{% if extra_chip %} x-show="more" x-cloak {% endif %}>
     {% if pp.is_bulk_selectable %}{% include "calendar/partials/_select_checkbox.html" with pp_id=pp.id %}{% endif %}
     <a href="{% url 'composer:compose_edit' workspace_id=workspace.id post_id=pp.post_id %}?account={{ pp.social_account_id }}"
-       class="post-chip status-{{ pp.display_status }}">
-        <span class="sr-only">{{ pp.display_status_label }}:</span>
-        <span class="w-4 h-4 rounded flex items-center justify-center pi-{{ pp.social_account.platform }} flex-shrink-0 text-white">
-            {% include "social_accounts/partials/_platform_icon.html" with platform=pp.social_account.platform size="3" %}
+       class="post-chip cal-chip status-{{ pp.display_status }}"{% if pp.display_status == 'failed' and pp.publish_error %} title="{{ pp.publish_error|truncatechars:200 }}"{% endif %}>
+        <span class="sr-only">{{ pp.display_status_label }}:{% if pp.effective_at and not hide_time %} {{ pp.effective_at|timezone:display_timezone|time:"H:i" }}{% endif %}</span>
+        <span class="cal-chip-strip" aria-hidden="true"><span class="truncate">{% if pp.post.tags %}{{ pp.post.tags.0 }}{% else %}{{ pp.display_status_label }}{% endif %}</span>{% if pp.effective_at and not hide_time %}<time class="cal-chip-time" datetime="{{ pp.effective_at|date:'c' }}">{{ pp.effective_at|timezone:display_timezone|time:"H:i" }}</time>{% endif %}</span>
+        <span class="cal-chip-body">
+            <span class="cal-chip-avatar">{% include "partials/_channel_avatar.html" with account=pp.social_account px=20 badge_px=12 square=True %}</span>
+            {% with first_media=pp.post.media_attachments.all.0 %}
+            {% if first_media and first_media.media_asset.thumbnail %}
+            <img src="{{ first_media.media_asset.thumbnail.url }}" alt="" width="20" height="20" class="cal-chip-thumb w-5 h-5 rounded object-cover flex-shrink-0" loading="lazy" decoding="async">
+            {% elif first_media and not first_media.media_asset.is_video %}
+            <img src="{{ first_media.media_asset.file.url }}" alt="" width="20" height="20" class="cal-chip-thumb w-5 h-5 rounded object-cover flex-shrink-0" loading="lazy" decoding="async">
+            {% elif first_media and first_media.media_asset.is_video %}
+            <video src="{{ first_media.media_asset.file.url }}#t=0.5" class="cal-chip-thumb w-5 h-5 rounded object-cover flex-shrink-0" muted preload="metadata" aria-hidden="true"></video>
+            {% endif %}
+            {% endwith %}
+            <span class="cal-chip-text truncate">{{ title|truncatechars:60 }}</span>
+            {% include "calendar/partials/_recurrence_badge.html" with post=pp.post %}
+            {% include "calendar/partials/_thread_badge.html" with post=pp.post pp=pp %}
+            {% include "calendar/partials/_note_badge.html" with n=pp.note_count %}
+            {% if show_slot_check and pp.takes_calendar_slot %}
+            <span class="calendar-post-slot-check" title="Scheduled in a channel slot">
+                <svg class="w-3 h-3" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                <span class="sr-only">Scheduled in a channel slot</span>
+            </span>
+            {% endif %}
         </span>
-        {% with first_media=pp.post.media_attachments.all.0 %}
-        {% if first_media and first_media.media_asset.thumbnail %}
-        <img src="{{ first_media.media_asset.thumbnail.url }}" alt="" class="w-5 h-5 rounded object-cover flex-shrink-0">
-        {% elif first_media and not first_media.media_asset.is_video %}
-        <img src="{{ first_media.media_asset.file.url }}" alt="" class="w-5 h-5 rounded object-cover flex-shrink-0">
-        {% elif first_media and first_media.media_asset.is_video %}
-        <video src="{{ first_media.media_asset.file.url }}#t=0.5" class="w-5 h-5 rounded object-cover flex-shrink-0" muted preload="metadata" aria-hidden="true"></video>
-        {% endif %}
-        {% endwith %}
-        <span class="truncate">{{ pp.post.title|default:pp.post.caption_snippet|truncatechars:28 }}</span>
-        {% include "calendar/partials/_recurrence_badge.html" with post=pp.post %}
-        {% include "calendar/partials/_thread_badge.html" with post=pp.post pp=pp %}
-        {% include "calendar/partials/_note_badge.html" with n=pp.note_count %}
-        {% if show_slot_check and pp.takes_calendar_slot %}
-        <span class="calendar-post-slot-check" title="Scheduled in a channel slot">
-            <svg class="w-3 h-3" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
-            <span class="sr-only">Scheduled in a channel slot</span>
-        </span>
-        {% endif %}
+        {% if pp.display_status == 'failed' %}<span class="sr-only">{% if pp.publish_error %} {{ pp.publish_error|truncatechars:200 }}{% else %} Publishing failed.{% endif %}</span>{% endif %}
     </a>
-    {% if pp.is_reschedulable %}
-    <button type="button" class="chip-resched" aria-haspopup="dialog"
-            aria-label="Reschedule: {{ pp.post.title|default:pp.post.caption_snippet|truncatewords:8 }} on {{ pp.social_account.display_name }}"
-            hx-get="{% url 'calendar:reschedule_dialog' workspace_id=workspace.id platform_post_id=pp.id %}"
-            hx-target="#reschedule-dialog-body" hx-swap="innerHTML">
-        <svg class="w-3.5 h-3.5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 7v5l3 2"/></svg>
-    </button>
-    {% endif %}
+    {% if pp.display_status == 'failed' %}<span class="cal-chip-alert" aria-hidden="true" title="{{ pp.publish_error|default:'Publishing failed'|truncatechars:200 }}">!</span>{% endif %}
+    <div class="cal-chip-actions" role="group" aria-label="Actions for {{ title|truncatewords:6 }}">
+        {% if can_create_posts %}
+        <button type="button" class="cal-act cal-act--secondary" title="Duplicate" aria-label="Duplicate: {{ title|truncatewords:8 }} on {{ pp.social_account.display_name }}"
+                hx-post="{% url 'composer:clone_post' workspace_id=workspace.id post_id=pp.post_id %}" hx-swap="none">
+            <svg class="size-3.5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg>
+        </button>
+        {% endif %}
+        {% if pp.is_reschedulable %}
+        <button type="button" class="chip-resched cal-act" aria-haspopup="dialog" title="Reschedule"
+                aria-label="Reschedule: {{ title|truncatewords:8 }} on {{ pp.social_account.display_name }}"
+                hx-get="{% url 'calendar:reschedule_dialog' workspace_id=workspace.id platform_post_id=pp.id %}"
+                hx-target="#reschedule-dialog-body" hx-swap="innerHTML">
+            <svg class="size-3.5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 7v5l3 2"/></svg>
+        </button>
+        {% endif %}
+        {% if pp.permalink|slice:":8" == "https://" %}
+        <a href="{{ pp.permalink }}" class="cal-act cal-act--secondary" target="_blank" rel="noopener noreferrer" title="View live post" aria-label="View live post on {{ pp.social_account.display_name }} (opens in a new tab)">
+            <svg class="size-3.5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/><path d="M15 3h6v6"/><path d="M10 14L21 3"/></svg>
+        </a>
+        {% endif %}
+        {% if pp.is_bulk_selectable %}
+        <button type="button" class="cal-act cal-act--danger" title="Delete" aria-label="Delete: {{ title|truncatewords:8 }} on {{ pp.social_account.display_name }}"
+                @click.stop="$dispatch('open-delete-modal', { postId: '{{ pp.post_id }}', accountId: '{{ pp.social_account_id }}' })">
+            <svg class="size-3.5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+        </button>
+        {% endif %}
+    </div>
 </div>
+{% endwith %}

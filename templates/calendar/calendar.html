@@ -5,11 +5,11 @@
 
 {% block page_header %}
 <div class="flex flex-wrap items-center justify-between gap-3 mb-4 lg:mb-[25px]">
-    <h1 class="text-xl sm:text-2xl font-semibold tracking-tight text-stone-900">Publish</h1>
+    <h1 class="text-xl sm:text-2xl font-semibold tracking-tight text-ink">Publish</h1>
 
     <div class="flex items-center gap-3">
         <!-- List / Calendar toggle -->
-        <div class="flex items-center bg-stone-50 rounded-full p-0.5" role="group" aria-label="Publish view" x-data="{ activeMode: '{{ mode|default:'calendar' }}' }">
+        <div class="flex items-center bg-surface-1 rounded-full p-0.5" role="group" aria-label="Publish view" x-data="{ activeMode: '{{ mode|default:'calendar' }}' }">
             <button type="button" class="view-btn{% if mode == 'list' %} active{% endif %}" :class="{ active: activeMode === 'list' }"
                     aria-pressed="{% if mode == 'list' %}true{% else %}false{% endif %}" :aria-pressed="activeMode === 'list' ? 'true' : 'false'"
                     @click="activeMode = 'list'"
@@ -32,7 +32,7 @@
             </button>
         </div>
         {% if grid_available %}
-        <a href="{% url 'calendar:grid_index' workspace_id=workspace.id %}" class="inline-flex min-h-11 items-center rounded-full border border-line px-3.5 text-[13px] font-semibold text-stone-700 no-underline hover:bg-stone-50">Grid preview</a>
+        <a href="{% url 'calendar:grid_index' workspace_id=workspace.id %}" class="inline-flex min-h-11 items-center rounded-full border border-line px-3.5 text-[13px] font-semibold text-ink-2 no-underline hover:bg-surface-2">Grid preview</a>
         {% endif %}
 
     </div>
@@ -61,8 +61,6 @@
         .cal-day { min-height: 130px; }
     }
     .cal-day:hover { background: var(--surface-0); }
-    .cal-day.past { background: var(--surface-2); }
-    .cal-day.past:hover { background: var(--surface-2); }
     .cal-day.today { background: var(--surface-2); }
     .cal-day.other-month { opacity: 0.4; }
 
@@ -216,78 +214,268 @@
 
     /* Platform badge fills (.pi-<platform>) come from static/css/platforms.css */
 
-    /* Add-post button on calendar cells. Kept in the layout (opacity, not display:none) so it is
-       reachable by keyboard: it shows on cell hover, on focus inside the cell, or when focused itself.
-       Default (has posts): small, top-right. */
-    .cal-add-btn {
-        display: flex;
-        opacity: 0; pointer-events: none;
-        position: absolute; top: 6px; right: 6px;
-        width: 24px; height: 24px; border-radius: 50%;
-        background: var(--primary); color: white; border: none;
-        align-items: center; justify-content: center;
-        cursor: pointer; font-size: 14px; line-height: 1;
-        box-shadow: 0 2px 6px color-mix(in srgb, var(--primary) 35%, transparent);
-        transition: transform 100ms ease, background 100ms ease, opacity 100ms ease;
-        z-index: 5;
+    /* ================= WP2 toolbar ================= */
+    .cal-shell { --cal-gutter: 0.75rem; }
+    @media (min-width: 640px) { .cal-shell { --cal-gutter: 1rem; } }
+    @media (min-width: 1024px) { .cal-shell { --cal-gutter: 1.5rem; } }
+    .cal-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; padding-block: 0 0.75rem; border-bottom: 1px solid var(--border); }
+    .cal-toolbar-nav { display: flex; align-items: center; gap: 0.625rem; min-width: 0; }
+    .cal-toolbar-views { display: flex; align-items: center; gap: 0.5rem; min-width: 0; max-width: 100%; }
+    .cal-toolbar-views .pd-seg { overflow-x: auto; scrollbar-width: none; }
+    .cal-period { font-size: 1rem; font-weight: 600; letter-spacing: -0.01em; color: var(--text-primary); white-space: nowrap; }
+    @media (min-width: 768px) { .cal-period { min-width: 9rem; } }
+    .cal-btn {
+        display: inline-flex; align-items: center; justify-content: center; min-height: 2.25rem; padding: 0 0.875rem;
+        border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-1);
+        font-size: 0.875rem; font-weight: 500; line-height: 1; color: var(--text-primary); text-decoration: none; white-space: nowrap;
+        cursor: pointer; transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease;
     }
-    .cal-add-btn:hover { background: var(--primary); transform: scale(1.1); }
-    .cal-add-btn.cal-add-btn--inline { position: static; margin: 0 auto; }
+    .cal-btn:hover { background: var(--surface-2); border-color: var(--border-hover); }
+    .cal-filters-btn { margin-inline-start: auto; }
+    @media (max-width: 767px) { .cal-toolbar-views { width: 100%; } .cal-toolbar-views .pd-seg-item { padding-inline: 0.5rem; } }
+    @media (min-width: 768px) { .cal-filters-btn { display: none; } }
+    .cal-btn.is-disabled { color: var(--text-tertiary); background: transparent; cursor: default; }
+    .cal-btn.is-disabled:hover { background: transparent; border-color: var(--border); }
+    .cal-filter-select { min-height: 2.25rem; font-size: 0.875rem; font-weight: 500; border-radius: var(--radius-lg); }
+    @media (pointer: coarse) { .cal-btn, .cal-filter-select { min-height: 2.75rem; } }
+
+    /* Loading: keep the old grid (no layout shift), dim it and pulse the cells until the new one arrives. */
+    .cal-content[aria-busy="true"], .cal-content.htmx-request, .cal-shell.htmx-request .cal-content { opacity: 0.6; pointer-events: none; }
+    .cal-content.htmx-request .cal-slot-cell, .cal-content.htmx-request .cal-day,
+    .cal-shell.htmx-request .cal-content .cal-slot-cell, .cal-shell.htmx-request .cal-content .cal-day { animation: cal-pulse 1.2s ease-in-out infinite; }
+    @keyframes cal-pulse { 50% { background: var(--surface-2); } }
+
+    /* ================= Grids ================= */
+    .cal-week, .cal-day-view { padding: 0 var(--cal-gutter) 0.75rem; }
+    .cal-month { margin-inline: var(--cal-gutter); border: 1px solid var(--border); border-radius: var(--radius-xl); background: var(--surface-1); }
+    .cal-list { margin-inline: var(--cal-gutter); }
+    .cal-month-head { padding: 0.625rem 0.75rem; text-align: center; font-size: 0.75rem; font-weight: 600; letter-spacing: 0.02em; color: var(--text-secondary); }
+    /* Past cells: a decorative diagonal stripe and a "Date passed" label on hover (purely visual, the cell stays readable). */
+    .cal-past, .cal-slot-cell.cal-past, .cal-day.past { background: repeating-linear-gradient(135deg, var(--surface-0) 0 4px, color-mix(in srgb, var(--surface-1) 55%, var(--surface-0)) 4px 8px); }
+    .cal-past:hover, .cal-slot-cell.cal-past:hover, .cal-day.past:hover { background: repeating-linear-gradient(135deg, var(--surface-0) 0 4px, color-mix(in srgb, var(--surface-1) 55%, var(--surface-0)) 4px 8px); cursor: not-allowed; }
+    .cal-past:not(.has-posts):hover::after {
+        content: "Date passed"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+        font-size: 0.6875rem; font-weight: 600; color: var(--text-tertiary); pointer-events: none;
+    }
+    .cal-slot-cell { position: relative; padding: 4px; border: 1px solid color-mix(in srgb, var(--border) 55%, transparent); border-radius: var(--radius-lg); background: var(--surface-1); transition: background var(--dur-fast) ease, box-shadow 120ms ease; }
+    .cal-slot-cell:not(.cal-past):hover { background: var(--surface-0); }
+    .cal-slot-cell.cal-week-today:not(.cal-past) { background: color-mix(in srgb, var(--primary) 7%, var(--surface-1)); }
+    .cal-week-row { display: grid; grid-template-columns: 88px repeat(7, minmax(0, 1fr)); gap: 4px; margin-top: 4px; }
+    .cal-week-row[data-hour] .cal-slot-cell { min-height: 56px; }
+    .cal-week-head { position: sticky; top: 0; z-index: 10; margin-top: 0; padding-block: 0 4px; background: var(--surface-0); }
+    .cal-week-headcell { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-height: 56px; border-radius: var(--radius-lg); background: var(--surface-1); }
+    .cal-week-dow { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; color: var(--text-secondary); }
+    .cal-week-headcell.is-today .cal-week-dow { color: var(--text-brand); }
+    .cal-week-headcell .cal-week-day-num { margin: 0; font-size: 0.875rem; font-weight: 600; color: var(--text-primary); }
+    .cal-hour { display: flex; justify-content: flex-end; padding: 6px 10px 0 0; font-size: 11px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text-secondary); }
+    [dir="rtl"] .cal-hour { padding: 6px 0 0 10px; }
+    .cal-day-row { display: grid; grid-template-columns: 3.5rem minmax(0, 1fr); gap: 4px; margin-top: 4px; }
+    @media (min-width: 640px) { .cal-day-row { grid-template-columns: 5.5rem minmax(0, 1fr); } }
+    .cal-day-row .cal-slot-cell { min-height: 56px; display: flex; flex-direction: column; justify-content: center; gap: 4px; padding: 6px; }
+    .cal-day-row:not(.has-posts) .cal-slot-cell { min-height: 44px; }
+    .cal-day-row.is-now .cal-slot-cell { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 55%, transparent); }
+    .cal-day-row.is-now .cal-hour { color: var(--text-brand); font-weight: 700; }
+    .cal-more {
+        display: block; width: 100%; margin-top: 2px; padding: 2px 4px; border: 0; border-radius: var(--radius-md); background: transparent;
+        text-align: start; font-size: 11px; font-weight: 600; color: var(--text-secondary); cursor: pointer;
+    }
+    .cal-more:hover { color: var(--text-primary); background: var(--surface-2); }
+    @media (pointer: coarse) { .cal-more { min-height: 44px; } }
+
+    /* ================= "+" tile ================= */
+    /* A link (keyboard focusable): hidden until the cell is hovered or the tile has focus, always faintly there on touch.
+       Empty cells get a centred 36px tile; cells with posts a small one in the bottom corner so it never covers a chip. */
     .cal-add-cell { position: relative; }
-    .cal-add-cell:hover .cal-add-btn,
-    .cal-add-cell:focus-within .cal-add-btn,
-    .cal-add-btn:focus-visible { opacity: 1; pointer-events: auto; }
+    .cal-add-tile {
+        position: absolute; z-index: 5; inset-block-end: 4px; inset-inline-end: 4px; width: 24px; height: 24px;
+        display: flex; align-items: center; justify-content: center; border-radius: var(--radius-md);
+        background: var(--primary); color: #fff; box-shadow: var(--shadow-primary);
+        opacity: 0; pointer-events: none; transition: opacity var(--dur-fast) ease, transform var(--dur-fast) ease;
+    }
+    .cal-add-tile svg { width: 12px; height: 12px; }
+    .cal-add-cell:not(.has-posts) .cal-add-tile { inset: auto; top: 50%; left: 50%; width: 36px; height: 36px; transform: translate(-50%, -50%); border-radius: var(--radius-lg); }
+    .cal-add-cell:not(.has-posts) .cal-add-tile svg { width: 16px; height: 16px; }
+    .cal-add-cell:hover .cal-add-tile, .cal-add-tile:focus-visible { opacity: 1; pointer-events: auto; }
+    .cal-add-tile:hover { background: var(--primary-hover); }
+    .cal-add-cell:not(.has-posts) .cal-add-tile:hover { transform: translate(-50%, -50%) scale(1.06); }
+    @media (hover: none) {
+        .cal-add-tile { opacity: 0.7; pointer-events: auto; background: transparent; color: var(--text-brand); border: 1px dashed color-mix(in srgb, var(--primary) 50%, transparent); box-shadow: none; }
+        .cal-add-cell:not(.has-posts) .cal-add-tile { width: 44px; height: 44px; }
+    }
+    @media (prefers-reduced-motion: reduce) { .cal-add-tile, .post-chip, .tab-slide-in { transition: none; animation: none; } }
+    body.cal-dragging .cal-add-btn { display: none !important; }
 
-    /* Empty cells: larger centered button */
-    .cal-add-cell:not(.has-posts) .cal-add-btn {
-        top: 50%; left: 50%; right: auto;
-        transform: translate(-50%, -50%);
-        width: 32px; height: 32px;
-        background: var(--primary); color: white;
-        box-shadow: 0 2px 6px color-mix(in srgb, var(--primary) 35%, transparent);
-        border: none;
+    /* ================= Two-part chip ================= */
+    .cal-month { --cal-strip-h: 16px; }
+    .chip-row { position: relative; display: block; margin-bottom: 4px; max-width: 100%; container-type: inline-size; }
+    .post-chip.cal-chip {
+        --chip-accent: var(--text-tertiary); --strip-h: var(--cal-strip-h, 22px);
+        display: flex; flex-direction: column; align-items: stretch; gap: 0; padding: 0; margin: 0; overflow: hidden;
+        border-radius: var(--radius-lg); border-inline-start: 4px solid var(--chip-accent); font-size: 12px;
     }
-    .cal-add-cell:not(.has-posts) .cal-add-btn svg { width: 16px; height: 16px; }
-    .cal-add-cell:not(.has-posts) .cal-add-btn:hover {
-        background: var(--primary);
-        transform: translate(-50%, -50%) scale(1.1);
-        box-shadow: 0 6px 20px color-mix(in srgb, var(--primary) 35%, transparent);
+    .post-chip.cal-chip:hover { transform: none; filter: brightness(1.08); }
+    .status-pending_review, .status-pending_client, .status-changes_requested { --chip-accent: var(--warning-500); }
+    .status-scheduled { --chip-accent: var(--info-500); }
+    .status-published { --chip-accent: var(--success-500); }
+    .status-rejected, .status-failed { --chip-accent: var(--error-500); }
+    .status-approved { --chip-accent: var(--accent-teal); }
+    .status-publishing { --chip-accent: var(--accent-indigo); }
+    .status-partially_published { --chip-accent: var(--accent-amber); }
+    .status-on_hold { --chip-accent: var(--primary); }
+    .cal-chip-strip {
+        display: flex; align-items: center; height: var(--strip-h); padding-inline: 8px; overflow: hidden;
+        font-size: 10.5px; font-weight: 600; letter-spacing: 0.01em; color: var(--text-primary);
+        background: color-mix(in srgb, var(--chip-accent) 24%, var(--surface-2));
     }
+    .cal-chip-strip { gap: 6px; }
+    .cal-chip-strip .cal-chip-time { margin-inline-start: auto; font-size: 10px; font-weight: 600; opacity: 0.9; }
+    .cal-chip-body { display: flex; align-items: center; gap: 6px; min-width: 0; padding: 4px 6px; min-height: 28px; }
+    .cal-chip-avatar { display: inline-flex; flex-shrink: 0; }
+    .cal-chip-text { min-width: 0; flex: 1 1 auto; font-weight: 500; }
+    .cal-chip-time { margin-inline-start: auto; flex-shrink: 0; font-size: 10.5px; font-variant-numeric: tabular-nums; opacity: 0.85; }
+    .cal-week .cal-chip-thumb, .cal-month .cal-chip-thumb { display: none; }
+    /* Failed posts: a red ring plus a "!" badge (the full error is in its title and read out by screen readers). */
+    .cal-chip-row.is-failed .post-chip.cal-chip { box-shadow: 0 0 0 2px var(--error-500); }
+    .cal-chip-alert {
+        position: absolute; z-index: 4; inset-inline-start: -6px; top: -6px; width: 18px; height: 18px; border-radius: 9999px;
+        display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 800; line-height: 1;
+        background: var(--error-500); color: #1b0a0e; box-shadow: 0 0 0 2px var(--surface-1);
+    }
+    .chip-row > .cal-select-box { position: absolute; z-index: 2; inset-inline-start: 12px; top: calc(var(--cal-strip-h, 22px) + 15px); transform: translateY(-50%); }
+    /* Actions: swap with the strip text on hover and on keyboard focus anywhere in the chip. */
+    .cal-chip-actions {
+        position: absolute; z-index: 3; inset-block-start: 0; inset-inline: 4px 0; height: 24px; display: flex; align-items: center; justify-content: flex-end; gap: 2px; padding-inline: 4px;
+        border-start-end-radius: var(--radius-lg); background: var(--surface-3);
+        opacity: 0; pointer-events: none; transition: opacity var(--dur-fast) ease;
+    }
+    .chip-row:hover .cal-chip-actions, .chip-row:focus-within .cal-chip-actions { opacity: 1; pointer-events: auto; }
+    .cal-act {
+        display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0;
+        border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); cursor: pointer; text-decoration: none;
+        transition: background var(--dur-fast) ease, color var(--dur-fast) ease;
+    }
+    .cal-act:hover { background: var(--surface-1); color: var(--text-primary); }
+    .cal-act--danger:hover { color: var(--error-500); }
+    @media (hover: none), (pointer: coarse) {
+        /* No hover on touch: the actions sit under the chip, always visible, with 44px targets. */
+        .cal-chip-actions { position: static; opacity: 1; pointer-events: auto; height: auto; flex-wrap: wrap; justify-content: flex-start; margin-top: 2px; padding: 0; background: transparent; }
+        .cal-act { width: 44px; height: 44px; background: var(--surface-2); }
+        .chip-row--selectable > .post-chip.cal-chip .cal-chip-body { padding-inline-start: 28px; }
+        /* A narrow chip (tablet hourly grid, month cell) keeps Reschedule and Delete, side by side; Duplicate and View live
+           are one tap away on the post itself. */
+        @container (max-width: 150px) {
+            .cal-chip-actions { flex-wrap: nowrap; }
+            .cal-act { flex: 1 1 0; width: auto; min-width: 0; }
+            .cal-act--secondary { display: none; }
+        }
+    }
+    .chip-row.is-saving { opacity: .6; pointer-events: none; }
+    .chip-row.is-draggable, .chip-row.is-draggable .post-chip { cursor: grab; }
+    .chip-row.is-draggable:active, .chip-row.is-draggable:active .post-chip { cursor: grabbing; }
+    .chip-ghost { display: none !important; }
+    .chip-row.chip-chosen .post-chip.cal-chip { box-shadow: var(--shadow-lg); transform: scale(1.02); }
+    /* The cell under the drag. */
+    .cal-drop.cal-drop-active { background: var(--surface-2); box-shadow: inset 0 0 0 2px var(--primary); }
+    .cal-drop.cal-past { cursor: not-allowed; }
+    /* A moved post settles with one pulse. */
+    .chip-row.chip-landed .post-chip.cal-chip { animation: chip-landed 600ms var(--ease-out); }
+    @keyframes chip-landed { from { box-shadow: 0 0 0 3px rgba(var(--primary-rgb), 0.5); } to { box-shadow: 0 0 0 0 transparent; } }
 
-    /* Day/week grids (non-month cells) with posts: the button only appears when it has focus. */
-    .cal-add-cell.has-posts:not(.cal-day) .cal-add-btn { opacity: 0; pointer-events: none; }
-    .cal-add-cell.has-posts:not(.cal-day) .cal-add-btn:focus-visible { opacity: 1; pointer-events: auto; }
+    /* ================= WP3 channel rail ================= */
+    .cal-rail { display: flex; flex-shrink: 0; min-width: 0; }
+    .cal-rail-title { font-size: 0.8125rem; font-weight: 600; color: var(--text-secondary); }
+    .cal-rail-btn {
+        display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 2.25rem; padding: 0 0.875rem;
+        border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--surface-1); color: var(--text-primary);
+        font-size: 0.875rem; font-weight: 500; text-decoration: none; white-space: nowrap; cursor: pointer;
+        transition: background var(--dur-fast) ease, border-color var(--dur-fast) ease;
+    }
+    .cal-rail-btn:hover { background: var(--surface-2); border-color: var(--border-hover); }
+    .cal-rail-btn--primary { background: var(--primary); border-color: var(--primary); color: #fff; }
+    .cal-rail-btn--primary:hover { background: var(--primary-hover); border-color: var(--primary-hover); }
+    .cal-rail-toggle { display: inline-flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--text-secondary); cursor: pointer; }
+    .cal-rail-toggle:hover { background: var(--surface-2); color: var(--text-primary); }
+    .cal-rail-toggle-icon { transition: transform var(--dur-base) var(--ease-out); }
+    .cal-rail-clear-btn { display: inline-flex; gap: 0.5rem; padding: 0.25rem 0.5rem; border: 0; background: transparent; font-size: 11px; color: var(--text-secondary); cursor: pointer; }
+    .cal-rail-clear-btn:hover { color: var(--text-primary); }
+    .cal-rail-group-btn { display: flex; align-items: center; gap: 0.375rem; width: 100%; padding: 0.375rem 0.5rem; border: 0; background: transparent; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-secondary); cursor: pointer; }
+    .cal-rail-group-btn:hover { color: var(--text-primary); }
+    .cal-collapse { display: grid; grid-template-rows: 1fr; transition: grid-template-rows var(--dur-base) var(--ease-out); }
+    .cal-collapse > .cal-rail-list { overflow: hidden; min-height: 0; }
+    .cal-collapse.is-closed { grid-template-rows: 0fr; }
+    .cal-rail-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+    .channel-row { position: relative; display: flex; align-items: center; border-radius: var(--radius-lg); transition: background var(--dur-fast) ease; }
+    .channel-row::before {
+        content: ""; position: absolute; inset-inline-start: 0; top: 8px; bottom: 8px; width: 3px; border-radius: 2px; background: var(--primary);
+        opacity: 0; transform: scaleY(0.4); transition: opacity var(--dur-fast) ease, transform var(--dur-fast) ease; pointer-events: none;
+    }
+    .channel-row:hover, .channel-row.is-selected { background: var(--surface-2); }
+    .channel-row:hover::before, .channel-row.is-selected::before { opacity: 1; transform: none; }
+    .channel-row.is-selected { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--primary) 45%, transparent); }
+    .channel-row-main {
+        display: flex; align-items: center; gap: 0.625rem; flex: 1 1 auto; min-width: 0; padding: 0.375rem 0.5rem; border: 0; border-radius: inherit;
+        background: transparent; color: var(--text-primary); text-align: start; cursor: pointer;
+    }
+    .channel-avatar { position: relative; display: inline-flex; flex-shrink: 0; }
+    .channel-alert {
+        position: absolute; top: -4px; inset-inline-start: -4px; width: 16px; height: 16px; border-radius: 9999px; display: flex; align-items: center; justify-content: center;
+        font-size: 10px; font-weight: 800; line-height: 1; background: var(--error-500); color: #1b0a0e; box-shadow: 0 0 0 2px var(--surface-0);
+    }
+    .channel-text { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+    .channel-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.875rem; font-weight: 500; line-height: 1.25; }
+    .channel-sub { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 1.3; color: var(--text-secondary); }
+    .channel-row.is-attention .channel-sub { color: var(--error-700); }
+    .channel-row.is-paused .channel-name { color: var(--text-secondary); }
+    .channel-dot { width: 8px; height: 8px; flex-shrink: 0; border-radius: 9999px; background: var(--warning-500); }
+    .channel-reconnect { flex-shrink: 0; margin-inline-end: 0.25rem; }
+    .channel-reconnect-label { display: none; }
+    .channel-reconnect-btn {
+        display: inline-flex; align-items: center; gap: 0.25rem; min-height: 1.75rem; min-width: 1.75rem; justify-content: center; padding: 0 0.375rem; border: 1px solid color-mix(in srgb, var(--error-500) 50%, transparent);
+        border-radius: var(--radius-md); background: var(--error-50); color: var(--error-700); font-size: 11px; font-weight: 600; cursor: pointer;
+    }
+    .channel-reconnect-btn:hover { background: color-mix(in srgb, var(--error-500) 22%, var(--error-50)); }
+    @media (pointer: coarse) { .channel-row-main, .channel-reconnect-btn { min-height: 44px; } .channel-reconnect-btn { min-width: 44px; justify-content: center; } }
 
-    /* Inline variant (day/week grid): flow in normal layout, no translate centering */
-    .cal-add-cell:not(.has-posts) .cal-add-btn.cal-add-btn--inline,
-    .cal-add-cell:not(.has-posts) .cal-add-btn.cal-add-btn--inline:hover {
-        top: auto; left: auto; right: auto;
-        transform: none;
+    /* >= xl: a column left of the grid, collapsible to avatars only */
+    @media (min-width: 1280px) {
+        .cal-rail {
+            flex-direction: column; width: 16rem; padding: 0 0.75rem 1rem 1.5rem; border-inline-end: 1px solid var(--border); overflow-y: auto; overscroll-behavior: contain;
+            transition: width var(--dur-base) ease;
+        }
+        .cal-rail-head { display: flex; align-items: center; justify-content: space-between; min-height: 2.25rem; margin-bottom: 0.5rem; }
+        .cal-rail-actions { display: flex; flex-direction: column; gap: 0.5rem; margin-bottom: 0.75rem; }
+        .cal-rail-scroll { flex: 1 1 auto; }
+        html.cal-rail-collapsed .cal-rail { width: 4.5rem; padding-inline-end: 0.75rem; }
+        html.cal-rail-collapsed .cal-rail-title, html.cal-rail-collapsed .cal-rail-label, html.cal-rail-collapsed .channel-text,
+        html.cal-rail-collapsed .channel-dot, html.cal-rail-collapsed .cal-rail-group-head, html.cal-rail-collapsed .cal-rail-clear, html.cal-rail-collapsed .channel-reconnect-label_unused,
+        html.cal-rail-collapsed .cal-rail-empty { display: none; }
+        html.cal-rail-collapsed .cal-rail-head { justify-content: center; }
+        html.cal-rail-collapsed .cal-rail-toggle-icon { transform: rotate(180deg); }
+        html.cal-rail-collapsed .cal-rail-btn { padding: 0; }
+        html.cal-rail-collapsed .channel-row { flex-direction: column; }
+        html.cal-rail-collapsed .channel-row-main { padding: 0.375rem 0; justify-content: center; width: 100%; }
+        html.cal-rail-collapsed .channel-reconnect { margin: 0 0 0.25rem; }
+        html.cal-rail-collapsed .cal-collapse.is-closed { grid-template-rows: 1fr; }
     }
-    .cal-add-cell:not(.has-posts) .cal-add-btn.cal-add-btn--inline:hover {
-        transform: scale(1.1);
+    /* < xl: a horizontally scrolling avatar strip above the toolbar (same markup) */
+    @media (max-width: 1279px) {
+        .cal-rail {
+            flex-direction: row; align-items: center; gap: 0.5rem; padding: 0.5rem var(--cal-gutter, 0.75rem); border-bottom: 1px solid var(--border);
+            overflow-x: auto; scroll-snap-type: x proximity; scroll-padding-inline: var(--cal-gutter, 0.75rem); scrollbar-width: none; -webkit-overflow-scrolling: touch;
+        }
+        .cal-rail::-webkit-scrollbar { display: none; }
+        .cal-rail-head, .cal-rail-title, .cal-rail-label, .channel-text, .channel-dot, .cal-rail-group-head, .cal-rail-empty, .cal-rail-btn--primary { display: none; }
+        .cal-rail-scroll, .cal-rail-group, .cal-collapse, .cal-rail-list { display: contents; }
+        .cal-collapse.is-closed { display: contents; }
+        .cal-collapse > .cal-rail-list { overflow: visible; }
+        .channel-item { flex-shrink: 0; scroll-snap-align: start; }
+        .channel-row-main { padding: 0.25rem; }
+        .channel-row::before { display: none; }
+        .channel-reconnect { margin: 0; }
+        .cal-rail-actions { order: 2; display: flex; flex-shrink: 0; margin-inline-start: auto; }
+        .cal-rail-actions .cal-rail-btn { min-height: 2.75rem; min-width: 2.75rem; padding: 0; }
+        .cal-rail-clear { order: -1; flex-shrink: 0; }
     }
-    @media (prefers-reduced-motion: reduce) {
-        .cal-add-btn, .post-chip, .tab-slide-in { transition: none; animation: none; }
-    }
-
-    /* A grid chip: [select box] [link to the post] [Reschedule button]. The row is what gets dragged. */
-    .chip-row { position: relative; display: flex; align-items: center; gap: 4px; margin-bottom: 2px; max-width: 100%; }
-    .chip-row > .post-chip { flex: 1 1 0; min-width: 0; margin-bottom: 0; }
-    .chip-row .post-chip { padding-inline-end: 6px; }
-    /* The select box sits over the chip's platform icon and shows on hover / focus / selection, so
-       every chip in a cell lines up and none loses title width to an invisible box. Touch screens
-       always show it, so there the chip makes room for it instead. */
-    .chip-row > .cal-select-box { position: absolute; inset-inline-start: 6px; top: 50%; transform: translateY(-50%); z-index: 1; }
-    @media (hover: none) { .chip-row--selectable > .post-chip { padding-inline-start: 26px; } }
-    .chip-resched {
-        position: absolute; inset-inline-end: 3px; top: 50%; transform: translateY(-50%);
-        width: 24px; height: 24px; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center;
-        background: var(--surface-3); color: var(--text-primary); border: 1px solid var(--border-hover);
-        opacity: 0; transition: opacity 120ms ease; cursor: pointer;
-    }
-    .chip-row:hover .chip-resched, .chip-row:focus-within .chip-resched, .chip-resched:focus-visible { opacity: 1; }
-    @media (hover: none) { .chip-resched { opacity: 1; } .chip-row.is-draggable .post-chip { padding-inline-end: 30px; } }
 
     .calendar-channel-slot {
         display: inline-flex;
@@ -303,6 +491,7 @@
         background: var(--surface-1);
         color: var(--text-secondary);
     }
+    .calendar-channel-slot--week .truncate { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .calendar-channel-slot--week {
         width: 100%;
         font-size: 10px;
@@ -350,23 +539,6 @@
         color: var(--success-700);
         margin-left: auto;
     }
-
-    /* A dropped chip waiting for the server: dimmed and not draggable. */
-    .chip-row.is-saving { opacity: .6; pointer-events: none; }
-
-    /* Drag-and-drop (SortableJS) feedback */
-    .chip-row.is-draggable, .chip-row.is-draggable .post-chip { cursor: grab; }
-    .chip-row.is-draggable:active, .chip-row.is-draggable:active .post-chip { cursor: grabbing; }
-    /* Hide the source-cell placeholder entirely: for a day-granularity calendar
-       the only feedback that matters is which day cell is targeted, so we don't
-       want a translucent chip trailing into every cell the cursor passes. Only
-       the cursor-following drag clone stays visible. */
-    .chip-ghost { display: none !important; }
-    /* Highlight the day cell currently under the drag (toggled in onMove). */
-    .cal-drop.cal-drop-active { background: var(--surface-2); box-shadow: inset 0 0 0 2px var(--primary); }
-    /* While dragging, suppress the per-cell "+" add buttons that would otherwise
-       flicker under the cursor as it crosses cells. */
-    body.cal-dragging .cal-add-btn { display: none !important; }
 
     /* Bulk-selection checkbox (chips + list rows). Hover-reveal on chips; always
        shown once checked or when a selection is active. */
@@ -469,14 +641,12 @@ ticked (see the `sel` Alpine store).{% endcomment %}
 {% block extra_js %}
 <script src="{% static 'js/reschedule-dialog.js' %}"></script>
 <script nonce="{{ request.csp_nonce }}">
-/* Surface a rejected request through the shared toast host
-   (approvals/partials/_toasts.html), which listens for a `showToast` event on
-   document.body. These endpoints are called with fetch(), not htmx, so the
-   usual HX-Trigger route isn't available — dispatch the event directly. */
+/* Surface a rejected request through the shared toast host in base.html (a `pd-toast` window event).
+   These endpoints are called with fetch(), not htmx, so the usual HX-Trigger route isn't available. */
 function bbFailureToast(res, fallback) {
     res.json().catch(() => ({})).then((data) => {
-        document.body.dispatchEvent(new CustomEvent('showToast', {
-            detail: { tone: 'error', title: (data && data.error) || fallback },
+        window.dispatchEvent(new CustomEvent('pd-toast', {
+            detail: { kind: 'error', message: (data && data.error) || fallback },
         }));
     });
 }
@@ -562,7 +732,24 @@ function calendarApp() {
             return this.filterParams().toString();
         },
 
+        // Channel rail: the rail's rows and the Channels dropdown edit the same list.
+        isSelected(id) { return this.calendarFilters.channels.includes(String(id)); },
+        toggleChannel(id) {
+            id = String(id);
+            const list = this.calendarFilters.channels;
+            this.calendarFilters.channels = list.includes(id) ? list.filter((c) => c !== id) : [...list, id];
+            this.reloadCalendar();
+        },
+        clearChannels() {
+            this.calendarFilters.channels = [];
+            this.reloadCalendar();
+        },
+
         reloadCalendar() {
+            // One redraw per burst: a bulk action fires calendarRefresh and post-deleted together.
+            const now = Date.now();
+            if (this._lastReload && now - this._lastReload < 250) return;
+            this._lastReload = now;
             // The selection bar acts on ids, not on what's rendered, so a
             // filter change would otherwise leave rows ticked that the new grid
             // doesn't show — and Delete would hit them.
@@ -587,6 +774,19 @@ function calendarApp() {
             window.__calKeepScroll = true;
             // If the redraw never arrives, do not leave the week grid permanently refusing to scroll to its first busy hour.
             setTimeout(() => { this._scrollSnap = null; window.__calKeepScroll = false; }, 8000);
+        },
+
+        // The moved post settles with one pulse once the redrawn grid is in (skipped under reduced motion by the global rule).
+        _pulseLanded() {
+            const id = this._landedId;
+            this._landedId = null;
+            if (!id) return;
+            const rows = document.querySelectorAll('#calendar-content [data-platform-post-id="' + id + '"]');
+            for (const row of rows) {
+                if (row.offsetParent === null) continue;
+                row.classList.add('chip-landed');
+                setTimeout(() => row.classList.remove('chip-landed'), 700);
+            }
         },
 
         _restoreScroll() {
@@ -617,7 +817,10 @@ function calendarApp() {
                 if (t && (t.id === 'calendar-content' || (t.querySelector && t.querySelector('.cal-drop')))) {
                     this.$nextTick(() => this.initCalendarDnD());
                 }
-                if (t && t.id === 'calendar-content') this._restoreScroll();
+                if (t && t.id === 'calendar-content') {
+                    this._restoreScroll();
+                    this._pulseLanded();
+                }
             });
             // A drag on an <a> chip would otherwise fire a trailing click and
             // navigate to the editor. Swallow that click while a drag is in
@@ -649,6 +852,7 @@ function calendarApp() {
                     draggable: '.chip-row.is-draggable',
                     animation: 150,
                     ghostClass: 'chip-ghost',
+                    chosenClass: 'chip-chosen',
                     // Native HTML5 drag: the browser renders a drag image that
                     // reliably follows the cursor (a forceFallback clone did
                     // not — it appeared stuck near the origin). We set that image
@@ -670,6 +874,8 @@ function calendarApp() {
                     onMove: (evt) => {
                         // Highlight only the day cell currently under the drag.
                         document.querySelectorAll('.cal-drop.cal-drop-active').forEach(c => c.classList.remove('cal-drop-active'));
+                        // A cell in the past is not a target: no highlight, no drop.
+                        if (evt.to && evt.to !== evt.from && evt.to.classList.contains('cal-past')) return false;
                         if (evt.to) evt.to.classList.add('cal-drop-active');
                         return true;
                     },
@@ -700,7 +906,7 @@ function calendarApp() {
             const failed = (message) => {
                 settle();
                 if (revert) revert();
-                document.body.dispatchEvent(new CustomEvent('showToast', { detail: { tone: 'error', title: message } }));
+                window.dispatchEvent(new CustomEvent('pd-toast', { detail: { kind: 'error', message: message } }));
             };
             // newDatetime is the target cell's workspace-tz wall date/time (see
             // _cell_compose_params); reschedule_post interprets the naive value
@@ -732,6 +938,8 @@ function calendarApp() {
                     return;
                 }
                 settle();
+                window.dispatchEvent(new CustomEvent('pd-toast', { detail: { kind: 'success', message: 'Post rescheduled' } }));
+                this._landedId = platformPostId;
                 // Re-render on success too. SortableJS drops the chip at the
                 // cursor's index, so the target cell is left out of time order
                 // and — in month view, which renders only the first three posts
