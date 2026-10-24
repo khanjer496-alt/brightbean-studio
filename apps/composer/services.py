@@ -1330,11 +1330,14 @@ def _mention_item(suggestion) -> dict[str, str]:
     so a profile cannot point the page at another scheme.
     """
     avatar = suggestion.avatar_url or ""
-    return {
+    item = {
         "handle": suggestion.handle[:_MENTION_TEXT_MAX],
         "name": (suggestion.name or "")[:_MENTION_TEXT_MAX],
         "avatar_url": avatar if avatar.startswith("https://") else "",
     }
+    if suggestion.insert:
+        item["insert"] = suggestion.insert[:_MENTION_TEXT_MAX]
+    return item
 
 
 def mention_suggestions(accounts: Iterable, query: str) -> list[dict[str, str]]:

@@ -323,6 +323,9 @@ class MentionSuggestion:
     handle: str
     name: str = ""
     avatar_url: str = ""
+    # The exact text to put in the caption instead of "@" + handle, for a platform whose mentions are not
+    # written with an @ (Discord's ``<@id>``). Empty means the usual "@handle".
+    insert: str = ""
 
 
 @dataclass(frozen=True)

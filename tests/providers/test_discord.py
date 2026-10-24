@@ -270,3 +270,37 @@ class TestErrorClassification:
             client.return_value.__enter__.return_value.request.return_value = error_response(502, {"message": "bad"})
             p.publish_post("c1", PublishContent(text="x"))
         assert exc.value.ambiguous_write is True
+
+
+class TestMentionLookup:
+    def _provider(self, members, roles):
+        p = provider(guild_id="g1")
+        calls = []
+
+        def bot(method, path, **kwargs):
+            calls.append((method, path, kwargs.get("params")))
+            return ok(members if path.endswith("/members/search") else roles)
+
+        p._bot_request = bot
+        return p, calls
+
+    def test_suggests_members_and_mentionable_roles_written_as_discord_mentions(self):
+        members = [
+            {"user": {"id": "42", "username": "alice", "global_name": "Alice A", "avatar": "abc"}, "nick": None},
+            {"user": {"id": "43", "username": "botty", "bot": True}},
+        ]
+        roles = [
+            {"id": "g1", "name": "@everyone", "mentionable": False},
+            {"id": "7", "name": "Moderators", "mentionable": True},
+            {"id": "8", "name": "Modmail", "mentionable": False},
+            {"id": "9", "name": "Mod bot", "mentionable": True, "managed": True},
+        ]
+        p, calls = self._provider(members, roles)
+        found = p.search_mentions("channel-id", "mod")
+        assert [(s.insert, s.name) for s in found] == [("<@42>", "Alice A"), ("<@&7>", "Role: Moderators")]
+        assert found[0].avatar_url == "https://cdn.discordapp.com/avatars/42/abc.png"
+        assert calls[0] == ("GET", "/guilds/g1/members/search", {"query": "mod", "limit": 8})
+
+    def test_declares_lookup_and_needs_a_server(self):
+        assert DiscordProvider.mention_lookup is True
+        assert provider().search_mentions("c", "x") == []

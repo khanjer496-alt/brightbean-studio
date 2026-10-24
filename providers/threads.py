@@ -65,6 +65,11 @@ class ThreadsProvider(SocialProvider):
 
     profile_url_template = "https://www.threads.net/@{handle}"
 
+    # No mention_lookup: the only user lookup the Threads API has is Profile Discovery
+    # (``GET /profile_lookup?username=``, https://developers.facebook.com/docs/threads/threads-profiles), which needs
+    # an exact username, returns only public profiles with 100+ followers and, with standard access, only a few
+    # official Meta accounts. That is not a typeahead, so "@" stays plain text here.
+
     media_rules = THREADS_MEDIA_RULES
     # Each part is a reply to the one before it (``reply_to_id``).
     thread = ThreadCapability(mode=ThreadMode.REPLY_CHAIN, max_parts=25, media_per_part=True)
