@@ -27,6 +27,15 @@ class TestComposerPanel:
         # Admins get a way to connect their own AI instead.
         assert b"Connect your AI" in response.content
         assert reverse("ai_writer_org:settings").encode() in response.content
+        # Primary path: their own Claude or ChatGPT app.
+        assert reverse("connect:index").encode() in response.content
+        assert b"Add a provider key" in response.content
+
+    def test_members_without_admin_rights_still_get_the_assistant_path(self, editor_client, workspace):
+        response = editor_client.get(reverse("composer:compose", kwargs={"workspace_id": workspace.id}))
+        assert reverse("connect:index").encode() in response.content
+        assert reverse("ai_writer_org:settings").encode() not in response.content
+        assert b"Add a provider key" not in response.content
 
     def test_hosted_mode_ignores_the_platform_key(self, platform_key, owner_client, workspace, settings):
         settings.AI_PLATFORM_KEY_FOR_CUSTOMERS = False
@@ -35,6 +44,7 @@ class TestComposerPanel:
         assert b"Connect your AI" in response.content
         settings_page = owner_client.get(reverse("ai_writer_org:settings")).content.decode()
         assert "Connect your AI to turn it on" in settings_page and "no markup" in settings_page
+        assert reverse("connect:index") in settings_page
 
     def test_shown_with_the_platform_key(self, platform_key, owner_client, workspace):
         response = owner_client.get(reverse("composer:compose", kwargs={"workspace_id": workspace.id}))
@@ -200,9 +210,10 @@ class TestBrandVoiceSettings:
 
 
 class TestOrganizationKeySettings:
-    def test_save_replace_and_remove(self, owner_client, organization):
+    def test_save_replace_and_remove(self, owner_client, organization, fake_claude):
         url = reverse("ai_writer_org:settings")
         assert owner_client.get(url).status_code == 200
+        fake_claude.queue({"ok": True})
         owner_client.post(url, {"provider": "anthropic", "api_key": "sk-ant-api03-first-key-AAAA"})
         key = OrganizationAIKey.objects.get(organization=organization)
         assert (key.api_key, key.key_hint) == ("sk-ant-api03-first-key-AAAA", "AAAA")
@@ -240,3 +251,15 @@ def test_adapted_json_is_valid(platform_key, owner_client, workspace, bluesky, f
     match = re.search(r'<script id="ai-adapted-captions"[^>]*>(.*?)</script>', body, re.DOTALL)
     payload = json.loads(match.group(1))
     assert payload == {str(bluesky.id): 'Quote "this" </script>'}
+
+
+class TestConnectAIPartial:
+    def test_full_variant_offers_both_paths(self, owner_client, editor_client, workspace):
+        url = reverse("ai_visibility:index", kwargs={"workspace_id": workspace.id})
+        admin = owner_client.get(url).content.decode()
+        assert "Use it from Claude or ChatGPT" in admin and "Or add an AI provider key" in admin
+        assert admin.index("Use it from Claude or ChatGPT") < admin.index("Or add an AI provider key")
+        assert reverse("ai_writer_org:settings") in admin
+        member = editor_client.get(url).content.decode()
+        assert reverse("connect:index") in member and "Ask an organization admin" in member
+        assert reverse("ai_writer_org:settings") not in member

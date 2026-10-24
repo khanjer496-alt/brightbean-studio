@@ -1,23 +1,32 @@
 {% comment %}
   Shown wherever an AI feature would be, when the organization has no AI
   connection of its own (apps.ai_writer.client.resolve_ai returned None).
+  Two paths: connect the member's own Claude or ChatGPT app (public page, no
+  admin rights needed), or an admin adds an AI provider key.
   Pass compact=True for a one-line link inside a toolbar.
 {% endcomment %}
 {% with role=request.org_membership.org_role %}
 {% if compact %}
+<a href="{% url 'connect:index' %}"
+   title="Connect your Claude or ChatGPT app and let your own subscription write and schedule posts, at no extra cost."
+   class="text-xs font-semibold py-1.5 px-3 rounded-full border border-stone-200 text-stone-500 hover:border-stone-300 hover:text-stone-700 transition-colors inline-flex items-center gap-1">Connect your AI</a>
 {% if role == "owner" or role == "admin" %}
 <a href="{% url 'ai_writer_org:settings' %}"
-   title="AI runs on your own AI provider key. You pay your provider directly; we add nothing."
-   class="text-xs font-semibold py-1.5 px-3 rounded-full border border-stone-200 text-stone-500 hover:border-stone-300 hover:text-stone-700 transition-colors inline-flex items-center gap-1">Connect your AI</a>
+   title="Or add an AI provider key (Anthropic, OpenAI, Google Gemini or any OpenAI-compatible service). Your provider bills you; we add nothing."
+   class="text-xs font-semibold py-1.5 px-3 rounded-full border border-stone-200 text-stone-500 hover:border-stone-300 hover:text-stone-700 transition-colors inline-flex items-center gap-1">Add a provider key</a>
 {% endif %}
 {% else %}
 <div class="rounded-xl border border-line bg-surface-1 p-4 text-sm text-ink-2" role="status">
     <p class="m-0 font-semibold text-ink">Connect your AI</p>
-    <p class="m-0 mt-1">AI features run on your organization's own AI provider key. You pay your provider directly, and we add nothing on top.</p>
+    <p class="m-0 mt-1 font-medium text-ink">Use it from Claude or ChatGPT</p>
+    <p class="m-0">Connect PostDelegate to your Claude or ChatGPT app and have your own subscription write and schedule posts, at no extra cost.</p>
+    <a href="{% url 'connect:index' %}" class="btn-brand mt-3 inline-flex">Use it from Claude or ChatGPT</a>
+    <p class="m-0 mt-4 font-medium text-ink">Or add an AI provider key</p>
+    <p class="m-0">Use your own Anthropic, OpenAI, Google Gemini or OpenAI-compatible account. Your provider bills you directly, and we add nothing on top.</p>
     {% if role == "owner" or role == "admin" %}
-    <a href="{% url 'ai_writer_org:settings' %}" class="btn-outline mt-3 inline-flex">Connect your AI</a>
+    <a href="{% url 'ai_writer_org:settings' %}" class="btn-outline mt-3 inline-flex">Add a provider key</a>
     {% else %}
-    <p class="m-0 mt-2 text-ink-3">Ask an organization admin to connect it under Organization settings &rarr; AI.</p>
+    <p class="m-0 mt-2 text-ink-3">Ask an organization admin to add one under Organization settings &rarr; AI.</p>
     {% endif %}
 </div>
 {% endif %}
