@@ -9,7 +9,7 @@ per-account thumbnails map.
 {% if assets %}
 <div class="grid grid-cols-4 gap-3">
     {% for asset in assets %}
-    <div class="group relative rounded-xl overflow-hidden border border-stone-200 aspect-video cursor-pointer hover:border-orange-400 hover:shadow-md transition-all duration-150"
+    <div role="button" tabindex="0" @keydown.enter.self.prevent="$el.click()" @keydown.space.self.prevent="$el.click()" aria-label="Use {{ asset.filename|escape }} as thumbnail" class="group relative rounded-xl overflow-hidden border border-stone-200 aspect-video cursor-pointer hover:border-orange-400 hover:shadow-md transition-all duration-150"
          @click="$dispatch('thumbnail-selected', { assetId: '{{ asset.id }}', url: '{% if asset.thumbnail %}{{ asset.thumbnail.url }}{% elif asset.file %}{{ asset.file.url }}{% endif %}', filename: '{{ asset.filename|escapejs }}' })">
         {% if asset.thumbnail %}
         <img src="{{ asset.thumbnail.url }}" class="w-full h-full object-cover" alt="{{ asset.filename }}">
@@ -25,7 +25,7 @@ per-account thumbnails map.
                 <svg class="w-4 h-4 text-stone-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/></svg>
             </div>
         </div>
-        <div class="absolute bottom-0 left-0 right-0 p-1.5 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+        <div class="absolute bottom-0 start-0 end-0 p-1.5 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150">
             <span class="text-[10px] text-white font-medium truncate block">{{ asset.filename }}</span>
         </div>
     </div>

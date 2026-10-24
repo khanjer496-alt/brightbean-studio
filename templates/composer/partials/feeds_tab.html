@@ -72,10 +72,10 @@
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="5" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
                 </button>
                 <div x-show="openFeedMenu" x-cloak x-transition
-                     class="absolute right-0 top-[calc(100%+6px)] min-w-[140px] bg-white border border-stone-200 rounded-lg shadow-lg p-1 z-20">
+                     class="absolute end-0 top-[calc(100%+6px)] min-w-[140px] bg-white border border-stone-200 rounded-lg shadow-lg p-1 z-20">
                     <button type="button"
                             @click="openFeedMenu = false; showDeleteFeedModal = true"
-                            class="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer">
+                            class="w-full text-start px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-md transition-colors cursor-pointer">
                         Delete Feed
                     </button>
                 </div>
@@ -114,14 +114,14 @@
     </div>
     {% endif %}
 
-    <div id="feed-events-list" class="space-y-3 flex-1 min-h-0 overflow-y-auto pr-1">
+    <div id="feed-events-list" class="space-y-3 flex-1 min-h-0 overflow-y-auto pe-1">
         {% include "composer/partials/feed_events_batch.html" with show_empty=True %}
     </div>
 </div>
 {% else %}
 <!-- Empty state -->
 <div class="flex flex-col lg:flex-row items-center justify-center gap-8 py-12">
-    <div class="flex flex-col items-center lg:items-start text-center lg:text-left max-w-md">
+    <div class="flex flex-col items-center lg:items-start text-center lg:text-start max-w-md">
         <h2 class="text-lg font-semibold text-stone-800 mb-2">Add your First Feed</h2>
         <p class="text-sm text-stone-500 mb-6">Subscribe to your favorite blogs, websites, or creators to get the latest content ideas.</p>
 
@@ -154,7 +154,7 @@
     <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-[560px] mx-4 p-6" @click.stop>
         <button aria-label="Close" type="button"
                 @click="showAddModal = false"
-                class="absolute top-4 right-4 w-8 h-8 flex items-center justify-center text-stone-400 hover:text-stone-600 hover:bg-stone-100 rounded-full transition-all cursor-pointer">
+                class="absolute top-4 end-4 w-8 h-8 flex items-center justify-center text-stone-400 hover:text-stone-600 hover:bg-stone-100 rounded-full transition-all cursor-pointer">
             <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
         </button>
 

@@ -3,9 +3,32 @@
      data-tags="{{ idea.tags_payload_json|escape }}"
      data-media="{{ idea.media_payload_json|escape }}"
      draggable="true"
+     x-data="{ moveOpen: false }"
      @dragstart="startDrag($event, '{{ idea.id }}')"
      @dragend="endDrag($event)"
      @click="openEdit('{{ idea.id }}', '{{ idea.title|escapejs }}', '{{ idea.description|escapejs }}', $el.dataset.tags, '{{ group_id }}', $el.dataset.media)">
+    <button type="button" data-idea-open class="absolute inset-0 z-[1] rounded-[inherit] bg-transparent opacity-0 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--primary)]"
+            aria-label="Edit idea: {{ idea.title }}"
+            @click.stop="openEdit('{{ idea.id }}', '{{ idea.title|escapejs }}', '{{ idea.description|escapejs }}', $el.closest('.idea-card').dataset.tags, '{{ group_id }}', $el.closest('.idea-card').dataset.media)"></button>
+    {% if columns|length > 1 %}
+    <div class="absolute end-1.5 bottom-1.5 z-[2]" @click.stop @keydown.escape.stop="moveOpen = false; $refs.moveBtn.focus()" @click.outside="moveOpen = false">
+        <button type="button" x-ref="moveBtn" class="w-7 h-7 rounded-md text-stone-500 hover:text-stone-700 hover:bg-stone-100 flex items-center justify-center cursor-pointer"
+                aria-haspopup="menu" :aria-expanded="moveOpen" aria-label="Move {{ idea.title }} to another column"
+                @click="moveOpen = !moveOpen; if (moveOpen) $nextTick(() => $refs.moveMenu.querySelector('button')?.focus())">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4M16 17H4m0 0l4-4m-4 4l4 4"/></svg>
+        </button>
+        <div x-ref="moveMenu" x-show="moveOpen" x-cloak role="menu" aria-label="Move to column"
+             @keydown.arrow-down.prevent="$el.querySelectorAll('button')[[...$el.querySelectorAll('button')].indexOf(document.activeElement) + 1]?.focus()"
+             @keydown.arrow-up.prevent="$el.querySelectorAll('button')[[...$el.querySelectorAll('button')].indexOf(document.activeElement) - 1]?.focus()"
+             class="absolute end-0 bottom-full mb-1 bg-white rounded-lg shadow-lg ring-1 ring-stone-200 py-1 z-50 min-w-[160px]">
+            <span class="block px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-stone-400">Move to</span>
+            {% for c in columns %}{% if c.id != group_id %}
+            <button type="button" role="menuitem" class="w-full text-start px-3 py-2 text-xs font-medium text-stone-700 hover:bg-stone-50 focus-visible:bg-stone-50"
+                    @click="moveOpen = false; moveIdea('{{ idea.id }}', '{{ c.id }}')">{{ c.label }}</button>
+            {% endif %}{% endfor %}
+        </div>
+    </div>
+    {% endif %}
     {% if idea.cover_media and idea.cover_media.file %}
     <div class="-mx-3 -mt-3 mb-2 rounded-t-lg overflow-hidden flex items-center justify-center h-[120px]">
         {% if idea.cover_media.media_type == 'video' %}
@@ -16,7 +39,7 @@
     </div>
     {% endif %}
     {% if idea.media_count > 1 %}
-    <div class="absolute right-2 top-2 inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-full text-[10px] font-semibold bg-black/65 text-white">
+    <div class="absolute end-2 top-2 inline-flex items-center justify-center min-w-[24px] h-6 px-1.5 rounded-full text-[10px] font-semibold bg-black/65 text-white">
         +{{ idea.media_count|add:"-1" }}
     </div>
     {% endif %}
@@ -31,4 +54,5 @@
         {% endfor %}
     </div>
     {% endif %}
+    {% if columns|length > 1 %}<div class="h-6" aria-hidden="true"></div>{% endif %}
 </div>

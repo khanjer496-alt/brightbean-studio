@@ -3,7 +3,7 @@
 <div class="flex flex-col h-full" x-data="{ showDeleteConfirm: false }">
   <!-- Header -->
   <div class="flex items-center justify-between px-5 py-4 border-b" style="border-color: var(--border, #E7E5E4);">
-    <h2 class="text-sm font-bold truncate pr-4" style="color: var(--text-primary, #1C1917);">{{ asset.original_filename }}</h2>
+    <h2 class="text-sm font-bold truncate pe-4" style="color: var(--text-primary, #1C1917);">{{ asset.original_filename }}</h2>
     <button aria-label="Close details" @click="detailOpen = false"
             class="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors btn-surface-2"
             style="color: var(--text-tertiary, #78716C);">
@@ -65,7 +65,7 @@
     </a>
     {% endif %}
     {% if is_shared_library and is_admin or not asset.is_shared %}
-    <button class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-full transition-all ml-auto cursor-pointer btn-danger-soft-bg"
+    <button class="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-full transition-all ms-auto cursor-pointer btn-danger-soft-bg"
             style="color: var(--error-500, #EF4444);"
             @click="showDeleteConfirm = true">
       <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>

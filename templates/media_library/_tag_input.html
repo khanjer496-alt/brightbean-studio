@@ -32,11 +32,11 @@
 
     <!-- Autocomplete dropdown -->
     <div x-show="suggestions.length > 0" x-cloak
-         class="absolute z-10 left-0 right-0 mt-1 rounded-lg border overflow-hidden"
+         class="absolute z-10 start-0 end-0 mt-1 rounded-lg border overflow-hidden"
          style="background: var(--surface-0, #FFF); border-color: var(--border, #E7E5E4); box-shadow: var(--shadow-lg);">
       <template x-for="(s, i) in suggestions" :key="i">
         <button @click="addTag(s); suggestions = []"
-                class="w-full text-left px-3 py-1.5 text-xs transition-colors btn-surface-1"
+                class="w-full text-start px-3 py-1.5 text-xs transition-colors btn-surface-1"
                 style="color: var(--text-primary);"
                 x-text="s"></button>
       </template>

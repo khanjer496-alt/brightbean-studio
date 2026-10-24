@@ -4,6 +4,7 @@
      x-data="{ menuOpen: false }"
      data-asset-card="{{ asset.id }}"
      @click="window.location.href='{% url 'media_library_org:shared_asset_detail' asset_id=asset.id %}'">
+  <button type="button" class="absolute inset-0 z-[1] rounded-[inherit] bg-transparent opacity-0 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--primary)]" aria-label="Open {{ asset.filename }}" @click.stop="window.location.href='{% url 'media_library_org:shared_asset_detail' asset_id=asset.id %}'"></button>
 
   <!-- Thumbnail -->
   <div class="relative aspect-square overflow-hidden rounded-t-xl">
@@ -24,11 +25,11 @@
     {% endif %}
 
     <!-- Type badge -->
-    <span class="absolute top-2 left-2" style="font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 6px; border-radius: var(--radius-sm, 0.25rem); {% if asset.media_type == 'video' %}background: rgba(239,68,68,0.9); color: white;{% elif asset.media_type == 'gif' %}background: rgba(99,102,241,0.9); color: white;{% elif asset.media_type == 'document' %}background: rgba(59,130,246,0.9); color: white;{% else %}background: rgba(255,255,255,0.9); color: var(--text-secondary, #57534E);{% endif %}">
+    <span class="absolute top-2 start-2" style="font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 6px; border-radius: var(--radius-sm, 0.25rem); {% if asset.media_type == 'video' %}background: rgba(239,68,68,0.9); color: white;{% elif asset.media_type == 'gif' %}background: rgba(99,102,241,0.9); color: white;{% elif asset.media_type == 'document' %}background: rgba(59,130,246,0.9); color: white;{% else %}background: rgba(255,255,255,0.9); color: var(--text-secondary, #57534E);{% endif %}">
       {{ asset.media_type|upper }}
     </span>
 
-    <span class="absolute top-2 right-2" style="font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 6px; border-radius: var(--radius-sm, 0.25rem); background: rgba(20,184,166,0.9); color: white;">
+    <span class="absolute top-2 end-2" style="font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; padding: 2px 6px; border-radius: var(--radius-sm, 0.25rem); background: rgba(20,184,166,0.9); color: white;">
       SHARED
     </span>
   </div>
@@ -41,7 +42,7 @@
 
   {% if is_admin %}
   <!-- Admin kebab menu (sibling of thumbnail to avoid overflow-hidden clipping the dropdown) -->
-  <div class="absolute z-30 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+  <div class="absolute z-30 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity duration-150"
        style="bottom: 52px; right: 8px;"
        :class="menuOpen ? 'opacity-100' : ''"
        @click.stop>
@@ -56,7 +57,7 @@
       </svg>
     </button>
     <div x-show="menuOpen" x-cloak x-transition.opacity.duration.100ms
-         class="absolute right-0 bottom-9 w-36 rounded-lg overflow-hidden z-30"
+         class="absolute end-0 bottom-9 w-36 rounded-lg overflow-hidden z-30"
          style="background: var(--surface-0, #FFF); border: 1px solid var(--border, #E7E5E4); box-shadow: var(--shadow-lg);">
       <a href="{% url 'media_library_org:shared_asset_edit' asset_id=asset.id %}"
          class="flex items-center gap-2 px-3 py-2 text-xs font-medium transition-colors btn-surface-1"

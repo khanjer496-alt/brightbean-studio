@@ -19,7 +19,7 @@ Uses Alpine.js for client-side category filtering.
                 {% for tpl in featured_templates %}
                 <button type="button"
                         @click="$dispatch('use-builtin-template', { id: {{ tpl.id }} })"
-                        class="text-left bg-white rounded-xl border border-stone-200 p-4 hover:border-stone-300 hover:shadow-sm transition-all group cursor-pointer"
+                        class="text-start bg-white rounded-xl border border-stone-200 p-4 hover:border-stone-300 hover:shadow-sm transition-all group cursor-pointer"
                         style="border-top: 3px solid rgba({{ tpl.color }}, 0.6);">
                     <div class="text-2xl mb-2">{{ tpl.emoji }}</div>
                     <h3 class="text-base font-semibold text-stone-800 mb-1 line-clamp-2">{{ tpl.title }}</h3>
@@ -72,7 +72,7 @@ Uses Alpine.js for client-side category filtering.
                 x-transition:enter-start="opacity-0 scale-95"
                 x-transition:enter-end="opacity-100 scale-100"
                 @click="$dispatch('use-builtin-template', { id: {{ tpl.id }} })"
-                class="text-left bg-white rounded-xl border border-stone-200 p-4 hover:border-stone-300 hover:shadow-sm transition-all group cursor-pointer"
+                class="text-start bg-white rounded-xl border border-stone-200 p-4 hover:border-stone-300 hover:shadow-sm transition-all group cursor-pointer"
                 style="border-top: 3px solid rgba({{ tpl.color }}, 0.45);">
             <div class="text-2xl mb-2">{{ tpl.emoji }}</div>
             <h3 class="text-base font-semibold text-stone-800 mb-1 line-clamp-2 group-hover:text-stone-900">{{ tpl.title }}</h3>

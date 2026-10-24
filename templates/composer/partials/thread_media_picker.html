@@ -21,9 +21,9 @@ the picker; nothing is attached server-side until the post is saved.
         <video src="{{ asset.file.url }}#t=0.5" class="w-full h-full object-cover" muted preload="metadata"></video>
         {% endif %}
         {% if asset.is_video %}
-        <span class="absolute top-1 left-1 px-1.5 py-0.5 rounded bg-black/60 text-[10px] font-semibold text-white">Video</span>
+        <span class="absolute top-1 start-1 px-1.5 py-0.5 rounded bg-black/60 text-[10px] font-semibold text-white">Video</span>
         {% endif %}
-        <span class="absolute bottom-0 left-0 right-0 p-1.5 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150 text-[10px] text-white font-medium truncate text-left">{{ asset.filename }}</span>
+        <span class="absolute bottom-0 start-0 end-0 p-1.5 bg-gradient-to-t from-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-150 text-[10px] text-white font-medium truncate text-start">{{ asset.filename }}</span>
     </button>
     {% endfor %}
 </div>

@@ -60,7 +60,7 @@ The enclosing <form> carries data-token-scope; static/js/token-scope.js fills th
                 <label class="flex items-start gap-3 rounded-lg border border-stone-200 px-3 py-2 cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--primary)]">
                     <input type="checkbox" name="capabilities" value="{{ item.cap.key }}" class="mt-0.5 h-4 w-4 flex-none" {% if item.checked %}checked{% endif %}>
                     <span class="min-w-0">
-                        <span class="block text-sm font-medium text-[var(--text-primary)]">{{ item.cap.label }}{% if item.cap.risk == "high" %} <span class="ml-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">High risk</span>{% endif %}</span>
+                        <span class="block text-sm font-medium text-[var(--text-primary)]">{{ item.cap.label }}{% if item.cap.risk == "high" %} <span class="ms-1 rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-900">High risk</span>{% endif %}</span>
                         <span class="block text-xs text-[var(--text-secondary)]">{{ item.cap.summary }}</span>
                     </span>
                 </label>

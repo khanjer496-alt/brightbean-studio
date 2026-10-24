@@ -9,7 +9,7 @@ Context: media_attachments, post, workspace.
     <video src="{{ attachment.media_asset.file.url }}#t=0.5" data-asset-id="{{ attachment.media_asset.id }}" class="w-full h-full object-cover" muted preload="metadata"></video>
     <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
         <div class="w-5 h-5 rounded-full bg-black/50 flex items-center justify-center">
-            <svg class="w-2.5 h-2.5 text-white ml-px" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg>
+            <svg class="w-2.5 h-2.5 text-white ms-px" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg>
         </div>
     </div>
     {% elif attachment.media_asset.thumbnail %}
@@ -22,7 +22,13 @@ Context: media_attachments, post, workspace.
     </div>
     {% endif %}
     {% if post %}
-    <button aria-label="Remove media" type="button" class="remove-btn"
+    <div class="media-move-bar" role="group" aria-label="Order of {{ attachment.media_asset.filename|escape }}">
+        <button type="button" id="move-earlier-{{ attachment.id }}" class="media-move-btn" aria-label="Move {{ attachment.media_asset.filename|escape }} earlier"
+                hx-post="{% url 'composer:reorder_media' workspace_id=workspace.id post_id=post.id media_id=attachment.id %}" hx-vals='{"direction": "earlier"}' hx-target="#media-list" hx-swap="innerHTML"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg></button>
+        <button type="button" id="move-later-{{ attachment.id }}" class="media-move-btn" aria-label="Move {{ attachment.media_asset.filename|escape }} later"
+                hx-post="{% url 'composer:reorder_media' workspace_id=workspace.id post_id=post.id media_id=attachment.id %}" hx-vals='{"direction": "later"}' hx-target="#media-list" hx-swap="innerHTML"><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg></button>
+    </div>
+    <button aria-label="Remove {{ attachment.media_asset.filename|escape }}" type="button" class="remove-btn"
             hx-post="{% url 'composer:remove_media' workspace_id=workspace.id post_id=post.id media_id=attachment.id %}"
             hx-target="#media-list"
             hx-swap="innerHTML">

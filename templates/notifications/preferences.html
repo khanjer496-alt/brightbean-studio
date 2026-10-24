@@ -14,7 +14,7 @@
                 </a>
                 <h2 class="text-xl font-semibold text-stone-900 tracking-tight">Notification Preferences</h2>
             </div>
-            <p class="text-sm text-stone-500 mt-1 ml-8">Choose which notifications you receive and how.</p>
+            <p class="text-sm text-stone-500 mt-1 ms-8">Choose which notifications you receive and how.</p>
         </div>
     </div>
 
@@ -39,7 +39,7 @@
             {# Rows #}
             {% for row in matrix %}
             <div class="grid grid-cols-[1fr_80px_80px_80px] gap-0 px-5 py-3 border-b border-stone-50 last:border-b-0 hover:bg-stone-50/50 transition-colors duration-100 items-center">
-                <div class="text-[13px] text-stone-700 font-medium pr-4">{{ row.event_label }}</div>
+                <div class="text-[13px] text-stone-700 font-medium pe-4">{{ row.event_label }}</div>
                 {% for toggle in row.channel_toggles %}
                 <div class="flex justify-center">
                     <label class="relative inline-flex items-center cursor-pointer">
@@ -49,7 +49,7 @@
                             {% if toggle.enabled %}checked{% endif %}
                             class="sr-only peer"
                         >
-                        <div class="w-8 h-[18px] bg-stone-200 rounded-full peer peer-checked:bg-orange-500 peer-focus-visible:ring-2 peer-focus-visible:ring-orange-200 transition-colors duration-200 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-[14px] after:w-[14px] after:shadow-sm after:transition-transform after:duration-200 peer-checked:after:translate-x-[14px]"></div>
+                        <div class="w-8 h-[18px] bg-stone-200 rounded-full peer peer-checked:bg-orange-500 peer-focus-visible:ring-2 peer-focus-visible:ring-orange-200 transition-colors duration-200 after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-[14px] after:w-[14px] after:shadow-sm after:transition-transform after:duration-200 peer-checked:after:translate-x-[14px]"></div>
                     </label>
                 </div>
                 {% endfor %}
@@ -79,12 +79,12 @@
                             class="sr-only peer"
                             x-model="quietEnabled"
                         >
-                        <div class="w-9 h-5 bg-stone-200 rounded-full peer peer-checked:bg-orange-500 peer-focus-visible:ring-2 peer-focus-visible:ring-orange-200 transition-colors duration-200 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:shadow-sm after:transition-transform after:duration-200 peer-checked:after:translate-x-4"></div>
+                        <div class="w-9 h-5 bg-stone-200 rounded-full peer peer-checked:bg-orange-500 peer-focus-visible:ring-2 peer-focus-visible:ring-orange-200 transition-colors duration-200 after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:shadow-sm after:transition-transform after:duration-200 peer-checked:after:translate-x-4"></div>
                     </label>
                 </div>
 
                 {# Time range - shown when quiet hours enabled #}
-                <div x-show="quietEnabled" x-collapse class="space-y-4 pl-0">
+                <div x-show="quietEnabled" x-collapse class="space-y-4 ps-0">
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label for="quiet-start" class="block text-xs font-semibold text-stone-600 mb-1.5">Start time</label>
@@ -137,7 +137,7 @@
                             {% if quiet_hours.digest_mode %}checked{% endif %}
                             class="sr-only peer"
                         >
-                        <div class="w-9 h-5 bg-stone-200 rounded-full peer peer-checked:bg-orange-500 peer-focus-visible:ring-2 peer-focus-visible:ring-orange-200 transition-colors duration-200 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:shadow-sm after:transition-transform after:duration-200 peer-checked:after:translate-x-4"></div>
+                        <div class="w-9 h-5 bg-stone-200 rounded-full peer peer-checked:bg-orange-500 peer-focus-visible:ring-2 peer-focus-visible:ring-orange-200 transition-colors duration-200 after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:shadow-sm after:transition-transform after:duration-200 peer-checked:after:translate-x-4"></div>
                     </label>
                 </div>
             </div>

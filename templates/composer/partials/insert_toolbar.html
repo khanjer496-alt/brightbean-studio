@@ -57,7 +57,7 @@ Context:
          x-show="panel === 'emoji'" x-cloak x-transition
          @keydown="emojiKey($event)"
          role="dialog" aria-label="Emoji picker"
-         class="z-50 max-h-[70vh] overflow-y-auto fixed inset-x-4 bottom-4 sm:absolute sm:inset-x-auto sm:left-0 {% if panel_position == 'above' %}sm:bottom-full sm:mb-1{% else %}sm:top-full sm:mt-1 sm:bottom-auto{% endif %} bg-white rounded-xl shadow-lg ring-1 ring-stone-200 sm:w-80 p-3">
+         class="z-50 max-h-[70vh] overflow-y-auto fixed inset-x-4 bottom-4 sm:absolute sm:inset-x-auto sm:start-0 {% if panel_position == 'above' %}sm:bottom-full sm:mb-1{% else %}sm:top-full sm:mt-1 sm:bottom-auto{% endif %} bg-white rounded-xl shadow-lg ring-1 ring-stone-200 sm:w-80 p-3">
         <label :for="uid + '-emoji-search'" class="sr-only">Search emoji</label>
         <input type="search" x-ref="emojiSearch" :id="uid + '-emoji-search'" x-model="emojiQuery"
                placeholder="Search emoji"
@@ -112,7 +112,7 @@ Context:
     <div :id="uid + '-hashtags'"
          x-show="panel === 'hashtags'" x-cloak x-transition
          role="dialog" aria-label="Hashtags"
-         class="fixed inset-x-4 bottom-4 z-50 sm:absolute sm:inset-x-auto sm:left-0 {% if panel_position == 'above' %}sm:bottom-full sm:mb-1{% else %}sm:top-full sm:mt-1 sm:bottom-auto{% endif %} bg-white rounded-xl shadow-lg ring-1 ring-stone-200 sm:w-80 max-h-[70vh] sm:max-h-80 overflow-y-auto p-3">
+         class="fixed inset-x-4 bottom-4 z-50 sm:absolute sm:inset-x-auto sm:start-0 {% if panel_position == 'above' %}sm:bottom-full sm:mb-1{% else %}sm:top-full sm:mt-1 sm:bottom-auto{% endif %} bg-white rounded-xl shadow-lg ring-1 ring-stone-200 sm:w-80 max-h-[70vh] sm:max-h-80 overflow-y-auto p-3">
         <p x-show="menuLoading" class="text-xs text-stone-400">Loading hashtags…</p>
         <p x-show="menuError" class="text-xs text-red-500">Couldn't load hashtags. Try again in a moment.</p>
         <template x-if="!menuLoading && !menuError">
@@ -123,7 +123,7 @@ Context:
                         <template x-for="set in hashtagSets" :key="set.id">
                             <li>
                                 <button type="button"
-                                        class="w-full text-left px-2 py-1.5 rounded-lg hover:bg-stone-100 focus-visible:ring-2 focus-visible:ring-orange-500 outline-none cursor-pointer"
+                                        class="w-full text-start px-2 py-1.5 rounded-lg hover:bg-stone-100 focus-visible:ring-2 focus-visible:ring-orange-500 outline-none cursor-pointer"
                                         @click="pickHashtags(set.text)">
                                     <span class="block text-sm font-medium text-stone-700" x-text="set.name"></span>
                                     <span class="block text-xs text-stone-400 truncate" x-text="set.text"></span>
@@ -153,7 +153,7 @@ Context:
     <div :id="uid + '-signatures'"
          x-show="panel === 'signatures'" x-cloak x-transition
          role="dialog" aria-label="Signatures"
-         class="fixed inset-x-4 bottom-4 z-50 sm:absolute sm:inset-x-auto sm:left-0 {% if panel_position == 'above' %}sm:bottom-full sm:mb-1{% else %}sm:top-full sm:mt-1 sm:bottom-auto{% endif %} bg-white rounded-xl shadow-lg ring-1 ring-stone-200 sm:w-80 max-h-[70vh] sm:max-h-80 overflow-y-auto p-3">
+         class="fixed inset-x-4 bottom-4 z-50 sm:absolute sm:inset-x-auto sm:start-0 {% if panel_position == 'above' %}sm:bottom-full sm:mb-1{% else %}sm:top-full sm:mt-1 sm:bottom-auto{% endif %} bg-white rounded-xl shadow-lg ring-1 ring-stone-200 sm:w-80 max-h-[70vh] sm:max-h-80 overflow-y-auto p-3">
         <p x-show="menuLoading" class="text-xs text-stone-400">Loading signatures…</p>
         <p x-show="menuError" class="text-xs text-red-500">Couldn't load signatures. Try again in a moment.</p>
         <template x-if="!menuLoading && !menuError">
@@ -162,7 +162,7 @@ Context:
                     <template x-for="signature in signatures" :key="signature.id">
                         <li>
                             <button type="button"
-                                    class="w-full text-left px-2 py-1.5 rounded-lg hover:bg-stone-100 focus-visible:ring-2 focus-visible:ring-orange-500 outline-none cursor-pointer"
+                                    class="w-full text-start px-2 py-1.5 rounded-lg hover:bg-stone-100 focus-visible:ring-2 focus-visible:ring-orange-500 outline-none cursor-pointer"
                                     @click="pickSignature(signature)">
                                 <span class="block text-sm font-medium text-stone-700">
                                     <span x-text="signature.name"></span>
@@ -184,7 +184,7 @@ Context:
     <!-- @mention suggestions, while typing "@" -->
     <ul :id="uid + '-mentions'" x-show="mentionOpen" x-cloak
         role="listbox" aria-label="Accounts to mention"
-        class="absolute z-50 left-0 {% if panel_position == 'above' %}bottom-full mb-1{% else %}top-full mt-1{% endif %} bg-white rounded-xl shadow-lg ring-1 ring-stone-200 w-72 max-w-[calc(100vw-2rem)] max-h-60 overflow-y-auto p-1">
+        class="absolute z-50 start-0 {% if panel_position == 'above' %}bottom-full mb-1{% else %}top-full mt-1{% endif %} bg-white rounded-xl shadow-lg ring-1 ring-stone-200 w-72 max-w-[calc(100vw-2rem)] max-h-60 overflow-y-auto p-1">
         <template x-for="(item, index) in mentionResults" :key="item.handle">
             <li role="option" :id="uid + '-mention-' + index" :aria-selected="(index === mentionIndex).toString()"
                 class="flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer"

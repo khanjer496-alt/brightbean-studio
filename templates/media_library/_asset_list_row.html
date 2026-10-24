@@ -1,8 +1,9 @@
 {% comment %}Single asset row for list view. Expects: asset, workspace{% endcomment %}
 
-<div class="grid grid-cols-12 gap-3 px-4 py-2.5 items-center border-b cursor-pointer transition-colors hover:bg-stone-50"
+<div class="relative grid grid-cols-12 gap-3 px-4 py-2.5 items-center border-b cursor-pointer transition-colors hover:bg-stone-50"
      style="border-color: var(--surface-2, #F5F5F4);"
      @click="openDetail('{{ asset.id }}')">
+  <button type="button" class="absolute inset-0 z-[1] rounded-[inherit] bg-transparent opacity-0 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--primary)]" aria-label="Open {{ asset.original_filename }}" @click.stop="openDetail('{{ asset.id }}')"></button>
 
   <!-- Name + thumbnail -->
   <div class="col-span-5 flex items-center gap-3 min-w-0">
@@ -57,7 +58,7 @@
   </div>
 
   <!-- Actions -->
-  <div class="col-span-1 flex justify-end">
+  <div class="relative z-[2] col-span-1 flex justify-end">
     <button @click.stop type="button" aria-pressed="{% if asset.is_starred %}true{% else %}false{% endif %}" aria-label="{% if asset.is_starred %}Unstar{% else %}Star{% endif %} {{ asset.original_filename }}"
             class="btn-icon-hover w-7 h-7 rounded-lg flex items-center justify-center"
             style="color: var(--text-ghost);"

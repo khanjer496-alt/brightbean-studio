@@ -1,12 +1,13 @@
 {% comment %}Single asset card for grid view. Expects: asset, workspace{% endcomment %}
 
-<div class="ml-asset-card group cursor-pointer overflow-hidden"
+<div class="relative ml-asset-card group cursor-pointer overflow-hidden"
      @click="openDetail('{{ asset.id }}')"
      {% if asset.processing_status == 'pending' or asset.processing_status == 'processing' %}
      hx-get="{% url 'media_library:processing_status' workspace_id=workspace.id asset_id=asset.id %}"
      hx-trigger="every 3s"
      hx-swap="outerHTML"
      {% endif %}>
+  <button type="button" class="absolute inset-0 z-[1] rounded-[inherit] bg-transparent opacity-0 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--primary)]" aria-label="Open {{ asset.original_filename }}" @click.stop="openDetail('{{ asset.id }}')"></button>
 
   <!-- Thumbnail -->
   <div class="relative aspect-square overflow-hidden rounded-t-xl">
@@ -38,14 +39,14 @@
     {% endif %}
 
     <!-- Type badge -->
-    <span class="ml-type-badge absolute top-2 left-2
+    <span class="ml-type-badge absolute top-2 start-2
       {% if asset.file_type == 'image' %}{% elif asset.file_type == 'video' %}{% elif asset.file_type == 'gif' %}{% else %}{% endif %}"
       style="{% if asset.file_type == 'video' %}background: rgba(239,68,68,0.9); color: white;{% elif asset.file_type == 'gif' %}background: rgba(99,102,241,0.9); color: white;{% elif asset.file_type == 'document' %}background: rgba(59,130,246,0.9); color: white;{% else %}background: rgba(255,255,255,0.9); color: var(--text-secondary, #57534E);{% endif %}">
       {{ asset.file_type|upper }}
     </span>
 
     {% if asset.is_shared %}
-    <span class="ml-type-badge absolute top-2 right-2"
+    <span class="ml-type-badge absolute top-2 end-2"
           style="background: rgba(20,184,166,0.9); color: white;">
       SHARED
     </span>
@@ -53,7 +54,7 @@
 
     <!-- Star button -->
     <button @click.stop type="button" aria-pressed="{% if asset.is_starred %}true{% else %}false{% endif %}" aria-label="{% if asset.is_starred %}Unstar{% else %}Star{% endif %} {{ asset.original_filename }}"
-            class="absolute bottom-2 right-2 w-7 h-7 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+            class="absolute bottom-2 end-2 z-[2] w-8 h-8 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 transition-opacity"
             style="background: rgba(255,255,255,0.9); box-shadow: var(--shadow-sm);"
             hx-post="{% url 'media_library:asset_star' workspace_id=workspace.id asset_id=asset.id %}"
             hx-swap="outerHTML"
@@ -64,7 +65,7 @@
     </button>
 
     {% if asset.file_type == 'video' and asset.duration_seconds %}
-    <span class="absolute bottom-2 left-2 text-xs font-semibold px-1.5 py-0.5 rounded"
+    <span class="absolute bottom-2 start-2 text-xs font-semibold px-1.5 py-0.5 rounded"
           style="background: rgba(0,0,0,0.7); color: white; font-variant-numeric: tabular-nums;">
       {% widthratio asset.duration_seconds 60 1 as mins %}
       {% widthratio asset.duration_seconds 1 1 as secs %}

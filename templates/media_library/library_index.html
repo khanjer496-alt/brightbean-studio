@@ -101,7 +101,7 @@
 
   <!-- Mobile folder sidebar toggle -->
   <button @click="folderSidebarOpen = !folderSidebarOpen"
-          class="lg:hidden fixed bottom-4 left-4 z-40 flex items-center gap-2 px-3 py-2.5 bg-white border border-stone-200 rounded-xl shadow-lg text-sm font-medium text-stone-600 hover:bg-stone-50 transition-colors cursor-pointer"
+          class="lg:hidden fixed bottom-4 start-4 z-40 flex items-center gap-2 px-3 py-2.5 bg-white border border-stone-200 rounded-xl shadow-lg text-sm font-medium text-stone-600 hover:bg-stone-50 transition-colors cursor-pointer"
           x-show="!detailOpen">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6a2 2 0 012-2h2l2 2h6a2 2 0 012 2v2M4 6v10a2 2 0 002 2h12a2 2 0 002-2V10a2 2 0 00-2-2H4z"/></svg>
     Folders
@@ -115,7 +115,7 @@
 
   <!-- ═══════ FOLDER SIDEBAR ═══════ -->
   <div class="ml-sidebar w-56 flex-shrink-0 flex flex-col overflow-y-auto rounded-tl-xl rounded-bl-xl
-              fixed inset-y-0 left-0 z-50 transition-transform duration-200
+              fixed inset-y-0 start-0 z-50 transition-transform duration-200
               lg:relative lg:z-auto lg:translate-x-0"
        :class="folderSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
        @click="if (window.innerWidth < 1024 && $event.target.closest('a')) { folderSidebarOpen = false }">
@@ -169,12 +169,12 @@
 
       <!-- Search -->
       <div class="relative flex-1 min-w-[160px] sm:max-w-sm">
-        <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style="color: var(--text-ghost, #A8A29E);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <svg class="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4" style="color: var(--text-ghost, #A8A29E);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
         <input type="search"
                name="q"
                value="{{ query }}"
                placeholder="Search media..."
-               class="input-focus w-full pl-9 pr-4 py-2 text-sm border rounded-lg outline-none"
+               class="input-focus w-full ps-9 pe-4 py-2 text-sm border rounded-lg outline-none"
                style="border-color: var(--border, #E7E5E4); background: var(--surface-0, #FFF);"
                hx-get="{% url 'media_library:index' workspace_id=workspace.id %}{% if current_folder %}?folder={{ current_folder }}{% endif %}"
                hx-trigger="keyup changed delay:400ms"
@@ -196,7 +196,7 @@
 
       <!-- Sort -->
       <select name="sort"
-              class="text-xs border rounded-lg pl-3 pr-7 py-2 outline-none cursor-pointer appearance-none"
+              class="text-xs border rounded-lg ps-3 pe-7 py-2 outline-none cursor-pointer appearance-none"
               style="border-color: var(--border, #E7E5E4); color: var(--text-secondary, #57534E); background-image: url(&quot;data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2378716C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: right 8px center;"
               hx-get="{% url 'media_library:index' workspace_id=workspace.id %}{% if current_folder %}?folder={{ current_folder }}{% endif %}"
               hx-trigger="change"
@@ -255,7 +255,7 @@
           </div>
         </template>
         <template x-if="uploading">
-          <div class="space-y-2 max-w-md mx-auto text-left">
+          <div class="space-y-2 max-w-md mx-auto text-start">
             <template x-for="(file, i) in uploadQueue" :key="i">
               <div class="flex items-center gap-3 py-1.5">
                 <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold"

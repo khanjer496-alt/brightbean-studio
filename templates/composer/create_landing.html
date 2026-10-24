@@ -426,7 +426,7 @@
             </button>
         </div>
 
-        <div class="flex items-center gap-3 ml-auto">
+        <div class="flex items-center gap-3 ms-auto">
             <!-- Tag filter -->
             {% if active_tag %}
             <div class="tag-chip">
@@ -446,7 +446,7 @@
                 </button>
                 <div x-show="tagFilterOpen" @click.away="tagFilterOpen = false" x-cloak
                      x-transition
-                     class="absolute right-0 top-full mt-1 bg-white rounded-xl shadow-lg ring-1 ring-stone-200 py-1 z-50 min-w-[200px] max-h-[280px] flex flex-col">
+                     class="absolute end-0 top-full mt-1 bg-white rounded-xl shadow-lg ring-1 ring-stone-200 py-1 z-50 min-w-[200px] max-h-[280px] flex flex-col">
                     <!-- Search -->
                     <div class="px-2 py-1.5 border-b border-stone-100">
                         <input type="text" x-ref="tagFilterSearchInput" x-model="tagFilterSearch"
@@ -545,7 +545,7 @@
         <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-[720px] mx-4 max-h-[85vh] overflow-hidden" @click.stop>
             <!-- Close button -->
             <button aria-label="Close" @click="showExploreModal = false"
-                    class="absolute top-4 right-4 z-10 w-8 h-8 flex items-center justify-center text-stone-400 hover:text-stone-600 hover:bg-stone-100 rounded-full transition-all cursor-pointer">
+                    class="absolute top-4 end-4 z-10 w-8 h-8 flex items-center justify-center text-stone-400 hover:text-stone-600 hover:bg-stone-100 rounded-full transition-all cursor-pointer">
                 <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
             <!-- Content loaded via HTMX -->
@@ -598,7 +598,7 @@
                                         @click="createSelectedGroup = '{{ col.id }}'; createGroupDropdownOpen = false"
                                         :class="createSelectedGroup === '{{ col.id }}' && 'font-semibold'">
                                     <span>{{ col.label }}</span>
-                                    <svg x-show="createSelectedGroup === '{{ col.id }}'" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" class="ml-auto" style="color: var(--primary);"><polyline points="20 6 9 17 4 12"/></svg>
+                                    <svg x-show="createSelectedGroup === '{{ col.id }}'" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" class="ms-auto" style="color: var(--primary);"><polyline points="20 6 9 17 4 12"/></svg>
                                 </button>
                                 {% endfor %}
                             </div>
@@ -690,7 +690,7 @@
                                 </button>
                             </div>
                         </template>
-                        <div class="idea-media-zone"
+                        <div class="idea-media-zone" role="button" tabindex="0" @keydown.enter.self.prevent="$el.click()" @keydown.space.self.prevent="$el.click()" aria-label="Add a file"
                              :class="{ 'idea-media-zone-tile': true, 'drag-over': _mediaDragOver }"
                              @click="$refs.ideaFileInput.click()"
                              @dragover.prevent="_mediaDragOver = true"
@@ -795,7 +795,7 @@
                                         @click="editSelectedGroup = '{{ col.id }}'; editGroupDropdownOpen = false"
                                         :class="editSelectedGroup === '{{ col.id }}' && 'font-semibold'">
                                     <span>{{ col.label }}</span>
-                                    <svg x-show="editSelectedGroup === '{{ col.id }}'" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" class="ml-auto" style="color: var(--primary);"><polyline points="20 6 9 17 4 12"/></svg>
+                                    <svg x-show="editSelectedGroup === '{{ col.id }}'" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" class="ms-auto" style="color: var(--primary);"><polyline points="20 6 9 17 4 12"/></svg>
                                 </button>
                                 {% endfor %}
                             </div>
@@ -890,7 +890,7 @@
                                 </button>
                             </div>
                         </template>
-                        <div class="idea-media-zone"
+                        <div class="idea-media-zone" role="button" tabindex="0" @keydown.enter.self.prevent="$el.click()" @keydown.space.self.prevent="$el.click()" aria-label="Add a file"
                              :class="{ 'idea-media-zone-tile': true, 'drag-over': _editMediaDragOver }"
                              @click="$refs.editIdeaFileInput.click()"
                              @dragover.prevent="_editMediaDragOver = true"
@@ -1170,6 +1170,7 @@ function kanbanBoard() {
         allTags: [{% for tag in all_tags %}'{{ tag|escapejs }}'{% if not forloop.last %},{% endif %}{% endfor %}],
         draggedIdeaId: null,
         draggedColumnId: null,
+        boardStatus: '',
         _columnDragAllowed: false,
 
         // Column ID-to-label map for the dropdown
@@ -1921,13 +1922,27 @@ function kanbanBoard() {
             dropZone.classList.remove('drag-over');
             var ideaId = event.dataTransfer.getData('text/plain');
             if (!ideaId) return;
+            var card = this._findCardById(ideaId);
+            if (card) card.classList.remove('dragging');
+            this.moveIdea(ideaId, groupId);
+        },
+
+        // Shared by drag-and-drop and the keyboard "Move to" menu on each card.
+        moveIdea(ideaId, groupId) {
+            var column = document.querySelector('.kanban-column[data-group-id="' + groupId + '"]');
+            var dropZone = column && column.querySelector('.kanban-cards');
+            if (!dropZone) return;
 
             // Optimistic UI: move the card in the DOM immediately
             var card = this._findCardById(ideaId);
             if (card) {
-                card.classList.remove('dragging');
                 dropZone.prepend(card);
                 this._updateColumnCounts();
+                var opener = card.querySelector('[data-idea-open]');
+                if (opener) opener.focus();
+                var label = column.querySelector('.group-label');
+                var title = card.querySelector('h4');
+                this.boardStatus = '\u201c' + (title ? title.textContent.trim() : 'Idea') + '\u201d moved to ' + (label ? label.textContent.trim() : 'the new column');
             }
 
             // Fire server request in background (no full-board reload)
@@ -1940,6 +1955,34 @@ function kanbanBoard() {
                     'X-CSRFToken': csrfToken,
                 },
                 body: 'group=' + encodeURIComponent(groupId) + '&position=0'
+            });
+        },
+
+        // Keyboard / touch alternative to dragging a column: step it one place left or right.
+        moveColumn(groupId, step) {
+            var container = this._getBoardContainer();
+            if (!container) return;
+            var cols = Array.from(container.querySelectorAll('.kanban-column'));
+            var idx = cols.findIndex(function(c) { return c.dataset.groupId === groupId; });
+            var swapWith = cols[idx + step];
+            if (idx < 0 || !swapWith) return;
+            if (step < 0) container.insertBefore(cols[idx], swapWith);
+            else container.insertBefore(cols[idx], swapWith.nextSibling);
+            this._refreshColumnMeta();
+            var options = cols[idx].querySelector('[data-column-options]');
+            if (options) options.focus();
+            var label = cols[idx].querySelector('.group-label');
+            this.boardStatus = (label ? label.textContent.trim() : 'Column') + ' moved ' + (step < 0 ? 'left' : 'right');
+            var newOrder = Array.from(container.querySelectorAll('.kanban-column')).map(function(c) { return c.dataset.groupId; });
+            var csrfToken = document.querySelector('[name=csrfmiddlewaretoken]')?.value
+                || document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+            fetch('/workspace/{{ workspace.id }}/ideas/groups/reorder/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrfToken,
+                },
+                body: JSON.stringify({ order: newOrder })
             });
         },
 
