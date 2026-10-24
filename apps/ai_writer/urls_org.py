@@ -6,4 +6,5 @@ app_name = "ai_writer_org"
 
 urlpatterns = [
     path("", views.org_settings, name="settings"),
+    path("test/", views.connection_test, name="test"),
 ]

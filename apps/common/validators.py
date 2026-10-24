@@ -24,6 +24,28 @@ MAX_XML_BYTES = 5 * 1024 * 1024
 _HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}\Z")
 
 
+def is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    """Whether outbound requests must not reach ``ip``.
+
+    Blocks everything that isn't a public address — private, loopback,
+    link-local (which includes the 169.254.169.254 / fd00:ec2::254 cloud
+    metadata endpoints), multicast, reserved, carrier-grade NAT — and looks
+    through IPv4-mapped IPv6 addresses (::ffff:127.0.0.1).
+    """
+    mapped = getattr(ip, "ipv4_mapped", None)
+    if mapped is not None:
+        ip = mapped
+    return (
+        not ip.is_global
+        or ip.is_private
+        or ip.is_reserved
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
+
 def is_safe_url(url: str) -> bool:
     """Validate that a URL is http(s) and does not resolve to a private/reserved IP.
 
@@ -43,7 +65,7 @@ def is_safe_url(url: str) -> bool:
         addr_infos = socket.getaddrinfo(hostname, parsed.port or 443, proto=socket.IPPROTO_TCP)
         for _family, _, _, _, sockaddr in addr_infos:
             ip = ipaddress.ip_address(sockaddr[0])
-            if ip.is_private or ip.is_reserved or ip.is_loopback or ip.is_link_local or ip.is_multicast:
+            if is_blocked_ip(ip):
                 return False
 
         return True
@@ -69,7 +91,7 @@ def resolve_public_ip(url: str) -> str | None:
         addr_infos = socket.getaddrinfo(hostname, port, proto=socket.IPPROTO_TCP)
         for _family, _, _, _, sockaddr in addr_infos:
             ip = ipaddress.ip_address(sockaddr[0])
-            if ip.is_private or ip.is_reserved or ip.is_loopback or ip.is_link_local or ip.is_multicast:
+            if is_blocked_ip(ip):
                 return None
         # Return the first family's IP. Caller will Host-pin against it.
         return str(addr_infos[0][4][0])

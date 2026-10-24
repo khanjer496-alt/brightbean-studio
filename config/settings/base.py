@@ -881,6 +881,9 @@ BILLING_GRACE_PERIOD_DAYS = env.int("BILLING_GRACE_PERIOD_DAYS", default=7)
 AI_PROVIDER = env("AI_PROVIDER", default="anthropic")
 AI_MODEL = env("AI_MODEL", default="claude-opus-5-5")
 ANTHROPIC_API_KEY = env("ANTHROPIC_API_KEY", default="")
+# Only read when AI_PROVIDER names that provider (a self-hosted install sharing one key).
+OPENAI_API_KEY = env("OPENAI_API_KEY", default="")
+GEMINI_API_KEY = env("GEMINI_API_KEY", default="")
 # Whether an organization without its own AI connection may use the platform
 # key above. Off by default: on the hosted service every AI feature runs only on
 # the organization's own connection (its own provider key), so no plan includes
@@ -895,12 +898,22 @@ AI_REQUEST_TIMEOUT = env.int("AI_REQUEST_TIMEOUT", default=45)
 # publishing and the inbox). Reads past it wait for the next day.
 COMPETITOR_SHARED_QUOTA_UNITS_PER_DAY = env.int("COMPETITOR_SHARED_QUOTA_UNITS_PER_DAY", default=2000)
 # Which answer engines the "how AI describes your brand" report asks (see
-# apps.ai_visibility.engines). Names are registered engines; only "anthropic" exists today.
+# apps.ai_visibility.engines). "connected" asks the organization's own AI connection, whichever
+# provider it is; "anthropic" is the older name for the same engine and still works.
 AI_VISIBILITY_ENGINES = env.list("AI_VISIBILITY_ENGINES", default=["anthropic"])
 # No plan includes or limits AI, but this many requests a UTC day on an
 # organization's own key (answered or not) is a hard safety stop for a runaway
 # script or loop.
 AI_ORGANIZATION_KEY_DAILY_CAP = env.int("AI_ORGANIZATION_KEY_DAILY_CAP", default=10_000)
+# Whether an organization's "any OpenAI-compatible service" base URL may be plain http
+# or point at a private, loopback or link-local address (a model server on the same
+# machine or network). Off on the hosted service, where the URL is customer-supplied and
+# the server would otherwise be a way to reach our internal network; self-hosted and dev
+# installs turn it on to talk to a local Ollama.
+AI_ALLOW_PRIVATE_BASE_URLS = env.bool("AI_ALLOW_PRIVATE_BASE_URLS", default=False)
+# Shows a disabled "Sign in with ChatGPT — coming soon" option on the AI settings page.
+# Stays off until OpenAI's partner approval for it lands.
+AI_CHATGPT_SIGNIN_ENABLED = env.bool("AI_CHATGPT_SIGNIN_ENABLED", default=False)
 
 # Content repurposing (apps.repurpose): one run turns one source into several
 # outputs, so it is capped separately from the per-action composer calls.

@@ -240,7 +240,7 @@ def _run(
         action=action,
         source=ctx.source,
         provider=provider.name,
-        model=provider.model,
+        model=provider.model[:64],
         used_organization_key=config.uses_organization_key,
     )
     try:
@@ -254,7 +254,7 @@ def _run(
         log.latency_ms = int((time.monotonic() - started) * 1000)
         log.save()
         raise
-    log.model = completion.model or provider.model
+    log.model = (completion.model or provider.model)[:64]
     run.last_model = log.model
     log.input_tokens = completion.input_tokens
     log.output_tokens = completion.output_tokens

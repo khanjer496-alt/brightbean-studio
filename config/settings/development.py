@@ -60,3 +60,6 @@ except ImportError:
     pass
 
 SESSION_COOKIE_SECURE = False
+
+# A local Ollama / LM Studio is a normal thing to connect while developing.
+AI_ALLOW_PRIVATE_BASE_URLS = True

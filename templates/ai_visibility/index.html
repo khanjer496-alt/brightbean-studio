@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load analytics_extras %}
 
 {% block page_title %}AI visibility{% endblock %}
 
@@ -57,7 +58,7 @@
             <form method="post" action="{% url 'ai_visibility:run' workspace_id=workspace.id %}" class="mt-3">
                 {% csrf_token %}
                 <button type="submit" class="min-h-11 rounded-full border border-line bg-surface-0 px-5 text-[13px] font-semibold text-ink-2 hover:text-ink disabled:cursor-not-allowed disabled:opacity-50" {% if pending or not ai_configured %}disabled{% endif %}>Run a report now</button>
-                <span class="ms-2 text-xs text-ink-3">Once a day at most.</span>
+                <span class="ms-2 text-xs text-ink-3">Once a day at most.{% if engine_labels %} Answered by {{ engine_labels|join:", " }}, on your own AI connection.{% endif %}</span>
             </form>
             {% endif %}
         </section>
@@ -73,7 +74,7 @@
         <section class="rounded-xl border border-line bg-surface-1 p-5" aria-labelledby="summary-heading">
             <h2 id="summary-heading" class="m-0 text-[15px] font-semibold text-ink">Latest report</h2>
             <p class="m-0 mt-1 text-xs text-ink-3">
-                {{ run.created_at|date:"M j, Y" }} · {% for engine, model in run.engines.items %}{{ model }}{% if not forloop.last %}, {% endif %}{% endfor %} · {{ run.get_trigger_display }}
+                {{ run.created_at|date:"M j, Y" }} · answered by {% for engine, model in run.engines.items %}{{ provider_labels|get_item:engine|default:engine }} · {{ model }}{% if not forloop.last %}, {% endif %}{% endfor %} · {{ run.get_trigger_display }}
                 {% if run.status == "partial" %} · some questions went unanswered{% endif %}
             </p>
             <div class="mt-4 flex flex-wrap items-end gap-x-8 gap-y-3">

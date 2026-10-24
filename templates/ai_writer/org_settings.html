@@ -19,39 +19,88 @@
             {% elif platform_key_configured %}
                 Requests use this installation's shared AI key. Add your own key below to use your provider account instead.
             {% else %}
-                Connect your AI to turn it on: add your own AI provider API key below. Connecting your ChatGPT plan is coming soon.
+                Connect your AI to turn it on. You can <a href="{% url 'connect:index' %}" class="underline text-[var(--brand-700)]">use it from Claude or ChatGPT</a>, so your own subscription writes and schedules posts at no extra cost, or add an API key from Anthropic, OpenAI, Google Gemini or any OpenAI-compatible service below.
                 No plan includes or limits AI, and we add no markup.
             {% endif %}
         </p>
     </div>
 
-    <h3 class="text-base font-semibold mb-1 text-[var(--text-primary)]">Your own API key</h3>
+    <h3 class="text-base font-semibold mb-1 text-[var(--text-primary)]">Connect your AI</h3>
     <p class="text-xs mb-4 text-[var(--text-tertiary)]">
-        Stored encrypted and never shown again. Used for every workspace in this organization.
+        Use your own account with Anthropic, OpenAI, Google Gemini, or any service that copies OpenAI's API (OpenRouter, Groq, DeepSeek, Mistral, Together, Azure OpenAI, or a model server you run yourself).
+        Your provider bills you directly and we add nothing on top. The key is stored encrypted and never shown again. It is used for every workspace in this organization.
     </p>
-    <form method="POST" class="flex flex-col gap-4 mb-8">
+    {% if save_error %}
+    <p class="text-sm mb-4 rounded-lg border border-[var(--border)] bg-bad-soft text-bad p-3" role="alert">{{ save_error }}</p>
+    {% endif %}
+    <form method="POST" class="flex flex-col gap-4 mb-8"
+          x-data="{ opt: {}, baseUrl: '{{ form.base_url|escapejs }}', sync() { this.opt = this.$refs.provider.selectedOptions[0].dataset; } }"
+          x-init="sync()">
         {% csrf_token %}
         <input type="hidden" name="action" value="save_key">
         <div>
             <label for="provider" class="block text-sm font-semibold mb-2 text-[var(--text-primary)]">Provider</label>
-            <select id="provider" name="provider" class="form-input-styled text-sm">
-                {% for value, label in provider_choices %}
-                <option value="{{ value }}" {% if org_key and org_key.provider == value %}selected{% endif %}>{{ label }}</option>
+            <select id="provider" name="provider" x-ref="provider" @change="sync()" class="form-input-styled text-sm">
+                {% for option in provider_options %}
+                <option value="{{ option.name }}"
+                        data-needs-base-url="{% if option.needs_base_url %}1{% endif %}"
+                        data-key-placeholder="{{ option.key_placeholder }}"
+                        data-default-model="{{ option.default_model }}"
+                        {% if form.provider == option.name %}selected{% endif %}>{{ option.label }}</option>
                 {% endfor %}
+                {% if chatgpt_signin_enabled %}
+                <option value="" disabled>Sign in with ChatGPT — coming soon</option>
+                {% endif %}
             </select>
         </div>
         <div>
             <label for="api_key" class="block text-sm font-semibold mb-2 text-[var(--text-primary)]">API key</label>
-            <input type="password" id="api_key" name="api_key" required autocomplete="off" spellcheck="false"
-                   placeholder="{% if org_key %}Replace the key ending …{{ org_key.key_hint }}{% else %}sk-ant-…{% endif %}"
+            <input type="password" id="api_key" name="api_key" autocomplete="off" spellcheck="false"
+                   {% if not org_key %}required{% endif %}
+                   :placeholder="{% if org_key %}'Leave blank to keep the key ending …{{ org_key.key_hint|escapejs }}'{% else %}opt.keyPlaceholder{% endif %}"
                    class="form-input-styled text-sm">
         </div>
+        <div x-show="opt.needsBaseUrl" x-cloak class="flex flex-col gap-2">
+            <label for="base_url" class="block text-sm font-semibold text-[var(--text-primary)]">Base URL</label>
+            <input type="url" id="base_url" name="base_url" x-model="baseUrl" spellcheck="false"
+                   :required="!!opt.needsBaseUrl" :disabled="!opt.needsBaseUrl"
+                   placeholder="https://api.example.com/v1" class="form-input-styled text-sm">
+            <div class="flex flex-wrap gap-2">
+                {% for option in provider_options %}{% for preset in option.presets %}
+                <button type="button" data-url="{{ preset.base_url }}" @click="baseUrl = $el.dataset.url"
+                        class="text-xs font-semibold py-1 px-3 rounded-full border border-[var(--border)] text-[var(--text-secondary)] hover:text-[var(--text-primary)]">{{ preset.label }}</button>
+                {% endfor %}{% endfor %}
+            </div>
+            <p class="text-xs text-[var(--text-tertiary)]">
+                The address your service lists for OpenAI-compatible requests, without /chat/completions on the end.
+                Azure OpenAI: use https://YOUR-RESOURCE.openai.azure.com/openai/v1 and your deployment name as the model.
+                A model server you run yourself (Ollama, vLLM, LM Studio) works when it is reachable on the internet over https, for example behind a reverse proxy. Addresses on a private network or localhost are refused on this hosted service.
+            </p>
+        </div>
         <div>
+            <label for="model" class="block text-sm font-semibold mb-2 text-[var(--text-primary)]">Model <span class="font-normal text-[var(--text-tertiary)]" x-show="!opt.needsBaseUrl">(optional)</span></label>
+            <input type="text" id="model" name="model" value="{{ form.model }}" spellcheck="false" autocomplete="off"
+                   :placeholder="opt.defaultModel || 'The model name from your provider'"
+                   class="form-input-styled text-sm">
+            <p class="text-xs mt-2 text-[var(--text-tertiary)]">
+                Leave blank to use the provider's default. Small or locally hosted models may write weaker captions and may not follow formatting instructions as reliably.
+            </p>
+        </div>
+        <label class="flex items-center gap-2 text-sm text-[var(--text-secondary)]">
+            <input type="checkbox" name="save_anyway" value="1"> Save anyway, without testing the connection
+        </label>
+        <div class="flex flex-wrap items-center gap-3">
             <button type="submit"
                     class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer whitespace-nowrap bg-[var(--neutral-100)] text-[var(--text-primary)]">
-                {% if org_key %}Replace Key{% else %}Save Key{% endif %}
+                {% if org_key %}Test and Replace{% else %}Test and Save{% endif %}
             </button>
+            <button type="button" hx-post="{% url 'ai_writer_org:test' %}" hx-include="closest form" hx-target="#ai-test-result" hx-indicator="#ai-test-loading"
+                    class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer whitespace-nowrap bg-[var(--neutral-100)] text-[var(--text-primary)]">
+                Test connection
+            </button>
+            <span id="ai-test-loading" class="htmx-indicator text-xs text-[var(--text-tertiary)]" role="status">Testing&hellip;</span>
         </div>
+        <div id="ai-test-result" aria-live="polite"></div>
     </form>
 
     {% if org_key %}
