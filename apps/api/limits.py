@@ -87,6 +87,19 @@ PLATFORM_DAILY_POST_LIMIT: dict[str, int] = {
     "reddit": 25,
     # POST /2/tweets allows 100 per 15 minutes, but each post is billed to the customer's own app.
     "x": 100,
+    # Tumblr allows 250 new posts a day per user.
+    "tumblr": 250,
+    # Lemmy instances default to 6 posts per 10 minutes per user; the cap is about community etiquette.
+    "lemmy": 50,
+    # Relays set their own limits; free public relays tolerate a modest rate.
+    "nostr": 100,
+    # Casts are billed to the customer's own Neynar plan.
+    "farcaster": 100,
+    # Chat messages: the cap is about what a channel's viewers will tolerate.
+    "twitch": 100,
+    "kick": 100,
+    # Shots are curated work; Dribbble throttles uploads per account.
+    "dribbble": 10,
 }
 
 _DEFAULT_FALLBACK = 50

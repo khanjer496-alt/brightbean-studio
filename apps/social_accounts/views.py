@@ -29,7 +29,7 @@ from apps.common.validators import is_safe_url as _is_safe_url
 from apps.credentials.models import PlatformCredential, configured_platform_credential, derive_is_configured
 from apps.members.decorators import require_permission
 from apps.webhooks import events as webhook_events
-from providers.exceptions import APIError, PublishError, QuotaExceededError
+from providers.exceptions import APIError, OAuthError, PublishError, QuotaExceededError
 
 from .error_messages import quota_connect_error
 from .forms import ChannelOptionsForm
@@ -625,8 +625,9 @@ def select_account(request):
                     platform=platform,
                     profile=profile,
                     access_token=access_token,
-                    refresh_token=user_tokens.get("refresh_token"),
-                    expires_in=user_tokens.get("expires_in"),
+                    # A destination may carry the grant's refresh token and expiry itself (Tumblr blogs).
+                    refresh_token=page.get("refresh_token") or user_tokens.get("refresh_token"),
+                    expires_in=page.get("expires_in") or user_tokens.get("expires_in"),
                     facebook_user_access_token=user_tokens.get("access_token", "") if platform == "instagram" else None,
                     facebook_user_token_expires_at=user_tokens.get("user_expires_at"),
                     meta_user_id=user_tokens.get("meta_user_id", ""),
@@ -1046,6 +1047,222 @@ def connect_mastodon(request, workspace_id):
     redirect_uri = _build_redirect_uri(request, PlatformCredential.Platform.MASTODON)
     auth_url = provider.get_auth_url(redirect_uri, state)
     return redirect(auth_url)
+
+
+# ------------------------------------------------------------------
+# Lemmy Connect (instance login, only the JWT is kept)
+# ------------------------------------------------------------------
+
+
+@login_required
+@require_permission("manage_social_accounts")
+@ratelimit(key="user", rate="10/m", method="POST", block=True)
+def connect_lemmy(request, workspace_id):
+    """Connect a Lemmy account: instance address, username and password. The password is never stored."""
+    from providers.lemmy import normalize_instance_url
+
+    def render_form(instance_url=""):
+        return render(
+            request,
+            "social_accounts/lemmy_connect.html",
+            {"workspace_id": workspace_id, "instance_url": instance_url},
+        )
+
+    if request.method == "GET":
+        return render_form()
+
+    instance_url = normalize_instance_url(request.POST.get("instance_url", ""))
+    username = request.POST.get("username", "").strip()
+    password = request.POST.get("password", "")
+    totp_token = request.POST.get("totp_token", "").strip()
+    if not instance_url or not username or not password:
+        messages.error(request, "Instance, username and password are required.")
+        return render_form(instance_url)
+    if not _is_safe_url(instance_url):
+        messages.error(request, "Invalid instance URL. Private or reserved addresses are not allowed.")
+        return render_form(instance_url)
+
+    try:
+        provider = _get_provider_for_platform(
+            PlatformCredential.Platform.LEMMY,
+            request.workspace.organization_id,
+            workspace_id=workspace_id,
+            instance_url=instance_url,
+        )
+        tokens = provider.login(username, password, totp_token)
+        profile = provider.get_profile(tokens.access_token)
+        _create_or_update_account(
+            workspace_id=workspace_id,
+            platform=PlatformCredential.Platform.LEMMY,
+            profile=profile,
+            access_token=tokens.access_token,
+            instance_url=instance_url,
+        )
+        messages.success(request, f"Connected {profile.name} on Lemmy.")
+    except PlanLimitError as exc:
+        messages.error(request, exc.message)
+        return redirect("social_accounts:list", workspace_id=workspace_id)
+    except Exception:
+        logger.exception("Lemmy connection failed")
+        messages.error(
+            request,
+            "Failed to connect Lemmy account. Check the instance, username and password"
+            " (and the two-factor code, if the account has one).",
+        )
+        return render_form(instance_url)
+
+    return _after_connect_redirect(request, workspace_id)
+
+
+# ------------------------------------------------------------------
+# Nostr Connect (private key + relays)
+# ------------------------------------------------------------------
+
+
+@login_required
+@require_permission("manage_social_accounts")
+@ratelimit(key="user", rate="10/m", method="POST", block=True)
+def connect_nostr(request, workspace_id):
+    """Connect a Nostr identity: its private key (nsec or hex) and the relays to publish to."""
+    from providers.nostr import DEFAULT_RELAYS, normalize_relays
+
+    def render_form(relays=""):
+        return render(
+            request,
+            "social_accounts/nostr_connect.html",
+            {"workspace_id": workspace_id, "relays": relays or "\n".join(DEFAULT_RELAYS)},
+        )
+
+    if request.method == "GET":
+        return render_form()
+
+    secret_key = request.POST.get("secret_key", "").strip()
+    relays_text = request.POST.get("relays", "")
+    relays = normalize_relays(relays_text)
+    if not secret_key:
+        messages.error(request, "A private key is required.")
+        return render_form(relays_text)
+    if not relays:
+        messages.error(request, "Add at least one relay address starting with wss://.")
+        return render_form(relays_text)
+
+    try:
+        provider = _get_provider_for_platform(
+            PlatformCredential.Platform.NOSTR,
+            request.workspace.organization_id,
+            workspace_id=workspace_id,
+            relays=relays,
+        )
+        tokens, profile = provider.connect(secret_key)
+        _create_or_update_account(
+            workspace_id=workspace_id,
+            platform=PlatformCredential.Platform.NOSTR,
+            profile=profile,
+            access_token=tokens.access_token,
+            platform_data=(profile.extra or {}).get("account_data"),
+        )
+        messages.success(request, f"Connected {profile.name} on Nostr.")
+    except PlanLimitError as exc:
+        messages.error(request, exc.message)
+        return redirect("social_accounts:list", workspace_id=workspace_id)
+    except ValueError as exc:
+        # The key itself is not echoed anywhere; the message only says what format is expected.
+        messages.error(request, str(exc))
+        return render_form(relays_text)
+    except Exception:
+        logger.exception("Nostr connection failed")
+        messages.error(request, "Failed to connect Nostr account. Check the private key and relays.")
+        return render_form(relays_text)
+
+    return _after_connect_redirect(request, workspace_id)
+
+
+# ------------------------------------------------------------------
+# Farcaster Connect (the customer's own Neynar API key + approved signer)
+# ------------------------------------------------------------------
+
+
+@login_required
+@require_permission("manage_social_accounts")
+@ratelimit(key="user", rate="10/m", method="POST", block=True)
+def connect_farcaster(request, workspace_id):
+    """Connect Farcaster through the customer's own Neynar key and an approved signer.
+
+    Neynar bills API use to the key's owner, so the key is the workspace's own encrypted
+    ``PlatformCredential`` (as with X). A signer only works with the key it was created
+    with, so a workspace with Farcaster accounts cannot switch to another key. The key is
+    never sent back to the page; leaving it blank keeps the saved one.
+    """
+    platform = PlatformCredential.Platform.FARCASTER
+    workspace = request.workspace
+    org_id = workspace.organization_id
+    own = PlatformCredential.objects.for_org(org_id).filter(platform=platform, workspace_id=workspace_id).first()
+    current = own or configured_platform_credential(platform, org_id, workspace_id)
+    current_credentials = dict(current.credentials) if current else {}
+
+    def render_form():
+        return render(
+            request,
+            "social_accounts/farcaster_connect.html",
+            {
+                "workspace_id": workspace_id,
+                "has_api_key": bool(current_credentials.get("api_key")),
+                "uses_org_key": current is not None and current.workspace_id is None,
+            },
+        )
+
+    if request.method == "GET":
+        return render_form()
+
+    api_key = request.POST.get("api_key", "").strip() or current_credentials.get("api_key", "")
+    signer_uuid = request.POST.get("signer_uuid", "").strip()
+    if not api_key or not signer_uuid:
+        messages.error(request, "Enter your Neynar API key and the UUID of an approved signer.")
+        return render_form()
+    if (
+        current_credentials.get("api_key") not in (None, api_key)
+        and SocialAccount.objects.filter(workspace_id=workspace_id, platform=platform).exists()
+    ):
+        # A signer belongs to the key that created it: switching keys would break every connected account.
+        messages.error(
+            request,
+            "Farcaster accounts in this workspace are already connected through your current Neynar key. "
+            "Disconnect them before using another key.",
+        )
+        return render_form()
+
+    try:
+        check_can_add_channel(workspace.organization)
+        provider = _get_provider_for_platform(platform, org_id, workspace_id=workspace_id, api_key=api_key)
+        tokens, profile = provider.connect(signer_uuid)
+        _create_or_update_account(
+            workspace_id=workspace_id, platform=platform, profile=profile, access_token=tokens.access_token
+        )
+        credentials = {"api_key": api_key}
+        if own is None and current_credentials != credentials:
+            PlatformCredential.objects.create(
+                organization_id=org_id, workspace_id=workspace_id, platform=platform, credentials=credentials
+            )
+        elif own is not None and current_credentials != credentials:
+            own.credentials = credentials
+            own.save()
+        messages.success(request, f"Connected {profile.name} on Farcaster.")
+    except PlanLimitError as exc:
+        messages.error(request, exc.message)
+        return render_form()
+    except OAuthError as exc:
+        # Our own wording about the signer or the missing key, safe to show.
+        messages.error(request, str(exc))
+        return render_form()
+    except Exception:
+        logger.exception("Farcaster connection failed")
+        messages.error(
+            request,
+            "Failed to connect Farcaster. Check the Neynar API key and that the signer UUID was created with it.",
+        )
+        return render_form()
+
+    return _after_connect_redirect(request, workspace_id)
 
 
 # ------------------------------------------------------------------

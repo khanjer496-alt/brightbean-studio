@@ -722,6 +722,25 @@ PLATFORM_CREDENTIALS_FROM_ENV = {
         "client_secret": env("PLATFORM_REDDIT_CLIENT_SECRET", default=""),
         "user_agent": env("PLATFORM_REDDIT_USER_AGENT", default=""),
     },
+    # Tumblr - OAuth2 app (consumer key and secret). Lemmy, Nostr and Farcaster need no app-level
+    # credentials: the user brings an instance login, a key, or their own Neynar key when connecting.
+    "tumblr": {
+        "client_id": env("PLATFORM_TUMBLR_CLIENT_ID", default=""),
+        "client_secret": env("PLATFORM_TUMBLR_CLIENT_SECRET", default=""),
+    },
+    # Twitch, Kick and Dribbble - OAuth2 apps registered by the operator.
+    "twitch": {
+        "client_id": env("PLATFORM_TWITCH_CLIENT_ID", default=""),
+        "client_secret": env("PLATFORM_TWITCH_CLIENT_SECRET", default=""),
+    },
+    "kick": {
+        "client_id": env("PLATFORM_KICK_CLIENT_ID", default=""),
+        "client_secret": env("PLATFORM_KICK_CLIENT_SECRET", default=""),
+    },
+    "dribbble": {
+        "client_id": env("PLATFORM_DRIBBBLE_CLIENT_ID", default=""),
+        "client_secret": env("PLATFORM_DRIBBBLE_CLIENT_SECRET", default=""),
+    },
 }
 
 # Publishing engine

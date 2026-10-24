@@ -570,6 +570,36 @@ class SocialAccount(models.Model):
             "caption_label": "Body (Markdown)",
             "supports_first_comment": False,
         },
+        "tumblr": {
+            "needs_title": False,
+            "caption_label": "Post",
+            "supports_first_comment": False,
+        },
+        "lemmy": {
+            "needs_title": True,
+            "title_max_length": 200,
+            "title_label": "Post Title",
+            "caption_label": "Text (Markdown)",
+            "supports_first_comment": True,
+        },
+        "nostr": {
+            "supports_first_comment": False,
+        },
+        "farcaster": {
+            "supports_first_comment": False,
+        },
+        "twitch": {
+            "supports_first_comment": False,
+        },
+        "kick": {
+            "supports_first_comment": False,
+        },
+        "dribbble": {
+            "needs_title": True,
+            "title_label": "Shot Title",
+            "caption_label": "Description",
+            "supports_first_comment": False,
+        },
     }
 
     PLATFORM_FIELD_DEFAULTS = {
@@ -695,6 +725,13 @@ class SocialAccount(models.Model):
             "slack": "sl",
             "reddit": "rd",
             "x": "x",
+            "tumblr": "tu",
+            "lemmy": "le",
+            "nostr": "no",
+            "farcaster": "fc",
+            "twitch": "tw",
+            "kick": "ki",
+            "dribbble": "dr",
         }
         return icons.get(self.platform, self.platform[:2])
 

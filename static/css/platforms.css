@@ -27,6 +27,13 @@
     --platform-slack: #4a154b;
     --platform-discord: #5865f2;
     --platform-telegram: #26a5e4;
+    --platform-tumblr: #35465c;
+    --platform-lemmy: #00BC8C;
+    --platform-nostr: #8E30EB;
+    --platform-farcaster: #8A63D2;
+    --platform-twitch: #9146FF;
+    --platform-kick: #2f9e0f;
+    --platform-dribbble: #EA4C89;
 }
 
 .pi-facebook { background: var(--platform-facebook); }
@@ -45,6 +52,13 @@
 .pi-slack { background: var(--platform-slack); }
 .pi-discord { background: var(--platform-discord); }
 .pi-telegram { background: var(--platform-telegram); }
+.pi-tumblr { background: var(--platform-tumblr); }
+.pi-lemmy { background: var(--platform-lemmy); }
+.pi-nostr { background: var(--platform-nostr); }
+.pi-farcaster { background: var(--platform-farcaster); }
+.pi-twitch { background: var(--platform-twitch); }
+.pi-kick { background: var(--platform-kick); }
+.pi-dribbble { background: var(--platform-dribbble); }
 
 /* YouTube renders its full wordmark-style label rather than a filled badge (fixed w-4/w-5 badges too). */
 .pi-youtube {

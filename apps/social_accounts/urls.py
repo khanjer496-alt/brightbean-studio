@@ -41,6 +41,21 @@ urlpatterns = [
         views.connect_x,
         name="connect_x",
     ),
+    path(
+        "<uuid:workspace_id>/connect/lemmy/",
+        views.connect_lemmy,
+        name="connect_lemmy",
+    ),
+    path(
+        "<uuid:workspace_id>/connect/nostr/",
+        views.connect_nostr,
+        name="connect_nostr",
+    ),
+    path(
+        "<uuid:workspace_id>/connect/farcaster/",
+        views.connect_farcaster,
+        name="connect_farcaster",
+    ),
     # OAuth callback (not workspace-scoped - platform redirects here)
     path(
         "callback/<str:platform>/",

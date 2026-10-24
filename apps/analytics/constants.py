@@ -25,6 +25,13 @@ NO_ANALYTICS_PLATFORMS: dict[str, str] = {
     "discord": ("Discord doesn't expose post analytics for channel messages."),
     "slack": ("Slack doesn't expose post analytics for channel messages."),
     "reddit": ("Reddit analytics aren't wired up yet; publishing is supported."),
+    "tumblr": ("Tumblr's API doesn't expose post analytics; publishing is supported."),
+    "lemmy": ("Lemmy doesn't expose aggregate post analytics through its API."),
+    "nostr": ("Nostr has no central analytics: relays don't report reach or views."),
+    "twitch": ("Twitch chat messages and announcements have no analytics."),
+    "kick": ("Kick chat messages have no analytics."),
+    "dribbble": ("Dribbble's API doesn't expose shot analytics; publishing is supported."),
+    "farcaster": ("Farcaster analytics aren't wired up yet; publishing is supported."),
     "x": ("X bills every post-metrics read to your own developer app, so analytics aren't synced automatically."),
 }
 

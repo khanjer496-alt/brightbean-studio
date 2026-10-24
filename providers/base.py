@@ -794,7 +794,7 @@ class SocialProvider(ABC):
         params: dict | None = None,
         json: dict | None = None,
         data: dict | bytes | Iterable[bytes] | IO[bytes] | None = None,
-        files: dict | None = None,
+        files: dict | list | None = None,
         timeout: float = REQUEST_TIMEOUT,
     ) -> httpx.Response:
         """Make an HTTP request with standard error handling.
