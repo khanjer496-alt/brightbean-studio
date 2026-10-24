@@ -30,6 +30,10 @@ AUTH_URL = "https://www.pinterest.com/oauth/"
 API_BASE = os.environ.get("PINTEREST_API_BASE", "https://api.pinterest.com/v5")
 TOKEN_URL = f"{API_BASE}/oauth/token"
 
+# https://developers.pinterest.com/docs/api/v5/pins-create: title 100, alt_text 500.
+PIN_TITLE_MAX = 100
+PIN_ALT_TEXT_MAX = 500
+
 
 # What a Pin accepts. 2:3 (1000x1500) is recommended; other shapes are cropped
 # in the feed rather than refused.
@@ -240,18 +244,20 @@ class PinterestProvider(SocialProvider):
 
         payload: dict = {
             "board_id": board_id,
-            "description": (content.description or content.text or "")[: self.max_caption_length],
+            "description": self._require_fit(
+                "The description", content.description or content.text, self.max_caption_length, caption=True
+            ),
         }
 
         if content.title:
-            payload["title"] = content.title[:100]
+            payload["title"] = self._require_fit("The title", content.title, PIN_TITLE_MAX)
 
         if content.link_url:
             payload["link"] = content.link_url
 
         alt_text = content.extra.get("alt_text") or content.alt_text(0)
         if alt_text:
-            payload["alt_text"] = alt_text[:500]
+            payload["alt_text"] = self._require_fit("The alt text", alt_text, PIN_ALT_TEXT_MAX)
 
         # Determine media source
         is_video = content.extra.get("is_video", False)

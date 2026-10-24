@@ -5,13 +5,19 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import mimetypes
 import os
 import re
+import tempfile
 import time
 from datetime import UTC, datetime
+from urllib.parse import urlsplit
+
+import regex
 
 from .base import SocialProvider
 from .exceptions import APIError, PublicProfileNotFoundError, PublishError
+from .text_counting import find_urls
 from .types import (
     AccountProfile,
     AuthType,
@@ -39,6 +45,26 @@ DEFAULT_PDS_URL = "https://bsky.social"
 # Unauthenticated, cached read endpoint for app.bsky.* lookups on any account.
 PUBLIC_API_URL = "https://public.api.bsky.app"
 PUBLIC_FEED_SAMPLE = 30
+
+# Rich-text detection, as the atproto SDK's ``RichText.detectFacets`` does it.
+_LINK_PATTERN = regex.compile(r"(?<![^\s(])(https?://\S+)", regex.IGNORECASE)
+_MENTION_PATTERN = regex.compile(r"(?<![^\s(])@([a-zA-Z0-9-]+(?:\.[a-zA-Z0-9-]+)+)\b")
+_INVISIBLE = r"\u00AD\u2060\u200A-\u200D\u20E2"
+_HASHTAG_PATTERN = regex.compile(
+    rf"(?<![^\s])[#\uFF03]((?!\uFE0F)[^\s{_INVISIBLE}]*[^\d\s\p{{P}}{_INVISIBLE}]+[^\s{_INVISIBLE}]*)"
+)
+_TAG_TRAILING_PUNCTUATION = regex.compile(r"\p{P}+$")
+MAX_TAG_LENGTH = 64
+# A card's thumbnail is a blob like any image: at most 1,000,000 bytes.
+LINK_CARD_THUMB_MAX_BYTES = 1_000_000
+
+
+def _link_without_trailing_punctuation(url: str) -> str:
+    """``url`` without the sentence punctuation that follows it, and without a ``)`` that closes nothing."""
+    url = re.sub(r"[.,;:!?]+$", "", url)
+    while url.endswith(")") and url.count(")") > url.count("("):
+        url = re.sub(r"[.,;:!?]+$", "", url[:-1])
+    return url
 
 
 def _access_jwt_expires_in(access_jwt: str) -> int | None:
@@ -151,6 +177,11 @@ class BlueskyProvider(SocialProvider):
     # ------------------------------------------------------------------
     # Metadata
     # ------------------------------------------------------------------
+
+    # https://github.com/bluesky-social/atproto/blob/main/lexicons/app/bsky/feed/post.json:
+    # text is at most 300 graphemes and 3,000 UTF-8 bytes. Links count in full.
+    text_length_unit = "graphemes"
+    max_text_bytes = 3000
 
     @property
     def platform_name(self) -> str:
@@ -450,12 +481,7 @@ class BlueskyProvider(SocialProvider):
         return {"uri": posts[0]["uri"], "cid": posts[0]["cid"]}
 
     def _check_length(self, text: str) -> None:
-        if len(text or "") > self.max_caption_length:
-            raise PublishError(
-                f"Post text exceeds {self.max_caption_length} graphemes (got {len(text)})",
-                platform=self.platform_name,
-                retryable=False,
-            )
+        self._require_fit("The post", text, self.max_caption_length, caption=True)
 
     def _create_record(self, access_token: str, collection: str, record: dict) -> PublishResult:
         """Write one record to the account's repo, stamped with the current time."""
@@ -504,14 +530,8 @@ class BlueskyProvider(SocialProvider):
 
     def _create_post(self, access_token: str, content: PublishContent, *, reply: dict | None = None) -> PublishResult:
         """Create one ``app.bsky.feed.post`` record, as a reply when ``reply`` is given."""
-        # Validate grapheme length
-        grapheme_count = len(content.text) if content.text else 0
-        if grapheme_count > self.max_caption_length:
-            raise PublishError(
-                f"Post text exceeds {self.max_caption_length} graphemes (got {grapheme_count})",
-                platform=self.platform_name,
-                retryable=False,
-            )
+        # Bluesky counts graphemes (and caps the bytes); the post is refused, never cut.
+        self._check_length(content.text)
 
         # Get session DID
         session = self._request(
@@ -539,6 +559,9 @@ class BlueskyProvider(SocialProvider):
 
         # Handle media uploads
         embed = self._build_embed(access_token, content)
+        if not embed:
+            # A post that is a link and nothing else gets the card Bluesky's own app would add.
+            embed = self._build_link_card(access_token, content.text or "")
         if embed:
             record["embed"] = embed
 
@@ -573,30 +596,31 @@ class BlueskyProvider(SocialProvider):
     def _parse_facets(self, text: str, access_token: str) -> list[dict]:
         """Parse links, mentions, and hashtags into Bluesky facet objects.
 
-        Byte offsets are computed over the UTF-8 encoding of the text.
+        Byte offsets are computed over the UTF-8 encoding of the text. Detection follows
+        the reference client (``RichText.detectFacets`` in the atproto SDK): each has to
+        start the text or follow whitespace or ``(``; sentence punctuation (and an
+        unmatched ``)``) after a link, or punctuation after a hashtag, is not part of it;
+        a hashtag needs a character that isn't a digit or punctuation and is at most 64
+        characters long. Bare domains (``example.com``) are left as text.
         """
         facets: list[dict] = []
-        text.encode("utf-8")
 
-        # Links
-        link_pattern = re.compile(r"https?://[^\s\)\]>]+")
-        for match in link_pattern.finditer(text):
-            url = match.group(0)
-            byte_start = len(text[: match.start()].encode("utf-8"))
-            byte_end = len(text[: match.end()].encode("utf-8"))
-            facets.append(
-                {
-                    "index": {"byteStart": byte_start, "byteEnd": byte_end},
-                    "features": [{"$type": "app.bsky.richtext.facet#link", "uri": url}],
-                }
-            )
+        def index_of(match, group: int, value: str) -> dict:
+            byte_start = len(text[: match.start(group)].encode("utf-8"))
+            return {"byteStart": byte_start, "byteEnd": byte_start + len(value.encode("utf-8"))}
 
-        # Mentions (@handle.bsky.social)
-        mention_pattern = re.compile(r"(?<!\w)@([\w.-]+(?:\.[\w.-]+)+)")
-        for match in mention_pattern.finditer(text):
+        for match in _LINK_PATTERN.finditer(text):
+            url = _link_without_trailing_punctuation(match.group(1))
+            if url:
+                facets.append(
+                    {
+                        "index": index_of(match, 1, url),
+                        "features": [{"$type": "app.bsky.richtext.facet#link", "uri": url}],
+                    }
+                )
+
+        for match in _MENTION_PATTERN.finditer(text):
             handle = match.group(1)
-            byte_start = len(text[: match.start()].encode("utf-8"))
-            byte_end = len(text[: match.end()].encode("utf-8"))
             try:
                 did = self.resolve_handle(handle)
             except Exception:
@@ -604,23 +628,20 @@ class BlueskyProvider(SocialProvider):
                 continue
             facets.append(
                 {
-                    "index": {"byteStart": byte_start, "byteEnd": byte_end},
+                    "index": index_of(match, 0, f"@{handle}"),
                     "features": [{"$type": "app.bsky.richtext.facet#mention", "did": did}],
                 }
             )
 
-        # Hashtags
-        hashtag_pattern = re.compile(r"(?<!\w)#(\w+)")
-        for match in hashtag_pattern.finditer(text):
-            tag = match.group(1)
-            byte_start = len(text[: match.start()].encode("utf-8"))
-            byte_end = len(text[: match.end()].encode("utf-8"))
-            facets.append(
-                {
-                    "index": {"byteStart": byte_start, "byteEnd": byte_end},
-                    "features": [{"$type": "app.bsky.richtext.facet#tag", "tag": tag}],
-                }
-            )
+        for match in _HASHTAG_PATTERN.finditer(text):
+            tag = _TAG_TRAILING_PUNCTUATION.sub("", match.group(1))
+            if tag and len(tag) <= MAX_TAG_LENGTH:
+                facets.append(
+                    {
+                        "index": index_of(match, 0, match.group(0)[0] + tag),
+                        "features": [{"$type": "app.bsky.richtext.facet#tag", "tag": tag}],
+                    }
+                )
 
         return facets
 
@@ -637,8 +658,6 @@ class BlueskyProvider(SocialProvider):
         ``MEDIA_LIBRARY_MAX_VIDEO_SIZE`` allows up to 1 GB — on a 512 MB worker
         that is not a slow leak, it is an immediate OOM kill.
         """
-        import mimetypes
-
         mime_type, _ = mimetypes.guess_type(media_path)
         mime_type = mime_type or "application/octet-stream"
 
@@ -665,6 +684,39 @@ class BlueskyProvider(SocialProvider):
         width, height = content.dimensions(index)
         if width > 0 and height > 0:
             embed["aspectRatio"] = {"width": width, "height": height}
+
+    def _build_link_card(self, access_token: str, text: str) -> dict | None:
+        """An ``app.bsky.embed.external`` card for the first link in ``text``, or None.
+
+        Bluesky doesn't unfurl links itself, so a post without a card shows a bare URL. The page
+        is read through the SSRF-safe fetch the autoposter uses (public addresses only, every
+        redirect re-checked, capped size and time). A page that can't be read, or a thumbnail
+        over the 1 MB blob limit, only costs the card its missing part: the post is never held up.
+        """
+        links = find_urls(text)
+        if not links:
+            return None
+        url = _link_without_trailing_punctuation(links[0])
+        try:
+            from apps.autopost.feeds import download_image, link_preview
+
+            preview = link_preview(url)
+            card = {
+                "uri": url,
+                "title": preview["title"] or urlsplit(url).hostname or url,
+                "description": preview["description"],
+            }
+            image = download_image(preview["image_url"]) if preview["image_url"] else None
+            if image and len(image[0]) <= LINK_CARD_THUMB_MAX_BYTES:
+                suffix = mimetypes.guess_extension(image[1]) or ".jpg"
+                with tempfile.NamedTemporaryFile(suffix=suffix) as thumb:
+                    thumb.write(image[0])
+                    thumb.flush()
+                    card["thumb"] = self._upload_blob(access_token, thumb.name)
+        except Exception:
+            logger.warning("Could not build a Bluesky link card for %s", url, exc_info=True)
+            return None
+        return {"$type": "app.bsky.embed.external", "external": card}
 
     def _build_embed(self, access_token: str, content: PublishContent) -> dict | None:
         """Build the embed object for images or video."""

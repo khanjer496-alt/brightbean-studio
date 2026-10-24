@@ -211,6 +211,11 @@ class InstagramProvider(MetaGraphErrors, InstagramContainers, SocialProvider):
     # Metadata
     # ------------------------------------------------------------------
 
+    # https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media:
+    # "Maximum 2200 characters, 30 hashtags, and 20 @ tags."
+    max_hashtags = 30
+    max_mentions = 20
+
     @property
     def platform_name(self) -> str:
         return "Instagram"

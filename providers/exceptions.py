@@ -195,6 +195,19 @@ class AuthRejectedError(APIError, ReconnectRequiredError):
         self.status_code = status_code
 
 
+class ApiVersionSunsetError(APIError):
+    """The platform no longer serves the API version we send (LinkedIn's 426 NONEXISTENT_VERSION).
+
+    Every request fails until the operator moves the pinned version forward, so it is
+    permanent for the post (``retryable=False``: retries would only repeat it) and the
+    operators are alerted by ``providers.api_versions.report_version_sunset``.
+    """
+
+    def __init__(self, message: str, status_code: int | None = 426, **kwargs):
+        kwargs.setdefault("retryable", False)
+        super().__init__(message, status_code=status_code, **kwargs)
+
+
 class MessagingError(APIError):
     """A safe, actionable messaging error that can be shown to the sender."""
 

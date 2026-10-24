@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date, datetime, time, timedelta
+from time import monotonic
 from urllib.parse import urlencode, urlparse
 
 from .base import SocialProvider
@@ -32,6 +33,7 @@ REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 ACCOUNTS_API = "https://mybusinessaccountmanagement.googleapis.com/v1"
 BUSINESS_INFO_API = "https://mybusinessbusinessinformation.googleapis.com/v1"
 POSTS_API = "https://mybusiness.googleapis.com/v4"
+
 # Reviews still live only on the v4 surface (``accounts.locations.reviews``);
 # the newer Business Information / Account Management APIs have no reviews
 # resource. Verified against
@@ -40,6 +42,16 @@ POSTS_API = "https://mybusiness.googleapis.com/v4"
 #   updateReply: PUT    {name=accounts/*/locations/*/reviews/*}/reply   (body: ReviewReply{comment})
 #   deleteReply: DELETE {name=accounts/*/locations/*/reviews/*}/reply
 REVIEWS_API = POSTS_API
+
+# After a create, a post Google is still processing is re-read for this long before it is accepted as published.
+STATE_POLL_SECONDS = 20.0
+STATE_POLL_INTERVAL = 2.0
+
+
+class _StillProcessingError(Exception):
+    """The post was still PROCESSING when the wait ended."""
+
+
 REVIEWS_PAGE_SIZE = 50
 # A first import walks this many pages (1,000 reviews) so the history analytics
 # reads is complete for nearly every location; later polls stop at ``since``.
@@ -456,12 +468,7 @@ class GoogleBusinessProvider(SocialProvider):
         error = self.validate_post_settings(content.extra)
         if error:
             raise PublishError(error, platform=self.platform_name, retryable=False)
-        if content.text and len(content.text) > self.max_caption_length:
-            raise PublishError(
-                f"Post text exceeds {self.max_caption_length} characters (got {len(content.text)})",
-                platform=self.platform_name,
-                retryable=False,
-            )
+        self._require_fit("The post text", content.text, self.max_caption_length, caption=True)
 
         account_id = self._get_account_id(access_token)
         location_id = self._get_location_id(access_token, account_id)
@@ -517,11 +524,49 @@ class GoogleBusinessProvider(SocialProvider):
         data = resp.json()
 
         post_name = data.get("name", "")
+        data = self._settled_post(access_token, post_name, data, should_stop=content.should_stop)
         return PublishResult(
             platform_post_id=post_name,
             url=data.get("searchUrl"),
             extra=data,
         )
+
+    def _settled_post(self, access_token: str, post_name: str, data: dict, *, should_stop=None) -> dict:
+        """The created post once Google has decided about it: refused when REJECTED, polled briefly while PROCESSING.
+
+        Google answers a create with 200 even when the post breaks its content policy, and
+        the post then sits in ``state: REJECTED`` with nothing live. A post still PROCESSING
+        after the wait is accepted as published: Google finishes it on its own, and failing
+        here would only make the customer post it twice.
+        https://developers.google.com/my-business/reference/rest/v4/accounts.locations.localPosts#LocalPostState
+        """
+        latest = {"data": data}
+
+        def check() -> bool:
+            if latest["data"].get("state") == "PROCESSING" and post_name:
+                latest["data"] = self._request("GET", f"{POSTS_API}/{post_name}", access_token=access_token).json()
+            state = latest["data"].get("state")
+            if state == "REJECTED":
+                raise PublishError(
+                    "Google rejected this post for breaking its content policy, so it is not live. "
+                    "Edit the text, link or photo and post it again.",
+                    platform=self.platform_name,
+                    raw_response=latest["data"],
+                    retryable=False,
+                )
+            return state != "PROCESSING"
+
+        try:
+            self._poll_until(
+                check,
+                deadline=monotonic() + STATE_POLL_SECONDS,
+                interval=STATE_POLL_INTERVAL,
+                on_timeout=lambda: _StillProcessingError(),
+                should_stop=should_stop,
+            )
+        except _StillProcessingError:
+            logger.info("Google Business post %s is still processing; treating it as published", post_name)
+        return latest["data"]
 
     # ------------------------------------------------------------------
     # Analytics

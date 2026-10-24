@@ -68,9 +68,21 @@ class AccountSummary(Schema):
         "characters",
         description=(
             "How the platform counts a caption against ``char_limit``. ``characters``: one per "
-            "character (plus ``escaped_chars``). ``weighted``: the twitter-text v3 weighted count "
+            "``text_length_unit`` (plus ``escaped_chars``). ``weighted``: the twitter-text v3 weighted count "
             "X uses, where each URL counts as 23 and CJK characters and emoji as 2."
         ),
+    )
+    text_length_unit: str = Field(
+        "codepoints",
+        description=(
+            "What one character of ``char_limit`` is when ``caption_counting`` is ``characters``: "
+            "``codepoints``, ``utf16`` (TikTok), ``utf8_bytes`` (Farcaster), ``graphemes`` (Bluesky: an emoji "
+            "or a ZWJ family is 1) or ``codepoints_emoji_bytes`` (Threads: an emoji costs its UTF-8 bytes)."
+        ),
+    )
+    url_counts_as: int | None = Field(
+        None,
+        description="When set, every link costs this many characters whatever its length (Mastodon: 23).",
     )
     needs_title: bool = Field(
         False,
@@ -144,6 +156,8 @@ class AccountSummary(Schema):
             char_limit=sa.char_limit,
             escaped_chars=sa.escaped_chars,
             caption_counting=sa.caption_counting,
+            text_length_unit=sa.text_counting_rule["unit"],
+            url_counts_as=sa.text_counting_rule["url_counts_as"],
             needs_title=bool(sa.field_config.get("needs_title", False)),
             supports_first_comment=sa.supports_first_comment(),
             paused=sa.is_paused,

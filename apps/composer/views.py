@@ -1119,6 +1119,9 @@ def compose(request, workspace_id, post_id=None):
             "escaped_chars": acc.escaped_chars,
             # "weighted": count as twitter-text does (URLs 23, CJK and emoji 2).
             "caption_counting": acc.caption_counting,
+            # The unit and weights the platform counts in (providers.text_counting); the counter
+            # applies the same rule as the server's caption_wire_length.
+            **acc.text_counting_rule,
             # Whether typing "@" can suggest accounts to mention on this platform.
             "mention_lookup": mention_lookup_for(acc.platform),
             "name": acc.account_name or acc.account_handle,

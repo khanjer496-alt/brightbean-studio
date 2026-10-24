@@ -126,6 +126,11 @@ class ThreadsProvider(MetaGraphErrors, SocialProvider):
     # Metadata
     # ------------------------------------------------------------------
 
+    # https://developers.facebook.com/docs/threads/posts: 500 characters, an emoji counted as its
+    # UTF-8 byte length, and at most 5 different links in a post (THREADS_API__LINK_LIMIT_EXCEEDED).
+    text_length_unit = "codepoints_emoji_bytes"
+    max_links = 5
+
     @property
     def platform_name(self) -> str:
         return "Threads"
@@ -323,7 +328,7 @@ class ThreadsProvider(MetaGraphErrors, SocialProvider):
         """Create and publish a single-item thread (TEXT, IMAGE, or VIDEO)."""
         # Step 1: Create container
         container_payload: dict = {
-            "text": (content.text or "")[: self.max_caption_length],
+            "text": self._require_fit("The text", content.text, self.max_caption_length, caption=True),
         }
 
         if content.post_type == PostType.IMAGE and content.media_urls:
@@ -475,7 +480,7 @@ class ThreadsProvider(MetaGraphErrors, SocialProvider):
             data={
                 "media_type": "CAROUSEL",
                 "children": ",".join(children_ids),
-                "text": (content.text or "")[: self.max_caption_length],
+                "text": self._require_fit("The text", content.text, self.max_caption_length, caption=True),
                 # A carousel can be a reply too, which is how a thread part
                 # carrying several images joins its thread.
                 **({"reply_to_id": content.extra["reply_to_id"]} if content.extra.get("reply_to_id") else {}),
@@ -546,7 +551,7 @@ class ThreadsProvider(MetaGraphErrors, SocialProvider):
             access_token=access_token,
             data={
                 "media_type": "TEXT",
-                "text": text[: self.max_caption_length],
+                "text": self._require_fit("The reply", text, self.max_caption_length, caption=True),
                 "reply_to_id": post_id,
             },
             ambiguous_on_failure=False,

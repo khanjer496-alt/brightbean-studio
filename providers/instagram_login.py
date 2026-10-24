@@ -155,6 +155,10 @@ class InstagramLoginProvider(MetaGraphErrors, InstagramContainers, SocialProvide
     # Metadata
     # ------------------------------------------------------------------
 
+    # Same caption limits as the Graph API: 30 hashtags and 20 @ tags.
+    max_hashtags = 30
+    max_mentions = 20
+
     @property
     def platform_name(self) -> str:
         return "Instagram (Direct)"

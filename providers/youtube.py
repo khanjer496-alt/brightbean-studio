@@ -58,6 +58,9 @@ API_BASE = "https://www.googleapis.com/youtube/v3"
 UPLOAD_BASE = "https://www.googleapis.com/upload/youtube/v3"
 ANALYTICS_BASE = "https://youtubeanalytics.googleapis.com/v2"
 
+# https://developers.google.com/youtube/v3/docs/videos: a title is at most 100 characters.
+TITLE_MAX_LENGTH = 100
+
 # ``videos.insert``: both the resumable-session POST and the PUT that carries
 # the bytes, whose Location URL keeps this path and adds an ``upload_id``.
 # Matched on the path rather than the whole upload host, because
@@ -292,6 +295,9 @@ class YouTubeProvider(SocialProvider):
     # Metadata
     # ------------------------------------------------------------------
 
+    # https://developers.google.com/youtube/v3/docs/videos: the description is at most "5000 bytes".
+    text_length_unit = "utf8_bytes"
+
     @property
     def platform_name(self) -> str:
         return "YouTube"
@@ -476,12 +482,17 @@ class YouTubeProvider(SocialProvider):
                 retryable=False,
             )
 
-        title = content.title or content.text or ""
         description = content.description or content.text or ""
+        shorts_suffix = " #Shorts" if content.post_type == PostType.SHORT else ""
+        # Without a written title one is made from the caption. Shortening that derived title
+        # isn't cutting what the user wrote for this field, so it ends at a word with "…".
+        title = content.title or _derived_title(content.text or "", TITLE_MAX_LENGTH - len(shorts_suffix))
 
         # Shorts: add #Shorts tag if not already present
-        if content.post_type == PostType.SHORT and "#Shorts" not in title:
-            title = f"{title} #Shorts".strip()
+        title_label = "The title"
+        if shorts_suffix and "#Shorts" not in title:
+            title = f"{title}{shorts_suffix}".strip()
+            title_label = "The title with #Shorts added"
 
         privacy_status = content.extra.get("privacy_status", "public")
         made_for_kids = content.extra.get("self_declared_made_for_kids", False)
@@ -490,8 +501,8 @@ class YouTubeProvider(SocialProvider):
 
         metadata = {
             "snippet": {
-                "title": title[:100],
-                "description": description[: self.max_caption_length],
+                "title": self._require_fit(title_label, title, TITLE_MAX_LENGTH),
+                "description": self._require_fit("The description", description, self.max_caption_length, caption=True),
                 "tags": tags,
                 "categoryId": category_id,
             },
@@ -1407,3 +1418,12 @@ class YouTubeProvider(SocialProvider):
         except Exception:
             logger.warning("YouTube revocation deferred; retry via encrypted outbox")
             return False
+
+
+def _derived_title(text: str, limit: int) -> str:
+    """The first line of ``text`` as a title of at most ``limit`` characters, ending at a word."""
+    first_line = text.strip().splitlines()[0].strip() if text.strip() else ""
+    if len(first_line) <= limit:
+        return first_line
+    cut = first_line[: limit - 1].rsplit(" ", 1)[0].rstrip(" ,.;:-") or first_line[: limit - 1]
+    return f"{cut}…"

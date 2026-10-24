@@ -32,6 +32,7 @@ class EventType(models.TextChoices):
     AI_VISIBILITY_REPORT = "ai_visibility_report", "AI visibility report ready"
     APPROVAL_DIGEST = "approval_digest", "Posts waiting for your approval"
     POST_COMMENT = "post_comment", "New comment on your post"
+    PLATFORM_API_ALERT = "platform_api_alert", "Platform API needs attention"
 
 
 class Channel(models.TextChoices):

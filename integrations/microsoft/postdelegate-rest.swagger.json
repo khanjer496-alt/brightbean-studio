@@ -3978,8 +3978,18 @@
         },
         "caption_counting": {
           "default": "characters",
-          "description": "How the platform counts a caption against ``char_limit``. ``characters``: one per character (plus ``escaped_chars``). ``weighted``: the twitter-text v3 weighted count X uses, where each URL counts as 23 and CJK characters and emoji as 2.",
+          "description": "How the platform counts a caption against ``char_limit``. ``characters``: one per ``text_length_unit`` (plus ``escaped_chars``). ``weighted``: the twitter-text v3 weighted count X uses, where each URL counts as 23 and CJK characters and emoji as 2.",
           "type": "string"
+        },
+        "text_length_unit": {
+          "default": "codepoints",
+          "description": "What one character of ``char_limit`` is when ``caption_counting`` is ``characters``: ``codepoints``, ``utf16`` (TikTok), ``utf8_bytes`` (Farcaster), ``graphemes`` (Bluesky: an emoji or a ZWJ family is 1) or ``codepoints_emoji_bytes`` (Threads: an emoji costs its UTF-8 bytes).",
+          "type": "string"
+        },
+        "url_counts_as": {
+          "type": "integer",
+          "description": "When set, every link costs this many characters whatever its length (Mastodon: 23).",
+          "x-nullable": true
         },
         "needs_title": {
           "default": false,
@@ -4163,8 +4173,18 @@
         },
         "caption_counting": {
           "default": "characters",
-          "description": "How the platform counts a caption against ``char_limit``. ``characters``: one per character (plus ``escaped_chars``). ``weighted``: the twitter-text v3 weighted count X uses, where each URL counts as 23 and CJK characters and emoji as 2.",
+          "description": "How the platform counts a caption against ``char_limit``. ``characters``: one per ``text_length_unit`` (plus ``escaped_chars``). ``weighted``: the twitter-text v3 weighted count X uses, where each URL counts as 23 and CJK characters and emoji as 2.",
           "type": "string"
+        },
+        "text_length_unit": {
+          "default": "codepoints",
+          "description": "What one character of ``char_limit`` is when ``caption_counting`` is ``characters``: ``codepoints``, ``utf16`` (TikTok), ``utf8_bytes`` (Farcaster), ``graphemes`` (Bluesky: an emoji or a ZWJ family is 1) or ``codepoints_emoji_bytes`` (Threads: an emoji costs its UTF-8 bytes).",
+          "type": "string"
+        },
+        "url_counts_as": {
+          "type": "integer",
+          "description": "When set, every link costs this many characters whatever its length (Mastodon: 23).",
+          "x-nullable": true
         },
         "needs_title": {
           "default": false,

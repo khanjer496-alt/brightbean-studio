@@ -2287,6 +2287,7 @@ function providerSettings(accId, workspaceId, liveExtras) {
 {{ char_limits|json_script:"composer-char-limits" }}
 {{ link_prefs|json_script:"composer-link-prefs" }}
 {{ account_sets|json_script:"composer-account-sets" }}
+<script src="{% static 'js/caption-count.js' %}"></script>
 <script src="{% static 'js/composer-links.js' %}"></script>
 {{ platform_extras|json_script:"composer-platform-extras" }}
 {{ media_items|json_script:"composer-media-items" }}
@@ -2423,13 +2424,15 @@ function composerApp() {
         wireLength(text, accId) {
             text = this.countedText(text);
             if (this.charLimits[accId]?.caption_counting === 'weighted') return this.weightedLength(text);
+            // Units, link weights and mention weights come from the provider (providers/text_counting.py).
+            const counted = window.pdCaptionCount.length(text, this.charLimits[accId]);
             const escaped = this.charLimits[accId]?.escaped_chars || '';
-            if (!escaped) return text.length;
+            if (!escaped) return counted;
             let extra = 0;
             for (const ch of text) {
                 if (escaped.includes(ch)) extra++;
             }
-            return text.length + extra;
+            return counted + extra;
         },
         // twitter-text's weighted count, for a platform whose caption_counting is
         // "weighted": a URL counts 23, an emoji sequence 2, other code points 1 or 2

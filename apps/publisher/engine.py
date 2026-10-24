@@ -44,6 +44,7 @@ from apps.common.worker import SHUTDOWN_REQUESTED
 from apps.composer.models import PlatformPost, PlatformPostPart
 from apps.composer.services import (
     media_rules_blocker,
+    platform_post_text_blocker,
     platform_post_thread_blocker,
     post_media_assets,
     publish_blocker,
@@ -893,6 +894,18 @@ class PublishEngine:
                 reason="media breaks a blocking platform media rule",
             )
             return {"success": False, "error": media_reason}
+
+        # A caption over the platform's limits fails here, in its own words, rather
+        # than being cut by the provider or refused by the platform.
+        text_reason = platform_post_text_blocker(platform_post)
+        if text_reason:
+            self._fail_permanently(
+                platform_post,
+                f"text rules: {text_reason}",
+                user_message=text_reason,
+                reason="caption breaks a platform text limit",
+            )
+            return {"success": False, "error": text_reason}
 
         # A thread the platform can't carry fails before its first part goes
         # out — publishing that alone would strand every part after it.
