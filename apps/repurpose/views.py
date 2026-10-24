@@ -44,6 +44,7 @@ def _accounts(workspace):
 
 
 def _job(request, job_id) -> RepurposeJob:
+    services.expire_stale_jobs(request.workspace)
     return get_object_or_404(RepurposeJob, id=job_id, workspace=request.workspace)
 
 

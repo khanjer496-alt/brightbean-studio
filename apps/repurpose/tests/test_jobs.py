@@ -443,3 +443,18 @@ class TestLinkedInCarousel:
             job = self._carousel(workspace, owner, linkedin, fake_claude)
         out = job.outputs.get()
         assert out.document is None and any("media library" in w for w in out.warnings)
+
+
+class TestStaleRuns:
+    def test_a_run_that_lost_its_worker_stops_holding_a_slot(self, workspace, owner, bluesky):
+        import datetime as dt
+
+        from django.utils import timezone
+
+        job = _make(workspace, owner, _requests(workspace, {"kind": "post", "account_ids": [bluesky.id]}))
+        RepurposeJob.objects.filter(pk=job.pk).update(
+            status="running", started_at=timezone.now() - services.STALE_AFTER - dt.timedelta(minutes=1)
+        )
+        services.expire_stale_jobs(workspace)
+        job.refresh_from_db()
+        assert job.status == "failed" and "stopped unexpectedly" in job.error

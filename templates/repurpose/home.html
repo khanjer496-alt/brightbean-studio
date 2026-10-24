@@ -68,7 +68,7 @@
                 {% for item in kinds %}
                 <li class="rounded-lg border border-line bg-white p-3" x-data="{ on: false }">
                     <label class="flex min-h-11 cursor-pointer items-start gap-3">
-                        <input type="checkbox" name="kind_{{ item.spec.key }}" value="1" x-model="on" class="mt-1 h-5 w-5">
+                        <input type="checkbox" name="kind_{{ item.spec.key }}" value="1" x-model="on" class="mt-1 h-5 w-5 shrink-0">
                         <span><span class="block text-sm font-semibold text-ink">{{ item.spec.label }}</span><span class="block text-xs text-ink-3">{{ item.spec.help }}</span></span>
                     </label>
                     <div x-show="on" x-cloak class="mt-2 pl-8">
@@ -79,7 +79,7 @@
                                 <div class="mt-1 flex flex-wrap gap-x-4">
                                     {% for account in item.accounts %}
                                     <label class="inline-flex min-h-11 cursor-pointer items-center gap-2 text-sm text-ink-2">
-                                        <input type="checkbox" name="accounts_{{ item.spec.key }}" value="{{ account.id }}" class="h-5 w-5">
+                                        <input type="checkbox" name="accounts_{{ item.spec.key }}" value="{{ account.id }}" class="h-5 w-5 shrink-0">
                                         {{ account.account_name|default:account.account_handle }} <span class="text-xs text-ink-3">{{ account.get_platform_display }}</span>
                                     </label>
                                     {% endfor %}

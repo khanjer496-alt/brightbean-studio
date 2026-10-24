@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from datetime import timedelta
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
@@ -77,6 +78,7 @@ def create_job(
             f"That would need up to {max_calls} AI requests; one run is limited to "
             f"{settings.REPURPOSE_MAX_CALLS_PER_RUN}. Choose fewer outputs or accounts."
         )
+    expire_stale_jobs(workspace)
     if (
         RepurposeJob.objects.filter(workspace=workspace, status__in=RepurposeJob.ACTIVE_STATUSES).count()
         >= MAX_ACTIVE_JOBS
@@ -115,6 +117,21 @@ def create_job(
     note = hooks.record_decisions(gates, source_text=job.source_name)
     transaction.on_commit(lambda: execute_repurpose_job(str(job.id)))
     return job, note
+
+
+# A run makes at most REPURPOSE_MAX_CALLS_PER_RUN calls of a few seconds to a minute
+# each; one still "running" after this lost its worker and would hold a slot forever.
+STALE_AFTER = timedelta(minutes=45)
+
+
+def expire_stale_jobs(workspace) -> None:
+    RepurposeJob.objects.filter(
+        workspace=workspace, status=RepurposeJob.Status.RUNNING, started_at__lt=timezone.now() - STALE_AFTER
+    ).update(
+        status=RepurposeJob.Status.FAILED,
+        finished_at=timezone.now(),
+        error="This run stopped unexpectedly. Outputs it wrote are kept; start it again for the rest.",
+    )
 
 
 def _check_estimate(unit_count: int, text: str) -> None:

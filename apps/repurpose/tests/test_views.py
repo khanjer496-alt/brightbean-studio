@@ -67,8 +67,13 @@ def test_text_run_end_to_end(owner_client, workspace, bluesky, fake_claude):
 
     out = job.outputs.get()
     response = owner_client.post(url(workspace, "accept", job.id), {"output": [str(out.id)]}, follow=True)
-    assert "Nothing has been published" in response.content.decode()
-    assert Post.objects.get().platform_posts.get().status == "draft"
+    page = response.content.decode()
+    assert page.count("Nothing has been published") == 1  # the layout shows messages; the job body doesn't repeat them
+    post = Post.objects.get()
+    assert post.platform_posts.get().status == "draft"
+    assert "Open the draft" in page and str(post.id) in page
+    again = owner_client.post(url(workspace, "accept", job.id), {"output": [str(out.id)]}, follow=True)
+    assert "already saved" in again.content.decode() and Post.objects.count() == 1
 
 
 def test_running_job_polls_and_can_be_cancelled(owner_client, workspace, bluesky):

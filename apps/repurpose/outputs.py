@@ -49,7 +49,7 @@ class KindSpec:
 KINDS: dict[str, KindSpec] = {
     spec.key: spec
     for spec in (
-        KindSpec(Kind.THREAD, "Thread", "A numbered-free thread for each account that takes threads.", True),
+        KindSpec(Kind.THREAD, "Thread", "A thread for each account that takes threads.", True),
         KindSpec(Kind.POST, "Long-form post", "One post per account in that network's style.", True),
         KindSpec(
             Kind.CAROUSEL,

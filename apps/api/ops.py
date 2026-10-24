@@ -2485,8 +2485,10 @@ def _repurpose_job_response(job) -> RepurposeJobResponse:
 def _get_repurpose_job(actor: Actor, job_id: uuid.UUID):
     """A job in this workspace whose target accounts are all on the key's allowlist (else 404)."""
     from apps.repurpose.models import RepurposeJob
+    from apps.repurpose.services import expire_stale_jobs
 
     actor.require("create_posts")
+    expire_stale_jobs(actor.workspace)
     job = RepurposeJob.objects.filter(workspace_id=actor.workspace_id, id=job_id).prefetch_related("outputs").first()
     allowed = {str(i) for i in actor.allowed_account_ids}
     if job is None or not set(job.target_account_ids) <= allowed:
