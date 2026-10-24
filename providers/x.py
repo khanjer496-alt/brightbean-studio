@@ -324,6 +324,32 @@ class XProvider(SocialProvider):
             ),
             help="How long the poll stays open. Defaults to 1 day.",
         ),
+        # POST /2/tweets body fields community_id, made_with_ai and paid_partnership
+        # (https://docs.x.com/x-api/posts/creation-of-a-post, checked 2026-10-24). X's API has no endpoint that lists
+        # the Communities a user belongs to, so the ID is typed (it is the number in the Community's URL).
+        PostSetting(
+            key="community_id",
+            label="Community ID",
+            kind="text",
+            max_length=19,
+            placeholder="e.g. 1493446837214187523",
+            help=(
+                "Post to a Community you belong to. Paste the number from the Community's address "
+                "(x.com/i/communities/<ID>); X doesn't let apps list your Communities."
+            ),
+        ),
+        PostSetting(
+            key="made_with_ai",
+            label="Disclose AI-generated media",
+            kind="checkbox",
+            help='Adds X\'s "Made with AI" label.',
+        ),
+        PostSetting(
+            key="paid_partnership",
+            label="Paid partnership",
+            kind="checkbox",
+            help="Adds X's paid partnership label.",
+        ),
     )
 
     # ------------------------------------------------------------------
@@ -574,6 +600,9 @@ class XProvider(SocialProvider):
         error = super().validate_post_settings(settings)
         if error:
             return error
+        community_id = str(settings.get("community_id") or "").strip()
+        if community_id and not (community_id.isascii() and community_id.isdigit() and len(community_id) <= 19):
+            return "Community ID must be the number (up to 19 digits) from the Community's address."
         raw = settings.get("poll_options")
         if raw:
             options = parse_poll_options(raw)
@@ -623,6 +652,12 @@ class XProvider(SocialProvider):
             body["poll"] = {"options": poll_options, "duration_minutes": self._poll_minutes(extra)}
         if extra.get("reply_settings") in _RESTRICTED_REPLY_SETTINGS:
             body["reply_settings"] = extra["reply_settings"]
+        if str(extra.get("community_id") or "").strip():
+            body["community_id"] = str(extra["community_id"]).strip()
+        if extra.get("made_with_ai") is True:
+            body["made_with_ai"] = True
+        if extra.get("paid_partnership") is True:
+            body["paid_partnership"] = True
         if extra.get("in_reply_to_tweet_id"):
             body["reply"] = {"in_reply_to_tweet_id": str(extra["in_reply_to_tweet_id"])}
 

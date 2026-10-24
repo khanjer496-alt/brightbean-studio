@@ -120,3 +120,24 @@ class TestInstagramOptions:
         api = api_client_for(user, workspace, instagram)
         response = api_create(api, instagram, action="draft", post_settings={"subreddit": "python"})
         assert response.status_code in (400, 422)
+
+
+@pytest.mark.django_db
+class TestXOptions:
+    def test_api_stores_community_and_labels_and_fingerprint_follows(self, user, workspace):
+        x = make_account(workspace, "x")
+        api = api_client_for(user, workspace, x)
+        response = api_create(api, x, action="draft", post_settings={"community_id": "123", "made_with_ai": True})
+        assert response.status_code == 201, response.content
+        pp = PlatformPost.objects.get(social_account=x)
+        assert pp.platform_extra == {"community_id": "123", "made_with_ai": True}
+        before = publish_fingerprint(pp)
+        pp.platform_extra = {**pp.platform_extra, "paid_partnership": True}
+        pp.save()
+        assert publish_fingerprint(PlatformPost.objects.get(pk=pp.pk)) != before
+
+    def test_a_non_boolean_label_is_refused(self, user, workspace):
+        x = make_account(workspace, "x")
+        api = api_client_for(user, workspace, x)
+        response = api_create(api, x, action="draft", post_settings={"made_with_ai": "yes"})
+        assert response.status_code in (400, 422)
