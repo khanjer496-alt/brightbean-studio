@@ -79,6 +79,10 @@ def _process_video(asset):
 
     try:
         metadata = extract_video_metadata(tmp_path)
+        if not metadata.get("duration_seconds") or not metadata.get("width"):
+            # The asset stays usable but reads as unverified (``MediaAsset.metadata_unverified``): the composer
+            # warns that its length and shape were not checked instead of silently skipping those rules.
+            logger.warning("Could not measure video %s (is ffprobe installed and the file readable?)", asset.id)
         asset.width = metadata.get("width", 0)
         asset.height = metadata.get("height", 0)
         if "duration_seconds" in metadata:

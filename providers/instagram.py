@@ -14,7 +14,12 @@ from .base import SocialProvider
 from .exceptions import APIError, MessagingError, OAuthError, ProviderError, PublishError, WebhookChannelError
 from .instagram_containers import InstagramContainers
 from .instagram_discovery import business_discovery_metrics
-from .instagram_options import INSTAGRAM_POST_SETTINGS, container_options, validate_instagram_settings
+from .instagram_options import (
+    INSTAGRAM_POST_SETTINGS,
+    container_options,
+    image_alt_option,
+    validate_instagram_settings,
+)
 from .meta_accounts import fetch_me_accounts, page_can_publish
 from .meta_comments import (
     fetch_instagram_comments,
@@ -102,6 +107,8 @@ INSTAGRAM_MEDIA_FIELDS = [
 # ``InstagramLoginProvider``, which publishes through the same endpoints.
 # https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media
 _INSTAGRAM_DOCS = "https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media"
+# Feed images are JPEG only; PNG, WebP and the like are converted at publish time.
+_INSTAGRAM_IMAGE_FORMATS = frozenset({"jpeg"})
 _INSTAGRAM_REEL_RULES = MediaRules(
     source=_INSTAGRAM_DOCS,
     published_items=1,
@@ -120,6 +127,7 @@ INSTAGRAM_MEDIA_RULES = {
         min_aspect_ratio=4 / 5,
         max_aspect_ratio=1.91,
         max_image_bytes=8 * 1024 * 1024,
+        image_formats=_INSTAGRAM_IMAGE_FORMATS,
         advisory=frozenset({"media_types"}),
     ),
     # Up to 20 images or videos (raised from 10; checked against the ig-user
@@ -133,6 +141,7 @@ INSTAGRAM_MEDIA_RULES = {
         min_aspect_ratio=4 / 5,
         max_aspect_ratio=1.91,
         max_image_bytes=8 * 1024 * 1024,
+        image_formats=_INSTAGRAM_IMAGE_FORMATS,
         max_duration=15 * 60,
         max_video_bytes=300 * 1024 * 1024,
         advisory=frozenset({"media_types", "aspect_ratio"}),
@@ -145,6 +154,7 @@ INSTAGRAM_MEDIA_RULES = {
         published_items=1,
         recommended_aspect_ratio=9 / 16,
         max_image_bytes=8 * 1024 * 1024,
+        image_formats=_INSTAGRAM_IMAGE_FORMATS,
         min_duration=3,
         max_duration=60,
         max_video_bytes=100 * 1024 * 1024,
@@ -159,6 +169,10 @@ class InstagramProvider(MetaGraphErrors, InstagramContainers, SocialProvider):
     profile_url_template = "https://www.instagram.com/{handle}/"
 
     media_rules = INSTAGRAM_MEDIA_RULES
+    # ``alt_text`` on a single image or a carousel image (not Reels or Stories).
+    # https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media
+    supports_alt_text = True
+    fetches_media_by_url = True
     post_settings = INSTAGRAM_POST_SETTINGS
 
     supports_public_profile_metrics = True
@@ -450,6 +464,7 @@ class InstagramProvider(MetaGraphErrors, InstagramContainers, SocialProvider):
             payload["video_url"] = url
         else:
             payload["image_url"] = url
+            payload.update(image_alt_option(content, 0))
         payload.update(
             container_options(content.extra, content.post_type, is_video=is_video, platform=self.platform_name)
         )
@@ -481,6 +496,7 @@ class InstagramProvider(MetaGraphErrors, InstagramContainers, SocialProvider):
                 child_payload["video_url"] = url
             else:
                 child_payload["image_url"] = url
+                child_payload.update(image_alt_option(content, index))
 
             child_id = self._prepare_container(
                 access_token,

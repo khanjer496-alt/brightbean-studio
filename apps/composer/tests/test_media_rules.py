@@ -215,7 +215,9 @@ class OtherPlatformRulesTest(TestCase):
         self.assertIn("up to 8.0\xa0MB", _errors("threads", [_asset(size=9 * MB)])[0])
 
     def test_bluesky(self):
-        self.assertIn("up to 976.6\xa0KB", _errors("bluesky", [_asset(size=2 * MB)])[0])
+        # Over 1 MB is recompressed at publish time, so it is a warning and not a refusal.
+        self.assertEqual(_errors("bluesky", [_asset(size=2 * MB)]), [])
+        self.assertIn("smaller copy is sent", _warnings("bluesky", [_asset(size=2 * MB)])[0])
         self.assertIn("Only the first 4 items", _warnings("bluesky", [_asset(size=500_000)] * 5)[0])
         self.assertIn("at most 3 min", _errors("bluesky", [_video(duration=200, size=50 * MB)])[0])
 
@@ -232,7 +234,8 @@ class OtherPlatformRulesTest(TestCase):
         self.assertEqual(_issues("devto", [_asset(size=50 * MB)]), [])
         # 0x0 / 0s: the library hasn't measured it yet, so nothing is claimed.
         self.assertEqual(_issues("instagram", [_asset(width=0, height=0)]), [])
-        self.assertEqual(_issues("instagram", [_video(width=0, height=0, duration=0)]), [])
+        self.assertEqual(_errors("instagram", [_video(width=0, height=0, duration=0)]), [])
+        self.assertEqual(_issues("devto", [_video(width=0, height=0, duration=0)]), [])
 
     def test_attachments_without_a_file_are_ignored(self):
         missing = _asset(width=1080, height=1920)
@@ -395,10 +398,10 @@ class ComposerEnforcementTest(_WorkspaceMixin, ComposerTestCase):
 
         self.assertIn('id="composer-media-issues"', html)
         self.assertIn('hx-swap-oob="innerHTML"', html)
-        # Bluesky refuses the 2 MB image; Instagram only warns about the carousel shape.
+        # Bluesky warns that it shrinks the 2 MB image; Instagram warns about the carousel shape.
         self.assertIn("bluesky account", html)
-        self.assertIn("Bluesky takes files up to", html)
-        self.assertIn("Can't schedule", html)
+        self.assertIn("Bluesky takes images up to", html)
+        self.assertNotIn("Can't schedule", html)
         self.assertIn("instagram account", html)
         self.assertIn("Check media", html)
 
@@ -528,3 +531,30 @@ class TestChosenPostFormat:
 
     def test_platforms_without_a_declared_format_keep_the_old_fallback(self):
         assert _errors("linkedin", [_asset()], post_type="video") == []
+
+
+class MediaPipelineRulesTest(TestCase):
+    """TikTok's single-chunk ceiling, unmeasured video and the Bluesky recompression warning."""
+
+    def test_tiktok_refuses_a_video_over_64mb_when_scheduling(self):
+        errors = _errors("tiktok", [_video(size=65 * MB)])
+        self.assertEqual(len(errors), 1)
+        self.assertIn("takes files up to", errors[0])
+        self.assertEqual(_errors("tiktok", [_video(size=60 * MB)]), [])
+
+    def test_unmeasured_video_is_flagged_on_a_network_with_length_limits(self):
+        asset = _video(width=0, height=0, duration=0)
+        self.assertTrue(asset.metadata_unverified)
+        warnings = _warnings("tiktok", [asset])
+        self.assertTrue(any("couldn't be measured" in message for message in warnings))
+        # What can be checked still is: the byte limit applies without a probe.
+        big = _video(width=0, height=0, duration=0, size=70 * MB)
+        self.assertEqual(len(_errors("tiktok", [big])), 1)
+
+    def test_measured_video_and_images_are_not_flagged(self):
+        self.assertFalse(_video().metadata_unverified)
+        self.assertFalse(_asset().metadata_unverified)
+        self.assertFalse(any("couldn't be measured" in m for m in _warnings("tiktok", [_video()])))
+
+    def test_unmeasured_video_with_no_shape_rules_is_not_flagged(self):
+        self.assertEqual(_issues("devto", [_video(width=0, height=0, duration=0)]), [])

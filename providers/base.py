@@ -226,6 +226,18 @@ class SocialProvider(ABC):
     # implemented. The inbox sync and the review UI read this, never a platform name.
     supports_reviews: ClassVar[bool] = False
 
+    # True when the platform's publish API takes a description for each image
+    # or video and the provider sends ``PublishContent.media_alt`` in it. The
+    # composer reads this to offer an alt-text field only where it will be used.
+    supports_alt_text: ClassVar[bool] = False
+
+    # True when the platform's servers fetch the media from the URLs in
+    # ``PublishContent.media_urls`` (Meta, Pinterest, Google). The engine then
+    # checks each URL is publicly reachable before publishing, so a private or
+    # expiring address fails early with a clear message instead of a
+    # platform-side "media fetch failed".
+    fetches_media_by_url: ClassVar[bool] = False
+
     # False when the platform publishes no media at all (Reddit here): a post
     # carrying any is refused before scheduling, with a sentence naming the
     # platform, instead of publishing without it.

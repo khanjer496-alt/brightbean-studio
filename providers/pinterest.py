@@ -53,6 +53,10 @@ class PinterestProvider(SocialProvider):
     profile_url_template = "https://www.pinterest.com/{handle}/"
 
     media_rules = PINTEREST_MEDIA_RULES
+    # ``alt_text`` (500 characters) on the pin; the pin's own setting wins over the media's.
+    # https://developers.pinterest.com/docs/api/v5/pins-create/
+    supports_alt_text = True
+    fetches_media_by_url = True
     account_default_keys = ("board_id",)
 
     @classmethod
@@ -245,7 +249,7 @@ class PinterestProvider(SocialProvider):
         if content.link_url:
             payload["link"] = content.link_url
 
-        alt_text = content.extra.get("alt_text")
+        alt_text = content.extra.get("alt_text") or content.alt_text(0)
         if alt_text:
             payload["alt_text"] = alt_text[:500]
 

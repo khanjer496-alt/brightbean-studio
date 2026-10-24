@@ -28,6 +28,7 @@ from datetime import timedelta
 from background_task import background
 from django.conf import settings
 from django.core.cache import cache
+from django.core.files.storage import default_storage
 from django.db import transaction
 from django.db.models import F
 from django.db.models.functions import Coalesce
@@ -50,6 +51,8 @@ from apps.composer.services import (
     usable_media_types,
 )
 from apps.credentials.models import resolve_platform_credentials
+from apps.media_library.derivatives import CannotFitImageError, derivation_needed, derive_image
+from apps.media_library.services import ImageTooLargeError
 from apps.media_library.storage import download_to_path
 from apps.social_accounts.error_messages import (
     FIRST_COMMENT_GENERIC_MESSAGE,
@@ -66,10 +69,11 @@ from apps.social_accounts.error_messages import (
     is_credential_rejection,
 )
 from apps.webhooks import events as webhook_events
-from providers import PROVIDER_REGISTRY, VIDEO_POST_TYPES, get_provider
+from providers import PROVIDER_REGISTRY, VIDEO_POST_TYPES, get_provider, media_rules_for
 from providers.exceptions import APIError, ProviderError, PublishError, RateLimitError, ReconnectRequiredError
 from providers.types import PostType, PublishContent, PublishResult, PublishState
 
+from .media_preflight import check_public_media_urls
 from .models import PublishLog, RateLimitState
 
 logger = logging.getLogger(__name__)
@@ -270,6 +274,7 @@ class _SharedMediaCache:
 
     def __init__(self):
         self._entries: dict = {}
+        self._adopted: list[str] = []
         # Guards the entry map only. The download itself runs under the entry's
         # own lock so threads wanting *different* assets never wait on each
         # other — and, more importantly, one wedged download cannot block every
@@ -299,10 +304,19 @@ class _SharedMediaCache:
             entry.path = tmp.name
             return entry.path
 
+    def adopt(self, path: str) -> None:
+        """Also delete ``path`` (a file derived from an attachment) when the cache is cleaned up."""
+        with self._lock:
+            self._adopted.append(path)
+
     def cleanup(self) -> None:
         with self._lock:
             entries = list(self._entries.values())
             self._entries.clear()
+            adopted, self._adopted = self._adopted, []
+        for path in adopted:
+            with contextlib.suppress(OSError):
+                os.unlink(path)
         for entry in entries:
             # Take each entry's lock so we never unlink a file a straggling
             # thread is still writing into.
@@ -480,13 +494,62 @@ def _resolve_extra_asset(platform_post, asset_id, label):
     return None
 
 
-def _public_media_url(asset, app_url: str) -> str:
-    """The URL a provider fetches ``asset`` from: presigned, or absolute on local storage."""
-    url = asset.file.url
+def _absolute_media_url(url: str, app_url: str) -> str:
+    """``url`` as a provider can fetch it: presigned as-is, or made absolute with APP_URL on local storage."""
     if url.startswith("/"):
         # Local storage: make absolute using APP_URL
         url = f"{app_url}{url}"
     return url
+
+
+def _public_media_url(asset, app_url: str) -> str:
+    """The URL a provider fetches ``asset`` from: presigned, or absolute on local storage."""
+    return _absolute_media_url(asset.file.url, app_url)
+
+
+def _derive_media_for_platform(
+    platform,
+    post_type,
+    assets,
+    media_urls,
+    media_files,
+    media_dimensions,
+    *,
+    media_cache,
+    track,
+    app_url,
+    needs_local_media,
+):
+    """Swap in converted copies of images the platform's media rules can't take as they are.
+
+    Edits ``media_urls``, ``media_files`` and ``media_dimensions`` in place,
+    entry by entry. The library's original is never touched; the copy is stored
+    under the asset's derived prefix and the temp file is cleaned up with the
+    publish. A file that cannot be brought within the limits fails the post
+    with a sentence rather than going out to be refused.
+    """
+    rules = media_rules_for(platform, post_type)
+    if rules is None:
+        return
+    for index, asset in enumerate(assets):
+        if not derivation_needed(asset, rules):
+            continue
+        try:
+            derived = derive_image(asset, rules, media_cache.path_for(asset))
+        except CannotFitImageError as exc:
+            raise PublishError(
+                f"{asset.filename or 'An image'} is too large for {platform.replace('_', ' ').title()} even after "
+                "shrinking it. Use a smaller image.",
+                platform=platform,
+                retryable=False,
+            ) from exc
+        except ImageTooLargeError as exc:
+            raise PublishError(str(exc), platform=platform, retryable=False) from exc
+        track(derived.local_path)
+        media_urls[index] = _absolute_media_url(default_storage.url(derived.storage_name), app_url)
+        if needs_local_media:
+            media_files[index] = derived.local_path
+        media_dimensions[index] = (derived.width, derived.height)
 
 
 class PublishEngine:
@@ -1085,6 +1148,10 @@ class PublishEngine:
         # at upload, so providers can route on what the file *is* rather than on
         # a storage-key extension copied from the client-declared filename.
         media_types = []
+        # The library asset, alt text and measured size behind each media_urls entry.
+        media_assets = []
+        media_alt = []
+        media_dimensions = []
         temp_files = []
         # Owned locally only when the caller didn't hand us a post-level cache
         # (the retry path); ``owns_cache`` decides who cleans it up.
@@ -1125,6 +1192,9 @@ class PublishEngine:
                 # Collect the public/presigned URL for this asset
                 media_urls.append(_public_media_url(asset, app_url))
                 media_types.append(asset.media_type)
+                media_assets.append(asset)
+                media_alt.append(pm.alt_text or asset.alt_text or "")
+                media_dimensions.append((asset.width or 0, asset.height or 0))
 
                 if needs_local_media:
                     media_files.append(media_cache.path_for(asset))
@@ -1185,6 +1255,21 @@ class PublishEngine:
                 first_media_type=first_media_type,
             )
 
+            _derive_media_for_platform(
+                platform,
+                post_type,
+                media_assets,
+                media_urls,
+                media_files,
+                media_dimensions,
+                media_cache=media_cache,
+                track=temp_files.append,
+                app_url=app_url,
+                needs_local_media=needs_local_media,
+            )
+            if provider.fetches_media_by_url:
+                check_public_media_urls(media_urls, media_types, platform=account.get_platform_display())
+
             content = PublishContent(
                 text=platform_post.effective_caption or "",
                 title=platform_post.effective_title,
@@ -1193,6 +1278,8 @@ class PublishEngine:
                 media_files=media_files,
                 media_urls=media_urls,
                 media_types=media_types,
+                media_alt=media_alt,
+                media_dimensions=media_dimensions,
                 post_type=post_type,
                 extra=extra,
                 link_url=link_url,
@@ -2276,17 +2363,34 @@ def _thread_part_content(platform_post, provider, part, caption, assets, media_c
         {key: value for key, value in (platform_post.platform_extra or {}).items() if key not in _FIRST_POST_ONLY_EXTRA}
     )
     first_type = assets[0].media_type if assets else None
+    platform = platform_post.social_account.platform
+    post_type = PublishEngine._resolve_post_type(
+        platform=platform,
+        platform_extra={},
+        media_count=len(assets),
+        first_media_type=first_type,
+    )
+    media_dimensions = [(asset.width or 0, asset.height or 0) for asset in assets]
+    _derive_media_for_platform(
+        platform,
+        post_type,
+        assets,
+        media_urls,
+        media_files,
+        media_dimensions,
+        media_cache=media_cache,
+        track=media_cache.adopt,
+        app_url=app_url,
+        needs_local_media=provider.needs_local_media,
+    )
     return PublishContent(
         text=caption or "",
         media_files=media_files,
         media_urls=media_urls,
         media_types=[asset.media_type for asset in assets],
-        post_type=PublishEngine._resolve_post_type(
-            platform=platform_post.social_account.platform,
-            platform_extra={},
-            media_count=len(assets),
-            first_media_type=first_type,
-        ),
+        media_alt=[asset.alt_text or "" for asset in assets],
+        media_dimensions=media_dimensions,
+        post_type=post_type,
         extra=extra,
         video_duration_sec=next((a.duration or None for a in assets if a.media_type == "video"), None),
         # One key per part per account, so a provider honouring idempotency

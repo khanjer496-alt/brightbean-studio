@@ -147,6 +147,10 @@ class FacebookProvider(MetaGraphErrors, SocialProvider):
     """Facebook Graph API v25.0 provider."""
 
     media_rules = FACEBOOK_MEDIA_RULES
+    # ``alt_text_custom`` on a photo.
+    # https://developers.facebook.com/docs/graph-api/reference/page/photos/
+    supports_alt_text = True
+    fetches_media_by_url = True
     post_settings = (
         PostSetting(
             key="post_type",
@@ -420,6 +424,8 @@ class FacebookProvider(MetaGraphErrors, SocialProvider):
         payload: dict = {"url": content.media_urls[0]}
         if content.text:
             payload["message"] = content.text
+        if content.alt_text(0):
+            payload["alt_text_custom"] = content.alt_text(0)
         resp = self._request(
             "POST",
             f"{BASE_URL}/{page_id}/photos",
@@ -455,13 +461,16 @@ class FacebookProvider(MetaGraphErrors, SocialProvider):
 
         photo_ids: list[str] = []
         try:
-            for url in urls:
+            for index, url in enumerate(urls):
                 # published=False: the photo is invisible until the feed post below attaches it.
+                staged: dict = {"url": url, "published": False}
+                if content.alt_text(index):
+                    staged["alt_text_custom"] = content.alt_text(index)
                 data = self._request(
                     "POST",
                     f"{BASE_URL}/{page_id}/photos",
                     access_token=access_token,
-                    json={"url": url, "published": False},
+                    json=staged,
                     ambiguous_on_failure=False,
                 ).json()
                 photo_id = data.get("id")

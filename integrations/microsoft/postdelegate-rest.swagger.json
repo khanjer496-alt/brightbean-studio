@@ -5084,6 +5084,10 @@
         "processing_status": {
           "type": "string"
         },
+        "metadata_verified": {
+          "default": true,
+          "type": "boolean"
+        },
         "url": {
           "type": "string"
         },

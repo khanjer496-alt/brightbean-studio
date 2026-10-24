@@ -563,6 +563,9 @@ MEDIA_LIBRARY_MAX_VIDEO_SIZE = 1024 * 1024 * 1024  # 1GB
 MEDIA_LIBRARY_MAX_BULK_UPLOAD = 50
 MEDIA_LIBRARY_THUMBNAIL_SIZE = (400, 400)
 MEDIA_LIBRARY_FFMPEG_TIMEOUT = 300  # 5 minutes
+# Before publishing to a network that downloads media from our URLs (Meta, Pinterest, Google), fetch one byte of
+# each to be sure it is public, served as the right type and not about to expire.
+PUBLISH_MEDIA_PREFLIGHT = env.bool("PUBLISH_MEDIA_PREFLIGHT", default=True)
 MEDIA_LIBRARY_MAX_CONCURRENT_TRANSCODES = 2
 MEDIA_LIBRARY_PRESIGN_EXPIRE = 900  # seconds a presigned direct-upload URL stays valid
 

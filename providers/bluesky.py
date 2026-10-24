@@ -68,6 +68,8 @@ BLUESKY_MEDIA_RULES = {
         source="https://docs.bsky.app/docs/advanced-guides/posts#images-embeds",
         published_items=4,
         max_image_bytes=1_000_000,
+        # Larger images are recompressed into a derived copy at publish time.
+        compress_images=True,
     ),
     PostType.VIDEO: MediaRules(
         source="https://docs.bsky.app/docs/tutorials/video",
@@ -91,6 +93,9 @@ class BlueskyProvider(SocialProvider):
     profile_url_template = "https://bsky.app/profile/{handle}"
 
     media_rules = BLUESKY_MEDIA_RULES
+    # Each image (and a video) carries its own ``alt``.
+    # https://github.com/bluesky-social/atproto/blob/main/lexicons/app/bsky/embed/images.json
+    supports_alt_text = True
     # Each part is a post whose ``reply`` points at the thread root and its parent.
     thread = ThreadCapability(mode=ThreadMode.REPLY_CHAIN, max_parts=25, media_per_part=True)
 
@@ -654,6 +659,13 @@ class BlueskyProvider(SocialProvider):
         data = resp.json()
         return data.get("blob", data)
 
+    @staticmethod
+    def _add_aspect_ratio(embed: dict, content: PublishContent, index: int) -> None:
+        """Set ``aspectRatio`` from the measured size, so clients reserve the right frame before the media loads."""
+        width, height = content.dimensions(index)
+        if width > 0 and height > 0:
+            embed["aspectRatio"] = {"width": width, "height": height}
+
     def _build_embed(self, access_token: str, content: PublishContent) -> dict | None:
         """Build the embed object for images or video."""
         media_files = content.media_files or []
@@ -662,17 +674,22 @@ class BlueskyProvider(SocialProvider):
 
         if content.post_type == PostType.VIDEO:
             blob_ref = self._upload_blob(access_token, media_files[0])
-            return {
-                "$type": "app.bsky.embed.video",
-                "video": blob_ref,
-            }
+            video = {"$type": "app.bsky.embed.video", "video": blob_ref}
+            self._add_aspect_ratio(video, content, 0)
+            alt_text = content.alt_text(0)
+            if alt_text:
+                video["alt"] = alt_text
+            return video
 
         if content.post_type == PostType.IMAGE:
             images = []
-            for path in media_files[:4]:  # max 4 images
+            for index, path in enumerate(media_files[:4]):  # max 4 images
                 blob_ref = self._upload_blob(access_token, path)
-                alt_text = content.extra.get("alt_text", "")
-                images.append({"alt": alt_text, "image": blob_ref})
+                # ``alt`` is required by the lexicon; the old per-post string stays as the fallback.
+                alt_text = content.alt_text(index) or content.extra.get("alt_text", "")
+                image = {"alt": alt_text, "image": blob_ref}
+                self._add_aspect_ratio(image, content, index)
+                images.append(image)
             return {
                 "$type": "app.bsky.embed.images",
                 "images": images,

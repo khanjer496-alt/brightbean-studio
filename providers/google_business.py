@@ -179,6 +179,7 @@ class GoogleBusinessProvider(SocialProvider):
     """
 
     media_rules = GOOGLE_BUSINESS_MEDIA_RULES
+    fetches_media_by_url = True
     post_settings = GOOGLE_BUSINESS_POST_SETTINGS
     supports_reviews = True
 

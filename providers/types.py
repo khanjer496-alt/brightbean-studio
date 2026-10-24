@@ -259,6 +259,15 @@ class MediaRules:
     max_video_bytes: int | None = None
     max_document_bytes: int | None = None
     advisory: frozenset[str] = frozenset()
+    # Still-image file formats the platform takes, as Pillow names them
+    # ("jpeg", "png", "webp"). A still in any other format is converted into a
+    # derived copy at publish time (``apps.media_library.derivatives``); the
+    # library's original is never touched. ``None`` means every format.
+    image_formats: frozenset[str] | None = None
+    # True when a still over ``max_image_bytes`` is recompressed (and shrunk if
+    # need be) into a derived copy at publish time instead of refused. The
+    # composer then only warns that the copy will be smaller.
+    compress_images: bool = False
 
 
 class ThreadMode(enum.StrEnum):
@@ -506,6 +515,13 @@ class PublishContent:
     # Per-item media type ("image" / "video" / "gif" / ...), parallel to
     # ``media_urls``. Filled by the engine from MediaAsset.media_type.
     media_types: list[str] = field(default_factory=list)
+    # Alt text per media item, parallel to ``media_urls`` ("" when none). The
+    # post's own text for that attachment wins over the library asset's.
+    # Providers read it only when they declare ``supports_alt_text``.
+    media_alt: list[str] = field(default_factory=list)
+    # ``(width, height)`` per media item, parallel to ``media_urls`` as the
+    # library measured them; ``(0, 0)`` when it could not.
+    media_dimensions: list[tuple[int, int]] = field(default_factory=list)
     # The same for every attempt at one PlatformPost. A provider whose platform
     # honours request idempotency sends it, so a retry after a lost response
     # cannot publish twice.
@@ -517,6 +533,14 @@ class PublishContent:
     # the attempt is rescheduled inside the shutdown grace period instead of
     # being killed mid-publish.
     should_stop: Callable[[], bool] | None = None
+
+    def alt_text(self, index: int = 0) -> str:
+        """Alt text of media item ``index``, or "" when it has none."""
+        return self.media_alt[index].strip() if index < len(self.media_alt) else ""
+
+    def dimensions(self, index: int = 0) -> tuple[int, int]:
+        """``(width, height)`` of media item ``index``, or ``(0, 0)`` when unknown."""
+        return self.media_dimensions[index] if index < len(self.media_dimensions) else (0, 0)
 
     def is_video(self, index: int = 0) -> bool:
         """Whether media item ``index`` is a video.

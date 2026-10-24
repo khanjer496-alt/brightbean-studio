@@ -150,6 +150,9 @@ TIKTOK_MEDIA_RULES = {
         max_height=4096,
         min_duration=3,
         max_duration=10 * 60,
+        # TikTok takes up to 4 GB, but only as 5-64 MB chunks; we send the file as one chunk, so 64 MB is the most
+        # we can publish. Checked here so it is caught when the post is scheduled, not when it fails.
+        max_video_bytes=MAX_SINGLE_CHUNK_SIZE,
         advisory=frozenset({"min_duration"}),
     ),
 }

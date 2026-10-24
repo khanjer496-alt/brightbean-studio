@@ -192,6 +192,15 @@ class MediaAsset(models.Model):
         return self.media_type == self.MediaType.VIDEO
 
     @property
+    def metadata_unverified(self) -> bool:
+        """True for a video whose duration or size the library could not measure (ffprobe failed or hasn't run).
+
+        Every duration and shape rule is skipped for such a file, so callers
+        must say so instead of passing it as checked.
+        """
+        return self.media_type == self.MediaType.VIDEO and not (self.duration and self.width and self.height)
+
+    @property
     def is_shared(self):
         return self.workspace_id is None
 

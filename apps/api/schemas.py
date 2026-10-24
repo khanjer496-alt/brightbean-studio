@@ -731,6 +731,8 @@ class MediaAssetResponse(Schema):
     is_starred: bool
     is_shared: bool
     processing_status: str
+    # False for a video whose duration or size could not be measured, so length and shape rules can't be checked.
+    metadata_verified: bool = True
     url: str
     thumbnail_url: str | None
     last_used_at: dt.datetime | None = None
@@ -763,6 +765,7 @@ class MediaAssetResponse(Schema):
             is_starred=bool(asset.is_starred),
             is_shared=bool(asset.is_shared),
             processing_status=asset.processing_status,
+            metadata_verified=not asset.metadata_unverified,
             url=_safe_file_url(asset.file),
             thumbnail_url=_safe_file_url(asset.thumbnail) or None,
             last_used_at=last_used_at,

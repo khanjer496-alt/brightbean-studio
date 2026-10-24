@@ -121,6 +121,9 @@ class MastodonProvider(SocialProvider):
     works_without_platform_app = True
 
     media_rules = MASTODON_MEDIA_RULES
+    # ``description`` on the media upload.
+    # https://docs.joinmastodon.org/methods/media/
+    supports_alt_text = True
     # Each part is a status replying to the one before it (``in_reply_to_id``).
     thread = ThreadCapability(mode=ThreadMode.REPLY_CHAIN, max_parts=25, media_per_part=True)
 
@@ -382,7 +385,9 @@ class MastodonProvider(SocialProvider):
         for position, media_path in enumerate(content.media_files or []):
             digest = _file_digest(media_path)
             cache_key = self._upload_cache_key(access_token, content.idempotency_key, position, digest)
-            media_id, state = self._reuse_or_upload(access_token, media_path, cache_key, content.upload_cache)
+            media_id, state = self._reuse_or_upload(
+                access_token, media_path, cache_key, content.upload_cache, content.alt_text(position)
+            )
             media_ids.append(media_id)
             digests.append(digest)
             if state == _PROCESSING:
@@ -481,8 +486,11 @@ class MastodonProvider(SocialProvider):
     # Media upload
     # ------------------------------------------------------------------
 
-    def _upload_media(self, access_token: str, file_path: str) -> tuple[str, bool]:
+    def _upload_media(self, access_token: str, file_path: str, description: str = "") -> tuple[str, bool]:
         """Upload a media file. Returns its media ID and whether it is ready to attach.
+
+        ``description`` is the alt text (cut to Mastodon's default 1,500 characters).
+        https://docs.joinmastodon.org/methods/media/
 
         200 means processed; 202 means Mastodon accepted the file and is still
         processing it, which is the normal answer for video.
@@ -492,6 +500,7 @@ class MastodonProvider(SocialProvider):
                 "POST",
                 f"{self.instance_url}/api/v2/media",
                 access_token=access_token,
+                data={"description": description[:1500]} if description else None,
                 files={"file": f},
                 ambiguous_on_failure=False,
             )
@@ -515,7 +524,7 @@ class MastodonProvider(SocialProvider):
         return f"mastodon-media:{account}:{publish}:{position}:{digest}"
 
     def _reuse_or_upload(
-        self, access_token: str, file_path: str, key: str | None, cache: UploadCache | None
+        self, access_token: str, file_path: str, key: str | None, cache: UploadCache | None, description: str = ""
     ) -> tuple[str, str]:
         """Return a media ID for this file and its state, uploading only if needed.
 
@@ -532,7 +541,7 @@ class MastodonProvider(SocialProvider):
             # Attached to a status already (an earlier attempt posted, but its
             # response was lost) or cleaned up by the instance: it cannot be
             # attached again. The idempotency key still finds that status.
-        media_id, ready = self._upload_media(access_token, file_path)
+        media_id, ready = self._upload_media(access_token, file_path, description)
         if cache is not None and key is not None:
             cache.set(key, media_id, UPLOAD_REUSE_TTL)
         return media_id, _READY if ready else _PROCESSING
