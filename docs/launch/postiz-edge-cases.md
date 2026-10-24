@@ -70,8 +70,8 @@ Research date: 2026-10-24. Read-only on code. Not committed.
 |---|---|---|---|
 | Publishing before the container is FINISHED fails with "media not found" (4279009). | PZ@5536d8a7, PZ#1364 | handled: `providers/threads.py:378-415` (polls IN_PROGRESS/FINISHED/ERROR/EXPIRED). | none |
 | `UNKNOWN` container error and 2207052 on media. | PZ@e6251b25, PZ#1364 | **NOT handled.** An ERROR status is a generic retryable `PublishError` (`threads.py:398-405`), with no subcode parsing. | Same Meta classifier. |
-| More than 3 URLs in a post gives `bad_body`. | PZ#1203 | **NOT handled.** There is no link-count rule. | Add a post-settings validation (warn or block above the real limit; verify the limit first). |
-| Character counter wrong for non-ASCII (Cyrillic counted double). | PZ#2218 | partial. The server counts code points, so it is correct. The composer counts UTF-16 units (`templates/composer/compose.html:2423-2433`), which is wrong for emoji and other astral characters. | See the cross-cutting "caption counting" row. |
+| More than 3 URLs in a post gives `bad_body`. | PZ#1203 | **FIXED** (`postdelegate/text-limits`). The documented limit is now 5 different links (developers.facebook.com/docs/threads/posts; `THREADS_API__LINK_LIMIT_EXCEEDED` since 2025-12-22), not 3. `ThreadsProvider.max_links = 5`, enforced at schedule and publish time by `text_blocker` (`providers/base.py` `text_issue`). | none |
+| Character counter wrong for non-ASCII (Cyrillic counted double). | PZ#2218 | **FIXED** (`postdelegate/text-limits`). One rule per network: `SocialProvider.text_length_unit` (Threads counts an emoji as its UTF-8 bytes; the composer counts through `static/js/caption-count.js`, run against the server function in `tests/providers/test_text_counting.py`). | none |
 | Long-lived token 60-day refresh. | BB@14555d1 | handled: `threads.py:244-262`, `apps/social_accounts/tasks.py:18` (expiry bootstrap). | none |
 | Images in comments and thread replies. | PZ@7c265e5f | handled: reply-chain threads (`threads.py:325`, `engine.py:2207-2330`). | none |
 
@@ -93,7 +93,7 @@ Research date: 2026-10-24. Read-only on code. Not committed.
 
 | Edge case | Evidence | PostDelegate status | Suggested fix |
 |---|---|---|---|
-| `LinkedIn-Version` header sunsets after about 12 months. A dead version gives 426 NONEXISTENT_VERSION and every post fails. | PZ#2005, PZ#1187, BB#37 | partial. Pinned at `202604` (`providers/linkedin.py:55-59`). There is no 426 handling or alert. When the version sunsets, every post fails with a generic error. | Map 426 to a clear operator-facing error, alert on it, and put a calendar reminder at about month 10. |
+| `LinkedIn-Version` header sunsets after about 12 months. A dead version gives 426 NONEXISTENT_VERSION and every post fails. | PZ#2005, PZ#1187, BB#37 | **FIXED** (`postdelegate/text-limits`). The version is the `LINKEDIN_API_VERSION` setting; a 426 / `NONEXISTENT_VERSION` becomes `ApiVersionSunsetError` (permanent, clear message), logs CRITICAL and notifies staff (`PLATFORM_API_ALERT`, once per 6 h). Procedure and month-10 reminder: `docs/launch/platform-api-versions.md`. | none |
 | OAuth `prompt=none` skips newly added scopes, so the connect fails with "Not enough scopes". | PZ#1580, PZ#1582, BB#26 | handled / n/a. `get_auth_url` (`linkedin.py:~250`) sends no `prompt=none`. Personal scopes are the self-serve set. | none |
 | Reserved characters in commentary truncate or corrupt the post. | BB@8107cf2 | handled: `linkedin.py:74-100`, and the composer counts escapes (`providers/__init__.py:89-105`). | none |
 | Images over 36 MP, forced to 1000px. | PZ@5daee690 | partial. The decode ceiling is 30 MP (`apps/media_library/services.py:412`) and we don't resize. I did not find a LinkedIn pixel rule. | Add `max_width`/`max_height` or an area rule to `LINKEDIN_MEDIA_RULES`. |
@@ -156,11 +156,11 @@ Research date: 2026-10-24. Read-only on code. Not committed.
 
 | Edge case | Evidence | PostDelegate status | Suggested fix |
 |---|---|---|---|
-| The 300 limit is in graphemes. Emoji, ZWJ sequences and flags count as one. | PZ#388 | **Partial.** The server uses `len()`, which counts code points (`providers/bluesky.py:502`, `449`). The composer uses UTF-16 `.length` (`compose.html:2427`). A family emoji is 1 grapheme but 5+ code points and 8 UTF-16 units. It is rejected early, or a legitimate post is blocked. | Use a grapheme segmenter on both sides (Python `regex` `\X`; JS `Intl.Segmenter`). |
+| The 300 limit is in graphemes. Emoji, ZWJ sequences and flags count as one. | PZ#388 | **FIXED** (`postdelegate/text-limits`). Server counts graphemes (`regex` `\X`) plus the lexicon's 3,000-byte cap; the composer uses `Intl.Segmenter`; both run the same vectors in tests. | none |
 | Images need `aspectRatio` or the preview frame is wrong. | PZ#885, PZ@81342042 | **NOT handled.** The image embed sends only `alt` and `image` (`bluesky.py:672-673`). | Send `aspectRatio{width,height}` from the asset metadata (video too). |
 | Images over 1 MB are rejected (blob limit); Postiz compressed, we block. | PZ#443, PZ#412 | partial. The rule blocks at schedule time (`bluesky.py:70`), so the user must shrink the file. No auto-resize. | Offer auto-recompress to under 1 MB (Pillow). |
-| Link facets: trailing punctuation, and hashtag/mention byte offsets. | PZ@fab0b524, PZ#952 | partial. UTF-8 byte offsets are correct (`bluesky.py:579-611`). The URL regex `https?://[^\s\)\]>]+` keeps a trailing `.` or `,` in the link. The hashtag `\w+` accepts pure numbers. | Strip trailing punctuation. |
-| Link preview (card) embed. | PZ#394 | **NOT handled.** Only images and video embeds exist (`bluesky.py:656-679`). | Optional. |
+| Link facets: trailing punctuation, and hashtag/mention byte offsets. | PZ@fab0b524, PZ#952 | **FIXED** (`postdelegate/text-limits`). Detection follows the atproto SDK: trailing punctuation and unmatched `)` dropped, hashtags need a non-digit and are at most 64 characters, byte offsets checked after multibyte text. | none |
+| Link preview (card) embed. | PZ#394 | **FIXED** (`postdelegate/text-limits`). A post with a link and no media gets an `app.bsky.embed.external` card (title, description, thumbnail) built through the autoposter's SSRF-safe fetch; a failure only costs the card. Thumbnails over 1 MB are left off. | none |
 | One alt text for all images; alt text lost. | PZ#695 | partial. `content.extra["alt_text"]` is a single string (`bluesky.py:672`), not the per-asset alt stored in `MediaAsset.alt_text` (`apps/media_library/models.py:138`). | Pass per-asset alt in `PublishContent`. |
 | Video through the video service (job status polling). | PZ#879 | partial. `app.bsky.embed.video` is posted with a blob uploaded to the PDS (`bluesky.py:661-668`) rather than through `video.bsky.app` with job polling. This may fail above the PDS blob limit. | Verify with a 50-100 MB video. |
 | Thread order and reply `cid`. | PZ#1123, PZ@aa12f100 | handled: reply-chain threads with `find_thread_part` and `getPosts` for the cid (`bluesky.py:430-445`). | none |
@@ -175,7 +175,7 @@ Research date: 2026-10-24. Read-only on code. Not committed.
 | Media attachment limit (4), described and processed asynchronously (206 until done, 422 when failed). | PZ#1105, PZ#1811, BB@91cbb9a | handled: `providers/mastodon.py:50-79`, `381-400`, `540-620`. The upload is reused across retries. | none |
 | Alt text is not sent. | PZ#948, PZ@09f42742 | **NOT handled.** | See the alt-text row. |
 | Limit read from the instance (`max_characters`). | PZ#1083 | handled: `mastodon.py:321`. | none |
-| URLs count 23 characters; remote mentions count the username only. | PZ#1149 | **NOT handled.** There is no `caption_length` override for Mastodon (`providers/base.py:437` default `len`). The composer over-counts, which blocks valid posts. | Add `caption_length` for Mastodon. |
+| URLs count 23 characters; remote mentions count the username only. | PZ#1149 | **FIXED** (`postdelegate/text-limits`). `MastodonProvider.url_counts_as = 23`, `mention_domain_counts = False`, same rule in the composer. Still open: an instance's own `max_characters` / `characters_reserved_per_url` (see open questions). | none |
 | Thread posts: only the first is published. | PZ#1525 | handled: the engine's thread parts (`engine.py:2207-2330`). | none |
 | Instance picker and `scope` vs `scopes`. | PZ#1054, PZ#1141, BB@9fd2201 | handled. | none |
 
@@ -188,7 +188,7 @@ Research date: 2026-10-24. Read-only on code. Not committed.
 | Discord content is capped at 2000; embed suppression; the 50001/50013 permission errors. | PZ#378, PZ#915, PZ@d6bc6eb0 | handled: `providers/discord.py:65`, `98-99`, `129`, `197-210`. | none |
 | Slack `chat.postMessage` returns `ok:false` with HTTP 200, so failures are marked published. Video is rejected. The old 280-char cap. | PZ@4e83569e, PZ@678acd4a, PZ#880, PZ#1172 | handled: `providers/slack.py:209-240` (error code mapping, rate limits). | none |
 | Lemmy errors surface in the response instead of crashing; Nostr key as bytes; VK errors marked completed. | PZ@0a2fc960, PZ@f9e0d010, PZ@96bca725 | handled: `lemmy.py:188-203`, `nostr.py:421`, and the base ambiguity guard. | none |
-| GMB: the post can be created in REJECTED state, or return a non-JSON body. The release URL is `searchUrl`. | PZ@f700b8a1, PZ@1d965049, PZ@6345ca57 | **Partial.** `providers/google_business.py:511-521` treats any 2xx JSON as success and returns `searchUrl`. It does not check `state == REJECTED`. | After create, read `state` and fail on REJECTED. |
+| GMB: the post can be created in REJECTED state, or return a non-JSON body. The release URL is `searchUrl`. | PZ@f700b8a1, PZ@1d965049, PZ@6345ca57 | **FIXED** (`postdelegate/text-limits`). After create, `state` is read: REJECTED fails permanently with the reason, PROCESSING is polled up to 20 s then accepted. Still open: a non-JSON body. | none |
 | GMB localPosts URL malformed, and SERVICE_DISABLED. | PZ#1964, PZ#1692 | partial. The URL is built from `location_id` (`google_business.py:511`). I did not verify account-prefix handling. | Add a unit test against the documented path. |
 | WordPress needs a real User-Agent. Connect errors. | PZ@b0103f73, PZ@3c7a6863 | partial. SSRF-checked site URL (`engine.py:147`), but I did not verify the User-Agent on WordPress requests. | Send a UA header. |
 | Hashnode endpoint and schema changed. | PZ@12978bef, PZ@0ffdbc97 | partial. `providers/hashnode.py` was not diffed against the live schema. | Smoke-test publish. |
@@ -248,9 +248,9 @@ Research date: 2026-10-24. Read-only on code. Not committed.
 
 | Edge case | Evidence | PostDelegate status | Suggested fix |
 |---|---|---|---|
-| Composer counts UTF-16 units (`text.length`) while the server counts code points. They disagree on every emoji outside the BMP. | PZ#2218, PZ#1149 | **Partial.** `compose.html:2423-2433` vs `providers/base.py:437-440` and `providers/__init__.py:89-105`. | Count code points (`[...text].length`) client-side, and graphemes for Bluesky. |
-| URL weighting: X (23) is done. Mastodon (23), Bluesky (link text counts in full, parameters included) and Threads are not. | PZ#1149 | partial. Only X has a `caption_length`. | Add per-provider `caption_length`. |
-| Silent truncation. Pinterest descriptions are cut with `[: self.max_caption_length]` (`pinterest.py:236`), and TikTok's title is cut (`tiktok.py:516`). | PZ#273, PZ#442, PZ#483 (truncated text) | partial. The composer enforces `PLATFORM_CHAR_LIMITS` (`models.py:~500`), but the provider cuts silently if a limit slips through. | Raise `PublishError` instead of truncating. |
+| Composer counts UTF-16 units (`text.length`) while the server counts code points. They disagree on every emoji outside the BMP. | PZ#2218, PZ#1149 | **FIXED** (`postdelegate/text-limits`). See above: per-network unit, shared by server and composer. | none |
+| URL weighting: X (23) is done. Mastodon (23), Bluesky (link text counts in full, parameters included) and Threads are not. | PZ#1149 | **FIXED** (`postdelegate/text-limits`). Mastodon 23; Bluesky and Threads count links in full (documented); `url_counts_as` is a provider capability. | none |
+| Silent truncation. Pinterest descriptions are cut with `[: self.max_caption_length]` (`pinterest.py:236`), and TikTok's title is cut (`tiktok.py:516`). | PZ#273, PZ#442, PZ#483 (truncated text) | **FIXED** (`postdelegate/text-limits`). `SocialProvider._require_fit` refuses (non-retryable, with the length and limit) for Threads text/replies, Pinterest title/description/alt, TikTok caption/photo title/description, YouTube title/description, DEV.to and Hashnode titles, LinkedIn document title; the engine and every scheduling path also run `text_blocker` first. | none |
 
 ### Webhooks and platform deprecations
 
@@ -316,16 +316,16 @@ For the record, the fixes that matter for launch are all in our history:
 7. **No image/video normalisation.** HEIC, WebP and PNG for JPEG-only Instagram, and video codec/audio. Phone uploads fail at the platform. `apps/media_library/services.py`, `instagram.py:119-127`.
 8. **Unmeasured video (ffprobe failure) silently bypasses all duration, size and ratio rules.** `media_library/services.py:539-551`, `composer/services.py:771`. Related to BB#204.
 9. **Instagram container flow:** a 120 s timeout, no container reuse on retry, and the code 100/33 status-GET bug. `instagram.py:101`, `521-546`.
-10. **Character counting mismatch.** The composer uses UTF-16, the server uses code points, and Bluesky needs graphemes. Mastodon URLs count 23. `compose.html:2423-2433`, `bluesky.py:502`. It either blocks valid posts or lets over-limit ones through, and it hits emoji-heavy users every day.
+10. ~~**Character counting mismatch.**~~ FIXED on `postdelegate/text-limits`. The composer uses UTF-16, the server uses code points, and Bluesky needs graphemes. Mastodon URLs count 23. `compose.html:2423-2433`, `bluesky.py:502`. It either blocks valid posts or lets over-limit ones through, and it hits emoji-heavy users every day.
 11. **Bluesky:** no `aspectRatio` on images and video, a 1 MB image block with no auto-compress, no link card, and video through `uploadBlob` rather than the video service. `bluesky.py:656-679`.
 12. **TikTok 64 MB single-chunk limit is not in the schedule-time media rule.** Users find out when publishing fails. `tiktok.py:83-85`, `128-160`, `641-650`.
-13. **LinkedIn API version sunset (`202604`) has no 426 detection or alert.** When it expires, every LinkedIn post fails at once. `linkedin.py:55-59`.
-14. **GMB `REJECTED` state is not checked.** The post reports success while nothing is live. `google_business.py:511-521`.
+13. ~~**LinkedIn API version sunset (`202604`) has no 426 detection or alert.** When it expires, every LinkedIn post fails at once. `linkedin.py:55-59`.~~ FIXED on `postdelegate/text-limits`.
+14. ~~**GMB `REJECTED` state is not checked.** The post reports success while nothing is live. `google_business.py:511-521`.~~ FIXED on `postdelegate/text-limits`.
 15. **Pinterest transient 5xx and the video-pin routing:** `pinterest.py:250-253`. This falls under #1 and the routing should use the sniffed type.
-16. **Threads link-count rule (`bad_body` above the limit) and the UNKNOWN container error.** `threads.py:398`.
+16. **Threads link-count rule** FIXED on `postdelegate/text-limits` (limit is 5); the UNKNOWN container error is still open (error-handling work). `threads.py:398`.
 17. **Media fetch preflight.** Verify `APP_URL` is public HTTPS and reachable by Meta, or the 2207052 and 9004 errors are all you get. `engine.py:449`.
 18. **No refresh-token expiry tracking** (Pinterest 60 days, LinkedIn). The account dies silently after the window. `models.py:430-445`.
-19. **Silent truncation in providers** (Pinterest description, TikTok title) rather than a validation error. `pinterest.py:236`, `tiktok.py:516`.
+19. ~~**Silent truncation in providers** (Pinterest description, TikTok title) rather than a validation error. `pinterest.py:236`, `tiktok.py:516`.~~ FIXED on `postdelegate/text-limits`.
 20. **Overdue backlog after an outage publishes at once with no maximum lateness.** `engine.py:513-541`. Lower likelihood, but there is real reputational risk (a three-day-old "flash sale" post going out).
 
 ### Verify before launch (cheap)

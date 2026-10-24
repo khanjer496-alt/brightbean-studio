@@ -28,6 +28,7 @@ LINK_MAX_LENGTH = 1000
 IMAGE_TYPES = frozenset({"image/jpeg", "image/png", "image/webp", "image/gif"})
 _HTML_TYPES = frozenset({"text/html", "application/xhtml+xml"})
 _META = re.compile(r"<meta\b[^>]*>", re.IGNORECASE)
+_TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
 _ATTR = re.compile(r"""([a-zA-Z:_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')""")
 
 
@@ -128,8 +129,8 @@ def _is_web(url: str) -> bool:
     return bool(url) and url.lower().startswith(("http://", "https://"))
 
 
-def article_image(url: str) -> str:
-    """The article's own image (``og:image``, else ``twitter:image``), or "" when the page has none or can't be read."""
+def _page_meta(url: str) -> tuple[dict[str, str], str]:
+    """``({meta name: content}, final url)`` for the page at ``url``; ``({}, "")`` when it can't be read."""
     response, final_url = safe_fetch(
         url,
         {"Accept": "text/html,application/xhtml+xml;q=0.9", "User-Agent": _agent("Link Reader")},
@@ -137,18 +138,43 @@ def article_image(url: str) -> str:
         content_types=_HTML_TYPES,
     )
     if response is None or response.status_code >= 400:
-        return ""
+        return {}, ""
     found: dict[str, str] = {}
     for tag in _META.findall(response.text[:200_000]):
         attrs = {m[0].lower(): html.unescape(m[1] or m[2]) for m in _ATTR.findall(tag)}
         name = (attrs.get("property") or attrs.get("name") or "").lower()
-        if name in ("og:image", "og:image:url", "og:image:secure_url", "twitter:image") and attrs.get("content"):
+        if name and attrs.get("content"):
             found.setdefault(name, attrs["content"].strip())
+    title = _TITLE.search(response.text[:200_000])
+    if title:
+        found.setdefault("title", html.unescape(" ".join(title.group(1).split())))
+    return found, final_url or url
+
+
+def _meta_image(found: dict[str, str], base_url: str) -> str:
     for name in ("og:image", "og:image:secure_url", "og:image:url", "twitter:image"):
         if found.get(name):
-            absolute = urljoin(final_url or url, found[name])
+            absolute = urljoin(base_url, found[name])
             return absolute if _is_web(absolute) else ""
     return ""
+
+
+def article_image(url: str) -> str:
+    """The article's own image (``og:image``, else ``twitter:image``), or "" when the page has none or can't be read."""
+    found, base_url = _page_meta(url)
+    return _meta_image(found, base_url)
+
+
+def link_preview(url: str) -> dict[str, str]:
+    """``{"title", "description", "image_url"}`` of the page at ``url`` for a link card; blank values when unreadable."""
+    found, base_url = _page_meta(url)
+    return {
+        "title": (found.get("og:title") or found.get("twitter:title") or found.get("title") or "")[:300],
+        "description": (
+            found.get("og:description") or found.get("twitter:description") or found.get("description") or ""
+        )[:1000],
+        "image_url": _meta_image(found, base_url),
+    }
 
 
 def download_image(url: str) -> tuple[bytes, str] | None:

@@ -14,6 +14,7 @@ from urllib.parse import unquote, urlsplit
 import httpx
 
 from .exceptions import APIError, ProviderError, PublishError, RateLimitError
+from .text_counting import HASHTAG_RE, MENTION_RE, find_urls, text_length, utf8_length
 from .types import (
     AccountMetrics,
     AccountProfile,
@@ -309,6 +310,23 @@ class SocialProvider(ABC):
     # count as 23, CJK and emoji as 2), which the composer's live counter mirrors.
     caption_counting: ClassVar[str] = "characters"
 
+    # The unit one "character" of the caption limit is, per the platform's own documentation
+    # (``providers.text_counting.UNITS``). The composer's counter reads the same value, so the
+    # number the user sees is the number ``caption_length`` enforces.
+    text_length_unit: ClassVar[str] = "codepoints"
+
+    # When set, every link costs this many characters whatever its length (Mastodon: 23).
+    url_counts_as: ClassVar[int | None] = None
+
+    # False where a remote mention (``@user@remote.example``) counts as ``@user`` only (Mastodon).
+    mention_domain_counts: ClassVar[bool] = True
+
+    # Limits besides the caption length that the platform enforces on the text itself. None = none.
+    max_text_bytes: ClassVar[int | None] = None  # UTF-8 bytes (Bluesky's 3,000)
+    max_links: ClassVar[int | None] = None  # distinct links (Threads' 5)
+    max_hashtags: ClassVar[int | None] = None  # Instagram's 30
+    max_mentions: ClassVar[int | None] = None  # Instagram's 20
+
     # False when the platform can't be connected through a client connection
     # link (``apps.onboarding``), whose page only runs the plain OAuth flow.
     supports_connection_link: ClassVar[bool] = True
@@ -436,7 +454,59 @@ class SocialProvider(ABC):
     @classmethod
     def caption_length(cls, text: str) -> int:
         """``text``'s length as the platform counts it against the caption limit."""
-        return len(text)
+        return text_length(
+            text,
+            unit=cls.text_length_unit,
+            url_counts_as=cls.url_counts_as,
+            mention_domain_counts=cls.mention_domain_counts,
+        )
+
+    @classmethod
+    def text_issue(cls, text: str) -> str:
+        """Why ``text`` breaks a limit the platform enforces on it besides its length, or "".
+
+        Never cuts anything: the caller refuses the post with this sentence, so no platform
+        silently publishes less than was written.
+        """
+        text = text or ""
+        name = cls().platform_name
+        if cls.max_text_bytes and utf8_length(text) > cls.max_text_bytes:
+            return f"This text is {utf8_length(text)} bytes; {name} takes at most {cls.max_text_bytes} bytes."
+        if cls.max_links is not None:
+            links = len(set(find_urls(text)))
+            if links > cls.max_links:
+                return f"This text has {links} different links; {name} takes at most {cls.max_links} per post."
+        if cls.max_hashtags is not None:
+            tags = len(HASHTAG_RE.findall(text))
+            if tags > cls.max_hashtags:
+                return f"This text has {tags} hashtags; {name} takes at most {cls.max_hashtags} per post."
+        if cls.max_mentions is not None:
+            mentions = len(MENTION_RE.findall(text))
+            if mentions > cls.max_mentions:
+                return f"This text has {mentions} @mentions; {name} takes at most {cls.max_mentions} per post."
+        return ""
+
+    def _require_fit(self, label: str, value: str, limit: int, *, caption: bool = False) -> str:
+        """``value`` as it is, or a non-retryable ``PublishError`` when it is over ``limit``.
+
+        For a text field the platform caps (caption, title, description). A provider never cuts
+        what the user wrote to make it fit: the post fails with a sentence they can act on.
+        A ``caption`` is counted with the platform's own rule (``caption_length``) and held to
+        any other limit it enforces on the text (``text_issue``); any other field (a title)
+        is counted in code points.
+        """
+        value = value or ""
+        length = self.caption_length(value) if caption else len(value)
+        if length > limit:
+            raise PublishError(
+                f"{label} is {length} characters; {self.platform_name} takes at most {limit}.",
+                platform=self.platform_name,
+                retryable=False,
+            )
+        issue = self.text_issue(value) if caption else ""
+        if issue:
+            raise PublishError(issue, platform=self.platform_name, retryable=False)
+        return value
 
     @classmethod
     def char_limit_for_account(cls, account) -> int | None:

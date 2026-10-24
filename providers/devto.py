@@ -130,7 +130,7 @@ class DevtoProvider(SocialProvider):
 
         body = content.description or content.text or ""
         article: dict = {
-            "title": title[:MAX_TITLE_LENGTH],
+            "title": self._require_fit("The title", title, MAX_TITLE_LENGTH),
             "body_markdown": body,
             "published": True,
         }

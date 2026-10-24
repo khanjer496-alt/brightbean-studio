@@ -56,6 +56,9 @@ API_BASE = "https://www.googleapis.com/youtube/v3"
 UPLOAD_BASE = "https://www.googleapis.com/upload/youtube/v3"
 ANALYTICS_BASE = "https://youtubeanalytics.googleapis.com/v2"
 
+# https://developers.google.com/youtube/v3/docs/videos: a title is at most 100 characters.
+TITLE_MAX_LENGTH = 100
+
 # ``videos.insert``: both the resumable-session POST and the PUT that carries
 # the bytes, whose Location URL keeps this path and adds an ``upload_id``.
 # Matched on the path rather than the whole upload host, because
@@ -278,6 +281,9 @@ class YouTubeProvider(SocialProvider):
     # Metadata
     # ------------------------------------------------------------------
 
+    # https://developers.google.com/youtube/v3/docs/videos: the description is at most "5000 bytes".
+    text_length_unit = "utf8_bytes"
+
     @property
     def platform_name(self) -> str:
         return "YouTube"
@@ -465,8 +471,10 @@ class YouTubeProvider(SocialProvider):
         description = content.description or content.text or ""
 
         # Shorts: add #Shorts tag if not already present
+        title_label = "The title"
         if content.post_type == PostType.SHORT and "#Shorts" not in title:
             title = f"{title} #Shorts".strip()
+            title_label = "The title with #Shorts added"
 
         privacy_status = content.extra.get("privacy_status", "public")
         made_for_kids = content.extra.get("self_declared_made_for_kids", False)
@@ -475,8 +483,8 @@ class YouTubeProvider(SocialProvider):
 
         metadata = {
             "snippet": {
-                "title": title[:100],
-                "description": description[: self.max_caption_length],
+                "title": self._require_fit(title_label, title, TITLE_MAX_LENGTH),
+                "description": self._require_fit("The description", description, self.max_caption_length, caption=True),
                 "tags": tags,
                 "categoryId": category_id,
             },

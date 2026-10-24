@@ -122,6 +122,9 @@ class FarcasterProvider(SocialProvider):
     # Metadata
     # ------------------------------------------------------------------
 
+    # A cast is 320 UTF-8 bytes, not characters.
+    text_length_unit = "utf8_bytes"
+
     @property
     def platform_name(self) -> str:
         return "Farcaster"

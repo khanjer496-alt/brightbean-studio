@@ -142,6 +142,7 @@ DEFAULT_CHANNELS: dict[str, dict[str, bool]] = {
     EventType.AI_VISIBILITY_REPORT: {Channel.IN_APP: True, Channel.EMAIL: False},
     EventType.APPROVAL_DIGEST: {Channel.IN_APP: False, Channel.EMAIL: True},
     EventType.POST_COMMENT: {Channel.IN_APP: True, Channel.EMAIL: False},
+    EventType.PLATFORM_API_ALERT: {Channel.IN_APP: True, Channel.EMAIL: True},
 }
 
 # Event types considered non-critical (suppressed during quiet hours).

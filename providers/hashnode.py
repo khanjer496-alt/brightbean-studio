@@ -240,7 +240,7 @@ class HashnodeProvider(BlogProvider):
             "publicationId": publication,
         }
         if extra.get("subtitle"):
-            article["subtitle"] = str(extra["subtitle"])[:MAX_SUBTITLE_LENGTH]
+            article["subtitle"] = self._require_fit("The subtitle", str(extra["subtitle"]), MAX_SUBTITLE_LENGTH)
         canonical = self._canonical_url(content)
         if canonical:
             article["originalArticleURL"] = canonical

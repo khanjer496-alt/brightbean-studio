@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import re
 import tempfile
 import time
 from datetime import UTC, datetime
@@ -12,8 +13,9 @@ from urllib.parse import quote, urlencode
 
 import httpx
 
+from .api_versions import report_version_sunset
 from .base import SocialProvider
-from .exceptions import APIError, OAuthError, PublishError
+from .exceptions import APIError, ApiVersionSunsetError, OAuthError, PublishError
 from .types import (
     AccountProfile,
     AuthType,
@@ -51,14 +53,34 @@ API_BASE = "https://api.linkedin.com"
 # what LinkedIn will accept.
 MAX_REMOTE_MEDIA_BYTES = 20 * 1024 * 1024
 
+# A document post's title (the Posts API takes at most 400 characters).
+DOCUMENT_TITLE_MAX = 400
+
+# LinkedIn retires an API version a year after releasing it, and then every call fails with
+# 426 NONEXISTENT_VERSION. The version is the LINKEDIN_API_VERSION setting (YYYYMM); move it
+# forward as docs/launch/platform-api-versions.md describes, before the current one falls out
+# of support (https://learn.microsoft.com/en-us/linkedin/marketing/versioning).
+DEFAULT_LINKEDIN_API_VERSION = "202604"
+LINKEDIN_API_VERSION_SETTING = "LINKEDIN_API_VERSION"
+
+
+def _configured_api_version() -> str:
+    version = os.environ.get(LINKEDIN_API_VERSION_SETTING, "").strip() or DEFAULT_LINKEDIN_API_VERSION
+    if not re.fullmatch(r"20\d{2}(0[1-9]|1[0-2])", version):
+        raise ValueError(f"{LINKEDIN_API_VERSION_SETTING} must be a YYYYMM version such as 202604, got {version!r}")
+    return version
+
+
+LINKEDIN_API_VERSION = _configured_api_version()
+
 # Required headers for LinkedIn REST API.
-# LinkedIn sunsets versioned APIs after ~1 year; bump LinkedIn-Version
-# to the latest YYYYMM at https://learn.microsoft.com/en-us/linkedin/marketing/versioning
-# before the current value falls out of support.
 LINKEDIN_HEADERS = {
-    "LinkedIn-Version": "202604",
+    "LinkedIn-Version": LINKEDIN_API_VERSION,
     "X-Restli-Protocol-Version": "2.0.0",
 }
+
+# What LinkedIn answers when the version header names a retired (or never released) version.
+_VERSION_SUNSET_CODES = frozenset({"NONEXISTENT_VERSION", "REVOKED_VERSION"})
 
 
 def _encode_urn(urn: str) -> str:
@@ -473,7 +495,12 @@ class LinkedInProvider(SocialProvider):
         self._wait_for_document_available(access_token, document_urn, should_stop=content.should_stop)
 
         body = self._build_post_body(author, content.text)
-        body["content"] = {"media": {"title": (content.title or "Document")[:400], "id": document_urn}}
+        body["content"] = {
+            "media": {
+                "title": self._require_fit("The document title", content.title or "Document", DOCUMENT_TITLE_MAX),
+                "id": document_urn,
+            }
+        }
         resp = self._request(
             "POST", f"{API_BASE}/rest/posts", access_token=access_token, headers=LINKEDIN_HEADERS, json=body
         )
@@ -1113,6 +1140,25 @@ class LinkedInProvider(SocialProvider):
                 platform=self.platform_name,
             ),
         )
+
+    def _error_for_response(self, response):
+        """Map an HTTP failure, recognising LinkedIn retiring the API version we send.
+
+        A retired version answers 426 with ``code: NONEXISTENT_VERSION``. That isn't about the
+        post, so it fails permanently with a sentence that says so, and staff are alerted.
+        """
+        body = self._safe_json(response)
+        code = str(body.get("code") or "") if isinstance(body, dict) else ""
+        if response.status_code == 426 or code in _VERSION_SUNSET_CODES:
+            report_version_sunset("LinkedIn", LINKEDIN_HEADERS["LinkedIn-Version"], LINKEDIN_API_VERSION_SETTING)
+            return ApiVersionSunsetError(
+                f"LinkedIn has retired the API version this app uses (HTTP {response.status_code}). "
+                "We have been alerted and will update it; retry the post once we have.",
+                status_code=response.status_code,
+                platform=self.platform_name,
+                raw_response=body if isinstance(body, dict) else {},
+            )
+        return super()._error_for_response(response)
 
     @staticmethod
     def _post_urn_to_url(urn: str) -> str | None:

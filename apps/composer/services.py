@@ -209,6 +209,8 @@ def create_post(
             media_types=usable_media_types(asset_map.values()),
             platform_extra=extra,
         ) or media_rules_blocker(social_account, [asset_map[u] for _mid, u in resolved if u is not None])
+        override_caption = ((platform_overrides or {}).get(social_account.id) or {}).get("caption")
+        reason = reason or text_blocker(social_account, caption if override_caption is None else override_caption)
         if reason:
             raise ValueError(reason)
 
@@ -868,6 +870,39 @@ def media_rules_blocker(social_account, assets, *, platform_extra: dict | None =
     return next((issue.message for issue in issues if issue.is_error), "")
 
 
+def text_blocker(social_account, text: str, *, counting=None) -> str:
+    """Why ``text`` can't be published to ``social_account`` as written, or "".
+
+    The one place a caption is held to the platform's limits, so the API, the
+    MCP tools, the calendar and the publisher refuse what the composer's
+    counter already flags, in the same units (``SocialProvider.text_length_unit``).
+    Nothing is cut to fit: a caption the platform would shorten or reject is
+    returned to its author with the sentence to act on. ``counting`` rewrites
+    links still to be shortened to the length they will have (``link_counting``).
+    """
+    from providers import PROVIDER_REGISTRY
+
+    measured = counting(text or "") if counting else text or ""
+    length = social_account.caption_wire_length(measured)
+    limit = social_account.char_limit
+    if length > limit:
+        name = social_account.get_platform_display()
+        return f"The caption is {length} characters; {name} takes at most {limit}."
+    provider_cls = PROVIDER_REGISTRY.get(social_account.platform)
+    return provider_cls.text_issue(measured) if provider_cls else ""
+
+
+def platform_post_text_blocker(platform_post) -> str:
+    """``text_blocker`` for the caption ``platform_post`` would publish."""
+    from apps.links.services import link_counting
+
+    return text_blocker(
+        platform_post.social_account,
+        platform_post.effective_caption,
+        counting=link_counting(platform_post.post.workspace, post=platform_post.post),
+    )
+
+
 def publish_blocker(social_account, *, media_types, platform_extra: dict | None = None) -> str:
     """Why a post can't publish to ``social_account`` as it stands, or "".
 
@@ -908,6 +943,8 @@ def require_publishable(platform_post, *, media_types=None, assets=None) -> None
         if assets is None:
             assets = post_media_assets(platform_post.post)
         reason = media_rules_blocker(platform_post.social_account, assets, platform_extra=platform_post.platform_extra)
+    if not reason:
+        reason = platform_post_text_blocker(platform_post)
     if not reason:
         # A thread the platform can't carry would publish its first part and
         # then strand the rest, so it is refused here with everything else.

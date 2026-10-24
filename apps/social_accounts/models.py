@@ -524,6 +524,20 @@ class SocialAccount(models.Model):
         provider_cls = PROVIDER_REGISTRY.get(self.platform)
         return provider_cls.caption_counting if provider_cls else "characters"
 
+    @property
+    def text_counting_rule(self) -> dict:
+        """How this platform counts a caption's characters: the unit, link weight and mention weight."""
+        from providers import PROVIDER_REGISTRY
+
+        provider_cls = PROVIDER_REGISTRY.get(self.platform)
+        if provider_cls is None:
+            return {"unit": "codepoints", "url_counts_as": None, "mention_domain_counts": True}
+        return {
+            "unit": provider_cls.text_length_unit,
+            "url_counts_as": provider_cls.url_counts_as,
+            "mention_domain_counts": provider_cls.mention_domain_counts,
+        }
+
     def caption_wire_length(self, text: str) -> int:
         """Caption length as this platform counts it, after any escaping.
 

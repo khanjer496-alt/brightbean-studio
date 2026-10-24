@@ -173,6 +173,11 @@ class MastodonProvider(SocialProvider):
     # Metadata
     # ------------------------------------------------------------------
 
+    # https://docs.joinmastodon.org/api/guidelines/ ("URLs in text always count for 23 characters");
+    # a remote mention counts as the username only (Mastodon's StatusLengthValidator).
+    url_counts_as = 23
+    mention_domain_counts = False
+
     @property
     def platform_name(self) -> str:
         return "Mastodon"

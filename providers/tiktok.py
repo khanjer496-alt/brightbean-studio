@@ -215,6 +215,10 @@ class TikTokProvider(SocialProvider):
     # Metadata
     # ------------------------------------------------------------------
 
+    # https://developers.tiktok.com/doc/content-posting-api-reference-direct-post: the title
+    # is "2200 in UTF-16 runes".
+    text_length_unit = "utf16"
+
     @property
     def platform_name(self) -> str:
         return "TikTok"
@@ -513,7 +517,9 @@ class TikTokProvider(SocialProvider):
 
     def _build_post_info(self, content: PublishContent, privacy_level: str) -> dict:
         post_info: dict[str, str | bool | int] = {
-            "title": (content.title or content.text or "")[: self.max_caption_length],
+            "title": self._require_fit(
+                "The caption", content.title or content.text, self.max_caption_length, caption=True
+            ),
             "privacy_level": privacy_level,
         }
         for field in OPTIONAL_POST_INFO_FIELDS:
@@ -549,9 +555,11 @@ class TikTokProvider(SocialProvider):
         # The caption goes in the description; a title is sent only when one was written, so it isn't repeated.
         title = (content.title or "").strip()
         if title:
-            post_info["title"] = title[:PHOTO_TITLE_MAX]
+            post_info["title"] = self._require_fit("The title", title, PHOTO_TITLE_MAX)
         if content.text:
-            post_info["description"] = content.text[:PHOTO_DESCRIPTION_MAX]
+            post_info["description"] = self._require_fit(
+                "The caption", content.text, PHOTO_DESCRIPTION_MAX, caption=True
+            )
         if not inbox:
             privacy_explicit = "privacy_level" in extra
             privacy = extra.get("privacy_level", DEFAULT_PRIVACY_LEVEL)
