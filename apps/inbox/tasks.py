@@ -552,6 +552,12 @@ class InboxSyncEngine:
                     ).get("update_time")
                     if first:
                         defaults["extra"]["review_reply"] = {**msg.extra["review_reply"], "first_replied_at": first}
+            if msg.message_type == InboxMessage.MessageType.REVIEW and obj.removed_from_platform:
+                # The platform shows the review again: undo the reconcile's archiving.
+                restored = defaults["extra"].pop("removed_previous_status", None)
+                defaults["extra"].pop("removed_from_platform_at", None)
+                if restored and obj.status == InboxMessage.Status.ARCHIVED:
+                    defaults["status"] = restored
             if (obj.extra or {}).get("is_deleted"):
                 defaults["body"] = ""
                 defaults["extra"].update(is_deleted=True, attachments=[])
@@ -650,6 +656,19 @@ class InboxSyncEngine:
 # schedule by apps.inbox.apps.InboxConfig. Polling is the always-on baseline
 # documented in architecture.md (webhooks, where configured, supplement it).
 INBOX_SYNC_INTERVAL_SECONDS = 5 * 60  # every 5 minutes
+
+
+# The check for reviews deleted on the platform is staggered over the day: it
+# runs hourly and each location is only due once a day.
+REVIEW_RECONCILE_INTERVAL_SECONDS = 60 * 60
+
+
+@background(schedule=0)
+def reconcile_removed_reviews():
+    """Archive reviews the platform no longer lists (see ``review_reconcile``)."""
+    from .review_reconcile import reconcile_all
+
+    reconcile_all()
 
 
 @background(schedule=0)

@@ -641,6 +641,15 @@ class SocialProvider(ABC):
         """
         raise NotImplementedError(f"{self.platform_name} does not support reviews")
 
+    def list_review_ids(self, access_token: str) -> set[str] | None:
+        """Every review id the platform currently shows for the connected location, or None if the list is incomplete.
+
+        Ids only, so a full pass is cheap: the inbox compares them with what it
+        holds to find reviews deleted on the platform. Return None rather than
+        a partial set when the list could not be read to the end.
+        """
+        raise NotImplementedError(f"{self.platform_name} does not support reviews")
+
     def reply_to_review(self, access_token: str, review_id: str, text: str) -> ReplyResult:
         """Publish (or replace) the owner's public reply to a review."""
         raise NotImplementedError(f"{self.platform_name} does not support review replies")

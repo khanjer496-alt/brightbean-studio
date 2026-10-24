@@ -80,6 +80,9 @@
             {% if message.extra.create_time and message.extra.update_time and message.extra.create_time != message.extra.update_time %}
             <p class="mt-2 text-[11px] text-stone-500">Edited by the reviewer {{ message.received_at|date:"N j, Y" }}</p>
             {% endif %}
+            {% if message.removed_from_platform %}
+            <p class="mt-2 text-sm text-stone-500">This review is no longer on {{ message.social_account.get_platform_display }}. It was deleted or removed there, and is kept here as history.</p>
+            {% endif %}
             {% if message.extra.is_deleted %}
             <p class="text-sm text-stone-500">This message was deleted by its sender.</p>
             {% elif message.extra.is_unsupported %}
