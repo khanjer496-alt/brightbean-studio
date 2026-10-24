@@ -179,3 +179,37 @@ class TestGoogleBusinessOptions:
         )
         assert response.status_code == 422
         assert "start and end" in response.json()["detail"]
+
+
+@pytest.mark.django_db
+class TestTikTokOptions:
+    def test_declared_fields_and_the_tiktok_panel_save_together(self, client, user, workspace):
+        account = make_account(workspace, "tiktok")
+        client.force_login(user)
+        data = form(account, post_mode="MEDIA_UPLOAD", auto_add_music="")
+        data[f"tiktok_privacy_level_{account.id}"] = "SELF_ONLY"
+        save(client, workspace, data)
+        extra = PlatformPost.objects.get(social_account=account).platform_extra
+        assert extra["post_mode"] == "MEDIA_UPLOAD"
+        assert extra["privacy_level"] == "SELF_ONLY"
+        # A later save from the TikTok panel alone keeps the delivery choice.
+        only_panel = {
+            "action": "save_draft",
+            "title": "T",
+            "caption": "Body",
+            "selected_accounts": str(account.id),
+            f"tiktok_privacy_level_{account.id}": "SELF_ONLY",
+        }
+        post = Post.objects.get(workspace=workspace)
+        url = reverse("composer:save_post_edit", kwargs={"workspace_id": workspace.id, "post_id": post.id})
+        client.post(url, data=only_panel)
+        assert PlatformPost.objects.get(social_account=account).platform_extra["post_mode"] == "MEDIA_UPLOAD"
+
+    def test_the_api_accepts_the_delivery_and_music_options(self, user, workspace):
+        account = make_account(workspace, "tiktok")
+        api = api_client_for(user, workspace, account)
+        response = api_create(
+            api, account, action="draft", post_settings={"post_mode": "MEDIA_UPLOAD", "auto_add_music": False}
+        )
+        assert response.status_code == 201
+        assert PlatformPost.objects.get(social_account=account).platform_extra["post_mode"] == "MEDIA_UPLOAD"

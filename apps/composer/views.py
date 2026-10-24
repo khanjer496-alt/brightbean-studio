@@ -352,7 +352,11 @@ def _sync_platform_posts(request, post, workspace, initial_status=None):
             # Comment / Duet / Stitch are independent interaction settings —
             # TikTok's UX guidelines require a separate toggle per interaction,
             # each greyed out on its own when the creator disabled it.
-            extra = {
+            # Keys the platform declares as post settings (delivery, music) are saved by the generic
+            # block below; keep what is stored so this branch doesn't wipe them.
+            declared = {field.key for field in post_settings_for(account.platform)}
+            extra = {key: value for key, value in (pp.platform_extra or {}).items() if key in declared}
+            extra |= {
                 "disable_comment": request.POST.get(f"tiktok_allow_comment_{acc_id}") != "true",
                 "disable_duet": request.POST.get(f"tiktok_allow_duet_{acc_id}") != "true",
                 "disable_stitch": request.POST.get(f"tiktok_allow_stitch_{acc_id}") != "true",
@@ -377,7 +381,7 @@ def _sync_platform_posts(request, post, workspace, initial_status=None):
                     extra["video_cover_timestamp_ms"] = cover_ms_val
             pp.platform_extra = extra
 
-        elif post_settings_for(account.platform) and f"ps_panel_{acc_id}" in request.POST:
+        if post_settings_for(account.platform) and f"ps_panel_{acc_id}" in request.POST:
             # The platform declares its own per-post fields (a subreddit, a
             # flair); rebuild only those keys so anything else already stored
             # stays, and gate on the panel marker so a save from somewhere that

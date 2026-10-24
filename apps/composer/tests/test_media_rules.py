@@ -155,10 +155,11 @@ class TikTokRulesTest(TestCase):
         self.assertIn("at least 360x360px", _errors("tiktok", [_video(width=320, height=568)])[0])
         self.assertIn("at most 4096x4096px", _errors("tiktok", [_video(width=2160, height=7680)])[0])
 
-    def test_images_are_ignored_like_the_publisher_does(self):
-        """TikTok drops non-video attachments; the video-only blocker covers the rest."""
+    def test_photo_posts_take_up_to_35_images_and_no_video(self):
+        """Photo mode: images only, at most 35."""
         self.assertEqual(_issues("tiktok", [_asset()]), [])
-        self.assertEqual(_issues("tiktok", [_asset(), _video()]), [])
+        self.assertIn("at most 35 items", _errors("tiktok", [_asset() for _ in range(36)])[0])
+        self.assertIn("doesn't take", _errors("tiktok", [_asset(), _video()])[0])
 
 
 class YouTubeRulesTest(TestCase):

@@ -442,10 +442,18 @@ class PinterestBoardSelectionTests(AccountScopeTestsBase):
 
 
 class VideoOnlyPlatformTests(AccountScopeTestsBase):
-    """TikTok and YouTube publish nothing but video, so scheduling a post
-    without one only sets up a failure after its other platforms went out."""
+    """YouTube publishes nothing but video, so scheduling a post without one
+    only sets up a failure after its other platforms went out.
 
-    def test_scheduling_tiktok_without_a_video_is_refused(self):
+    TikTok takes photo posts too now, so the base's TikTok row is re-pointed at
+    YouTube here; ``tt_pp`` is simply "the row under test".
+    """
+
+    def setUp(self):
+        super().setUp()
+        SocialAccount.objects.filter(pk=self.tiktok.pk).update(platform="youtube")
+
+    def test_scheduling_youtube_without_a_video_is_refused(self):
         self._attach(MediaAsset.MediaType.IMAGE, "photo.jpg", post=self.post)
 
         response = self.client.post(self.save_url, data=self._payload(action="publish_now"))
@@ -453,7 +461,7 @@ class VideoOnlyPlatformTests(AccountScopeTestsBase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(
             response.json()["errors"]["media"],
-            "TikTok can only publish videos. Add a video to this post, or deselect that account.",
+            "YouTube can only publish videos. Add a video to this post, or deselect that account.",
         )
         self.tt_pp.refresh_from_db()
         self.assertEqual(self.tt_pp.status, PlatformPost.Status.FAILED)
@@ -464,15 +472,6 @@ class VideoOnlyPlatformTests(AccountScopeTestsBase):
                 response = self.client.post(self.save_url, data=self._payload(action=action))
                 self.assertEqual(response.status_code, 400)
                 self.assertIn("media", response.json()["errors"])
-
-    def test_both_video_platforms_are_named(self):
-        both = f"{self.tiktok.id},{self.youtube.id}"
-
-        response = self.client.post(self.save_url, data=self._payload(action="publish_now", selected_accounts=both))
-
-        self.assertEqual(response.status_code, 400)
-        self.assertIn("TikTok and YouTube can only publish videos", response.json()["errors"]["media"])
-        self.assertIn("those accounts", response.json()["errors"]["media"])
 
     def test_a_draft_may_wait_for_its_video(self):
         response = self.client.post(self.save_url, data=self._payload(action="save_draft"))
@@ -542,7 +541,7 @@ class VideoOnlyPlatformTests(AccountScopeTestsBase):
         response = self._transition("scheduled")
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn("TikTok can only publish videos", response.json()["error"])
+        self.assertIn("YouTube can only publish videos", response.json()["error"])
         self.tt_pp.refresh_from_db()
         self.assertEqual(self.tt_pp.status, PlatformPost.Status.FAILED)
 
@@ -567,14 +566,14 @@ class VideoOnlyPlatformTests(AccountScopeTestsBase):
         self.tt_pp.scheduled_at = timezone.now() + timedelta(days=1)
         self.tt_pp.save(update_fields=["status", "scheduled_at"])
 
-    def test_removing_the_last_video_of_a_scheduled_tiktok_post_is_refused(self):
+    def test_removing_the_last_video_of_a_scheduled_youtube_post_is_refused(self):
         video = self._attach(MediaAsset.MediaType.VIDEO, "clip.mp4", post=self.post)
         self._schedule_tiktok()
 
         response = self._remove(PostMedia.objects.get(media_asset=video))
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn("scheduled to TikTok, which needs a video", response.content.decode())
+        self.assertIn("scheduled to YouTube, which needs a video", response.content.decode())
         self.assertTrue(PostMedia.objects.filter(media_asset=video).exists())
 
     def test_removing_one_of_two_videos_is_allowed(self):
@@ -676,8 +675,8 @@ class RequiredMediaTests(PinterestBoardSelectionTests):
 
         self.assertIn(response.status_code, (200, 204, 302))
 
-    def test_tiktok_and_pinterest_together_ask_for_a_video(self):
-        both = f"{self.tiktok.id},{self.pinterest.id}"
+    def test_youtube_and_pinterest_together_ask_for_a_video(self):
+        both = f"{self.youtube.id},{self.pinterest.id}"
         payload = self._pinterest_payload(board_id="board-1") | {
             "action": "publish_now",
             "selected_accounts": both,
@@ -689,7 +688,7 @@ class RequiredMediaTests(PinterestBoardSelectionTests):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(
             response.json()["errors"]["media"],
-            "TikTok can only publish videos. Pinterest needs an image or a video. "
+            "YouTube can only publish videos. Pinterest needs an image or a video. "
             "Add a video to this post, or deselect those accounts.",
         )
 
