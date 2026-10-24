@@ -215,15 +215,16 @@ def add_competitor(workspace, platform: str, handle: str, user=None, *, allowed_
         check_can_add_competitor(workspace, platform)
     except PlanLimitError as exc:
         raise CompetitorError(str(exc), code=exc.code, status=403) from exc
-    if Competitor.objects.filter(workspace=workspace, platform=platform, handle=clean).exists():
-        raise CompetitorError(
-            f"You're already tracking {clean} on {network.name}.", code="competitor_duplicate", status=409
-        )
     account = using_account(workspace, platform, allowed_account_ids)
     if account is None:
         raise CompetitorError(
             f"Connect a {network.name} account to this workspace first: it's what reads other profiles' public numbers.",
             code="competitor_no_account",
+        )
+    clean = PROVIDER_REGISTRY[platform].qualify_competitor_handle(clean, account)
+    if Competitor.objects.filter(workspace=workspace, platform=platform, handle=clean).exists():
+        raise CompetitorError(
+            f"You're already tracking {clean} on {network.name}.", code="competitor_duplicate", status=409
         )
     metrics = fetch_profile(platform, clean, account)
     try:

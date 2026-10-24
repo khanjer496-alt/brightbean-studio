@@ -343,6 +343,17 @@ class SocialProvider(ABC):
         return value if value and re.fullmatch(cls.competitor_handle_pattern, value) else ""
 
     @classmethod
+    def qualify_competitor_handle(cls, handle: str, using_account) -> str:
+        """``handle`` made unambiguous before it is stored, given the account that will read it.
+
+        For a network where a bare handle means "on the connected account's own
+        server" (a federated one), this spells that server out so the stored
+        handle keeps its meaning if the account is later replaced. The default
+        changes nothing.
+        """
+        return handle
+
+    @classmethod
     def _competitor_handle_from_url(cls, host: str, segments: list[str]) -> str:
         """The handle in a pasted profile link: the "@name" segment if there is one, else the last segment."""
         return next((s for s in segments if s.startswith("@")), segments[-1])
