@@ -66,6 +66,19 @@
             if (event.detail.successful && sent.has(elt)) { baseline = sent.get(elt); sent.delete(elt); }
         }, true);
 
+        // An htmx swap inside the form (template picker, best-time chips) is not an edit: when the form was clean
+        // before the request, whatever the swap brought in is part of the saved state too.
+        const cleanBefore = new WeakMap();
+        document.addEventListener('htmx:beforeSwap', function (event) {
+            const target = event.detail.target;
+            if (target && form.contains(target)) cleanBefore.set(target, !dirty());
+        });
+        document.addEventListener('htmx:afterSettle', function (event) {
+            const target = event.detail.target;
+            if (target && cleanBefore.get(target) && baseline !== null) baseline = current();
+            if (target) cleanBefore.delete(target);
+        });
+
         window.addEventListener('beforeunload', function (event) {
             if (leaving || released || !dirty()) return;
             event.preventDefault();
@@ -82,6 +95,7 @@
                 title: 'Leave without saving?',
                 message: 'You have changes that are not saved yet. If you leave now they will be lost.',
                 label: 'Leave page',
+                cancel: 'Stay',
                 variant: 'danger'
             }).then(function (ok) {
                 if (!ok) return;
