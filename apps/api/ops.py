@@ -32,6 +32,7 @@ from apps.api.limits import check_platform_quota
 from apps.api.pagination import decode_offset_cursor, encode_offset_cursor
 from apps.api.schemas import (
     AccountAutonomyResponse,
+    AccountPauseResponse,
     AccountSetResponse,
     AccountSetsListResponse,
     AccountSummary,
@@ -2359,16 +2360,36 @@ def add_competitor(actor: Actor, payload: AddCompetitorRequest) -> CompetitorRes
     return _competitor_response(competitor)
 
 
-def set_account_paused(actor: Actor, social_account_id: uuid.UUID, *, paused: bool) -> AccountSummary:
+def set_account_paused(
+    actor: Actor,
+    social_account_id: uuid.UUID,
+    *,
+    paused: bool,
+    held_posts: str = calendar_services.DEFAULT_HELD_POSTS,
+) -> AccountPauseResponse:
     """Pause or resume publishing to an account on the key's allowlist. Needs ``manage_social_accounts``.
 
-    Posts scheduled to a paused account stay scheduled and are held (their ``held_reason`` says so); resuming
-    lets them go out, overdue ones first.
+    Posts scheduled to a paused account stay scheduled and are held (their ``held_reason`` says so). On resume,
+    ``held_posts`` says what happens to those whose time passed meanwhile: ``requeue`` (the default) moves them
+    into the account's next open posting slots in their original order, ``publish_now`` sends them a minute
+    apart, ``skip`` turns them into drafts. Posts still in the future keep their time. Nothing is deleted.
     """
     actor.require("manage_social_accounts")
     account = _require_account(actor, social_account_id)
-    account.set_paused(paused, by=actor.user)
-    return AccountSummary.from_social_account(account)
+    if held_posts not in calendar_services.HELD_POSTS_CHOICES:
+        raise OpError(422, f"held_posts must be one of: {', '.join(calendar_services.HELD_POSTS_CHOICES)}.")
+    who = agent_actor(actor.api_key, actor.user)
+    if paused:
+        if account.set_paused(True, by=actor.user):
+            autonomy_service.record_account_pause(actor.workspace, who, account, paused=True)
+        return AccountPauseResponse(**AccountSummary.from_social_account(account).model_dump())
+    was_paused = account.is_paused
+    outcome = calendar_services.resume_publishing(account, held_posts, by=actor.user)
+    if was_paused:
+        autonomy_service.record_account_pause(
+            actor.workspace, who, account, paused=False, held_posts=held_posts, outcome=outcome
+        )
+    return AccountPauseResponse(**AccountSummary.from_social_account(account).model_dump(), **outcome)
 
 
 def remove_competitor(actor: Actor, competitor_id: uuid.UUID) -> DeletedResponse:

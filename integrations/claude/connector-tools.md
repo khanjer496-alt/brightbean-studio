@@ -107,7 +107,7 @@ Generated from the tool registry (`apps/mcp`). Annotations come from the capabil
 | `rename_tag` | draft_posts | no | yes | no | Rename a tag everywhere it is used (posts and ideas); 409 if the new name exists. |
 | `request_media_upload` | upload_media | no | no | no | Step 1 of uploading large media (video, or any file >1 MB) over MCP — no REST API key required. |
 | `resend_webhook_delivery` | write_settings | no | no | yes | Send a delivery again: same payload, same delivery id, fresh retry schedule. |
-| `resume_account` | write_settings | no | no | no | Resume publishing to a paused account. |
+| `resume_account` | write_settings | no | no | no | Resume publishing to a paused account; held_posts (requeue by default, publish_now or skip) says what happens to posts whose time passed while it was paused. |
 | `resume_thread` | schedule_posts | no | no | yes | Resume a thread that stopped part-way (a platform post whose thread_status is 'partial'). |
 | `review_post` | manage_approvals | no | yes | yes | Decide a post that is waiting for review, as the person behind this key (find them with list_approvals). |
 | `rotate_webhook_secret` | write_settings | no | yes | no | Replace a webhook endpoint's signing secret. |

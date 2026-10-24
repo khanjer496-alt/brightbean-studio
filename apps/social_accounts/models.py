@@ -311,8 +311,9 @@ class SocialAccount(models.Model):
     def set_paused(self, paused: bool, *, by=None) -> bool:
         """Pause or resume publishing to the account; True when that changed anything.
 
-        The one way to do it, for the account card, the REST API and MCP alike. Posts scheduled to a paused
-        account stay scheduled and are held by the publisher; resuming lets them go out as overdue.
+        Posts scheduled to a paused account stay scheduled and are held by the publisher. Resuming through here
+        lets the overdue ones go out at once; the account card, the REST API and MCP resume through
+        ``calendar.services.resume_publishing`` instead, which settles them first.
         """
         if paused == self.is_paused:
             return False
@@ -329,6 +330,15 @@ class SocialAccount(models.Model):
         from apps.composer.models import PlatformPost
 
         return PlatformPost.objects.filter(social_account=self, status=PlatformPost.Status.SCHEDULED).count()
+
+    @property
+    def overdue_held_post_count(self) -> int:
+        """Held posts whose scheduled time has already passed: what resuming has to decide about (0 when it is on)."""
+        if not self.is_paused:
+            return 0
+        from apps.calendar.services import overdue_held_posts
+
+        return overdue_held_posts(self).count()
 
     @property
     def paused_reason(self) -> str:

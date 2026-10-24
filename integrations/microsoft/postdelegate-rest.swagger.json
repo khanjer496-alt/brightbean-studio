@@ -80,9 +80,9 @@
     "/api/v1/accounts/{account_id}/resume": {
       "post": {
         "operationId": "AccountsResumeAccount",
-        "summary": "Resume publishing to an account held posts go out overdue ones first",
+        "summary": "Resume publishing to an account choose what happens to the posts held while it w",
         "x-ms-visibility": "important",
-        "description": "Resume publishing to an account held posts go out overdue ones first.",
+        "description": "`held_posts` decides what happens to scheduled posts whose time passed while the account was paused: `requeue` (the default) moves them into the account's next open posting slots in their original order; `publish_now` sends them a minute apart; `skip` turns them into drafts. Posts still in the future keep their time, and nothing is deleted. **Behaviour change:** callers that omit `held_posts` used to have every held post go out at once and now get `requeue`; send `publish_now` for the old behaviour. The response counts what was `requeued`, `published_now` and `skipped`.",
         "parameters": [
           {
             "name": "account_id",
@@ -90,6 +90,19 @@
             "required": true,
             "type": "string",
             "format": "uuid"
+          },
+          {
+            "name": "held_posts",
+            "in": "query",
+            "required": false,
+            "description": "What to do with posts whose time passed while the account was paused.",
+            "type": "string",
+            "enum": [
+              "requeue",
+              "publish_now",
+              "skip"
+            ],
+            "default": "requeue"
           }
         ],
         "responses": {
@@ -4059,6 +4072,123 @@
       },
       "required": [
         "accounts"
+      ],
+      "type": "object"
+    },
+    "AccountPauseResponse": {
+      "description": "The account after a pause or resume, with what resuming did to the posts held while it was paused.",
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "platform": {
+          "type": "string"
+        },
+        "account_name": {
+          "type": "string"
+        },
+        "account_handle": {
+          "default": "",
+          "type": "string"
+        },
+        "connection_status": {
+          "type": "string"
+        },
+        "char_limit": {
+          "default": 2200,
+          "description": "Maximum caption length the platform accepts. Reject locally before calling /posts.",
+          "type": "integer"
+        },
+        "escaped_chars": {
+          "default": "",
+          "description": "Characters the platform requires escaped, each costing two against ``char_limit``. LinkedIn escapes its reserved little-text set, so count a caption as ``len(caption) + sum(caption.count(c) for c in escaped_chars)`` before rejecting it. Empty for platforms that publish the caption verbatim.",
+          "type": "string"
+        },
+        "caption_counting": {
+          "default": "characters",
+          "description": "How the platform counts a caption against ``char_limit``. ``characters``: one per character (plus ``escaped_chars``). ``weighted``: the twitter-text v3 weighted count X uses, where each URL counts as 23 and CJK characters and emoji as 2.",
+          "type": "string"
+        },
+        "needs_title": {
+          "default": false,
+          "description": "True when the platform requires a title (YouTube, Pinterest). When false, the title field is ignored.",
+          "type": "boolean"
+        },
+        "supports_first_comment": {
+          "default": true,
+          "description": "True when the platform can auto-post a first comment after publish. False for TikTok, Pinterest, Bluesky, Google Business. LinkedIn Personal returns false when authorized via OIDC instead of the Community Management API. If false, ``first_comment`` is silently dropped at publish time.",
+          "type": "boolean"
+        },
+        "paused": {
+          "default": false,
+          "description": "True while a workspace member has paused publishing to this account. Posts scheduled to it are held (see ``held_reason`` on the post's platform entry) and go out when it is resumed.",
+          "type": "boolean"
+        },
+        "requires_video": {
+          "default": false,
+          "description": "True when the platform publishes only video (YouTube). Scheduling a post with no video in ``media_asset_ids`` is rejected with 422.",
+          "type": "boolean"
+        },
+        "requires_media": {
+          "default": false,
+          "description": "True when the platform can't publish text alone (Instagram, Pinterest, and the ``requires_video`` platforms). Scheduling a post with no ``media_asset_ids`` is rejected with 422.",
+          "type": "boolean"
+        },
+        "thread_mode": {
+          "default": "none",
+          "description": "How the platform publishes a post's ``parts``: ``reply_chain`` replies each part to the one before it (Bluesky, Threads, Mastodon); ``comments`` posts later parts as comments on the first post (Facebook, Instagram, LinkedIn, YouTube); ``none`` can't take a thread, and a post with ``parts`` is rejected with 422 when scheduled.",
+          "enum": [
+            "reply_chain",
+            "comments",
+            "none"
+          ],
+          "type": "string"
+        },
+        "thread_max_parts": {
+          "default": 1,
+          "description": "Most parts one thread may have, the first post included.",
+          "type": "integer"
+        },
+        "thread_part_max_length": {
+          "default": 2200,
+          "description": "Characters each later part may carry, counted like ``char_limit``.",
+          "type": "integer"
+        },
+        "thread_media_per_part": {
+          "default": false,
+          "description": "True when a later part can carry its own ``media_asset_ids``. Comments are text only.",
+          "type": "boolean"
+        },
+        "post_settings": {
+          "description": "Per-post settings the platform needs beyond the caption (Reddit: ``subreddit``, ``flair_id``, ...). Each has a ``key``, ``label``, ``kind`` (text, select, checkbox), ``required`` and ``help``. Send them as ``post_settings`` when creating the post; a scheduled post missing a required one is rejected with 422.",
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "requeued": {
+          "default": 0,
+          "description": "Held posts moved into the account's next open posting slots (``requeue``).",
+          "type": "integer"
+        },
+        "published_now": {
+          "default": 0,
+          "description": "Held posts set to go out now, a minute apart (``publish_now``).",
+          "type": "integer"
+        },
+        "skipped": {
+          "default": 0,
+          "description": "Held posts turned into drafts: all of them for ``skip``, or any ``requeue`` found no slot for.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "platform",
+        "account_name",
+        "connection_status"
       ],
       "type": "object"
     },

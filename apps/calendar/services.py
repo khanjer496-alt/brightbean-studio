@@ -3,6 +3,9 @@
 import zoneinfo
 from datetime import datetime, time, timedelta
 
+from django.db import transaction
+from django.db.models import F
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 
 from .models import PostingSlot, Queue, QueueEntry
@@ -799,3 +802,72 @@ def apply_suggested_slots(social_account, suggestions, mode="replace"):
             ignore_conflicts=True,
         )
     return len(to_add), len(to_remove)
+
+
+# ---------------------------------------------------------------------------
+# Resuming a paused channel
+#
+# While a channel is paused its scheduled posts wait. Whatever came due in that time is "held"; the
+# person (or agent) resuming picks what happens to it. Posts still in the future keep their time.
+# ---------------------------------------------------------------------------
+
+#: What to do with held posts on resume. The first is the default everywhere (UI, REST, MCP).
+HELD_POSTS_CHOICES = ("requeue", "publish_now", "skip")
+DEFAULT_HELD_POSTS = HELD_POSTS_CHOICES[0]
+
+
+def overdue_held_posts(social_account):
+    """Scheduled posts on ``social_account`` whose time has passed, in the order they were due.
+
+    A post parked on a retry backoff is the publisher's to retry, not held by the pause, so it is left out.
+    """
+    from apps.composer.models import PlatformPost
+
+    return (
+        PlatformPost.objects.filter(social_account=social_account, status=PlatformPost.Status.SCHEDULED, retry_count=0)
+        .annotate(effective_at=Coalesce("scheduled_at", "post__scheduled_at"))
+        .filter(effective_at__lte=timezone.now())
+        .select_related("post")
+        .order_by(F("effective_at").asc(), "post__created_at", "id")
+    )
+
+
+def resume_publishing(social_account, held_posts=DEFAULT_HELD_POSTS, *, by=None):
+    """Resume a paused channel, handling the posts that came due while it was paused.
+
+    ``held_posts``: ``requeue`` moves each into the channel's next open posting slots, keeping their order
+    (any left without a slot, because the channel has none or the horizon is full, become drafts);
+    ``publish_now`` sends them a minute apart, like the calendar's bulk publish; ``skip`` turns them into
+    drafts. Nothing is deleted. The posts are settled before the pause is lifted, so the publisher never
+    sees them as overdue. Returns ``{"requeued", "published_now", "skipped"}`` counts.
+    """
+    from apps.composer.services import sync_post_scheduled_at, transition_platform_post
+    from apps.social_accounts.models import SocialAccount
+
+    if held_posts not in HELD_POSTS_CHOICES:
+        raise ValueError(f"held_posts must be one of: {', '.join(HELD_POSTS_CHOICES)}.")
+    outcome = {"requeued": 0, "published_now": 0, "skipped": 0}
+    with transaction.atomic():
+        list(SocialAccount.objects.select_for_update().filter(id=social_account.id))
+        social_account.refresh_from_db(fields=["paused_at", "paused_by"])
+        if not social_account.is_paused:
+            return outcome
+        rows = list(overdue_held_posts(social_account))
+        now = timezone.now()
+        slots = next_available_slots(social_account, len(rows)) if held_posts == "requeue" else []
+        for index, pp in enumerate(rows):
+            if held_posts == "skip" or (held_posts == "requeue" and index >= len(slots)):
+                if pp.can_transition_to("draft"):
+                    transition_platform_post(pp, "draft")
+                    outcome["skipped"] += 1
+                continue
+            when = slots[index] if held_posts == "requeue" else now + timedelta(minutes=index)
+            pp.scheduled_at = when
+            pp.save(update_fields=["scheduled_at", "updated_at"])
+            QueueEntry.objects.filter(post=pp.post, queue__social_account=social_account).update(
+                assigned_slot_datetime=when
+            )
+            sync_post_scheduled_at(pp.post)
+            outcome["requeued" if held_posts == "requeue" else "published_now"] += 1
+        social_account.set_paused(False, by=by)
+    return outcome
