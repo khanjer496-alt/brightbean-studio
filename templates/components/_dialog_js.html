@@ -57,9 +57,11 @@ document.addEventListener('alpine:init', function () {
     // (a dropdown that stops Escape keeps it), and window-level handlers never see a handled Escape.
     document.addEventListener('keydown', function (event) {
         var top = stack[stack.length - 1];
-        if (!top) return;
+        // defaultPrevented: something inside (a combobox, x-a11y-modal's own handler) already took the key.
+        if (!top || event.defaultPrevented) return;
         if (event.key === 'Escape') {
             event.stopPropagation();
+            event.preventDefault();
             top.close();
             return;
         }
