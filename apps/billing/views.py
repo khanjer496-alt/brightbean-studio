@@ -28,7 +28,7 @@ def _require_billing_enabled():
 
 
 # No plan includes or limits AI: every AI feature runs on the organization's own connection.
-AI_LINE = "AI: bring your own key or connect your ChatGPT plan — unlimited, no markup"
+AI_LINE = "AI on your own provider key — billed by your provider, nothing added"
 
 
 def _limit_lines(plan) -> list[str]:

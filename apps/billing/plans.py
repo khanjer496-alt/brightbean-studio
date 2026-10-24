@@ -4,8 +4,9 @@ Every plan is priced per organization. Paid plans include every feature and
 differ only in how much: channels, workspaces, team members and the usage
 allowances. AI is not part of any plan: every AI feature runs on the
 organization's own AI connection (``apps.ai_writer``), so there is no AI
-allowance here — only the per-organization safety cap in settings. Free keeps the advanced features (approvals, inbox, analytics,
-the client portal, white-label reports, competitors, AI visibility) locked.
+allowance here — only the per-organization safety cap in settings. Free
+keeps the advanced features (approvals, inbox, analytics, the client portal,
+white-label reports, competitors, AI visibility) locked.
 A limit of ``None`` means unlimited.
 
 Nothing outside ``apps.billing`` reads these directly: views, the API and MCP

@@ -46,7 +46,7 @@ class TestOverview:
         assert "Unlimited team members" in body and "Owner + 1 member" in body
         # Yearly prices are shown per month, with the yearly total under them.
         assert "$15" in body and "Billed $180 yearly" in body and "Billed $756 yearly" in body
-        assert "bring your own key or connect your ChatGPT plan" in body
+        assert "AI on your own provider key" in body
         assert 'max="100"' in body and 'value="2"' in body  # channel meter
         assert "Plan &amp; billing" in body  # settings sidebar link
 

@@ -15,7 +15,7 @@
         </p>
         <p class="text-xs mt-1 text-[var(--text-secondary)]">
             {% if org_key %}
-                Requests use your organization's own key (ending …{{ org_key.key_hint }}), billed by your provider: unlimited, with no markup from us.
+                Requests use your organization's own key (ending …{{ org_key.key_hint }}), billed by your provider, with no markup from us.
             {% elif platform_key_configured %}
                 Requests use this installation's shared AI key. Add your own key below to use your provider account instead.
             {% else %}
