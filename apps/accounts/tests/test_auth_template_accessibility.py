@@ -93,7 +93,9 @@ def test_fields_element_renders_bound_fields():
     assert inputs["email"]["id"] == "id_email"
     assert inputs["email"]["type"] == "email"
     assert inputs["email"]["aria-invalid"] == "true"
-    assert any(attrs.get("id") == inputs["email"]["aria-describedby"] for _, attrs in elements)
+    for described_id in inputs["email"]["aria-describedby"].split():
+        assert any(attrs.get("id") == described_id for _, attrs in elements)
+    assert inputs["email"]["aria-describedby"].split() == ["id_email-error", "id_email-help"]
     assert inputs["password"]["type"] == "password"
     labels = {attrs.get("for"): attrs for tag, attrs in elements if tag == "label"}
     assert {"id_email", "id_password"} <= labels.keys()

@@ -1,213 +1,38 @@
-{% load static %}
-<!DOCTYPE html>
-<html lang="en" data-theme="postdelegate" style="{% block html_style %}{% endblock %}">
+{% load static i18n common_extras %}{% get_current_language as LANGUAGE_CODE %}{% get_current_language_bidi as LANGUAGE_BIDI %}<!DOCTYPE html>
+{% comment %}
+  PAGE TITLE CONVENTION: "Page · Workspace · Brand".
+  Override {% block page_title %}Calendar{% endblock %} (just the page name) and this layout appends the
+  current workspace and the brand. Templates that need a fully custom title may still override
+  {% block title %}, but prefer page_title so every page reads the same way in tabs, history and
+  screen-reader window lists. Layouts extended by other templates define their own page_title default.
+{% endcomment %}
+<html lang="{{ LANGUAGE_CODE }}" dir="{% if LANGUAGE_BIDI %}rtl{% else %}ltr{% endif %}" data-theme="postdelegate" style="{% block html_style %}{% endblock %}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}{{ brand_name }}{% endblock %}</title>
+    <title>{% block title %}{% block page_title %}Home{% endblock %} · {% if request.workspace %}{{ request.workspace.name }} · {% endif %}{{ brand_name }}{% endblock %}</title>
     <link rel="icon" href="{% static brand_favicon_ico_static %}" sizes="any">
     <link rel="icon" type="image/svg+xml" href="{% static brand_favicon_static %}">
     <link rel="icon" type="image/png" sizes="96x96" href="{% static 'favicon/favicon-96x96.png' %}">
     <link rel="apple-touch-icon" sizes="180x180" href="{% static brand_apple_touch_icon_static %}">
     <link rel="manifest" href="{% static brand_manifest_static %}">
+    <link rel="preload" href="{% static 'fonts/manrope-latin.woff2' %}" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{% static 'css/dist/styles.css' %}">
     <link rel="stylesheet" href="{% static 'js/vendor/flatpickr.min.css' %}">
     <script nonce="{{ request.csp_nonce }}">
         // Set sidebar state class on <html> before first paint to prevent flash
-        if (localStorage.getItem('sidebarCollapsed') === 'true') {
-            document.documentElement.classList.add('sidebar-is-collapsed');
-        }
+        try {
+            if (localStorage.getItem('sidebarCollapsed') === 'true') {
+                document.documentElement.classList.add('sidebar-is-collapsed');
+            }
+        } catch (e) { /* storage blocked: start expanded */ }
     </script>
-    <style>
-        [x-cloak] { display: none !important; }
-        /* Initial sidebar width - applied before Alpine loads */
-        .sidebar-initial { width: 240px; }
-        html.sidebar-is-collapsed .sidebar-initial { width: 60px; }
-        html.sidebar-is-collapsed .sidebar-initial .sidebar-nav-item { justify-content: center; padding: 8px; gap: 0; }
-        html.sidebar-is-collapsed .sidebar-initial .sidebar-nav-label,
-        html.sidebar-is-collapsed .sidebar-initial .sidebar-section-label,
-        html.sidebar-is-collapsed .sidebar-initial .sidebar-section-label-wrap,
-        html.sidebar-is-collapsed .sidebar-initial .sidebar-badge { display: none; }
-        html.sidebar-is-collapsed .sidebar-initial .sidebar-new-label,
-        html.sidebar-is-collapsed .sidebar-initial .sidebar-connect-channels,
-        html.sidebar-is-collapsed .sidebar-initial .sidebar-review-banner { display: none; }
-        /* Collapsed child overrides before Alpine */
-        html.sidebar-is-collapsed .sidebar-initial .sidebar-ws-btn { justify-content: center; padding-left: 0; padding-right: 0; gap: 0; }
-        html.sidebar-is-collapsed .sidebar-initial .sidebar-new-wrap { padding-left: 0.5rem; padding-right: 0.5rem; }
-        html.sidebar-is-collapsed .sidebar-initial .sidebar-nav { padding-left: 0.5rem; padding-right: 0.5rem; }
-        html.sidebar-is-collapsed .sidebar-initial .sidebar-org-footer { padding: 0.5rem; }
-        html.sidebar-is-collapsed .sidebar-initial .sidebar-org-expanded { display: none; }
-        html.sidebar-is-collapsed .sidebar-initial .sidebar-org-collapsed { display: flex !important; }
-
-        /* Mobile: hide sidebar off-screen before Alpine loads */
-        @media (max-width: 1023px) {
-            .sidebar-initial {
-                position: fixed;
-                top: 0; bottom: 0; left: 0;
-                transform: translateX(-100%);
-                z-index: 40;
-                width: 240px !important;
-            }
-            /* On mobile, never show collapsed state pre-Alpine */
-            html.sidebar-is-collapsed .sidebar-initial { width: 240px !important; }
-        }
-
-        /* Idea modal styles (shared with create_landing) */
-        .idea-modal-overlay {
-            position: fixed; inset: 0;
-            background: rgba(0,0,0,0.3);
-            display: flex; align-items: center; justify-content: center;
-            z-index: 200;
-        }
-        .idea-modal {
-            background: var(--surface-0); border-radius: 16px; width: 100%; max-width: 640px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.15);
-            display: flex; flex-direction: column; max-height: calc(100vh - 80px); position: relative;
-            margin: 0 1rem;
-        }
-        @media (max-width: 640px) {
-            .idea-modal {
-                margin: 0; border-radius: 0; max-height: 100vh; height: 100vh;
-            }
-            .idea-modal-overlay {
-                align-items: stretch;
-            }
-        }
-        .idea-modal-close {
-            position: absolute; top: 16px; right: 16px; width: 28px; height: 28px;
-            display: flex; align-items: center; justify-content: center;
-            border: none; background: none; border-radius: 6px;
-            color: var(--text-tertiary); cursor: pointer; transition: color 150ms, background 150ms; z-index: 1;
-        }
-        .idea-modal-close:hover { color: var(--text-primary); background: var(--neutral-100); }
-        .idea-modal-header {
-            display: flex; align-items: center; justify-content: space-between; padding: 20px 50px 16px 24px;
-        }
-        .idea-modal-body { flex: 1; overflow-y: auto; padding: 0 24px 16px; }
-        .idea-modal-footer {
-            padding: 16px 24px; border-top: 1px solid var(--border);
-            display: flex; align-items: center; justify-content: flex-end; gap: 8px;
-        }
-        .idea-modal-body input.idea-title-input {
-            width: 100%; font-size: 1.25rem; font-weight: 700; color: var(--text-primary);
-            border: none; outline: none; padding: 0; margin-bottom: 12px; background: transparent;
-        }
-        .idea-modal-body input.idea-title-input::placeholder { color: var(--neutral-300); }
-        .idea-modal-body textarea.idea-desc-input {
-            width: 100%; min-height: 160px; font-size: 0.875rem; color: var(--text-primary);
-            border: none; outline: none; padding: 0; resize: none; background: transparent; line-height: 1.7;
-        }
-        .idea-modal-body textarea.idea-desc-input::placeholder { color: var(--neutral-300); }
-        .idea-pill-btn {
-            display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px;
-            border: 1px solid var(--border); border-radius: 9999px; font-size: 0.8125rem;
-            font-weight: 500; color: var(--text-primary); background: var(--surface-0);
-            cursor: pointer; transition: background 150ms; white-space: nowrap;
-        }
-        .idea-pill-btn:hover { background: var(--neutral-50); }
-        .idea-pill-dropdown {
-            position: absolute; top: calc(100% + 6px); right: 0; background: var(--surface-0);
-            border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,0.12); border: 1px solid var(--border);
-            min-width: 180px; max-height: 240px; overflow-y: auto; z-index: 210; padding: 4px;
-        }
-        .idea-pill-dropdown label, .idea-pill-dropdown button {
-            display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px;
-            font-size: 0.8125rem; border-radius: 6px; cursor: pointer; transition: background 100ms;
-            border: none; background: none; color: var(--text-primary); text-align: left;
-        }
-        .idea-pill-dropdown label:hover, .idea-pill-dropdown button:hover { background: var(--neutral-50); }
-        .idea-media-zone {
-            border: 2px dashed var(--border); border-radius: 12px; padding: 24px;
-            display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
-            color: var(--text-tertiary); font-size: 0.8125rem; max-width: 150px; margin-top: 16px;
-            cursor: pointer;
-            transition: border-color 150ms, background 150ms;
-        }
-        .idea-media-zone.drag-over { border-color: var(--primary); background: rgba(var(--primary-rgb, 249, 115, 22), 0.05); }
-        .idea-media-strip-layout {
-            margin-top: 16px;
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            align-items: flex-start;
-        }
-        .idea-media-zone.idea-media-zone-tile {
-            margin-top: 0;
-            width: 130px;
-            max-width: 130px;
-            min-height: 130px;
-            height: 130px;
-            padding: 14px 10px;
-        }
-        .idea-media-existing-card {
-            position: relative;
-            border-radius: 12px;
-            overflow: hidden;
-            border: 1px solid var(--border);
-            width: 130px;
-            height: 130px;
-            background: var(--neutral-100);
-        }
-        .idea-media-existing-card img,
-        .idea-media-existing-card video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-        }
-        .idea-media-existing-card .remove-btn {
-            position: absolute;
-            top: 8px;
-            right: 8px;
-            width: 38px;
-            height: 38px;
-            border: 2px solid #fff;
-            border-radius: 9999px;
-            background: rgba(38, 38, 38, 0.78);
-            color: #fff;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0;
-            transition: background 150ms;
-        }
-        .idea-media-existing-card .remove-btn:hover { background: rgba(23, 23, 23, 0.9); }
-        @media (max-width: 640px) {
-            .idea-media-strip-layout {
-                gap: 10px;
-            }
-        }
-        .idea-selected-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
-        .idea-selected-tags .idea-tag-chip {
-            display: inline-flex; align-items: center; gap: 3px; padding: 2px 8px; border-radius: 9999px;
-            font-size: 0.6875rem; font-weight: 600;
-            background: var(--primary-soft, #FFF7ED); color: var(--primary, #C2410C); border: 1px solid var(--primary-muted, #FED7AA);
-        }
-        .idea-selected-tags .idea-tag-chip button {
-            display: flex; align-items: center; justify-content: center;
-            width: 12px; height: 12px; border: none; background: none; cursor: pointer; color: inherit; padding: 0;
-        }
-        .emoji-picker-popup {
-            position: absolute; bottom: calc(100% + 8px); left: 0; background: var(--surface-0);
-            border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,0.15); border: 1px solid var(--border);
-            width: 280px; z-index: 220; overflow: hidden;
-        }
-        .emoji-picker-search { padding: 8px 8px 4px; }
-        .emoji-picker-grid {
-            display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px;
-            padding: 4px 8px 8px; max-height: 200px; overflow-y: auto;
-        }
-        .emoji-picker-item {
-            width: 30px; height: 30px; display: flex; align-items: center; justify-content: center;
-            font-size: 18px; border: none; background: none; border-radius: 6px; cursor: pointer; transition: background 100ms;
-        }
-        .emoji-picker-item:hover { background: var(--neutral-100); }
-    </style>
+    <style>[x-cloak] { display: none !important; }</style>
     {% block extra_head %}{% endblock %}
     <link rel="stylesheet" href="{% static 'css/postdelegate.css' %}">
 </head>
-<body class="min-h-screen" style="background: var(--surface-page);">
+<body class="min-h-screen">
+    <a href="#main-content" class="pd-skip-link">Skip to main content</a>
     {% csrf_token %}
     <script nonce="{{ request.csp_nonce }}">
         document.body.addEventListener('htmx:configRequest', function(event) {
@@ -232,19 +57,14 @@
       element that really does handle its own errors.
     {% endcomment %}
     <div x-data="{ show: false, message: '', timer: null }"
-         x-show="show"
-         x-cloak
-         x-transition.opacity
-         @htmx-error.window="message = $event.detail.message; show = true; clearTimeout(timer); timer = setTimeout(() => show = false, 6000)"
-         class="fixed top-4 right-4 z-[100] max-w-sm"
-         role="alert" aria-live="assertive">
-        <div class="flex items-start gap-3 rounded-lg px-4 py-3 shadow-lg"
-             style="background: #FEF2F2; border: 1px solid #FCA5A5; color: #991B1B;">
-            <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+         @htmx-error.window="message = $event.detail.message; show = true; clearTimeout(timer); timer = setTimeout(() => show = false, 8000)"
+         @keydown.escape.window="show = false"
+         class="pd-toast-wrap"
+         role="alert" aria-live="assertive" aria-atomic="true">
+        <div x-show="show" x-cloak x-transition.opacity class="pd-toast">
+            <svg class="w-5 h-5 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
             <p class="text-sm flex-1" x-text="message"></p>
-            <button type="button" @click="show = false" class="flex-shrink-0 cursor-pointer" style="color: #DC2626;" aria-label="Dismiss">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-            </button>
+            {% icon_button label="Dismiss error" icon="close" click="show = false" size="sm" icon_size=16 %}
         </div>
     </div>
     <script nonce="{{ request.csp_nonce }}">
@@ -267,14 +87,20 @@
         });
     </script>
     {% if user.is_authenticated and not focus_layout %}
-    <div class="flex h-screen overflow-hidden"
-         style="background: var(--surface-page);"
-         x-data="{ sidebarCollapsed: localStorage.getItem('sidebarCollapsed') === 'true', mobileMenuOpen: false }"
-         x-effect="localStorage.setItem('sidebarCollapsed', sidebarCollapsed)"
-         @keydown.escape.window="mobileMenuOpen = false">
+    <div class="pd-shell"
+         x-data="{
+             sidebarCollapsed: (function () { try { return localStorage.getItem('sidebarCollapsed') === 'true'; } catch (e) { return false; } })(),
+             mobileMenuOpen: false,
+             mq: window.matchMedia('(max-width: 1023px)'),
+             isMobile: window.matchMedia('(max-width: 1023px)').matches,
+             persist() { try { localStorage.setItem('sidebarCollapsed', this.sidebarCollapsed); } catch (e) {} }
+         }"
+         x-effect="persist()"
+         x-init="mq.addEventListener('change', e => { isMobile = e.matches; if (!e.matches) mobileMenuOpen = false })"
+         @pd-close-drawer.window="mobileMenuOpen = false">
 
-        <!-- Mobile backdrop overlay -->
-        <div x-show="mobileMenuOpen" x-cloak
+        <!-- Mobile backdrop (pointer convenience only; Escape and the Close button are the keyboard routes) -->
+        <div x-show="mobileMenuOpen && isMobile" x-cloak
              x-transition:enter="transition ease-out duration-200"
              x-transition:enter-start="opacity-0"
              x-transition:enter-end="opacity-100"
@@ -282,29 +108,43 @@
              x-transition:leave-start="opacity-100"
              x-transition:leave-end="opacity-0"
              @click="mobileMenuOpen = false"
-             class="fixed inset-0 bg-black/30 z-30 lg:hidden"></div>
+             aria-hidden="true" data-pd-backdrop
+             class="pd-backdrop"></div>
 
-        <!-- Sidebar -->
-        <aside class="flex flex-col flex-shrink-0 sidebar-initial
-                      fixed inset-y-0 left-0 z-40 w-60 bg-white
-                      transition-transform duration-200
-                      lg:relative lg:z-auto lg:translate-x-0 lg:bg-transparent"
-               :class="[
-                   sidebarCollapsed ? 'lg:w-[60px] sidebar-collapsed' : 'lg:w-60',
-                   mobileMenuOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
-               ]"
-               x-init="$el.classList.remove('sidebar-initial'); document.documentElement.classList.remove('sidebar-is-collapsed'); $nextTick(() => $el.classList.add('transition-all', 'duration-200'))"
-               @click="if (window.innerWidth < 1024 && $event.target.closest('a')) { mobileMenuOpen = false }">
+        <!-- Sidebar: static column from lg up, off-canvas drawer (modal while open) below lg -->
+        <div id="app-sidebar" class="pd-sidebar sidebar-initial"
+             :class="[sidebarCollapsed ? 'sidebar-collapsed' : '', mobileMenuOpen ? 'is-open' : '']"
+             :inert="isMobile && !mobileMenuOpen"
+             :role="isMobile && mobileMenuOpen ? 'dialog' : null"
+             :aria-modal="isMobile && mobileMenuOpen ? 'true' : null"
+             :aria-label="isMobile && mobileMenuOpen ? 'Main menu' : null"
+             x-pd-dialog="mobileMenuOpen && isMobile"
+             data-dialog-close="mobileMenuOpen = false"
+             data-return-focus="#mobile-menu-btn"
+             x-init="$el.classList.remove('sidebar-initial'); document.documentElement.classList.remove('sidebar-is-collapsed'); $nextTick(() => $el.classList.add('transition-all', 'duration-200'))">
 
-            <a href="{% url 'dashboard' %}" class="pd-workspace-brand" aria-label="{{ brand_name }} home">
-                <img src="{% static brand_logo_static %}" alt="" width="28" height="28">
-                <span class="sidebar-nav-label">{{ brand_name }}</span>
-            </a>
+            {% icon_button label="Close menu" icon="close" click="mobileMenuOpen = false" extra_class="lg:hidden pd-drawer-close" %}
+
+            <header class="hidden lg:block">
+                <a href="{% url 'dashboard' %}" class="pd-workspace-brand" aria-label="{{ brand_name }} home">
+                    <img src="{% static brand_logo_static %}" alt="" width="28" height="28">
+                    <span class="sidebar-nav-label">{{ brand_name }}</span>
+                </a>
+            </header>
+            <div class="lg:hidden">
+                <a href="{% url 'dashboard' %}" class="pd-workspace-brand" aria-label="{{ brand_name }} home">
+                    <img src="{% static brand_logo_static %}" alt="" width="28" height="28">
+                    <span class="sidebar-nav-label">{{ brand_name }}</span>
+                </a>
+            </div>
             <!-- Workspace switcher (top of sidebar) -->
-            <div class="relative border-b border-stone-100" x-data="{ wsOpen: false }">
-                <button @click="wsOpen = !wsOpen"
-                        class="sidebar-ws-btn w-full flex items-center gap-2.5 px-4 py-3.5 text-left hover:bg-black/[0.04] transition-colors cursor-pointer rounded-br-lg"
+            <div class="relative border-b border-stone-100" x-data="{ wsOpen: false }"
+                 @keydown.escape="if (wsOpen) { wsOpen = false; $refs.wsBtn.focus() }">
+                <button type="button" id="sidebar-ws-btn" x-ref="wsBtn" @click="wsOpen = !wsOpen"
+                        aria-controls="ws-menu" :aria-expanded="wsOpen"
+                        class="sidebar-ws-btn w-full flex items-center gap-2.5 px-4 py-3.5 text-start hover:bg-black/[0.04] transition-colors cursor-pointer rounded-ee-lg"
                         :class="sidebarCollapsed ? 'justify-center px-0' : 'gap-2.5 px-4'">
+                    <span class="sr-only">Switch workspace:</span>
                     {% with current_ws=request.workspace %}
                     {% if current_ws %}
                     {% if current_ws.icon %}
@@ -325,32 +165,31 @@
                     <span class="flex-1 font-bold text-[0.9375rem] tracking-tight text-stone-900 truncate" x-show="!sidebarCollapsed" x-cloak>{{ brand_short_name }}</span>
                     {% endif %}
                     {% endwith %}
-                    <svg class="w-4 h-4 text-stone-400 flex-shrink-0 transition-transform" :class="wsOpen && 'rotate-180'" x-show="!sidebarCollapsed" x-cloak fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                    <svg class="w-4 h-4 text-stone-400 flex-shrink-0 transition-transform" :class="wsOpen && 'rotate-180'" x-show="!sidebarCollapsed" x-cloak aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
                 </button>
 
                 <!-- Workspace dropdown -->
-                <div x-show="wsOpen" @click.away="wsOpen = false" x-cloak
+                <div id="ws-menu" x-show="wsOpen" @click.away="wsOpen = false" x-cloak
                      x-transition:enter="transition ease-out duration-100"
                      x-transition:enter-start="opacity-0 -translate-y-1"
                      x-transition:enter-end="opacity-100 translate-y-0"
                      x-transition:leave="transition ease-in duration-75"
                      x-transition:leave-start="opacity-100"
                      x-transition:leave-end="opacity-0"
-                     class="absolute left-2 right-2 top-full mt-1 bg-white rounded-xl shadow-lg ring-1 ring-stone-200 py-1 z-50">
+                     class="absolute inset-x-2 top-full mt-1 bg-white rounded-xl shadow-lg ring-1 ring-stone-200 py-1 z-50">
                     {% for ws in sidebar_workspaces %}
-                    <a href="{% url 'calendar:calendar' workspace_id=ws.id %}"
+                    <a href="{% url 'calendar:calendar' workspace_id=ws.id %}"{% if request.workspace and ws.id == request.workspace.id %} aria-current="true"{% endif %}
                        class="flex items-center gap-2.5 px-3 py-2 text-sm rounded-md hover:bg-black/[0.04] transition-colors {% if request.workspace and ws.id == request.workspace.id %}bg-stone-50 font-semibold text-stone-900{% else %}text-stone-700{% endif %}">
                         {% if ws.icon %}
                         <img src="{{ ws.icon.url }}" alt="" class="w-7 h-7 rounded-md object-cover flex-shrink-0">
                         {% else %}
-                        <div class="w-7 h-7 rounded-md flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0"
-                             style="background: var(--primary);">
+                        <div class="w-7 h-7 rounded-md flex items-center justify-center text-white text-[11px] font-bold flex-shrink-0 bg-[var(--primary)]">
                             {{ ws.name|make_list|first|upper }}
                         </div>
                         {% endif %}
                         <span class="truncate">{{ ws.name }}</span>
                         {% if request.workspace and ws.id == request.workspace.id %}
-                        <svg class="w-4 h-4 text-stone-400 ml-auto flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                        <svg class="w-4 h-4 text-stone-400 ms-auto flex-shrink-0" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                         {% endif %}
                     </a>
                     {% empty %}
@@ -358,8 +197,8 @@
                     {% endfor %}
                     {% if can_create_workspace %}
                     <div class="border-t border-stone-100 mt-1 pt-1">
-                        <button @click="wsOpen = false; $dispatch('open-create-ws')"
-                                class="flex items-center gap-2.5 px-3 py-2 text-sm text-stone-600 rounded-md hover:bg-black/[0.04] transition-colors w-full cursor-pointer">
+                        <button type="button" @click="wsOpen = false; $dispatch('pd-close-drawer'); $dispatch('open-create-ws')"
+                                class="flex items-center gap-2.5 px-3 py-2 text-sm text-stone-600 rounded-md hover:bg-black/[0.04] transition-colors w-full cursor-pointer text-start">
                             <div class="w-7 h-7 rounded-md flex items-center justify-center border border-dashed border-stone-300 flex-shrink-0">
                                 <svg class="w-3.5 h-3.5 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></svg>
                             </div>
@@ -386,16 +225,17 @@
             {% if request.workspace %}
             <div class="sidebar-new-wrap px-3 pt-2 pb-1" :class="sidebarCollapsed && 'px-2'"
                  x-data="sidebarNewMenu()">
-                <div class="relative">
-                    <button @click="newMenuOpen = !newMenuOpen"
+                <div class="relative" @keydown.escape="if (newMenuOpen) { newMenuOpen = false; $refs.newBtn.focus() }">
+                    <button type="button" id="sidebar-new-btn" x-ref="newBtn" @click="newMenuOpen = !newMenuOpen"
+                            aria-label="New" aria-controls="sidebar-new-menu" :aria-expanded="newMenuOpen"
                             class="btn-brand w-full flex items-center justify-center gap-1.5 text-sm py-2 cursor-pointer"
-                            :style="sidebarCollapsed ? 'padding-left:1.15rem;padding-right:1.15rem' : ''">
-                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
+                            :class="sidebarCollapsed && 'px-[1.15rem]'">
+                        <svg class="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
                         <span class="sidebar-new-label" x-show="!sidebarCollapsed">New</span>
                     </button>
 
                     <!-- Dropdown -->
-                    <div x-show="newMenuOpen" x-cloak @click.away="newMenuOpen = false"
+                    <div id="sidebar-new-menu" x-show="newMenuOpen" x-cloak @click.away="newMenuOpen = false"
                          x-transition:enter="transition ease-out duration-100"
                          x-transition:enter-start="opacity-0 scale-95"
                          x-transition:enter-end="opacity-100 scale-100"
@@ -413,12 +253,12 @@
                                 <div class="text-xs text-stone-500">Publish content to a channel</div>
                             </div>
                         </a>
-                        <button type="button" @click="openCreateModal()"
-                                class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-stone-50 transition-colors cursor-pointer">
+                        <button type="button" @click="$dispatch('pd-close-drawer'); openCreateModal()"
+                                class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg hover:bg-stone-50 transition-colors cursor-pointer text-start">
                             <div class="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center flex-shrink-0">
                                 <svg class="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
                             </div>
-                            <div class="text-left">
+                            <div class="text-start">
                                 <div class="text-sm font-semibold text-stone-800">Idea</div>
                                 <div class="text-xs text-stone-500">Capture a content idea</div>
                             </div>
@@ -426,15 +266,18 @@
                     </div>
                 </div>
 
-                <!-- Create Idea Modal -->
+                <!-- Create Idea Modal. Alpine teleports only the first element of the template, so both dialogs share one wrapper. -->
                 <template x-teleport="body">
+                    <div class="contents">
                     <div x-show="showCreateModal" x-cloak
+                         x-pd-dialog="showCreateModal"
+                         data-dialog-close="closeCreateModal()"
+                         data-return-focus="#sidebar-new-btn, #mobile-menu-btn"
                          class="idea-modal-overlay"
-                         @click.self="closeCreateModal()"
-                         @keydown.escape.window="closeCreateModal()">
-                        <div class="idea-modal" @click.stop>
-                            <button type="button" class="idea-modal-close" @click="closeCreateModal()" title="Close">
-                                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                         @click.self="closeCreateModal()">
+                        <div class="idea-modal" role="dialog" aria-modal="true" aria-labelledby="idea-modal-title" tabindex="-1">
+                            <button type="button" class="idea-modal-close" @click="closeCreateModal()" aria-label="Close dialog">
+                                <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                             </button>
                             <form action="{% url 'composer:idea_create' workspace_id=request.workspace.id %}"
                                   method="post"
@@ -448,58 +291,60 @@
 
                                 <!-- Header -->
                                 <div class="idea-modal-header">
-                                    <h2 class="text-lg font-semibold" style="color: var(--text-primary);">Create Idea</h2>
+                                    <h2 id="idea-modal-title" class="text-lg font-semibold text-ink">Create Idea</h2>
                                     <div class="flex items-center gap-2">
                                         <!-- Column selector dropdown -->
-                                        <div class="relative" @click.away="createGroupDropdownOpen = false">
-                                            <button type="button" class="idea-pill-btn" @click="createGroupDropdownOpen = !createGroupDropdownOpen; createTagDropdownOpen = false">
+                                        <div class="relative" @click.away="createGroupDropdownOpen = false"
+                                             @keydown.escape="if (createGroupDropdownOpen) { createGroupDropdownOpen = false; $event.stopPropagation(); $refs.groupBtn.focus() }">
+                                            <button type="button" x-ref="groupBtn" class="idea-pill-btn" aria-label="Move to column" :aria-expanded="createGroupDropdownOpen" aria-controls="idea-group-list" @click="createGroupDropdownOpen = !createGroupDropdownOpen; createTagDropdownOpen = false">
                                                 <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
                                                 <span x-text="createGroupLabel()"></span>
                                                 <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
                                             </button>
-                                            <div x-show="createGroupDropdownOpen" x-cloak x-transition class="idea-pill-dropdown">
+                                            <div id="idea-group-list" x-show="createGroupDropdownOpen" x-cloak x-transition class="idea-pill-dropdown">
                                                 {% for col in sidebar_idea_columns %}
                                                 <button type="button"
                                                         @click="createSelectedGroup = '{{ col.id }}'; createGroupDropdownOpen = false"
+                                                        :aria-pressed="createSelectedGroup === '{{ col.id }}'"
                                                         :class="createSelectedGroup === '{{ col.id }}' && 'font-semibold'">
                                                     <span>{{ col.label }}</span>
-                                                    <svg x-show="createSelectedGroup === '{{ col.id }}'" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" class="ml-auto" style="color: var(--primary);"><polyline points="20 6 9 17 4 12"/></svg>
+                                                    <svg x-show="createSelectedGroup === '{{ col.id }}'" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" class="ms-auto text-brand" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
                                                 </button>
                                                 {% endfor %}
                                             </div>
                                         </div>
 
                                         <!-- Tags dropdown -->
-                                        <div class="relative" @click.away="createTagDropdownOpen = false">
-                                            <button type="button" class="idea-pill-btn" @click="createTagDropdownOpen = !createTagDropdownOpen; createGroupDropdownOpen = false; if(createTagDropdownOpen) $nextTick(() => $refs.sidebarCreateTagSearchInput.focus())">
+                                        <div class="relative" @click.away="createTagDropdownOpen = false"
+                                             @keydown.escape="if (createTagDropdownOpen) { createTagDropdownOpen = false; $event.stopPropagation(); $refs.tagBtn.focus() }">
+                                            <button type="button" id="idea-tag-btn" x-ref="tagBtn" class="idea-pill-btn" :aria-expanded="createTagDropdownOpen" aria-controls="idea-tag-list" @click="createTagDropdownOpen = !createTagDropdownOpen; createGroupDropdownOpen = false; if(createTagDropdownOpen) $nextTick(() => $refs.sidebarCreateTagSearchInput.focus())">
                                                 <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 01-2.83 0L2 12V2h10l8.59 8.59a2 2 0 010 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
                                                 <span>Tags</span>
-                                                <span x-show="createSelectedTags.length" class="inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold text-white" style="background: var(--primary);" x-text="createSelectedTags.length"></span>
+                                                <span x-show="createSelectedTags.length" class="inline-flex items-center justify-center w-4 h-4 rounded-full text-[10px] font-bold text-white bg-[var(--primary)]" x-text="createSelectedTags.length"></span>
                                                 <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path d="M6 9l6 6 6-6"/></svg>
                                             </button>
-                                            <div x-show="createTagDropdownOpen" x-cloak x-transition class="idea-pill-dropdown">
-                                                <div style="padding: 4px 6px; border-bottom: 1px solid var(--border);">
-                                                    <input type="text" x-ref="sidebarCreateTagSearchInput" x-model="createTagSearch"
+                                            <div id="idea-tag-list" x-show="createTagDropdownOpen" x-cloak x-transition class="idea-pill-dropdown">
+                                                <div class="px-1.5 py-1 border-b border-line">
+                                                    <input type="text" x-ref="sidebarCreateTagSearchInput" x-model="createTagSearch" aria-label="Search or create a tag"
                                                            @keydown.enter.prevent="if (createTagSearch.trim() && !filteredCreateTags.includes(createTagSearch.trim())) { persistAndToggleCreateTag(createTagSearch.trim()); } else if (filteredCreateTags.length === 1) { toggleCreateTag(filteredCreateTags[0]); createTagSearch = ''; }"
-                                                           class="w-full text-xs px-2 py-1.5 rounded border outline-none"
-                                                           style="border-color: var(--border);"
+                                                           class="form-input-styled w-full text-xs px-2 py-1.5"
                                                            placeholder="Search or create tag...">
                                                 </div>
                                                 <template x-for="tag in filteredCreateTags" :key="tag">
                                                     <label>
-                                                        <input type="checkbox" class="rounded accent-orange-500"
+                                                        <input type="checkbox" class="rounded bb-checkbox"
                                                                :checked="createSelectedTags.includes(tag)"
                                                                @change="toggleCreateTag(tag)">
                                                         <span x-text="tag"></span>
                                                     </label>
                                                 </template>
                                                 <template x-if="!createTagSearch.trim() && !allTags.length">
-                                                    <div class="px-3 py-2 text-xs" style="color: var(--text-tertiary);">No tags yet. Type to create one.</div>
+                                                    <div class="px-3 py-2 text-xs text-ink-3">No tags yet. Type to create one.</div>
                                                 </template>
                                                 <template x-if="createTagSearch.trim() && !filteredCreateTags.includes(createTagSearch.trim())">
-                                                    <div class="border-t" style="border-color: var(--border); margin-top: 2px; padding-top: 2px;">
+                                                    <div class="border-t border-line mt-0.5 pt-0.5">
                                                         <button type="button" @click="persistAndToggleCreateTag(createTagSearch.trim())"
-                                                                style="color: var(--primary);">
+                                                                class="text-brand">
                                                             <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                                                             Create "<span x-text="createTagSearch.trim()"></span>"
                                                         </button>
@@ -508,7 +353,7 @@
                                                 <div class="border-t border-stone-100 px-1 py-1">
                                                     <button type="button" @click="createTagDropdownOpen = false; showCreateTagModal = true; newTagName = createTagSearch; createTagSearch = ''; $nextTick(() => $refs.sidebarNewTagNameInput.focus())"
                                                             class="flex items-center gap-2 w-full px-2.5 py-1.5 text-sm text-stone-600 hover:bg-stone-50 rounded-md cursor-pointer transition-colors">
-                                                        <svg class="w-3.5 h-3.5 text-orange-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+                                                        <svg class="w-3.5 h-3.5 text-orange-500" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
                                                         Create new tag
                                                     </button>
                                                 </div>
@@ -519,12 +364,12 @@
 
                                 <!-- Selected tags chips -->
                                 <template x-if="createSelectedTags.length > 0">
-                                    <div class="idea-selected-tags" style="padding: 0 24px 8px;">
+                                    <div class="idea-selected-tags px-6 pb-2">
                                         <template x-for="tag in createSelectedTags" :key="tag">
                                             <span class="idea-tag-chip">
                                                 <span x-text="tag"></span>
-                                                <button type="button" @click="toggleCreateTag(tag)">
-                                                    <svg width="8" height="8" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                                <button type="button" @click="toggleCreateTag(tag)" :aria-label="'Remove tag ' + tag">
+                                                    <svg width="8" height="8" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                                                 </button>
                                             </span>
                                         </template>
@@ -532,10 +377,12 @@
                                 </template>
 
                                 <!-- Body -->
-                                <div class="idea-modal-body" @click="createGroupDropdownOpen = false; createTagDropdownOpen = false">
-                                    <input type="text" name="title" required class="idea-title-input" placeholder="Give your idea a title">
-                                    <textarea name="description" class="idea-desc-input" placeholder="Let it flow... or"></textarea>
-                                    <input type="file" name="media" x-ref="sidebarIdeaFileInput" accept="image/*,video/*,.gif" style="display:none" multiple
+                                <div class="idea-modal-body">
+                                    <label for="idea-title" class="sr-only">Idea title</label>
+                                    <input type="text" id="idea-title" name="title" required data-autofocus class="idea-title-input" placeholder="Give your idea a title">
+                                    <label for="idea-description" class="sr-only">Idea description</label>
+                                    <textarea id="idea-description" name="description" class="idea-desc-input" placeholder="Let it flow... or"></textarea>
+                                    <input type="file" name="media" x-ref="sidebarIdeaFileInput" accept="image/*,video/*,.gif" class="hidden" multiple aria-label="Attach images or videos"
                                            @change="_handleFileSelect($event)">
 
                                     <div class="idea-media-strip-layout">
@@ -545,14 +392,14 @@
                                                     <video :src="media.url" muted playsinline preload="metadata"></video>
                                                 </template>
                                                 <template x-if="media.media_type !== 'video'">
-                                                    <img :src="media.url" alt="Preview">
+                                                    <img :src="media.url" alt="Attached image preview">
                                                 </template>
-                                                <button type="button" class="remove-btn" @click="_removeCreateMedia(index)" title="Remove">
-                                                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                                                <button type="button" class="remove-btn" @click="_removeCreateMedia(index)" aria-label="Remove attachment">
+                                                    <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                                                 </button>
                                             </div>
                                         </template>
-                                        <div class="idea-media-zone"
+                                        <button type="button" class="idea-media-zone"
                                              :class="{ 'idea-media-zone-tile': true, 'drag-over': _mediaDragOver }"
                                              @click="$refs.sidebarIdeaFileInput.click()"
                                              @dragover.prevent="_mediaDragOver = true"
@@ -561,28 +408,27 @@
                                             <svg width="24" height="24" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                                             <span x-show="!createMediaAssets.length">Drag &amp; drop</span>
                                             <span x-show="createMediaAssets.length">Add another file</span>
-                                            <span>or <strong style="color: var(--primary); cursor: pointer;">select a file</strong></span>
-                                        </div>
+                                            <span>or <strong class="text-brand">select a file</strong></span>
+                                        </button>
                                     </div>
                                 </div>
 
                                 <!-- Footer -->
-                                <div class="idea-modal-footer" @click="createGroupDropdownOpen = false; createTagDropdownOpen = false">
-                                    <span style="margin-right: auto; display: flex; align-items: center; gap: 8px; color: var(--text-tertiary);">
-                                        <span style="width: 1px; height: 20px; background: var(--border);"></span>
+                                <div class="idea-modal-footer">
+                                    <span class="me-auto flex items-center gap-2 text-ink-3" @keydown.escape="if (emojiPickerOpen) { emojiPickerOpen = false; $event.stopPropagation(); $refs.emojiBtn.focus() }">
+                                        <span class="w-px h-5 bg-[var(--border)]" aria-hidden="true"></span>
                                         <div class="relative">
-                                            <button type="button" @click.stop="emojiPickerOpen = !emojiPickerOpen" class="p-1 rounded hover:bg-stone-100 transition-colors cursor-pointer" title="Emoji" style="color: var(--text-tertiary);">
-                                                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
+                                            <button type="button" x-ref="emojiBtn" @click.stop="emojiPickerOpen = !emojiPickerOpen" class="pd-icon-btn pd-icon-btn--sm" aria-label="Insert emoji" :aria-expanded="emojiPickerOpen" aria-controls="idea-emoji-picker">
+                                                <svg width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/></svg>
                                             </button>
-                                            <div x-show="emojiPickerOpen" x-cloak @click.away="emojiPickerOpen = false"
+                                            <div id="idea-emoji-picker" x-show="emojiPickerOpen" x-cloak @click.away="emojiPickerOpen = false"
                                                  x-transition:enter="transition ease-out duration-100"
                                                  x-transition:enter-start="opacity-0 scale-95"
                                                  x-transition:enter-end="opacity-100 scale-100"
                                                  class="emoji-picker-popup">
                                                 <div class="emoji-picker-search">
-                                                    <input type="text" placeholder="Search emoji..." x-model="_emojiSearch"
-                                                           class="w-full px-2 py-1.5 text-xs rounded border outline-none"
-                                                           style="border-color: var(--border);"
+                                                    <input type="text" placeholder="Search emoji..." x-model="_emojiSearch" aria-label="Search emoji"
+                                                           class="form-input-styled w-full px-2 py-1.5 text-xs"
                                                            @click.stop>
                                                 </div>
                                                 <div class="emoji-picker-grid">
@@ -591,59 +437,47 @@
                                                                 class="emoji-picker-item"
                                                                 @click.stop="_insertEmoji(emoji.e); emojiPickerOpen = false"
                                                                 x-text="emoji.e"
-                                                                :title="emoji.n">
+                                                                :aria-label="emoji.n">
                                                         </button>
                                                     </template>
                                                 </div>
                                             </div>
                                         </div>
-                                        <span style="width: 1px; height: 20px; background: var(--border);"></span>
+                                        <span class="w-px h-5 bg-[var(--border)]" aria-hidden="true"></span>
                                     </span>
                                     <button type="button" @click="closeCreateModal()"
-                                            class="btn-neutral px-5 py-2 text-sm font-medium rounded-full transition-colors cursor-pointer"
-                                            style="background: var(--neutral-100); color: var(--text-primary);">
+                                            class="btn-neutral px-5 py-2 text-sm font-medium rounded-full transition-colors cursor-pointer bg-[var(--neutral-100)] text-ink">
                                         Cancel
                                     </button>
                                     <button type="submit"
                                             :disabled="createMediaUploadCount > 0 || isCreateSaving"
                                             :class="(createMediaUploadCount > 0 || isCreateSaving) && 'opacity-50 cursor-not-allowed'"
-                                            class="btn-neutral px-5 py-2 text-sm font-medium rounded-full transition-colors cursor-pointer"
-                                            style="background: var(--neutral-100); color: var(--text-primary);">
+                                            class="btn-neutral px-5 py-2 text-sm font-medium rounded-full transition-colors cursor-pointer bg-[var(--neutral-100)] text-ink">
                                         Save Idea
                                     </button>
                                 </div>
                             </form>
                         </div>
                     </div>
-                    <div x-show="showCreateTagModal" x-cloak class="fixed inset-0 z-[220] flex items-center justify-center" @keydown.escape.window="closeCreateTagModal()">
-                        <div class="fixed inset-0 bg-black/30" @click="closeCreateTagModal()"></div>
-                        <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6" @click.stop>
-                            <h3 class="text-base font-semibold text-stone-800 mb-4">Create new tag</h3>
-                            <input type="text" x-ref="sidebarNewTagNameInput" x-model="newTagName"
-                                   @keydown.enter.prevent="createTagFromModal()"
-                                   class="w-full text-sm px-3 py-2.5 rounded-xl border border-stone-200 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all"
-                                   placeholder="Tag name...">
-                            <div class="flex justify-end gap-2 mt-4">
-                                <button type="button" @click="closeCreateTagModal()"
-                                        class="px-4 py-2 text-sm font-medium text-stone-600 hover:bg-stone-100 rounded-lg cursor-pointer transition-colors">
-                                    Cancel
-                                </button>
-                                <button type="button"
-                                        @click="createTagFromModal()"
-                                        class="px-4 py-2 text-sm font-semibold text-white rounded-lg transition-colors"
-                                        style="background: var(--primary);"
-                                        :class="newTagName.trim() ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'">
-                                    Create
-                                </button>
-                            </div>
+                    {% modal open="showCreateTagModal" title="Create new tag" size="sm" teleport=False return_focus="#idea-tag-btn" %}
+                        <label for="idea-new-tag-name" class="sr-only">Tag name</label>
+                        <input type="text" id="idea-new-tag-name" x-ref="sidebarNewTagNameInput" x-model="newTagName" data-autofocus
+                               @keydown.enter.prevent="createTagFromModal()"
+                               class="form-input-styled w-full text-sm"
+                               placeholder="Tag name...">
+                        <div class="pd-modal-actions">
+                            <button type="button" @click="closeCreateTagModal()" class="btn-outline w-auto text-sm">Cancel</button>
+                            <button type="button" @click="createTagFromModal()" class="btn-brand w-auto text-sm"
+                                    :disabled="!newTagName.trim()" :class="!newTagName.trim() && 'opacity-50 cursor-not-allowed'">Create</button>
                         </div>
+                    {% endmodal %}
                     </div>
                 </template>
             </div>
             {% endif %}
 
             <!-- Navigation -->
-            <nav class="sidebar-nav flex-1 overflow-y-auto py-2 px-3" :class="sidebarCollapsed ? 'px-2' : 'px-3'">
+            <nav class="sidebar-nav flex-1 overflow-y-auto py-2 px-3" aria-label="{% block nav_label %}Primary{% endblock %}" :class="sidebarCollapsed ? 'px-2' : 'px-3'">
                 {% block sidebar_nav %}
                 {% if request.workspace %}
                 <a href="{% url 'calendar:calendar' workspace_id=request.workspace.id %}" class="mb-1 sidebar-nav-item {% if request.resolver_match.url_name == 'calendar' %}active{% endif %}">
@@ -669,7 +503,7 @@
                 <a href="{% url 'inbox:feed' workspace_id=request.workspace.id %}" class="mb-1 sidebar-nav-item {% if request.resolver_match.app_name == 'inbox' %}active{% endif %}">
                     <svg class="flex-shrink-0" width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
                     <span class="sidebar-nav-label">Social Inbox</span>
-                    <span id="sidebar-inbox-badge" class="ml-auto">{% if sidebar_unread_inbox_count %}<span class="sidebar-badge">{{ sidebar_unread_inbox_count }}</span>{% endif %}</span>
+                    <span id="sidebar-inbox-badge" class="ms-auto">{% if sidebar_unread_inbox_count %}<span class="sidebar-badge">{{ sidebar_unread_inbox_count }}</span>{% endif %}</span>
                 </a>
                 {% endif %}
 
@@ -713,11 +547,11 @@
                 {% if sidebar_channels or sidebar_unhealthy_channels %}
                 <!-- Channels -->
                 <div class="group flex items-center justify-between mt-3.5 sidebar-section-label-wrap">
-                    <div class="sidebar-section-label" style="padding-top:0">Channels</div>
+                    <div class="sidebar-section-label !pt-0">Channels</div>
                     <a href="{% url 'social_accounts:connect' workspace_id=request.workspace.id %}"
-                       class="opacity-0 group-hover:opacity-100 w-5 h-5 flex items-center justify-center rounded text-stone-400 hover:text-stone-600 transition-all mr-2 sidebar-nav-label"
-                       title="Connect a channel">
-                        <svg width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                       class="opacity-0 group-hover:opacity-100 focus-visible:opacity-100 w-6 h-6 flex items-center justify-center rounded text-stone-400 hover:text-stone-600 transition-all me-2 sidebar-nav-label"
+                       aria-label="Connect a channel" title="Connect a channel">
+                        <svg aria-hidden="true" width="14" height="14" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                     </a>
                 </div>
                 {% for channel in sidebar_channels %}
@@ -728,12 +562,12 @@
                         {% else %}
                         <div class="w-7 h-7 rounded-full bg-stone-200 flex items-center justify-center text-[11px] font-semibold text-stone-500">{{ channel.account_name|default:channel.account_handle|make_list|first|upper }}</div>
                         {% endif %}
-                        {% if channel.platform != "youtube" %}<div class="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center">
+                        {% if channel.platform != "youtube" %}<div class="absolute -bottom-0.5 -end-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center">
                             {% include "partials/_platform_icon.html" with platform=channel.platform size="sm" %}
                         </div>{% endif %}
                     </div>
                     {% if channel.platform == "youtube" %}
-                    <span class="sidebar-nav-label min-w-0 flex-1" style="line-height:1.35;">
+                    <span class="sidebar-nav-label min-w-0 flex-1 leading-[1.35]">
                         <span class="block text-[11px] font-semibold text-stone-500">YouTube</span>
                         <span class="block truncate">{{ channel.account_name|default:channel.account_handle }}</span>
                     </span>
@@ -747,17 +581,17 @@
                 <div class="sidebar-nav-item flex items-center gap-2">
                     <div class="relative flex-shrink-0 opacity-60">
                         {% if channel.avatar_url %}
-                        <img src="{{ channel.avatar_url }}" alt="" class="w-7 h-7 rounded-full object-cover grayscale" x-data @error="$el.style.display='none';$el.nextElementSibling.style.display='flex'">
-                        <div class="w-7 h-7 rounded-full bg-stone-200 items-center justify-center text-[11px] font-semibold text-stone-500" style="display:none">{{ channel.account_name|default:channel.account_handle|make_list|first|upper }}</div>
+                        <img src="{{ channel.avatar_url }}" alt="" class="w-7 h-7 rounded-full object-cover grayscale" x-data @error="$el.classList.add('hidden'); $el.nextElementSibling.classList.remove('hidden'); $el.nextElementSibling.classList.add('flex')">
+                        <div class="hidden w-7 h-7 rounded-full bg-stone-200 items-center justify-center text-[11px] font-semibold text-stone-500">{{ channel.account_name|default:channel.account_handle|make_list|first|upper }}</div>
                         {% else %}
                         <div class="w-7 h-7 rounded-full bg-stone-200 flex items-center justify-center text-[11px] font-semibold text-stone-500">{{ channel.account_name|default:channel.account_handle|make_list|first|upper }}</div>
                         {% endif %}
-                        {% if channel.platform != "youtube" %}<div class="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center">
+                        {% if channel.platform != "youtube" %}<div class="absolute -bottom-0.5 -end-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center">
                             {% include "partials/_platform_icon.html" with platform=channel.platform size="sm" %}
                         </div>{% endif %}
                     </div>
                     {% if channel.platform == "youtube" %}
-                    <span class="sidebar-nav-label min-w-0 flex-1 text-stone-400" style="line-height:1.35;">
+                    <span class="sidebar-nav-label min-w-0 flex-1 text-stone-400 leading-[1.35]">
                         <span class="block text-[11px] font-semibold">YouTube</span>
                         <span class="block truncate">{{ channel.account_name|default:channel.account_handle }}</span>
                     </span>
@@ -784,7 +618,7 @@
                         <div class="w-4 h-4 flex items-center justify-center rounded-lg bg-stone-100">
                             {% include "partials/_platform_icon.html" with platform=platform_key size="sm" %}
                         </div>
-                        <div class="absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full bg-orange-500 flex items-center justify-center ring-1 ring-white">
+                        <div class="absolute -bottom-1 -end-1 w-2.5 h-2.5 rounded-full bg-orange-500 flex items-center justify-center ring-1 ring-white">
                             <svg viewBox="0 0 24 24" fill="none" width="6" height="6" stroke="white" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12H19M12 5V19"/></svg>
                         </div>
                     </div>
@@ -810,11 +644,13 @@
 
             <!-- Organization footer -->
             <div class="sidebar-org-footer border-t border-stone-100 relative px-3 py-3" x-data="{ orgMenuOpen: false }"
-                 :class="sidebarCollapsed ? 'px-2 py-2' : 'px-3 py-3'">
+                 :class="sidebarCollapsed ? 'px-2 py-2' : 'px-3 py-3'"
+                 @keydown.escape="if (orgMenuOpen) { orgMenuOpen = false; $nextTick(() => { const b = [$refs.orgBtn, $refs.orgBtnCollapsed].find(e => e && e.getClientRects().length); if (b) b.focus() }) }">
                 <!-- Expanded: single row with org button + collapse toggle -->
                 <div class="sidebar-org-expanded flex items-center gap-1" x-show="!sidebarCollapsed">
-                    <button @click="orgMenuOpen = !orgMenuOpen"
+                    <button type="button" x-ref="orgBtn" @click="orgMenuOpen = !orgMenuOpen" aria-controls="org-menu" :aria-expanded="orgMenuOpen"
                             class="flex-1 flex items-center gap-2 px-1 py-1 rounded-lg hover:bg-black/[0.04] transition-colors cursor-pointer min-w-0">
+                        <span class="sr-only">Account menu:</span>
                         {% if user.avatar %}
                         <img src="{{ user.avatar.url }}" alt="" class="w-8 h-8 rounded-full object-cover flex-shrink-0">
                         {% else %}
@@ -822,25 +658,17 @@
                             <svg class="w-4 h-4 text-stone-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
                         </div>
                         {% endif %}
-                        <div class="flex-1 min-w-0 text-left">
+                        <div class="flex-1 min-w-0 text-start">
                             <p class="text-sm font-semibold text-stone-800 truncate">{{ request.org.name|default:"My Organization" }}</p>
                             <p class="text-[11px] text-stone-400 truncate">{% if user.name %}{{ user.name }}{% else %}{{ user.email }}{% endif %}</p>
                         </div>
                     </button>
-                    <button @click="sidebarCollapsed = true"
-                            class="hidden lg:flex w-7 h-7 items-center justify-center rounded-md text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors cursor-pointer flex-shrink-0"
-                            title="Collapse sidebar">
-                        <svg viewBox="0 0 24 24" fill="none" width="16" height="16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3V21M16 15L13 12L16 9M5 3H19C20.1046 3 21 3.89543 21 5V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V5C3 3.89543 3.89543 3 5 3Z"/></svg>
-                    </button>
+                    {% icon_button label="Collapse sidebar" icon="panel-left" click="sidebarCollapsed = true" size="sm" icon_size=16 extra_class="hidden lg:inline-flex" %}
                 </div>
                 <!-- Collapsed: stacked vertically -->
-                <div class="sidebar-org-collapsed flex flex-col items-center gap-2" x-show="sidebarCollapsed" x-cloak style="display:none">
-                    <button @click="sidebarCollapsed = false"
-                            class="w-7 h-7 flex items-center justify-center rounded-md text-stone-400 hover:text-stone-600 hover:bg-stone-100 transition-colors cursor-pointer"
-                            title="Expand sidebar">
-                        <svg viewBox="0 0 24 24" fill="none" width="16" height="16" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="scale-x-[-1]"><path d="M9 3V21M16 15L13 12L16 9M5 3H19C20.1046 3 21 3.89543 21 5V19C21 20.1046 20.1046 21 19 21H5C3.89543 21 3 20.1046 3 19V5C3 3.89543 3.89543 3 5 3Z"/></svg>
-                    </button>
-                    <button @click="orgMenuOpen = !orgMenuOpen"
+                <div class="sidebar-org-collapsed flex flex-col items-center gap-2" x-show="sidebarCollapsed" x-cloak>
+                    {% icon_button label="Expand sidebar" icon="panel-left-flipped" click="sidebarCollapsed = false" size="sm" icon_size=16 %}
+                    <button type="button" x-ref="orgBtnCollapsed" @click="orgMenuOpen = !orgMenuOpen" aria-label="Account menu" aria-controls="org-menu" :aria-expanded="orgMenuOpen"
                             class="w-8 h-8 rounded-full {% if not user.avatar %}bg-stone-200{% endif %} flex items-center justify-center cursor-pointer hover:bg-stone-300 transition-colors">
                         {% if user.avatar %}
                         <img src="{{ user.avatar.url }}" alt="" class="w-8 h-8 rounded-full object-cover">
@@ -851,14 +679,14 @@
                 </div>
 
                 <!-- Org menu popover -->
-                <div x-show="orgMenuOpen" @click.away="orgMenuOpen = false" x-cloak
+                <div id="org-menu" x-show="orgMenuOpen" @click.away="orgMenuOpen = false" x-cloak
                      x-transition:enter="transition ease-out duration-100"
                      x-transition:enter-start="opacity-0 scale-95"
                      x-transition:enter-end="opacity-100 scale-100"
                      x-transition:leave="transition ease-in duration-75"
                      x-transition:leave-start="opacity-100 scale-100"
                      x-transition:leave-end="opacity-0 scale-95"
-                     class="absolute bottom-full left-3 right-3 mb-2 bg-white rounded-xl shadow-lg ring-1 ring-stone-200 z-50 overflow-hidden">
+                     class="absolute bottom-full inset-x-3 mb-2 bg-white rounded-xl shadow-lg ring-1 ring-stone-200 z-50 overflow-hidden">
 
                     <!-- User info -->
                     <div class="px-4 pt-4 pb-3">
@@ -899,45 +727,36 @@
                     </div>
                 </div>
             </div>
-        </aside>
+        </div>
 
         <!-- Main content area -->
-        <div class="flex-1 flex flex-col overflow-hidden">
-            <!-- Mobile top bar -->
-            <div class="flex lg:hidden items-center justify-between px-4 py-3 border-b border-stone-200 bg-white flex-shrink-0">
-                <button @click="mobileMenuOpen = !mobileMenuOpen"
-                        class="w-9 h-9 flex items-center justify-center rounded-lg text-stone-600 hover:bg-stone-100 transition-colors cursor-pointer -ml-1"
-                        title="Toggle menu">
-                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <line x1="3" y1="6" x2="21" y2="6"/>
-                        <line x1="3" y1="12" x2="21" y2="12"/>
-                        <line x1="3" y1="18" x2="21" y2="18"/>
-                    </svg>
-                </button>
-                <div class="flex items-center gap-2">
+        <div class="flex-1 flex flex-col overflow-hidden min-w-0">
+            <!-- Mobile top bar (the page banner below lg; the sidebar brand is the banner from lg up) -->
+            <header class="pd-topbar lg:hidden">
+                {% icon_button label="Open menu" icon="menu" id="mobile-menu-btn" click="mobileMenuOpen = true" expanded="mobileMenuOpen" controls="app-sidebar" extra_class="-ms-1" %}
+                <a href="{% url 'dashboard' %}" class="flex items-center gap-2 min-w-0 no-underline" aria-label="{{ brand_name }} home">
                     {% with current_ws=request.workspace %}
                     {% if current_ws %}
                     {% if current_ws.icon %}
                     <img src="{{ current_ws.icon.url }}" alt="" class="w-7 h-7 rounded-md object-cover">
                     {% else %}
-                    <div class="w-7 h-7 rounded-md flex items-center justify-center text-white text-[11px] font-bold" style="background: var(--primary);">{{ current_ws.name|make_list|first|upper }}</div>
+                    <span class="sidebar-logo-mark" aria-hidden="true">{{ current_ws.name|make_list|first|upper }}</span>
                     {% endif %}
-                    <span class="text-sm font-semibold text-stone-800 truncate max-w-[160px]">{{ current_ws.name }}</span>
+                    <span class="text-sm font-semibold text-ink truncate max-w-[10rem]">{{ current_ws.name }}</span>
                     {% else %}
-                    <div class="w-7 h-7 rounded-md flex items-center justify-center text-white text-[11px] font-bold" style="background: var(--primary);">P</div>
-                    <span class="text-sm font-semibold text-stone-800">{{ brand_short_name }}</span>
+                    <span class="sidebar-logo-mark" aria-hidden="true">P</span>
+                    <span class="text-sm font-semibold text-ink">{{ brand_short_name }}</span>
                     {% endif %}
                     {% endwith %}
-                </div>
-                <div class="w-9"></div>
-            </div>
+                </a>
+            </header>
             <!-- Main content -->
-            <main class="pd-main lg:border lg:border-stone-200 lg:m-2.5 bg-white lg:rounded-xl flex-1 p-3 sm:p-4 lg:p-6 overflow-y-auto flex flex-col">
+            <main id="main-content" tabindex="-1" class="pd-main">
                 {% block page_header %}{% endblock %}
                 {% if messages %}
-                <div class="mb-4 space-y-2">
+                <div class="mb-4 space-y-2" role="status">
                     {% for message in messages %}
-                    <div class="rounded-md p-4 {% if message.tags == 'error' %}bg-red-50 text-red-800{% elif message.tags == 'success' %}bg-green-50 text-green-800{% else %}bg-blue-50 text-blue-800{% endif %}">
+                    <div class="rounded-md p-4 {% if message.tags == 'error' %}bg-red-50 text-red-800{% elif message.tags == 'success' %}bg-green-50 text-green-800{% else %}bg-blue-50 text-blue-800{% endif %}"{% if message.tags == 'error' %} role="alert"{% endif %}>
                         {{ message }}
                     </div>
                     {% endfor %}
@@ -956,7 +775,7 @@
 
     {% elif focus_layout %}
     {% comment %}Signed-in pages with no sidebar (the welcome flow): the page supplies focus_content.{% endcomment %}
-    <main id="focus-main">
+    <main id="main-content" tabindex="-1">
         {% if messages %}
         <div class="mx-auto max-w-2xl px-4 pt-4" role="status">
             {% for message in messages %}
@@ -967,13 +786,15 @@
         {% block focus_content %}{% endblock %}
     </main>
     {% else %}
-    <main class="auth-bg relative min-h-screen flex items-center justify-center py-12 px-4" style="font-family: var(--font-body);">
-        {% block auth_content %}{% endblock %}
-        <footer class="absolute bottom-3 inset-x-0 px-4 text-center">
+    <div class="auth-bg relative min-h-screen flex flex-col">
+        <main id="main-content" tabindex="-1" class="flex-1 flex items-center justify-center py-12 px-4">
+            {% block auth_content %}{% endblock %}
+        </main>
+        <footer class="px-4 py-3 text-center">
             {% include "partials/_legal_links.html" %}
             {% include "partials/_source_credit.html" %}
         </footer>
-    </main>
+    </div>
     {% endif %}
 
     <!-- Vendored JS -->
@@ -1023,6 +844,7 @@
             }
         });
     </script>
+    {% include "components/_dialog_js.html" %}
     <script src="{% static 'js/alpine.min.js' %}" defer></script>
     <script src="{% static 'js/vendor/flatpickr.min.js' %}"></script>
     <script src="{% static 'js/vendor/Sortable.min.js' %}"></script>
@@ -1354,38 +1176,19 @@
     {% endif %}
     {% block extra_js %}{% endblock %}
     {% if can_create_workspace %}
-    <!-- Create workspace modal -->
-    <div x-data="{ createWsOpen: false }"
-         @open-create-ws.window="createWsOpen = true; $nextTick(() => $refs.newWsName.focus())">
-        <div x-show="createWsOpen" x-cloak class="fixed inset-0 z-[100] flex items-center justify-center">
-            <div class="absolute inset-0 bg-black/40" @click="createWsOpen = false"></div>
-            <div class="relative bg-white rounded-xl shadow-xl ring-1 ring-stone-200 w-full max-w-md mx-4 p-6"
-                 x-show="createWsOpen"
-                 x-transition:enter="transition ease-out duration-150"
-                 x-transition:enter-start="opacity-0 scale-95"
-                 x-transition:enter-end="opacity-100 scale-100"
-                 x-transition:leave="transition ease-in duration-100"
-                 x-transition:leave-start="opacity-100 scale-100"
-                 x-transition:leave-end="opacity-0 scale-95"
-                 @keydown.escape.window="createWsOpen = false">
-                <h3 class="text-base font-semibold text-stone-900 mb-4">Create workspace</h3>
-                <form method="post" action="{% url 'workspaces:create' %}">
-                    {% csrf_token %}
-                    <input type="text" name="name" x-ref="newWsName" required placeholder="Workspace name"
-                           class="form-input-styled w-full mb-4">
-                    <div class="flex justify-end gap-2">
-                        <button type="button" @click="createWsOpen = false"
-                                class="px-4 py-2 text-sm font-medium text-stone-600 bg-white border border-stone-200 rounded-lg hover:bg-stone-50 transition-colors cursor-pointer">
-                            Cancel
-                        </button>
-                        <button type="submit"
-                                class="btn-brand px-4 py-2 text-sm cursor-pointer">
-                            Create
-                        </button>
-                    </div>
-                </form>
-            </div>
-        </div>
+    <div x-data="{ createWsOpen: false }" @open-create-ws.window="createWsOpen = true">
+        {% modal open="createWsOpen" title="Create workspace" size="sm" teleport=False return_focus="#sidebar-ws-btn, #mobile-menu-btn" %}
+            <form method="post" action="{% url 'workspaces:create' %}">
+                {% csrf_token %}
+                <label for="new-workspace-name" class="sr-only">Workspace name</label>
+                <input type="text" id="new-workspace-name" name="name" required data-autofocus placeholder="Workspace name"
+                       class="form-input-styled w-full">
+                <div class="pd-modal-actions">
+                    <button type="button" @click="createWsOpen = false" class="btn-outline w-auto text-sm">Cancel</button>
+                    <button type="submit" class="btn-brand w-auto text-sm">Create</button>
+                </div>
+            </form>
+        {% endmodal %}
     </div>
     {% endif %}
 </body>

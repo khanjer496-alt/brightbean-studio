@@ -65,10 +65,17 @@ THIRD_PARTY_ASSETS = [
     },
     {
         "name": "Manrope (font)",
-        "version": "",
+        "version": "5.3.0 (Fontsource variable build)",
         "license": "SIL Open Font License 1.1",
         "url": "https://github.com/sharanda/manrope",
         "delivery": "Bundled (theme/static/fonts, licence text included)",
+    },
+    {
+        "name": "Noto Sans Arabic (web font)",
+        "version": "5.3.0 (Fontsource variable build)",
+        "license": "SIL Open Font License 1.1",
+        "url": "https://notofonts.github.io",
+        "delivery": "Bundled (theme/static/fonts, licence text included); Arabic fallback, loaded only for Arabic text",
     },
     {
         "name": "Noto Sans, Noto Sans Arabic and Noto Emoji (fonts)",
@@ -89,10 +96,10 @@ THIRD_PARTY_ASSETS = [
     },
     {
         "name": "Swagger UI",
-        "version": "5.x",
+        "version": "5.21.0",
         "license": "Apache-2.0",
         "url": "https://swagger.io/tools/swagger-ui/",
-        "delivery": "Loaded from cdn.jsdelivr.net on the API documentation page only",
+        "delivery": "Bundled (static/vendor/swagger-ui-5.21.0, licence and notice included); API documentation page only",
     },
     {
         "name": "YouTube icon",

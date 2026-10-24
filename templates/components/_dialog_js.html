@@ -1,0 +1,139 @@
+{% comment %}
+x-pd-dialog - Alpine directive that makes an element behave as a modal dialog while its expression is truthy.
+Included once by base.html; see components/modal.html for the markup and the {% modal %} tag.
+
+    <div x-show="open" x-pd-dialog="open" role="dialog" aria-modal="true" aria-labelledby="t" data-return-focus="#opener">
+
+While open: focus moves inside (first [data-autofocus], else first focusable, else the element), Tab wraps,
+Escape assigns `false` to the expression, every other part of the page is inert (live regions stay announced)
+and the page scroll is locked. Escape and Tab are handled for the top-most open dialog wherever focus is
+(e.g. on <body> after a click on plain text), and Escape stops there so outer dialogs and
+@keydown.escape.window handlers do not also close. On close focus returns to the element that opened it, or to
+the data-return-focus selector (comma list allowed; first visible match wins) when that element is gone or hidden.
+data-dialog-close="expr" overrides the close expression when the open expression is not assignable.
+Elements with role=alert/status, aria-live or data-pd-backdrop are not made inert.
+
+Replacing x-a11y-modal (templates/composer/partials/modal_a11y.html, composer batch) with this directive:
+    x-a11y-modal="expr"          ->  x-pd-dialog="expr"            (same: any condition, e.g. "open && isPhone")
+    data-close="closeIt()"       ->  data-dialog-close="closeIt()"
+    data-a11y-backdrop           ->  data-pd-backdrop
+    data-autofocus               ->  data-autofocus                (unchanged)
+    html overflow:hidden lock    ->  html.pd-scroll-locked         (styles.css; same effect)
+    {% include modal_a11y %}     ->  drop it; base.html includes this file once
+  Differences to check per call site: x-a11y-modal skips a leading "Close" button for initial focus, this
+  directive focuses the first focusable (put data-autofocus on the field you want); x-a11y-modal falls back to
+  a Tab trap where `inert` is unsupported (every supported browser has it now).
+{% endcomment %}
+<script nonce="{{ request.csp_nonce }}">
+document.addEventListener('alpine:init', function () {
+    var FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex]:not([tabindex="-1"]),[contenteditable="true"]';
+    var stack = [];   // open dialogs, innermost last (also drives the page scroll lock)
+
+    function focusables(root) {
+        return Array.prototype.filter.call(root.querySelectorAll(FOCUSABLE), function (node) {
+            return node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden';
+        });
+    }
+
+    // Make every node outside `el`'s ancestor chain inert, except live regions. Returns an undo function.
+    function isolate(el) {
+        var marked = [];
+        for (var node = el; node && node !== document.body; node = node.parentElement) {
+            var parent = node.parentElement;
+            if (!parent) break;
+            Array.prototype.forEach.call(parent.children, function (sibling) {
+                if (sibling === node || sibling.inert || /^(SCRIPT|STYLE|TEMPLATE|LINK)$/.test(sibling.tagName)) return;
+                if (sibling.matches('[role="alert"],[role="status"],[aria-live],[data-pd-backdrop]')) return;
+                // A closed sibling dialog stays usable for later; an open one is stacked under this dialog.
+                if (sibling.hasAttribute('x-pd-dialog') && sibling.getClientRects().length === 0) return;
+                sibling.inert = true;
+                marked.push(sibling);
+            });
+        }
+        return function () { marked.forEach(function (n) { n.inert = false; }); };
+    }
+
+    // One listener for every dialog. Bubble phase on document: handlers inside the dialog run first
+    // (a dropdown that stops Escape keeps it), and window-level handlers never see a handled Escape.
+    document.addEventListener('keydown', function (event) {
+        var top = stack[stack.length - 1];
+        // defaultPrevented: something inside (a combobox, x-a11y-modal's own handler) already took the key.
+        if (!top || event.defaultPrevented) return;
+        if (event.key === 'Escape') {
+            event.stopPropagation();
+            event.preventDefault();
+            top.close();
+            return;
+        }
+        if (event.key !== 'Tab') return;
+        var items = focusables(top.el);
+        if (!items.length) { event.preventDefault(); return; }
+        var first = items[0], last = items[items.length - 1];
+        var inside = top.el.contains(document.activeElement);
+        if (event.shiftKey && (document.activeElement === first || !inside)) {
+            event.preventDefault(); last.focus();
+        } else if (!event.shiftKey && (document.activeElement === last || !inside)) {
+            event.preventDefault(); first.focus();
+        }
+    });
+
+    Alpine.directive('pd-dialog', function (el, directive, utils) {
+        var evaluate = utils.evaluateLater(directive.expression);
+        var close = utils.evaluateLater(el.getAttribute('data-dialog-close') || (directive.expression + ' = false'));
+        var opener = null, undo = null, active = false;
+        var entry = { el: el, close: function () { close(); } };
+
+        function open() {
+            active = true;
+            opener = document.activeElement;
+            el.inert = false;   // an earlier dialog may have made this (then hidden) sibling inert
+            undo = isolate(el);
+            stack.push(entry);
+            document.documentElement.classList.add('pd-scroll-locked');
+            // Other effects (x-show, :inert) settle in the same tick; retry briefly until focus can land.
+            var tries = 0;
+            (function focusInside() {
+                if (!active) return;
+                var target = el.querySelector('[data-autofocus]') || focusables(el)[0] || el.querySelector('[tabindex="-1"]') || el;
+                if (!target.hasAttribute('tabindex') && target === el) target.setAttribute('tabindex', '-1');
+                target.focus({ preventScroll: true });
+                if (!el.contains(document.activeElement) && ++tries < 12) setTimeout(focusInside, 30);
+            })();
+        }
+
+        function shut() {
+            active = false;
+            if (undo) { undo(); undo = null; }
+            var index = stack.indexOf(entry);
+            if (index !== -1) stack.splice(index, 1);
+            if (!stack.length) document.documentElement.classList.remove('pd-scroll-locked');
+            // Another dialog took over (e.g. the drawer closing as a modal opens): leave focus to it.
+            if (stack.length) { opener = null; return; }
+            var fallback = el.getAttribute('data-return-focus');
+            var back = opener && document.contains(opener) && opener.getClientRects().length && !opener.closest('[inert]') ? opener : null;
+            if (!back && fallback) {
+                back = Array.prototype.find.call(document.querySelectorAll(fallback), function (n) {
+                    return n.getClientRects().length > 0 && !n.closest('[inert]');
+                });
+            }
+            opener = null;
+            if (back) {
+                var returned = 0;
+                (function giveBack() {
+                    if (stack.length) return;
+                    back.focus({ preventScroll: true });
+                    if (document.activeElement !== back && ++returned < 12) setTimeout(giveBack, 30);
+                })();
+            }
+        }
+
+        utils.effect(function () {
+            evaluate(function (value) {
+                if (value && !active) open();
+                else if (!value && active) shut();
+            });
+        });
+        utils.cleanup(function () { if (active) shut(); });
+    });
+});
+</script>

@@ -162,6 +162,7 @@ TEMPLATES = [
             "context_processors": [
                 "django.template.context_processors.debug",
                 "django.template.context_processors.request",
+                "django.template.context_processors.i18n",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "apps.common.context_processors.brand_context",
@@ -247,7 +248,15 @@ PASSWORD_HASHERS = [
 ]
 
 # Internationalization
-LANGUAGE_CODE = "en-us"
+LANGUAGE_CODE = "en"
+# Languages the shell can render. base.html sets <html lang dir> from the active
+# language (LANGUAGE_BIDI), so Arabic mirrors the layout; Arabic strings
+# themselves are not translated yet. To honour Accept-Language, add
+# django.middleware.locale.LocaleMiddleware after SessionMiddleware.
+LANGUAGES = [
+    ("en", "English"),
+    ("ar", "العربية"),
+]
 TIME_ZONE = "UTC"
 USE_I18N = True
 USE_TZ = True
@@ -485,11 +494,11 @@ TAILWIND_APP_NAME = "theme"
 # CSP - Alpine.js standard build requires unsafe-eval for inline expression
 # evaluation. Styles use unsafe-inline because Tailwind utility classes are inline.
 CSP_DEFAULT_SRC = ("'self'",)
-CSP_SCRIPT_SRC = ("'self'", "'unsafe-eval'", "https://cdn.jsdelivr.net")
-CSP_STYLE_SRC = ("'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net")
+CSP_SCRIPT_SRC = ("'self'", "'unsafe-eval'")
+CSP_STYLE_SRC = ("'self'", "'unsafe-inline'")
 CSP_IMG_SRC = ("'self'", "data:", "blob:", "https:")
 CSP_FONT_SRC = ("'self'",)
-CSP_CONNECT_SRC = ("'self'", "https://cdn.jsdelivr.net")
+CSP_CONNECT_SRC = ("'self'",)
 CSP_MEDIA_SRC = ("'self'", "blob:", "https:")
 CSP_FORM_ACTION = (
     "'self'",

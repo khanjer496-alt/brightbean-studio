@@ -1,17 +1,23 @@
 {% load allauth %}
+{% comment %}
+One form field. Every control has a programmatic label (for/id, or wrapped for checkbox and radio),
+errors and help text are linked with aria-describedby, and invalid fields carry aria-invalid.
+{% endcomment %}
 {% if attrs.errors %}
 <div class="mb-1">
-    <ul {% if attrs.id %}id="{{ attrs.id }}-error"{% endif %} class="text-xs" style="color: var(--error-500);">
+    <ul {% if attrs.id %}id="{{ attrs.id }}-error"{% endif %} class="text-xs text-bad">
         {% for error in attrs.errors %}<li>{{ error }}</li>{% endfor %}
     </ul>
 </div>
 {% endif %}
 <div class="mb-4">
     {% if attrs.type == "textarea" %}
-        <label for="{{ attrs.id }}" class="block text-sm font-semibold mb-1.5" style="color: var(--text-primary);">
+        <label for="{{ attrs.id }}" class="block text-sm font-semibold mb-1.5 text-ink">
             {% slot label %}{% endslot %}
         </label>
         <textarea class="form-input-styled {% if attrs.errors %}is-error{% endif %}"
+                  {% if attrs.errors and attrs.id %}aria-invalid="true"{% endif %}
+                  {% if attrs.id and attrs.errors or attrs.id and slots.help_text %}aria-describedby="{% if attrs.errors %}{{ attrs.id }}-error{% endif %}{% if attrs.errors and slots.help_text %} {% endif %}{% if slots.help_text %}{{ attrs.id }}-help{% endif %}"{% endif %}
                   {% if attrs.required %}required{% endif %}
                   {% if attrs.rows %}rows="{{ attrs.rows }}"{% endif %}
                   {% if attrs.disabled %}disabled{% endif %}
@@ -20,9 +26,10 @@
                   {% if attrs.id %}id="{{ attrs.id }}"{% endif %}
                   {% if attrs.placeholder %}placeholder="{{ attrs.placeholder }}"{% endif %}>{% slot value %}{% endslot %}</textarea>
     {% elif attrs.type == "checkbox" or attrs.type == "radio" %}
-        <label for="{{ attrs.id }}" class="inline-flex items-center gap-2 text-sm cursor-pointer" style="color: var(--text-secondary);">
-            <input class="w-4 h-4 rounded border-2 accent-[var(--primary)]"
-                   style="border-color: var(--border);"
+        <label for="{{ attrs.id }}" class="inline-flex items-center gap-2 text-sm cursor-pointer text-ink-2">
+            <input class="w-4 h-4 rounded bb-checkbox"
+                   {% if attrs.errors and attrs.id %}aria-invalid="true"{% endif %}
+                   {% if attrs.id and attrs.errors or attrs.id and slots.help_text %}aria-describedby="{% if attrs.errors %}{{ attrs.id }}-error{% endif %}{% if attrs.errors and slots.help_text %} {% endif %}{% if slots.help_text %}{{ attrs.id }}-help{% endif %}"{% endif %}
                    {% if attrs.required %}required{% endif %}
                    {% if attrs.disabled %}disabled{% endif %}
                    {% if attrs.checked %}checked{% endif %}
@@ -33,11 +40,12 @@
             {% slot label %}{% endslot %}
         </label>
     {% else %}
-        <label for="{{ attrs.id }}" class="block text-sm font-semibold mb-1.5 {% if attrs.unlabeled %}sr-only{% endif %}" style="color: var(--text-primary);">
+        <label for="{{ attrs.id }}" class="block text-sm font-semibold mb-1.5 text-ink {% if attrs.unlabeled %}sr-only{% endif %}">
             {% slot label %}{% endslot %}
         </label>
         <input class="form-input-styled {% if attrs.errors %}is-error{% endif %}"
-               {% if attrs.errors and attrs.id %}aria-invalid="true" aria-describedby="{{ attrs.id }}-error"{% endif %}
+               {% if attrs.errors and attrs.id %}aria-invalid="true"{% endif %}
+               {% if attrs.id and attrs.errors or attrs.id and slots.help_text %}aria-describedby="{% if attrs.errors %}{{ attrs.id }}-error{% endif %}{% if attrs.errors and slots.help_text %} {% endif %}{% if slots.help_text %}{{ attrs.id }}-help{% endif %}"{% endif %}
                {% if attrs.required %}required{% endif %}
                {% if attrs.disabled %}disabled{% endif %}
                {% if attrs.readonly %}readonly{% endif %}
@@ -49,7 +57,7 @@
                type="{{ attrs.type }}">
     {% endif %}
     {% if slots.help_text %}
-        <p class="mt-1 text-xs" style="color: var(--text-tertiary);">
+        <p {% if attrs.id %}id="{{ attrs.id }}-help"{% endif %} class="mt-1 text-xs text-ink-3">
             {% slot help_text %}{% endslot %}
         </p>
     {% endif %}

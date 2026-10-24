@@ -95,7 +95,11 @@ def test_login_surface_renders_postdelegate_brand(client):
     html = response.content.decode("utf-8")
     assert "PostDelegate" in html
     # The only upstream name left is the AGPL credit.
-    assert html.count("BrightBean") == html.count("BrightBean Studio</a> (AGPL-3.0)") == 1
+    assert (
+        html.count("BrightBean")
+        == html.count('BrightBean Studio<span class="sr-only"> (opens in a new tab)</span></a> (AGPL-3.0)')
+        == 1
+    )
     assert "Brightbean" not in html
     assert "postdelegate-mark.svg" in html
 

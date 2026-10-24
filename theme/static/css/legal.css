@@ -18,7 +18,7 @@
 
 .legal-skip {
   position: absolute;
-  left: 1rem;
+  inset-inline-start: 1rem;
   top: -4rem;
   padding: 0.5rem 1rem;
   background: var(--legal-surface);
@@ -58,8 +58,8 @@
 .legal-main h3 { font-size: 1.1rem; margin: 1.5rem 0 0.25rem; }
 .legal-main p, .legal-main li { color: var(--legal-text); }
 .legal-main p, .legal-main ul, .legal-main ol { margin: 0 0 1rem; }
-.legal-main ul { list-style: disc; padding-left: 1.4rem; }
-.legal-main ol { list-style: decimal; padding-left: 1.4rem; }
+.legal-main ul { list-style: disc; padding-inline-start: 1.4rem; }
+.legal-main ol { list-style: decimal; padding-inline-start: 1.4rem; }
 .legal-meta { color: var(--legal-muted); margin: 0 0 1.5rem; }
 .legal-note {
   background: var(--legal-surface);
@@ -71,8 +71,8 @@
 
 .legal-table-wrap { overflow-x: auto; border: 1px solid var(--legal-border); border-radius: 0.75rem; margin: 1rem 0; }
 .legal-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; line-height: 1.5; }
-.legal-table caption { text-align: left; padding: 0.75rem 1rem; font-weight: 700; }
-.legal-table th, .legal-table td { text-align: left; vertical-align: top; padding: 0.6rem 1rem; border-top: 1px solid var(--legal-border); }
+.legal-table caption { text-align: start; padding: 0.75rem 1rem; font-weight: 700; }
+.legal-table th, .legal-table td { text-align: start; vertical-align: top; padding: 0.6rem 1rem; border-top: 1px solid var(--legal-border); }
 .legal-table th { background: var(--legal-surface); }
 .legal-table th[scope="row"] { min-width: 7.5rem; }
 .legal-table td { min-width: 9rem; }
