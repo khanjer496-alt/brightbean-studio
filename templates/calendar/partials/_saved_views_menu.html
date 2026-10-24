@@ -1,0 +1,35 @@
+{% comment %}
+The list inside the saved-views dropdown (swapped in place after saving, deleting or changing the default).
+Context: workspace, rows [{view, url, is_default, is_mine, can_delete}], has_default.
+{% endcomment %}
+{% if rows %}
+<ul class="m-0 list-none p-0" role="list">
+    {% for row in rows %}
+    <li class="flex items-center gap-1 px-1">
+        <a href="{{ row.url }}" class="min-w-0 flex-1 rounded-md px-2 py-1.5 text-xs font-medium text-stone-700 no-underline hover:bg-stone-50">
+            <span class="block truncate">{{ row.view.name }}</span>
+            <span class="block text-[10px] text-stone-500">{% if row.view.is_shared %}Shared{% if not row.is_mine %} by {{ row.view.owner.display_name }}{% endif %}{% else %}Personal{% endif %}{% if row.is_default %} &middot; Default{% endif %}</span>
+        </a>
+        {% if row.is_default %}
+        <button type="button" class="min-h-8 rounded-md px-2 text-[11px] font-medium text-stone-600 hover:bg-stone-100"
+                hx-post="{% url 'calendar:saved_view_default' workspace_id=workspace.id %}" hx-target="#saved-views-menu" hx-swap="innerHTML"
+                aria-label="Stop opening {{ row.view.name }} by default">Unset default</button>
+        {% else %}
+        <button type="button" class="min-h-8 rounded-md px-2 text-[11px] font-medium text-stone-600 hover:bg-stone-100"
+                hx-post="{% url 'calendar:saved_view_default' workspace_id=workspace.id %}" hx-vals='{"view_id": "{{ row.view.id }}"}'
+                hx-target="#saved-views-menu" hx-swap="innerHTML"
+                aria-label="Open {{ row.view.name }} by default">Make default</button>
+        {% endif %}
+        {% if row.can_delete %}
+        <button type="button" class="min-h-8 rounded-md px-2 text-[11px] font-medium text-stone-600 hover:bg-stone-100"
+                hx-post="{% url 'calendar:saved_view_delete' workspace_id=workspace.id view_id=row.view.id %}" hx-target="#saved-views-menu" hx-swap="innerHTML"
+                hx-confirm="Everyone who uses this view loses it."
+                data-confirm-title="Delete &ldquo;{{ row.view.name }}&rdquo;?" data-confirm-label="Delete" data-confirm-variant="danger"
+                aria-label="Delete view {{ row.view.name }}">Delete</button>
+        {% endif %}
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<p class="px-3 py-2 text-xs text-stone-500">No saved views yet. Pick some filters, then save them here.</p>
+{% endif %}

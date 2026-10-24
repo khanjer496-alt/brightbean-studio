@@ -1709,6 +1709,11 @@
             </div>
         </form>
 
+        {% if post and can_use_notes %}
+        {# Team-only notes thread: loaded apart from the form, so adding a note never touches the post being edited. #}
+        <div hx-get="{% url 'approvals:notes_panel' workspace_id=workspace.id post_id=post.id %}" hx-trigger="load" hx-swap="outerHTML"></div>
+        {% endif %}
+
         {% if post %}
         {# Engagement automations (apps.plugs): loaded apart from the form, so its buttons never touch the post being edited. #}
         <div hx-get="{% url 'plugs:composer_panel' workspace_id=workspace.id post_id=post.id %}" hx-trigger="load" hx-swap="outerHTML"></div>

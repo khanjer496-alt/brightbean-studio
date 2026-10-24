@@ -1150,6 +1150,10 @@ def compose(request, workspace_id, post_id=None):
     can_approve = perms.get("approve_posts", False)
     ws_role = membership.workspace_role if membership else None
     can_view_internal_notes = ws_role not in ("client", "viewer") if ws_role else True
+    from apps.approvals.notes import can_use_notes
+
+    # The notes thread (apps.approvals.notes) follows its own permission, so a comment-only role never sees it.
+    note_access = can_use_notes(membership)
 
     # "Read-only" describes what the composer is actually *showing*. Opened
     # scoped to one account (``?account=``) only that child's status counts, so
@@ -1322,6 +1326,7 @@ def compose(request, workspace_id, post_id=None):
         "can_publish": can_publish,
         "can_approve": can_approve,
         "can_view_internal_notes": can_view_internal_notes,
+        "can_use_notes": note_access,
         "is_edit": post is not None,
         "schedule_prefill_is_proposed": schedule_prefill_is_proposed,
         "post_is_scheduled": post_is_scheduled,

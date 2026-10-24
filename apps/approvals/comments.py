@@ -13,15 +13,20 @@ from apps.notifications.engine import notify
 from apps.notifications.models import EventType
 from apps.webhooks import events as webhook_events
 
-from .models import PostComment
+from .models import ApprovalAction, Channel, PostComment
 
 # Match @mentions but not email addresses (require whitespace or start-of-string before @)
 MENTION_REGEX = re.compile(r"(?:^|(?<=\s))@(\w[\w.]*)")
 MAX_ATTACHMENT_SIZE = 5 * 1024 * 1024  # 5MB
 
 
-def create_comment(post, author, body, visibility, parent_id=None, attachment=None):
-    """Create a comment on a post and notify @mentioned users.
+def create_comment(post, author, body, visibility, parent_id=None, attachment=None, *, channel=Channel.WEB):
+    """Create a comment on a post, record it in the post's activity, and notify people.
+
+    A comment is the "comment only" review action: it leaves the post where it
+    is. The post's author is told (unless they wrote it), and @mentioned
+    teammates are told once each, so someone both mentioned and the author gets
+    one notification, not two.
 
     Args:
         post: The Post instance.
@@ -30,6 +35,7 @@ def create_comment(post, author, body, visibility, parent_id=None, attachment=No
         visibility: "internal" or "external".
         parent_id: UUID of parent comment for threading (optional).
         attachment: UploadedFile for image attachment (optional).
+        channel: The surface it was written on (web, portal, API), kept on the activity entry.
 
     Returns:
         The created PostComment.
@@ -56,13 +62,58 @@ def create_comment(post, author, body, visibility, parent_id=None, attachment=No
 
     webhook_events.comment_created(comment)
 
+    # The post's activity (approval history) shows who weighed in, without a decision.
+    ApprovalAction.objects.create(
+        post=post,
+        user=author,
+        action=ApprovalAction.ActionType.COMMENTED,
+        comment=body,
+        channel=channel,
+    )
+
     # Parse @mentions and notify
     workspace = post.workspace
     mentions = MENTION_REGEX.findall(body)
-    if mentions:
-        _notify_mentions(mentions, post, author, workspace, body)
+    notified = _notify_mentions(mentions, post, author, workspace, body) if mentions else set()
+    _notify_author(post, author, workspace, body, visibility, already_notified=notified)
 
     return comment
+
+
+def _notify_author(post, commenter, workspace, body, visibility, *, already_notified):
+    """Tell the post's author about a new comment on it (never the commenter, never twice)."""
+    recipient = post.author
+    if recipient is None or recipient.id == commenter.id or recipient.id in already_notified:
+        return
+    if visibility == PostComment.Visibility.INTERNAL and is_client(recipient, workspace):
+        return
+    notify(
+        user=recipient,
+        event_type=EventType.POST_COMMENT,
+        title=f"{commenter.display_name} commented on your post",
+        body=f'On "{post.caption_snippet}": "{body[:100]}"',
+        data={
+            "post_id": str(post.id),
+            "workspace_id": str(workspace.id),
+        },
+    )
+
+
+def is_client(user, workspace):
+    """Whether ``user`` is a client member of ``workspace`` (they only ever see and write external comments)."""
+    return WorkspaceMembership.objects.filter(
+        user=user, workspace=workspace, workspace_role=WorkspaceMembership.WorkspaceRole.CLIENT
+    ).exists()
+
+
+def can_comment(user, workspace):
+    """Whether ``user`` may comment on posts in ``workspace`` (active member holding ``comment_on_posts``)."""
+    membership = (
+        WorkspaceMembership.objects.select_related("custom_role")
+        .filter(user=user, workspace=workspace, user__is_active=True, workspace__is_archived=False)
+        .first()
+    )
+    return bool(membership and membership.can("comment_on_posts"))
 
 
 def update_comment(comment_id, user, body, *, workspace=None):
@@ -161,15 +212,23 @@ def get_comments_for_post(post, user):
     return qs
 
 
-def _notify_mentions(mentions, post, author, workspace, body):
-    """Send notifications to @mentioned workspace members."""
+def _notify_mentions(mentions, post, author, workspace, body, *, noun="comment", only_with=None):
+    """Send notifications to @mentioned workspace members; returns the ids of those notified.
+
+    ``noun`` words the notification ("comment" / "note"). ``only_with`` names a
+    permission the mentioned person must hold, so the text of a team-only note is
+    never sent to someone who may not read it.
+    """
     # Build lookup of display names / email prefixes → user
     memberships = WorkspaceMembership.objects.filter(
         workspace=workspace,
-    ).select_related("user")
+        user__is_active=True,
+    ).select_related("user", "custom_role")
 
     name_to_user = {}
     for m in memberships:
+        if only_with and not m.can(only_with):
+            continue
         user = m.user
         # Match by display name (spaces replaced with dots/underscores)
         display = user.display_name.lower().replace(" ", "")
@@ -187,10 +246,11 @@ def _notify_mentions(mentions, post, author, workspace, body):
                 user=target_user,
                 event_type=EventType.COMMENT_MENTION,
                 title=f"{author.display_name} mentioned you",
-                body=f'In a comment on a post: "{body[:100]}"',
+                body=f'In a {noun} on a post: "{body[:100]}"',
                 data={
                     "post_id": str(post.id),
                     "workspace_id": str(workspace.id),
                 },
             )
             notified.add(target_user.id)
+    return notified

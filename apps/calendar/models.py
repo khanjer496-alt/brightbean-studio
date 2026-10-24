@@ -431,3 +431,69 @@ class EvergreenRepeat(models.Model):
 
     def __str__(self):
         return f"EvergreenRepeat({self.item_id} @ {self.scheduled_for:%Y-%m-%d %H:%M})"
+
+
+class SavedView(models.Model):
+    """A named set of calendar / Publish-page filters, personal or shared with the workspace.
+
+    ``filters`` holds only the whitelisted query parameters (see
+    ``apps.calendar.saved_views``), as ``{param: [values]}``; opening the view
+    is a link to the page with those parameters, so the page treats it exactly
+    like filters the user picked by hand.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workspace = models.ForeignKey(
+        "workspaces.Workspace",
+        on_delete=models.CASCADE,
+        related_name="saved_views",
+    )
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="saved_views",
+    )
+    name = models.CharField(max_length=80)
+    filters = models.JSONField(default=dict)
+    is_shared = models.BooleanField(default=False, help_text="Visible to everyone in the workspace.")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    objects = WorkspaceScopedManager()
+
+    class Meta:
+        db_table = "calendar_saved_view"
+        ordering = ["name"]
+        constraints = [
+            models.UniqueConstraint(fields=["workspace", "owner", "name"], name="uniq_saved_view_owner_name"),
+        ]
+
+    def __str__(self):
+        return f"{self.name} ({'shared' if self.is_shared else 'personal'})"
+
+
+class SavedViewDefault(models.Model):
+    """The view a person lands on when they open the calendar with no filters (one per person per workspace)."""
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    workspace = models.ForeignKey(
+        "workspaces.Workspace",
+        on_delete=models.CASCADE,
+        related_name="saved_view_defaults",
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="saved_view_defaults",
+    )
+    view = models.ForeignKey(SavedView, on_delete=models.CASCADE, related_name="defaults")
+
+    class Meta:
+        db_table = "calendar_saved_view_default"
+        constraints = [
+            models.UniqueConstraint(fields=["workspace", "user"], name="uniq_saved_view_default_per_user"),
+        ]
+
+    def __str__(self):
+        return f"Default view of {self.user_id} in {self.workspace_id}"

@@ -376,6 +376,62 @@
         ]
       }
     },
+    "/api/v1/posts/{post_id}/notes": {
+      "get": {
+        "operationId": "PostsListNotes",
+        "summary": "List a post s team notes",
+        "x-ms-visibility": "important",
+        "description": "Team-only notes, oldest first; they are never shown to clients or published. Needs `create_posts` and a member whose role allows internal notes.",
+        "parameters": [
+          {
+            "name": "post_id",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uuid"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "posts"
+        ]
+      },
+      "post": {
+        "operationId": "PostsAddNote",
+        "summary": "Add a team note to a post",
+        "x-ms-visibility": "important",
+        "description": "A team-only note on a draft or scheduled post; `@name` notifies a teammate who can read notes. Needs `create_posts` and a member whose role allows internal notes. An agent's note is recorded in the autonomy activity.",
+        "parameters": [
+          {
+            "name": "post_id",
+            "in": "path",
+            "required": true,
+            "type": "string",
+            "format": "uuid"
+          },
+          {
+            "name": "body",
+            "in": "body",
+            "required": true,
+            "schema": {
+              "$ref": "#/definitions/CreateNoteRequest"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        },
+        "tags": [
+          "posts"
+        ]
+      }
+    },
     "/api/v1/posts/{post_id}/resume-thread": {
       "post": {
         "operationId": "PostsResumeThreadRoute",
@@ -2472,7 +2528,7 @@
         "operationId": "ApprovalsListComments",
         "summary": "List a post s comments",
         "x-ms-visibility": "important",
-        "description": "Top-level comments with their replies. Needs `create_posts` or `approve_posts`.",
+        "description": "Top-level comments with their replies. Needs `create_posts`, `approve_posts` or `comment_on_posts` (a comment-only reviewer holds just the last).",
         "parameters": [
           {
             "name": "post_id",
@@ -2495,7 +2551,7 @@
         "operationId": "ApprovalsAddComment",
         "summary": "Comment on a post",
         "x-ms-visibility": "important",
-        "description": "Needs `create_posts` or `approve_posts`. Client members can only write `external` comments.",
+        "description": "Needs `create_posts`, `approve_posts` or `comment_on_posts` (a comment-only reviewer holds just the last). Client members can only write `external` comments.",
         "parameters": [
           {
             "name": "post_id",
@@ -4892,6 +4948,69 @@
       },
       "required": [
         "scheduled_at"
+      ],
+      "type": "object"
+    },
+    "NoteResponse": {
+      "properties": {
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "post_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "author_id": {
+          "format": "uuid",
+          "type": "string",
+          "x-nullable": true
+        },
+        "author_name": {
+          "default": "",
+          "type": "string"
+        },
+        "body": {
+          "type": "string"
+        },
+        "created_at": {
+          "type": "string",
+          "x-nullable": true
+        }
+      },
+      "required": [
+        "id",
+        "post_id",
+        "body",
+        "created_at"
+      ],
+      "type": "object"
+    },
+    "NotesListResponse": {
+      "properties": {
+        "notes": {
+          "items": {
+            "$ref": "#/definitions/NoteResponse"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "notes"
+      ],
+      "type": "object"
+    },
+    "CreateNoteRequest": {
+      "properties": {
+        "body": {
+          "description": "The note text. Team-only: never shown to clients or published. ``@name`` mentions notify.",
+          "maxLength": 5000,
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "body"
       ],
       "type": "object"
     },

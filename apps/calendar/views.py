@@ -20,7 +20,7 @@ from apps.members.models import WorkspaceMembership
 from apps.social_accounts.models import SocialAccount
 from apps.workspaces.models import Workspace
 
-from . import grid
+from . import grid, saved_views
 from . import services as calendar_services
 from .holidays import get_holidays_for_range
 from .models import CustomCalendarEvent, PostingSlot, Queue, QueueEntry
@@ -122,12 +122,21 @@ def _get_channel_filters(request):
     return out
 
 
+def _with_note_counts(qs, request, *, post_ref="post_id"):
+    """Annotate rows with their post's team-note count, in the same query (flat 0 for clients)."""
+    from apps.approvals.notes import annotate_note_counts
+
+    return annotate_note_counts(qs, getattr(request, "workspace_membership", None), post_ref=post_ref)
+
+
 def _get_filtered_posts(workspace, request):
     """Apply calendar filters from query params."""
-    qs = (
+    qs = _with_note_counts(
         Post.objects.for_workspace(workspace.id)
         .select_related("author")
-        .prefetch_related("platform_posts__social_account", "media_attachments__media_asset", "thread_parts")
+        .prefetch_related("platform_posts__social_account", "media_attachments__media_asset", "thread_parts"),
+        request,
+        post_ref="pk",
     )
 
     # Status filter — editorial status now lives on PlatformPost, so match
@@ -199,6 +208,7 @@ def _get_filtered_platform_posts(workspace, request):
         .prefetch_related("post__media_attachments__media_asset", "post__thread_parts")
         .annotate(effective_at=Coalesce("scheduled_at", "post__scheduled_at"))
     )
+    qs = _with_note_counts(qs, request)
 
     # Status filter — editorial status now lives on the PlatformPost itself,
     # so each chip can stand on its own per-account state.
@@ -520,7 +530,7 @@ def _get_tab_context(request, workspace, tab: str) -> dict:
             .annotate(effective_at=Coalesce("scheduled_at", "post__scheduled_at"))
             .order_by("effective_at", "-post__created_at")
         )
-        platform_posts = _apply_pp_publish_filters(platform_posts, request)
+        platform_posts = _apply_pp_publish_filters(_with_note_counts(platform_posts, request), request)
         return {**base_ctx, "platform_posts": platform_posts[:200]}
 
     if tab == "drafts":
@@ -530,7 +540,7 @@ def _get_tab_context(request, workspace, tab: str) -> dict:
             .prefetch_related("post__media_attachments__media_asset", "post__thread_parts")
             .order_by("-post__updated_at")
         )
-        platform_posts = _apply_pp_publish_filters(platform_posts, request)
+        platform_posts = _apply_pp_publish_filters(_with_note_counts(platform_posts, request), request)
         return {**base_ctx, "platform_posts": platform_posts[:200]}
 
     if tab == "sent":
@@ -543,7 +553,7 @@ def _get_tab_context(request, workspace, tab: str) -> dict:
             .prefetch_related("post__media_attachments__media_asset", "post__thread_parts")
             .order_by("-post__scheduled_at", "-post__created_at")
         )
-        platform_posts = _apply_pp_publish_filters(platform_posts, request)
+        platform_posts = _apply_pp_publish_filters(_with_note_counts(platform_posts, request), request)
         return {**base_ctx, "platform_posts": platform_posts[:200]}
 
     # approvals — one row per Post (bundled), matching the approval-action model
@@ -574,14 +584,16 @@ def _get_tab_context(request, workspace, tab: str) -> dict:
     if channels:
         pp_match = pp_match.filter(social_account_id__in=channels)
 
-    posts_qs = (
+    posts_qs = _with_note_counts(
         Post.objects.for_workspace(workspace.id)
         .filter(Exists(pp_match))
         .select_related("author")
         .prefetch_related(
             "platform_posts__social_account", "media_attachments__media_asset", "versions", "thread_parts"
         )
-        .order_by("scheduled_at", "-created_at")
+        .order_by("scheduled_at", "-created_at"),
+        request,
+        post_ref="pk",
     )
     # Tag is a Post-level attribute (can't cross child rows) — apply it directly.
     tag = request.GET.get("tag")
@@ -593,6 +605,7 @@ def _get_tab_context(request, workspace, tab: str) -> dict:
     membership = getattr(request, "workspace_membership", None)
     perms = membership.effective_permissions if membership else {}
     can_approve = perms.get("approve_posts", False)
+    can_comment = bool(membership and membership.can("comment_on_posts"))
     is_client = bool(membership and membership.workspace_role == "client")
 
     # Batch the expandable-panel comments in one query (avoid a per-post N+1).
@@ -644,6 +657,7 @@ def _get_tab_context(request, workspace, tab: str) -> dict:
         "posts": posts,
         "status_filter": status_filter,
         "can_approve": can_approve,
+        "can_comment": can_comment,
         "approval_filter_qs": filter_qs,
         "all_count": counts["all"],
         "pending_review_count": counts["pending_review"],
@@ -659,6 +673,11 @@ def _get_tab_context(request, workspace, tab: str) -> dict:
 def calendar_view(request, workspace_id):
     """Main publish page - renders calendar or list mode."""
     workspace = _get_workspace(request, workspace_id)
+    # Opened with no filters at all: land on the person's default saved view, if they set one.
+    if not request.GET and not request.htmx:
+        default = saved_views.default_view(workspace, request.user)
+        if default is not None:
+            return redirect(saved_views.view_url(default))
     has_connected_accounts = SocialAccount.objects.filter(
         workspace=workspace,
         connection_status=SocialAccount.ConnectionStatus.CONNECTED,
@@ -703,6 +722,7 @@ def calendar_view(request, workspace_id):
     }
 
     show_holidays = request.GET.get("holidays") == "1"
+    membership = getattr(request, "workspace_membership", None)
 
     # Publish page context (channels, tags, timezone dropdowns)
     publish_ctx = _get_publish_context(workspace, request)
@@ -741,6 +761,9 @@ def calendar_view(request, workspace_id):
         "active_filters": active_filters,
         "status_choices": Post.Status.choices,
         "show_holidays": show_holidays,
+        # The channel picker starts on what the URL already filters by (a saved view opens that way).
+        "active_channels_json": json.dumps(_get_channel_filters(request)),
+        "can_share_views": saved_views.can_share(membership),
         "is_today_in_view": is_today_in_view,
         **publish_ctx,
     }

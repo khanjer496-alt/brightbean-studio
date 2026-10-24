@@ -189,12 +189,47 @@ def bulk_action(request, workspace_id):
 # ---------------------------------------------------------------------------
 
 
+def _require_comment_permission(request, workspace):
+    from django.core.exceptions import PermissionDenied
+
+    if not comment_service.can_comment(request.user, workspace):
+        raise PermissionDenied("Permission denied: comment_on_posts")
+
+
+@login_required
+@require_workspace_role("viewer")
+@require_POST
+def comment_only(request, workspace_id, post_id):
+    """Leave a comment on a post in review without approving or sending it back.
+
+    The reviewing counterpart to Approve / Request changes: needs only the right
+    to comment, so a comment-only reviewer can use it. The post stays where it is;
+    its author is notified and the comment shows in the post's activity.
+    """
+    workspace = _get_workspace(request, workspace_id)
+    _require_comment_permission(request, workspace)
+    post = get_object_or_404(Post, id=post_id, workspace=workspace)
+
+    body = request.POST.get("comment", "").strip()
+    if not body:
+        return _toast_response(tone="error", title="Couldn't comment", body="Write a comment first.")
+    visibility = request.POST.get("visibility", PostComment.Visibility.INTERNAL)
+    if visibility not in PostComment.Visibility.values:
+        return _toast_response(tone="error", title="Couldn't comment", body="Unknown visibility.")
+    if comment_service.is_client(request.user, workspace):
+        visibility = PostComment.Visibility.EXTERNAL
+
+    comment_service.create_comment(post=post, author=request.user, body=body, visibility=visibility)
+    return _toast_response(tone="info", title="Comment added", body="The author was notified", refresh="approvalAction")
+
+
 @login_required
 @require_workspace_role("viewer")
 @require_POST
 def add_comment(request, workspace_id, post_id):
     """Add a comment to a post."""
     workspace = _get_workspace(request, workspace_id)
+    _require_comment_permission(request, workspace)
     post = get_object_or_404(Post, id=post_id, workspace=workspace)
 
     body = request.POST.get("body", "").strip()
@@ -202,6 +237,10 @@ def add_comment(request, workspace_id, post_id):
         return HttpResponse("Comment body is required.", status=400)
 
     visibility = request.POST.get("visibility", PostComment.Visibility.EXTERNAL)
+    if visibility not in PostComment.Visibility.values:
+        return HttpResponse("Unknown visibility.", status=400)
+    if comment_service.is_client(request.user, workspace):
+        visibility = PostComment.Visibility.EXTERNAL
     parent_id = request.POST.get("parent_id") or None
     attachment = request.FILES.get("attachment")
 

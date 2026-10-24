@@ -88,6 +88,19 @@ class WorkspaceMembership(models.Model):
             return self.custom_role.permissions
         return BUILTIN_ROLE_PERMISSIONS.get(self.workspace_role, {})
 
+    def can(self, key):
+        """Whether this membership holds ``key``, for keys that custom roles saved earlier may not carry.
+
+        A custom role stores only the keys it was created with, so a key added later is missing from
+        it. ``effective_permissions.get(key, False)`` would silently take that ability away; instead a
+        missing key falls back to what the member's base role grants, which is what they had before the
+        key existed (a viewer could always comment; only team roles saw internal notes).
+        """
+        perms = self.effective_permissions
+        if key in perms:
+            return bool(perms[key])
+        return bool(BUILTIN_ROLE_PERMISSIONS.get(self.workspace_role, {}).get(key, False))
+
 
 class CustomRole(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -185,6 +198,8 @@ PERMISSION_KEYS = [
     "edit_media",
     "delete_media",
     "manage_media",
+    "comment_on_posts",
+    "use_internal_notes",
 ]
 
 BUILTIN_ROLE_PERMISSIONS = {
@@ -203,6 +218,8 @@ BUILTIN_ROLE_PERMISSIONS = {
         "edit_media": True,
         "delete_media": True,
         "manage_media": True,
+        "comment_on_posts": True,
+        "use_internal_notes": True,
     },
     "editor": {
         "create_posts": True,
@@ -218,6 +235,8 @@ BUILTIN_ROLE_PERMISSIONS = {
         "edit_media": True,
         "delete_media": True,
         "manage_media": False,
+        "comment_on_posts": True,
+        "use_internal_notes": True,
     },
     "contributor": {
         "create_posts": True,
@@ -233,6 +252,8 @@ BUILTIN_ROLE_PERMISSIONS = {
         "edit_media": True,
         "delete_media": False,
         "manage_media": False,
+        "comment_on_posts": True,
+        "use_internal_notes": True,
     },
     "client": {
         "create_posts": False,
@@ -248,6 +269,8 @@ BUILTIN_ROLE_PERMISSIONS = {
         "edit_media": False,
         "delete_media": False,
         "manage_media": False,
+        "comment_on_posts": True,
+        "use_internal_notes": False,
     },
     "viewer": {
         "create_posts": False,
@@ -263,6 +286,8 @@ BUILTIN_ROLE_PERMISSIONS = {
         "edit_media": False,
         "delete_media": False,
         "manage_media": False,
+        "comment_on_posts": True,
+        "use_internal_notes": False,
     },
 }
 

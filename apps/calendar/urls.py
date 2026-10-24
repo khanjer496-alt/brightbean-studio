@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import grid_views, views, views_best_times, views_evergreen
+from . import grid_views, views, views_best_times, views_evergreen, views_saved
 
 app_name = "calendar"
 
@@ -63,6 +63,11 @@ urlpatterns = [
     path("publish/drafts/", views.publish_tab_drafts, name="publish_tab_drafts"),
     path("publish/approvals/", views.publish_tab_approvals, name="publish_tab_approvals"),
     path("publish/sent/", views.publish_tab_sent, name="publish_tab_sent"),
+    # Saved views (named filter sets)
+    path("saved-views/", views_saved.saved_views_menu, name="saved_views_menu"),
+    path("saved-views/create/", views_saved.saved_view_create, name="saved_view_create"),
+    path("saved-views/default/", views_saved.saved_view_default, name="saved_view_default"),
+    path("saved-views/<uuid:view_id>/delete/", views_saved.saved_view_delete, name="saved_view_delete"),
     # Custom Calendar Events
     path("events/create/", views.event_create, name="event_create"),
     path("events/<uuid:event_id>/edit/", views.event_edit, name="event_edit"),
