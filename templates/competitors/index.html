@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% load analytics_extras %}
+
+{% block title %}Competitors — {{ workspace.name }} — {{ brand_short_name }}{% endblock %}
+
+{% block content %}
+<div class="analytics-shell flex flex-1 flex-col">
+    {% include "analytics/_nav.html" %}
+    <div class="mb-5 border-b border-line pb-4">{% include "analytics/_range_controls.html" %}</div>
+
+    <div class="flex flex-col gap-5">
+        <p class="m-0 max-w-3xl text-[13px] text-ink-3">
+            Public numbers for profiles you choose, read once a day through your own connected accounts and the networks' official APIs. Only networks that allow this are listed; nothing is scraped.
+            {% if last_read %}Last read {{ last_read|date:"M j, Y" }}.{% endif %}
+        </p>
+
+        {% if not plan_enabled %}
+        <section class="rounded-xl border border-line bg-surface-1 p-8 text-center" aria-labelledby="plan-heading">
+            <h2 id="plan-heading" class="m-0 text-lg font-semibold text-ink">Competitor benchmarking isn't in your plan</h2>
+            <p class="mx-auto mt-2 max-w-md text-[13px] text-ink-3">Track up to 3 competitors per network on Creator, 10 on Team and 25 on Agency.</p>
+            {% if billing_enabled %}<a href="{% url 'billing:overview' %}" class="btn-brand mt-4 inline-flex min-h-11 w-auto items-center px-5 py-2">See plans</a>{% endif %}
+        </section>
+        {% elif can_manage %}
+        <section class="rounded-xl border border-line bg-surface-1 p-5" aria-labelledby="add-heading">
+            <h2 id="add-heading" class="m-0 mb-3 text-[15px] font-semibold text-ink">Add a competitor</h2>
+            <form method="post" action="{% url 'competitors:add' workspace_id=workspace.id %}" class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                {% csrf_token %}
+                <label class="flex flex-col gap-1 text-xs font-semibold text-ink-3 sm:w-52">Network
+                    <select name="platform" required class="min-h-11 rounded-lg border border-line bg-surface-0 px-3 text-sm font-normal text-ink">
+                        {% for item in add_networks %}
+                        <option value="{{ item.network.platform }}" {% if chosen and chosen.platform == item.network.platform %}selected{% endif %}>{{ item.network.name }}{% if not item.connected %} (connect an account first){% endif %} · {{ item.used }}{% if limit is not None %}/{{ limit }}{% endif %}</option>
+                        {% endfor %}
+                    </select>
+                </label>
+                <label class="flex min-w-0 flex-1 flex-col gap-1 text-xs font-semibold text-ink-3">Handle or profile link
+                    <input type="text" name="handle" required maxlength="300" autocomplete="off" placeholder="e.g. name.bsky.social, @channel, name@mastodon.social" class="min-h-11 rounded-lg border border-line bg-surface-0 px-3 text-sm font-normal text-ink">
+                </label>
+                <button type="submit" class="btn-brand min-h-11 w-auto px-5">Track</button>
+            </form>
+            <p class="m-0 mt-2 text-xs text-ink-3">Limit: {% if limit is None %}no limit{% else %}{{ limit }} competitor{{ limit|pluralize }}{% endif %} per network on your plan. Instagram works for business and creator accounts only; YouTube reads cost a few API quota units a day.</p>
+        </section>
+        {% endif %}
+
+        {% if trend %}
+        <section class="rounded-xl border border-line bg-surface-1 p-5" aria-labelledby="trend-heading">
+            <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                <h2 id="trend-heading" class="m-0 text-[15px] font-semibold text-ink">Follower growth on {{ chosen.name }}</h2>
+                {% if network_options|length > 1 %}
+                <div class="inline-flex flex-wrap items-center gap-0.5 rounded-full border border-line bg-surface-2 p-[3px]">
+                    {% for option in network_options %}{% include "analytics/_pill.html" with url=option.url label=option.label active=option.active %}{% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% include "analytics/_chart.html" with chart_id="competitors-trend" chart=trend summary=trend_summary %}
+            <p class="m-0 mt-2 text-xs text-ink-3">Each line starts at 0% on its first reading in the range. The chart shows you and the three largest competitors; the table lists them all.</p>
+        </section>
+        {% endif %}
+
+        {% for group in groups %}
+        <section class="rounded-xl border border-line bg-surface-1" aria-labelledby="net-{{ group.network.platform }}">
+            <h2 id="net-{{ group.network.platform }}" class="m-0 flex items-center gap-2 border-b border-line px-5 py-4 text-[15px] font-semibold text-ink">
+                {% include "partials/_platform_icon.html" with platform=group.network.platform size="sm" %}{{ group.network.name }}
+            </h2>
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse text-[13px]">
+                    <caption class="sr-only">{{ group.network.name }}: your accounts and tracked competitors</caption>
+                    <thead>
+                        <tr class="text-[11px] uppercase tracking-wider text-ink-3">
+                            <th scope="col" class="px-4 py-2.5 text-left font-semibold">Profile</th>
+                            <th scope="col" class="px-4 py-2.5 text-right font-semibold">Followers</th>
+                            <th scope="col" class="px-4 py-2.5 text-right font-semibold">Growth ({{ range.days }}d)</th>
+                            <th scope="col" class="px-4 py-2.5 text-right font-semibold">Posts / week</th>
+                            <th scope="col" class="px-4 py-2.5 text-right font-semibold">Avg engagements / post</th>
+                            {% if can_manage %}<th scope="col" class="px-4 py-2.5 text-right font-semibold"><span class="sr-only">Actions</span></th>{% endif %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in group.you %}
+                        <tr class="border-t border-line bg-surface-2/40">
+                            <th scope="row" class="px-4 py-2.5 text-left font-medium text-ink"><bdi>{{ row.label }}</bdi> <span class="ml-1 rounded-full bg-accent-soft px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-accent">You</span>
+                                {% if row.error %}<span class="block text-xs font-normal text-ink-3">{{ row.error }}</span>{% endif %}</th>
+                            {% include "competitors/_figures.html" with row=row %}
+                            {% if can_manage %}<td></td>{% endif %}
+                        </tr>
+                        {% endfor %}
+                        {% for row in group.competitors %}
+                        <tr class="border-t border-line">
+                            <th scope="row" class="px-4 py-2.5 text-left font-medium text-ink">
+                                {% if row.profile_url %}<a href="{{ row.profile_url }}" rel="noopener noreferrer" target="_blank" class="text-ink no-underline hover:underline"><bdi>{{ row.label }}</bdi></a>{% else %}<bdi>{{ row.label }}</bdi>{% endif %}
+                                <span class="block text-xs font-normal text-ink-3"><bdi dir="ltr">{{ row.handle }}</bdi>{% if row.last_synced %} · read {{ row.last_synced|date:"M j" }}{% endif %}</span>
+                                {% if row.error %}<span class="block text-xs font-normal text-warn">{{ row.error }}</span>{% endif %}
+                            </th>
+                            {% include "competitors/_figures.html" with row=row %}
+                            {% if can_manage %}
+                            <td class="px-4 py-2.5 text-right">
+                                <form method="post" action="{% url 'competitors:remove' workspace_id=workspace.id competitor_id=row.id %}">
+                                    {% csrf_token %}
+                                    <button type="submit" class="min-h-9 rounded-full border border-line px-3 text-xs font-semibold text-ink-2 hover:text-ink" aria-label="Remove {{ row.label }}">Remove</button>
+                                </form>
+                            </td>
+                            {% endif %}
+                        </tr>
+                        {% empty %}
+                        <tr><td colspan="6" class="px-4 py-6 text-center text-ink-3">No competitors tracked on {{ group.network.name }} yet.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {% empty %}
+        <div class="rounded-xl border border-line bg-surface-1 p-8 text-center text-[13px] text-ink-3">
+            No competitors yet. Connect an account on a supported network, then add a profile above.
+        </div>
+        {% endfor %}
+
+        <p class="m-0 max-w-3xl text-xs text-ink-3">
+            Competitor growth is the change in public followers between daily readings. Posts per week and engagements per post come from each profile's recent public posts (likes, replies and shares, as the network reports them), and your own figures use your analytics, so treat them as a guide, not an audit. Hidden counts show as a dash.
+        </p>
+
+        {% if unsupported %}
+        <section class="rounded-xl border border-line bg-surface-1 p-5" aria-labelledby="unsupported-heading">
+            <h2 id="unsupported-heading" class="m-0 mb-2 text-[15px] font-semibold text-ink">Not available</h2>
+            <ul class="m-0 flex list-none flex-col gap-1 p-0 text-[13px] text-ink-2">
+                {% for n in unsupported %}<li><span class="font-medium text-ink">{{ n.name }}</span>: {{ n.reason }}</li>{% endfor %}
+            </ul>
+        </section>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+{% load static %}
+<script src="{% static 'js/vendor/chart.umd.min.js' %}"></script>
+<script src="{% static 'js/analytics-charts.js' %}"></script>
+<script src="{% static 'js/analytics-range.js' %}"></script>
+{% endblock %}

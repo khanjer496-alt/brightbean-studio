@@ -138,6 +138,7 @@ DEFAULT_CHANNELS: dict[str, dict[str, bool]] = {
     EventType.WEBHOOK_DISABLED: {Channel.IN_APP: True, Channel.EMAIL: True},
     EventType.AGENT_ACTION_HELD: {Channel.IN_APP: True, Channel.EMAIL: True},
     EventType.AGENT_ACTION_BLOCKED: {Channel.IN_APP: True, Channel.EMAIL: False},
+    EventType.AI_VISIBILITY_REPORT: {Channel.IN_APP: True, Channel.EMAIL: False},
 }
 
 # Event types considered non-critical (suppressed during quiet hours).
@@ -145,6 +146,7 @@ NON_CRITICAL_EVENTS = {
     EventType.POST_PUBLISHED,
     EventType.REPORT_GENERATED,
     EventType.ENGAGEMENT_ALERT,
+    EventType.AI_VISIBILITY_REPORT,
 }
 
 

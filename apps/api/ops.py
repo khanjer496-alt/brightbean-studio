@@ -32,9 +32,13 @@ from apps.api.limits import check_platform_quota
 from apps.api.pagination import decode_offset_cursor, encode_offset_cursor
 from apps.api.schemas import (
     AccountAutonomyResponse,
+    AddCompetitorRequest,
     AddEvergreenRequest,
     AgentActionResponse,
     AgentActionsListResponse,
+    AIVisibilityAnswerResponse,
+    AIVisibilityIdeaResponse,
+    AIVisibilityResponse,
     ApplyBestTimesResponse,
     AutonomyPolicyResponse,
     BestTimeResponse,
@@ -51,6 +55,12 @@ from apps.api.schemas import (
     CategoryResponse,
     CommentResponse,
     CommentsListResponse,
+    CompetitorComparisonGroup,
+    CompetitorComparisonResponse,
+    CompetitorComparisonRow,
+    CompetitorNetworkResponse,
+    CompetitorResponse,
+    CompetitorsListResponse,
     DeletedResponse,
     EvergreenDetailResponse,
     EvergreenItemResponse,
@@ -2245,6 +2255,199 @@ def list_agent_actions(
     rows, next_cursor = _paginate(qs.order_by("-created_at", "id"), limit=limit, cursor=cursor)
     return AgentActionsListResponse(
         actions=[AgentActionResponse.from_action(a) for a in rows], limit=limit, next_cursor=next_cursor
+    )
+
+
+# ---------------------------------------------------------------------------
+# Competitor benchmarking
+# ---------------------------------------------------------------------------
+
+
+def _competitor_response(competitor, latest=None) -> CompetitorResponse:
+    if latest is None:
+        latest = competitor.snapshots.order_by("-date").first()
+    return CompetitorResponse(
+        id=competitor.id,
+        platform=competitor.platform,
+        handle=competitor.handle,
+        display_name=competitor.display_name,
+        profile_url=competitor.profile_url,
+        followers=latest.followers if latest else None,
+        posts_count=latest.posts_count if latest else None,
+        posts_per_week=latest.posts_per_week if latest else None,
+        avg_engagement=latest.avg_engagement if latest else None,
+        last_synced_at=competitor.last_synced_at,
+        last_error=competitor.last_error,
+    )
+
+
+def _competitor_error(exc) -> OpError:
+    return OpError(exc.status, exc.message)
+
+
+def list_competitors(actor: Actor) -> CompetitorsListResponse:
+    from apps.billing.entitlements import get_entitlements
+    from apps.competitors import services as competitor_services
+    from apps.competitors.models import Competitor, CompetitorSnapshot
+
+    actor.require("view_analytics")
+    rows = list(Competitor.objects.filter(workspace_id=actor.workspace_id))
+    # The newest snapshot per competitor only, not their whole history.
+    latest = {
+        snap.competitor_id: snap
+        for snap in CompetitorSnapshot.objects.filter(competitor__in=rows)
+        .order_by("competitor_id", "-date")
+        .distinct("competitor_id")
+    }
+    limit = get_entitlements(actor.workspace.organization).max_competitors_per_network
+    tracked: dict[str, int] = {}
+    for row in rows:
+        tracked[row.platform] = tracked.get(row.platform, 0) + 1
+    networks = [
+        CompetitorNetworkResponse(
+            platform=n.platform, name=n.name, supported=True, tracked=tracked.get(n.platform, 0), limit=limit
+        )
+        for n in competitor_services.supported_networks()
+    ] + [
+        CompetitorNetworkResponse(platform=n.platform, name=n.name, supported=False, reason=n.reason)
+        for n in competitor_services.unsupported_networks(actor.workspace)
+    ]
+    return CompetitorsListResponse(
+        competitors=[_competitor_response(c, latest.get(c.id)) for c in rows], networks=networks
+    )
+
+
+def add_competitor(actor: Actor, payload: AddCompetitorRequest) -> CompetitorResponse:
+    """Track a public profile. Needs ``manage_social_accounts``; read with a connected account the key may use."""
+    from apps.competitors import services as competitor_services
+
+    actor.require("manage_social_accounts")
+    try:
+        competitor = competitor_services.add_competitor(
+            actor.workspace,
+            payload.platform,
+            payload.handle,
+            actor.user,
+            allowed_account_ids=actor.allowed_account_ids,
+        )
+    except competitor_services.CompetitorError as exc:
+        raise _competitor_error(exc) from exc
+    return _competitor_response(competitor)
+
+
+def remove_competitor(actor: Actor, competitor_id: uuid.UUID) -> DeletedResponse:
+    from apps.competitors import services as competitor_services
+
+    actor.require("manage_social_accounts")
+    try:
+        competitor_services.remove_competitor(actor.workspace, competitor_id)
+    except competitor_services.CompetitorError as exc:
+        raise _competitor_error(exc) from exc
+    return DeletedResponse(id=competitor_id)
+
+
+def _comparison_row(row: dict[str, Any]) -> CompetitorComparisonRow:
+    return CompetitorComparisonRow(
+        kind=row["kind"],
+        id=row["id"],
+        label=row["label"],
+        handle=row["handle"],
+        followers=row["followers"],
+        growth_pct=row["growth"],
+        posts_per_week=row["posts_per_week"],
+        avg_engagement_per_post=row["avg_engagement"],
+        last_read=row["last_synced"],
+    )
+
+
+def get_competitor_comparison(
+    actor: Actor, *, days: int | None = None, start: dt.date | None = None, end: dt.date | None = None
+) -> CompetitorComparisonResponse:
+    """Your accounts (the key's allowlist) beside the tracked competitors, per network."""
+    from apps.analytics.ranges import api_range
+    from apps.competitors import services as competitor_services
+
+    actor.require("view_analytics")
+    if (start is None) != (end is None):
+        raise OpError(422, "Pass both start and end, or neither")
+    rng = api_range(actor.workspace, days=days, start=start, end=end, compare=False)
+    accounts = list(
+        SocialAccount.objects.for_workspace(actor.workspace_id).filter(
+            id__in=actor.allowed_account_ids, connection_status=SocialAccount.ConnectionStatus.CONNECTED
+        )
+    )
+    data = competitor_services.comparison(actor.workspace, rng, accounts)
+    return CompetitorComparisonResponse(
+        start=rng.start,
+        end=rng.end,
+        networks=[
+            CompetitorComparisonGroup(
+                platform=g["network"].platform,
+                name=g["network"].name,
+                you=[_comparison_row(r) for r in g["you"]],
+                competitors=[_comparison_row(r) for r in g["competitors"]],
+            )
+            for g in data["groups"]
+        ],
+    )
+
+
+# ---------------------------------------------------------------------------
+# AI visibility
+# ---------------------------------------------------------------------------
+
+
+def get_ai_visibility(actor: Actor) -> AIVisibilityResponse:
+    """The workspace's latest finished "how AI describes your brand" report."""
+    from apps.ai_visibility import services as visibility_services
+    from apps.ai_visibility.models import VisibilityProfile
+    from apps.billing.entitlements import PlanLimitError, require_feature
+    from apps.billing.plans import Feature
+
+    actor.require("view_analytics")
+    try:
+        require_feature(actor.workspace.organization, Feature.AI_VISIBILITY)
+    except PlanLimitError as exc:
+        raise OpError(403, str(exc)) from exc
+    profile = VisibilityProfile.objects.filter(workspace_id=actor.workspace_id).first()
+    run = visibility_services.latest_run(profile) if profile else None
+    if run is None:
+        raise OpError(404, "No AI visibility report yet. Set one up in the web app under Analytics → AI visibility.")
+    report = visibility_services.report_for(run)
+    return AIVisibilityResponse(
+        note=visibility_services.HONESTY_NOTE,
+        brand_name=run.brand_name,
+        website=run.website,
+        run_id=run.id,
+        status=run.status,
+        created_at=run.created_at,
+        engines=run.engines,
+        mention_rate=run.mention_rate,
+        previous_mention_rate=report["previous_rate"],
+        prompts_total=run.prompts_total,
+        prompts_mentioned=run.prompts_mentioned,
+        gaps=[a.question for a in report["gaps"]],
+        others_named=[c["name"] for c in report["competitors"]],
+        answers=[
+            AIVisibilityAnswerResponse(
+                kind=a.kind,
+                question=a.question,
+                engine=a.engine,
+                model=a.model,
+                answered=a.answered,
+                mentioned=a.mentioned,
+                position=a.position,
+                sentiment=a.sentiment,
+                competitors=a.competitors,
+                cited_urls=a.cited_urls,
+                cites_brand_site=a.cites_brand_site,
+                answer=a.answer,
+            )
+            for a in run.answers.all()
+        ],
+        suggested_ideas=[
+            AIVisibilityIdeaResponse(text=i["text"], saved=bool(i.get("idea_id"))) for i in run.suggested_ideas
+        ],
     )
 
 

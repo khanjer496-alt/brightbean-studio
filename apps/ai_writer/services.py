@@ -209,6 +209,8 @@ class AIRun:
     input_tokens: int = 0
     output_tokens: int = 0
     calls: int = 0  # provider calls sent, answered or not
+    # The model that answered the last call: the configured one, or the one a refusal fell back to.
+    last_model: str = ""
 
     def can_call(self) -> bool:
         return self.remaining is None or self.remaining > 0
@@ -253,6 +255,7 @@ def _run(
         log.save()
         raise
     log.model = completion.model or provider.model
+    run.last_model = log.model
     log.input_tokens = completion.input_tokens
     log.output_tokens = completion.output_tokens
     log.latency_ms = int((time.monotonic() - started) * 1000)
@@ -908,3 +911,15 @@ def save_posts_as_drafts(workspace, user, drafts: list[str], accounts) -> list:
                     )
                 )
     return posts
+
+
+# ---------------------------------------------------------------------------
+# For other apps that prompt through this pipeline (apps.ai_visibility)
+# ---------------------------------------------------------------------------
+
+# Same reservation, logging, plan allowance and delimiter escaping as the actions
+# above; named without the underscore because a second app uses them.
+reserve_run = _start
+run_prompt = _run
+escape_tags = _escape_tags
+brand_system_prompt = _system_prompt

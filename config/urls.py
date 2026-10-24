@@ -39,8 +39,10 @@ urlpatterns = [
     path("workspace/<uuid:workspace_id>/", include("apps.composer.urls")),
     path("workspace/<uuid:workspace_id>/calendar/", include("apps.calendar.urls")),
     path("workspace/<uuid:workspace_id>/inbox/", include("apps.inbox.urls")),
-    # Client reports live under Analytics; listed first so "reports/" never reaches the account route.
+    # Client reports, competitors and AI visibility live under Analytics; listed first so their prefixes never reach the account route.
     path("workspace/<uuid:workspace_id>/analytics/reports/", include("apps.reports.urls")),
+    path("workspace/<uuid:workspace_id>/analytics/competitors/", include("apps.competitors.urls")),
+    path("workspace/<uuid:workspace_id>/analytics/ai-visibility/", include("apps.ai_visibility.urls")),
     path("workspace/<uuid:workspace_id>/analytics/", include("apps.analytics.urls")),
     path("workspace/<uuid:workspace_id>/bio/", include("apps.linkinbio.urls")),
     # AI writing assistant: composer actions, and the org's own provider key.

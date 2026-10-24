@@ -20,6 +20,7 @@ from ninja.openapi.docs import Swagger
 from apps.api.auth import ApiKeyAuth, McpAuth
 from apps.api.routers.accounts import router as accounts_router
 from apps.api.routers.ai import router as ai_router
+from apps.api.routers.ai_visibility import router as ai_visibility_router
 from apps.api.routers.analytics import router as analytics_router
 from apps.api.routers.approvals import router as approvals_router
 from apps.api.routers.autonomy import router as autonomy_router
@@ -28,6 +29,7 @@ from apps.api.routers.bio import router as bio_router
 from apps.api.routers.brand_kit import router as brand_kit_router
 from apps.api.routers.brand_voice import router as brand_voice_router
 from apps.api.routers.categories import router as categories_router
+from apps.api.routers.competitors import router as competitors_router
 from apps.api.routers.events import router as events_router
 from apps.api.routers.evergreen import router as evergreen_router
 from apps.api.routers.hashtag_sets import router as hashtag_sets_router
@@ -166,6 +168,8 @@ api.add_router("/posts", posts_router)
 api.add_router("/media", media_router)
 api.add_router("/analytics", analytics_router)
 api.add_router("/reports", reports_router)
+api.add_router("/competitors", competitors_router)
+api.add_router("/ai-visibility", ai_visibility_router)
 api.add_router("/bio", bio_router)
 api.add_router("/inbox", inbox_router)
 api.add_router("/ai", ai_router)
@@ -356,6 +360,10 @@ def _action_for_path(method: str, path: str, *, status_code: int) -> str:
         return f"bio.{status_code}"
     if "/reports" in path:
         return f"reports.{status_code}"
+    if "/competitors" in path:
+        return f"competitors.{status_code}"
+    if "/ai-visibility" in path:
+        return f"ai_visibility.{status_code}"
     if "/posts/" in path:
         if method == "DELETE":
             return f"post.delete.{status_code}"

@@ -143,6 +143,27 @@ class AccountMetrics:
 
 
 @dataclass(frozen=True)
+class PublicProfileMetrics:
+    """What a network lets one read about someone else's public profile.
+
+    Every figure is optional: a network that does not publish it (hidden
+    subscriber counts, no feed to sample) leaves it ``None`` rather than 0.
+    ``avg_engagement`` is the mean of likes + replies + shares per post over
+    ``sampled_posts`` recent posts, and ``posts_per_week`` is read from the
+    same sample's timestamps.
+    """
+
+    handle: str
+    display_name: str = ""
+    followers: int | None = None
+    posts_count: int | None = None
+    avg_engagement: float | None = None
+    posts_per_week: float | None = None
+    sampled_posts: int = 0
+    profile_url: str = ""
+
+
+@dataclass(frozen=True)
 class Demographics:
     age_ranges: dict = field(default_factory=dict)
     genders: dict = field(default_factory=dict)
