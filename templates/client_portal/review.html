@@ -1,6 +1,6 @@
 {% extends "client_portal/portal_base.html" %}
 {% load tz %}
-{% block title %}Review all - {{ workspace.name }}{% endblock %}
+{% block page_title %}Review all{% endblock %}
 
 {% block content %}
 <div hx-trigger="portalAction from:body"
@@ -25,7 +25,7 @@
                     Select all
                 </label>
                 <button type="submit" :disabled="selected.length === 0"
-                        class="ms-auto min-h-11 rounded-full bg-green-600 px-5 py-2 text-sm font-semibold text-white hover:bg-green-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-green-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
+                        class="ms-auto min-h-11 rounded-full bg-[var(--success-500)] px-5 py-2 text-sm font-semibold text-[var(--surface-page)] hover:brightness-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50">
                     Approve selected (<span x-text="selected.length"></span>)
                 </button>
             </div>

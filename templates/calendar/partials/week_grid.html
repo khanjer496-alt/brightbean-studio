@@ -40,26 +40,28 @@ Context: week_days, week_slots, week_agenda, workspace.
 </div>
 
 {# Wider screens: hourly grid #}
-<div class="hidden md:block bg-white overflow-auto tab-slide-in max-h-[calc(100vh-200px)]" tabindex="0" role="region" aria-label="Week calendar">
+{# Open on the first hour that has posts (else 8:00) instead of midnight, which is usually an empty screen. #}
+<div class="hidden md:block bg-white overflow-auto tab-slide-in max-h-[calc(100vh-200px)]" tabindex="0" role="region" aria-label="Week calendar"
+     x-init="$nextTick(() => { const busy = $el.querySelector('.cal-drop.has-posts'); const row = busy ? busy.closest('[data-hour]') : $el.querySelectorAll('[data-hour]')[8]; const head = $el.querySelector('[data-week-head]'); if (row) $el.scrollTop += row.getBoundingClientRect().top - $el.getBoundingClientRect().top - (head ? head.offsetHeight : 0) - 8; })">
     <!-- Day headers -->
-    <div class="grid grid-cols-[72px_repeat(7,minmax(0,1fr))] border-b border-stone-200 sticky top-0 bg-white z-10">
+    <div class="grid grid-cols-[72px_repeat(7,minmax(0,1fr))] border-b border-stone-200 sticky top-0 bg-white z-10" data-week-head>
         <div class="border-r border-stone-200"></div>
         {% for day in week_days %}
-        <div class="px-2 py-2 text-center border-r border-stone-200 last:border-r-0 {% if day == today %}bg-orange-50{% endif %}">
-            <div class="text-[11px] font-semibold text-stone-500 uppercase">{{ day|date:"D" }}</div>
-            <div class="text-sm font-semibold {% if day == today %}text-orange-600{% else %}text-stone-700{% endif %}">{{ day.day }}</div>
+        <div class="px-2 py-2 text-center border-r border-stone-200 last:border-r-0 {% if day == today %}cal-week-today{% endif %}"{% if day == today %} aria-current="date"{% endif %}>
+            <div class="text-[11px] font-semibold uppercase {% if day == today %}text-accent{% else %}text-stone-500{% endif %}">{{ day|date:"D" }}</div>
+            <div class="cal-week-day-num text-sm font-semibold text-stone-700">{{ day.day }}</div>
         </div>
         {% endfor %}
     </div>
 
     <!-- Hour rows -->
     {% for hour, day_cells in week_slots %}
-    <div class="grid grid-cols-[72px_repeat(7,minmax(0,1fr))] border-b border-stone-100 min-h-[56px]">
+    <div class="grid grid-cols-[72px_repeat(7,minmax(0,1fr))] border-b border-stone-100 min-h-[56px]" data-hour="{{ hour }}">
         <div class="border-r border-stone-200 px-2 py-1 text-right">
             <span class="text-[11px] font-medium text-stone-500 tabular-nums">{{ hour }}:00</span>
         </div>
         {% for cell in day_cells %}
-        <div class="border-r border-stone-100 last:border-r-0 p-1 cal-add-cell cal-drop {% if cell.posts or cell.slots %}has-posts{% endif %} {% if cell.day == today %}bg-orange-50/30{% endif %}"
+        <div class="border-r border-stone-100 last:border-r-0 p-1 cal-add-cell cal-drop {% if cell.posts or cell.slots %}has-posts{% endif %} {% if cell.day == today %}cal-week-today{% endif %}"
              data-date="{{ cell.compose_date }}" data-time="{{ cell.compose_time }}">
             {% if cell.day > today or cell.day == today and hour >= current_hour %}
             <a href="{% url 'composer:compose' workspace_id=workspace.id %}?scheduled_date={{ cell.compose_date }}&scheduled_time={{ cell.compose_time }}" class="cal-add-btn"

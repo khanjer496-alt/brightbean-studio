@@ -1,4 +1,4 @@
-{% load humanize %}
+{% load humanize tz %}
 <div class="flex flex-col h-full">
     <!-- Message header -->
     <div class="px-5 py-4 border-b border-stone-100 flex-shrink-0">
@@ -25,7 +25,7 @@
                             {% else %}{% include "partials/_platform_icon.html" with platform=message.social_account.platform size="sm" %}{% endif %}
                             <span class="text-[11px] text-stone-500">{{ message.social_account.account_name|default:message.social_account.account_handle }}</span>
                         </div>
-                        <span class="text-[11px] text-stone-400">{{ message.received_at|date:"N j, Y g:i A" }}</span>
+                        <span class="text-[11px] text-stone-400">{% timezone workspace.effective_timezone %}{{ message.received_at|date:"N j, Y g:i A" }}{% endtimezone %}</span>
                     </div>
                 </div>
             </div>

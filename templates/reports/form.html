@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{% if definition %}Edit report{% else %}New report{% endif %} — {{ brand_short_name }}{% endblock %}
+{% block page_title %}{% if definition %}Edit report{% else %}New report{% endif %}{% endblock %}
 
 {% block content %}
 <div class="flex flex-1 flex-col">
@@ -56,7 +56,7 @@
 
             <fieldset class="m-0 flex flex-col gap-3 border-0 p-0">
                 <legend class="mb-1 text-sm font-semibold text-ink">Branding</legend>
-                <p class="m-0 text-xs text-ink-3">The logo comes from your organization settings. The accent colour starts from the workspace colour.</p>
+                <p class="m-0 text-xs text-ink-3">The logo comes from your organization settings. The accent color starts from the workspace color.</p>
                 <div class="flex items-center gap-3"><label for="{{ form.accent_color.id_for_label }}" class="text-sm text-ink">{{ form.accent_color.label }}</label>{{ form.accent_color }}</div>
                 <label class="flex min-h-11 cursor-pointer items-center gap-3 text-sm text-ink">{{ form.white_label }}{{ form.white_label.label }}</label>
             </fieldset>

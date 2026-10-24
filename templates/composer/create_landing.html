@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load static %}
 
-{% block title %}Create - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
+{% block page_title %}Create{% endblock %}
 
 {% comment %}Header is rendered inside the content block to avoid overlap with the -m-6 layout{% endcomment %}
 
@@ -480,7 +480,7 @@
                 </div>
 
                 <!-- Create Tag Modal -->
-                <div x-show="showCreateTagModal" x-cloak class="fixed inset-0 z-[200] flex items-center justify-center" @keydown.escape.window="showCreateTagModal = false" role="dialog" aria-modal="true" aria-label="Create new tag" x-a11y-modal="showCreateTagModal">
+                <div x-show="showCreateTagModal" x-cloak class="fixed inset-0 z-[200] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Create new tag" x-pd-dialog="showCreateTagModal">
                     <div class="fixed inset-0 bg-black/30" @click="showCreateTagModal = false"></div>
                     <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6" @click.stop>
                         <h3 class="text-base font-semibold text-stone-800 mb-4">Create new tag</h3>
@@ -539,8 +539,7 @@
 
     <!-- Explore Feeds Modal -->
     <div x-show="showExploreModal" x-cloak
-         class="fixed inset-0 z-[200] flex items-center justify-center"
-         @keydown.escape.window="showExploreModal = false" role="dialog" aria-modal="true" aria-label="Explore feeds" x-a11y-modal="showExploreModal">
+         class="fixed inset-0 z-[200] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Explore feeds" x-pd-dialog="showExploreModal">
         <div class="fixed inset-0 bg-black/30" @click="showExploreModal = false"></div>
         <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-[720px] mx-4 max-h-[85vh] overflow-hidden" @click.stop>
             <!-- Close button -->
@@ -563,8 +562,7 @@
     <!-- Create Idea Modal -->
     <div x-show="showCreateModal" x-cloak
          class="idea-modal-overlay"
-         @click.self="closeCreateModal()"
-         @keydown.escape.window="closeCreateModal()" role="dialog" aria-modal="true" aria-label="New idea" x-a11y-modal="showCreateModal" data-close="closeCreateModal()">
+         @click.self="closeCreateModal()" role="dialog" aria-modal="true" aria-label="New idea" x-pd-dialog="showCreateModal" data-dialog-close="closeCreateModal()">
         <div class="idea-modal" @click.stop>
             <!-- Close button -->
             <button aria-label="Close" type="button" class="idea-modal-close" @click="closeCreateModal()" title="Close">
@@ -759,8 +757,7 @@
     <!-- Edit Idea Modal -->
     <div x-show="editingIdea" x-cloak
          class="idea-modal-overlay"
-         @click.self="editingIdea = null"
-         @keydown.escape.window="editingIdea = null" role="dialog" aria-modal="true" aria-label="Edit idea" x-a11y-modal="editingIdea" data-close="editingIdea = null">
+         @click.self="editingIdea = null" role="dialog" aria-modal="true" aria-label="Edit idea" x-pd-dialog="editingIdea" data-dialog-close="editingIdea = null">
         <div class="idea-modal" @click.stop>
             <!-- Close button -->
             <button aria-label="Close" type="button" class="idea-modal-close" @click="editingIdea = null" title="Close">
@@ -935,8 +932,7 @@
     <template x-teleport="body">
         <div x-show="showDeleteIdeaConfirm" x-cloak
              class="fixed inset-0 z-[250] flex items-center justify-center"
-             style="display: none;"
-             @keydown.escape.window="if (showDeleteIdeaConfirm) { showDeleteIdeaConfirm = false; }" role="dialog" aria-modal="true" aria-label="Delete idea" x-a11y-modal="showDeleteIdeaConfirm">
+             style="display: none;" role="dialog" aria-modal="true" aria-label="Delete idea" x-pd-dialog="showDeleteIdeaConfirm">
             <!-- Backdrop -->
             <div class="fixed inset-0 bg-black/30 backdrop-blur-sm"
                  x-show="showDeleteIdeaConfirm"
@@ -993,7 +989,7 @@
     </template>
 
     <template x-teleport="body">
-        <div x-show="showIdeaCreateTagModal" x-cloak class="fixed inset-0 z-[220] flex items-center justify-center" @keydown.escape.window="closeIdeaCreateTagModal()" role="dialog" aria-modal="true" aria-label="Create new tag" x-a11y-modal="showIdeaCreateTagModal" data-close="closeIdeaCreateTagModal()">
+        <div x-show="showIdeaCreateTagModal" x-cloak class="fixed inset-0 z-[220] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Create new tag" x-pd-dialog="showIdeaCreateTagModal" data-dialog-close="closeIdeaCreateTagModal()">
             <div class="fixed inset-0 bg-black/30" @click="closeIdeaCreateTagModal()"></div>
             <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6" @click.stop>
                 <h3 class="text-base font-semibold text-stone-800 mb-4">Create new tag</h3>
@@ -1021,8 +1017,7 @@
     <!-- Template Detail Modal -->
     <div x-show="viewingTemplate" x-cloak
          class="idea-modal-overlay"
-         @click.self="viewingTemplate = null"
-         @keydown.escape.window="viewingTemplate = null" role="dialog" aria-modal="true" aria-label="Template details" x-a11y-modal="viewingTemplate" data-close="viewingTemplate = null">
+         @click.self="viewingTemplate = null" role="dialog" aria-modal="true" aria-label="Template details" x-pd-dialog="viewingTemplate" data-dialog-close="viewingTemplate = null">
         <div class="idea-modal" @click.stop style="max-width: 560px;">
             <!-- Close button -->
             <button aria-label="Close" type="button" class="idea-modal-close" @click="viewingTemplate = null" title="Close">
@@ -1089,7 +1084,6 @@
 {% endblock %}
 
 {% block extra_js %}
-{% include "composer/partials/modal_a11y.html" %}
 <script nonce="{{ request.csp_nonce }}">
 function kanbanBoard() {
     const ideaHelpers = window.ideaModalHelpers || {

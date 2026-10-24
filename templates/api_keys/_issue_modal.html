@@ -5,9 +5,8 @@ form submit (no HTMX); the token is then shown once on the redirected list page.
 {% endcomment %}
 <template x-teleport="body">
     <div x-show="showIssueModal" x-cloak x-transition.opacity
-         @keydown.escape.window="showIssueModal = false"
          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-         role="dialog" aria-modal="true" aria-labelledby="issue-key-title" x-a11y-modal="showIssueModal">
+         role="dialog" aria-modal="true" aria-labelledby="issue-key-title" x-pd-dialog="showIssueModal">
         <div @click.outside="showIssueModal = false"
              x-show="showIssueModal" x-transition
              class="w-full max-w-xl mx-4 max-h-[90vh] rounded-xl flex flex-col bg-[var(--surface-0)] border border-stone-200 shadow-2xl">
@@ -24,7 +23,7 @@ form submit (no HTMX); the token is then shown once on the redirected list page.
                 <div class="space-y-5 px-5 sm:px-6 overflow-y-auto flex-1 min-h-0">
                     <div>
                         <label for="name" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Name</label>
-                        <input type="text" id="name" name="name" required maxlength="100" autocomplete="off"
+                        <input type="text" id="name" name="name" required data-autofocus maxlength="100" autocomplete="off"
                                placeholder="e.g. Claude Desktop, content pipeline" class="form-input text-sm w-full">
                     </div>
 

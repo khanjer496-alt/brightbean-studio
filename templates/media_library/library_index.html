@@ -298,8 +298,7 @@
 
   <!-- ═══════ DETAIL SLIDE-OVER ═══════ -->
   <div x-show="detailOpen" x-cloak
-       class="fixed inset-0 z-50 flex justify-end"
-       @keydown.escape.window="detailOpen = false" role="dialog" aria-modal="true" aria-label="Asset details" x-a11y-modal="detailOpen">
+       class="fixed inset-0 z-50 flex justify-end" role="dialog" aria-modal="true" aria-label="Asset details" x-pd-dialog="detailOpen">
     <div class="ml-detail-overlay absolute inset-0" @click="detailOpen = false"
          x-show="detailOpen"
          x-transition:enter="transition ease-out duration-200"
@@ -324,7 +323,6 @@
 {% endblock %}
 
 {% block extra_js %}
-{% include "composer/partials/modal_a11y.html" %}
 <script src="{% static 'js/media-library.js' %}"></script>
 <script nonce="{{ request.csp_nonce }}">
 function mediaLibrary() {

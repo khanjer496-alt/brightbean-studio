@@ -10,6 +10,10 @@ from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import translation
 
+from apps.analytics.tests.helpers import make_member
+from apps.organizations.models import Organization
+from apps.workspaces.models import Workspace
+
 STYLES = Path(settings.BASE_DIR) / "theme" / "static_src" / "src" / "styles.css"
 
 
@@ -68,6 +72,19 @@ def test_modal_requires_a_title():
         _render('{% modal open="o" title="" %}x{% endmodal %}')
 
 
+DIALOG_TAG = re.compile(r"<[a-z]+\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*\bx-pd-dialog=(?:[^>\"']|\"[^\"]*\"|'[^']*')*>")
+
+
+def test_one_dialog_pattern():
+    """Every modal uses x-pd-dialog; the older x-a11y-modal directive is gone."""
+    for path in (Path(settings.BASE_DIR) / "templates").rglob("*.html"):
+        source = path.read_text()
+        assert "x-a11y-modal=" not in source and "modal_a11y.html" not in source, path
+        for tag in DIALOG_TAG.findall(source):
+            # the directive owns Escape; a window handler on the same dialog would close twice
+            assert "@keydown.escape.window" not in tag, (path, tag)
+
+
 # --- landmarks, titles, skip link --------------------------------------------------------------
 
 
@@ -112,6 +129,23 @@ def test_settings_layouts_follow_title_convention():
     assert f"<title>Settings · Settings · {settings.BRAND_NAME}</title>" in rendered
 
 
+def test_no_template_uses_the_legacy_dash_title():
+    """Pages set {% block page_title %}; the layouts add workspace and brand with " · "."""
+    legacy = re.compile(r"\{% block title %\}[^\n]* [-—] \{\{ brand")
+    titles = re.compile(r"<title>[^<]* [-—] \{\{ brand")
+    for path in (Path(settings.BASE_DIR) / "templates").rglob("*.html"):
+        source = path.read_text()
+        assert not legacy.search(source) and not titles.search(source), path
+
+
+@pytest.mark.django_db
+def test_workspace_pages_read_page_workspace_brand(client):
+    workspace = Workspace.objects.create(organization=Organization.objects.create(name="Agency"), name="Acme")
+    client.force_login(make_member(workspace, "owner@example.com"))
+    html = client.get(reverse("calendar:calendar", kwargs={"workspace_id": workspace.id})).content.decode()
+    assert f"<title>Publish · Acme · {settings.BRAND_NAME}</title>" in html
+
+
 # --- RTL / language ----------------------------------------------------------------------------
 
 
@@ -148,6 +182,12 @@ def test_licenses_page_lists_new_fonts_and_swagger(client):
     html = client.get(reverse("legal:licenses")).content.decode()
     assert "Noto Sans Arabic" in html and "Swagger UI" in html and "5.21.0" in html
     assert "jsdelivr" not in html
+
+
+def test_favicon_ico_redirects_to_the_brand_icon(client):
+    # Browsers request /favicon.ico whatever the page links; a 404 there is a console error on every page.
+    response = client.get("/favicon.ico")
+    assert response.status_code == 302 and response["Location"].endswith(settings.BRAND_FAVICON_ICO_STATIC)
 
 
 # --- CSP and self-hosted API docs ---------------------------------------------------------------

@@ -30,7 +30,7 @@ def test_composer_and_calendar_show_a_hint_on_first_visit(owner_client, workspac
 def test_hints_are_dismissible_without_inline_styles(owner_client, workspace):
     html = page(owner_client, "calendar:calendar", workspace)
     hint = html[html.index('data-hint="calendar"') :]
-    hint = hint[: hint.index("</div>")]
+    hint = hint[: hint.index("</button>")]
     assert "Got it" in hint and "style=" not in hint and 'role="region"' in hint
     assert 'hx-post="' + dismiss_url("calendar") + '"' in hint
 

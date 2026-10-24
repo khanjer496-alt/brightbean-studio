@@ -1,7 +1,11 @@
 {% extends "onboarding/welcome/base.html" %}
 
 {% block step %}
+{% if accounts %}
 {% include "onboarding/welcome/_heading.html" with title="Schedule your first post" lead="We wrote a friendly example to get you going. Edit it, or write your own." error_focus=error %}
+{% else %}
+{% include "onboarding/welcome/_heading.html" with title="Schedule your first post" lead="Posts need a channel to go to. Connect one now, or look around an example workspace first." error_focus=error %}
+{% endif %}
 
 {% if error %}
 <div role="alert" tabindex="-1" x-data x-init="$el.focus()" class="mb-6 rounded-xl border border-line bg-bad-soft p-4 text-sm text-bad focus:outline-none">{{ error }}</div>
@@ -9,9 +13,15 @@
 
 {% if not accounts %}
 <div class="rounded-xl border border-dashed border-line p-6 text-center">
-    <p class="text-[15px] font-semibold text-ink">Connect a channel to schedule a post</p>
-    <p class="mx-auto mt-1 max-w-sm text-sm text-ink-2">Posts need somewhere to go. It only takes a minute.</p>
-    <a href="{% url 'onboarding:welcome_channel' workspace_id=workspace.id %}" class="btn-brand mt-4 min-h-11 w-auto px-6">Connect a channel</a>
+    <p class="text-[15px] font-semibold text-ink">No channel connected yet</p>
+    <p class="mx-auto mt-1 max-w-sm text-sm text-ink-2">Connecting one takes about a minute.</p>
+    <div class="mt-4 flex flex-col items-center justify-center gap-2 sm:flex-row">
+        <a href="{% url 'onboarding:welcome_channel' workspace_id=workspace.id %}" class="btn-brand min-h-11 w-full px-6 sm:w-auto">Connect a channel</a>
+        <form method="post" action="{% url 'onboarding:sample_create' workspace_id=workspace.id %}" class="w-full sm:w-auto">
+            {% csrf_token %}
+            <button type="submit" class="min-h-11 w-full cursor-pointer rounded-full px-4 text-sm font-medium text-accent hover:bg-accent-soft sm:w-auto">Show me an example instead</button>
+        </form>
+    </div>
 </div>
 {% else %}
 {{ char_limits|json_script:"welcome-char-limits" }}

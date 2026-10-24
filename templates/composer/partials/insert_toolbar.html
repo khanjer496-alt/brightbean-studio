@@ -133,7 +133,7 @@ Context:
                     </ul>
                     <p x-show="hashtagSets.length === 0" class="text-xs text-stone-400">No sets saved yet.</p>
                     <a href="{% url 'workspaces:hashtag_sets_settings' workspace_id=workspace.id %}" target="_blank" rel="noopener"
-                       class="inline-block mt-1 text-xs font-medium text-orange-600 hover:text-orange-700">Manage hashtag sets</a>
+                       class="inline-block mt-1 text-xs font-medium text-orange-600 hover:text-orange-700">Manage hashtag sets<span class="sr-only"> (opens in a new tab)</span></a>
                 </div>
                 <div x-show="recentHashtags.length > 0">
                     <p class="text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1">Recently used</p>

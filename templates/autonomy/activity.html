@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% load tz %}
+{% load tz common_extras %}
 
-{% block title %}Activity - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
+{% block page_title %}Activity{% endblock %}
 
 {% block page_header %}
 <div class="flex flex-wrap items-center justify-between gap-2 mb-6">
@@ -15,31 +15,32 @@
 
 {% block content %}
 <div class="max-w-5xl">
-    {% if messages %}
-    <div class="mb-4 space-y-2" role="status">
-        {% for message in messages %}<p class="text-sm rounded-lg border px-3 py-2 {% if message.tags == 'error' %}border-red-200 bg-red-50 text-red-800{% else %}border-emerald-200 bg-emerald-50 text-emerald-800{% endif %}">{{ message }}</p>{% endfor %}
-    </div>
-    {% endif %}
 
     {% if policy.crisis_paused %}
-    <div class="mb-6 rounded-xl border border-red-300 bg-red-50 p-4 flex flex-wrap items-center justify-between gap-3" role="alert">
+    <div class="mb-6 rounded-xl border border-[color:var(--error-500)] bg-bad-soft p-4 flex flex-wrap items-center justify-between gap-3" role="alert">
         <div>
-            <p class="text-sm font-semibold text-red-900">Crisis pause is on</p>
-            <p class="text-sm text-red-800">Every autonomous action is stopped and queued ones are held. Posts people scheduled are not affected.</p>
+            <p class="text-sm font-semibold text-bad">Crisis pause is on</p>
+            <p class="text-sm text-ink-2">Every autonomous action is stopped and queued ones are held. Posts people scheduled are not affected.</p>
         </div>
         <form method="post" action="{% url 'autonomy:crisis_toggle' workspace_id=workspace.id %}">
             {% csrf_token %}
             <input type="hidden" name="crisis_paused" value="0">
-            <button type="submit" class="px-4 py-2 text-sm font-semibold text-red-900 border border-red-300 bg-white rounded-full hover:bg-red-100 cursor-pointer">Resume autonomous actions</button>
+            <button type="submit" class="btn-outline w-auto px-4 text-sm">Resume autonomous actions</button>
         </form>
     </div>
     {% else %}
-    <div class="mb-6 flex justify-end">
-        <form method="post" action="{% url 'autonomy:crisis_toggle' workspace_id=workspace.id %}" x-data @submit="if (!confirm('Pause every autonomous action now? Queued automated posts and replies will be held until you resume.')) $event.preventDefault()">
-            {% csrf_token %}
-            <input type="hidden" name="crisis_paused" value="1">
-            <button type="submit" class="px-4 py-2 text-sm font-semibold text-red-700 border border-red-300 rounded-full hover:bg-red-50 cursor-pointer">Pause all autonomous actions</button>
-        </form>
+    <div class="mb-6 flex justify-end" x-data="{ confirmPause: false }">
+        <button type="button" id="crisis-pause-btn" @click="confirmPause = true" class="btn-danger-soft px-4 py-2 text-sm font-semibold rounded-full cursor-pointer bg-bad-soft text-bad focus-visible:ring-2 focus-visible:ring-accent">Pause all autonomous actions</button>
+        {% modal open="confirmPause" title="Pause every autonomous action?" description="Queued automated posts and replies are held until you resume. Posts people scheduled are not affected." size="sm" return_focus="#crisis-pause-btn" %}
+            <form method="post" action="{% url 'autonomy:crisis_toggle' workspace_id=workspace.id %}">
+                {% csrf_token %}
+                <input type="hidden" name="crisis_paused" value="1">
+                <div class="pd-modal-actions">
+                    <button type="button" @click="confirmPause = false" class="btn-outline w-auto text-sm">Cancel</button>
+                    <button type="submit" data-autofocus class="px-5 py-2 text-sm font-semibold rounded-full cursor-pointer bg-red-600 text-white hover:bg-red-700">Pause now</button>
+                </div>
+            </form>
+        {% endmodal %}
     </div>
     {% endif %}
 

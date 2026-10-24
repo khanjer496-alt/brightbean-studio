@@ -22,7 +22,7 @@
         </div>
         {% if authenticators.totp %}
         <a href="{% url 'mfa_deactivate_totp' %}" aria-label="{% trans 'Turn off authenticator app' %}"
-           class="btn-danger-soft px-5 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap shrink-0 bg-[var(--error-50)] text-[var(--error-500)]">
+           class="btn-danger-soft px-5 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap shrink-0 bg-bad-soft text-bad focus-visible:ring-2 focus-visible:ring-accent">
             {% trans "Turn off" %}
         </a>
         {% else %}

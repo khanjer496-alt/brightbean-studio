@@ -59,7 +59,7 @@
         {% if p.account.avatar_url %}
         <img src="{{ p.account.avatar_url }}" class="border-2 border-stone-200 w-8 h-8 rounded-full object-cover">
         {% else %}
-        <div class="bg-[linear-gradient(135deg,#F58529,#DD2A7B,#8134AF)] w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white">{{ p.account.account_name|default:p.account.account_handle|make_list|first|upper }}</div>
+        <div class="bg-[image:var(--platform-instagram-gradient)] w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white">{{ p.account.account_name|default:p.account.account_handle|make_list|first|upper }}</div>
         {% endif %}
         <span class="text-[13px] font-semibold text-stone-900">{{ p.account.account_name|default:p.account.account_handle }}</span>
         <svg class="w-4 h-4 text-stone-400 ms-auto" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="6" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="18" r="2"/></svg>
@@ -138,7 +138,7 @@
         {% if p.account.avatar_url %}
         <img src="{{ p.account.avatar_url }}" class="w-10 h-10 rounded-full object-cover">
         {% else %}
-        <div class="w-10 h-10 rounded-full bg-[#1877F2] flex items-center justify-center text-xs font-bold text-white">{{ p.account.account_name|default:p.account.account_handle|make_list|first|upper }}</div>
+        <div class="w-10 h-10 rounded-full bg-[color:var(--platform-facebook)] flex items-center justify-center text-xs font-bold text-white">{{ p.account.account_name|default:p.account.account_handle|make_list|first|upper }}</div>
         {% endif %}
         <div class="flex-1">
             <div class="text-[13px] font-semibold text-stone-900">{{ p.account.account_name|default:p.account.account_handle }}</div>
@@ -176,7 +176,7 @@
         <!-- Dot indicators -->
         <div class="absolute bottom-3 start-1/2 -translate-x-1/2 flex gap-1.5 z-10">
             {% for m in media_items %}
-            <button type="button" @click.stop="slide = {{ forloop.counter0 }}" class="w-1.5 h-1.5 rounded-full transition-colors" :class="slide === {{ forloop.counter0 }} ? 'bg-[#1877F2]' : 'bg-white/60'"></button>
+            <button type="button" @click.stop="slide = {{ forloop.counter0 }}" class="w-1.5 h-1.5 rounded-full transition-colors" :class="slide === {{ forloop.counter0 }} ? 'bg-[color:var(--platform-facebook)]' : 'bg-white/60'"></button>
             {% endfor %}
         </div>
     </div>
@@ -217,7 +217,7 @@
         {% if p.account.avatar_url %}
         <img src="{{ p.account.avatar_url }}" class="w-12 h-12 rounded-full object-cover">
         {% else %}
-        <div class="w-12 h-12 rounded-full bg-[#0A66C2] flex items-center justify-center text-sm font-bold text-white">{{ p.account.account_name|default:p.account.account_handle|make_list|first|upper }}</div>
+        <div class="w-12 h-12 rounded-full bg-[color:var(--platform-linkedin)] flex items-center justify-center text-sm font-bold text-white">{{ p.account.account_name|default:p.account.account_handle|make_list|first|upper }}</div>
         {% endif %}
         <div class="flex-1 min-w-0">
             <div class="text-[13px] font-semibold text-stone-900">{{ p.account.account_name|default:p.account.account_handle }}</div>
@@ -237,7 +237,7 @@
         <div x-show="slide === {{ forloop.counter0 }}" class="absolute inset-0">
             {% if m.is_video %}
             <video src="{{ m.url }}#t=0.5" class="w-full h-full object-cover" muted preload="metadata"></video>
-            <div class="absolute inset-0 flex items-center justify-center"><div class="w-14 h-14 rounded-full bg-[#0A66C2]/80 flex items-center justify-center"><svg class="w-6 h-6 text-white ms-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg></div></div>
+            <div class="absolute inset-0 flex items-center justify-center"><div class="w-14 h-14 rounded-full bg-[color:var(--platform-linkedin)]/80 flex items-center justify-center"><svg class="w-6 h-6 text-white ms-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg></div></div>
             {% else %}
             <img src="{{ m.url }}" class="w-full h-full object-cover" alt="">
             {% endif %}
@@ -256,7 +256,7 @@
         <!-- Dot indicators -->
         <div class="absolute bottom-3 start-1/2 -translate-x-1/2 flex gap-1.5 z-10">
             {% for m in media_items %}
-            <button type="button" @click.stop="slide = {{ forloop.counter0 }}" class="w-1.5 h-1.5 rounded-full transition-colors" :class="slide === {{ forloop.counter0 }} ? 'bg-[#0A66C2]' : 'bg-white/60'"></button>
+            <button type="button" @click.stop="slide = {{ forloop.counter0 }}" class="w-1.5 h-1.5 rounded-full transition-colors" :class="slide === {{ forloop.counter0 }} ? 'bg-[color:var(--platform-linkedin)]' : 'bg-white/60'"></button>
             {% endfor %}
         </div>
     </div>
@@ -266,7 +266,7 @@
     <div class="relative bg-stone-100">
         {% if m.is_video %}
         <div> class="aspect-[16/9]"<video src="{{ m.url }}#t=0.5" class="w-full h-full object-cover" muted preload="metadata"></video>
-        <div class="absolute inset-0 flex items-center justify-center"><div class="w-14 h-14 rounded-full bg-[#0A66C2]/80 flex items-center justify-center"><svg class="w-6 h-6 text-white ms-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg></div></div></div>
+        <div class="absolute inset-0 flex items-center justify-center"><div class="w-14 h-14 rounded-full bg-[color:var(--platform-linkedin)]/80 flex items-center justify-center"><svg class="w-6 h-6 text-white ms-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg></div></div></div>
         {% else %}
         <img src="{{ m.url }}" class="max-h-[220px] w-full object-cover" alt="">
         {% endif %}
@@ -430,7 +430,7 @@
         {% if p.account.avatar_url %}
         <img src="{{ p.account.avatar_url }}" class="w-10 h-10 rounded-full object-cover flex-shrink-0">
         {% else %}
-        <div class="w-10 h-10 rounded-full bg-[#0085FF] flex items-center justify-center text-xs font-bold text-white flex-shrink-0">{{ p.account.account_name|default:p.account.account_handle|make_list|first|upper }}</div>
+        <div class="w-10 h-10 rounded-full bg-[color:var(--platform-bluesky)] flex items-center justify-center text-xs font-bold text-white flex-shrink-0">{{ p.account.account_name|default:p.account.account_handle|make_list|first|upper }}</div>
         {% endif %}
         <div class="flex-1 min-w-0">
             <div class="flex items-center gap-1.5 mb-0.5">
@@ -479,7 +479,7 @@
     {% endwith %}
     {% else %}
     <div class="aspect-[2/3] max-h-[200px] bg-stone-50 flex items-center justify-center rounded-t-xl w-full">
-        <svg class="w-10 h-10 text-[#E60023]/30" fill="currentColor" viewBox="0 0 24 24"><path d="M12.017 0C5.396 0 .029 5.367.029 11.987c0 5.079 3.158 9.417 7.618 11.162-.105-.949-.199-2.403.041-3.439.219-.937 1.406-5.957 1.406-5.957s-.359-.72-.359-1.781c0-1.663.967-2.911 2.168-2.911 1.024 0 1.518.769 1.518 1.688 0 1.029-.653 2.567-.992 3.992-.285 1.193.6 2.165 1.775 2.165 2.128 0 3.768-2.245 3.768-5.487 0-2.861-2.063-4.869-5.008-4.869-3.41 0-5.409 2.562-5.409 5.199 0 1.033.394 2.143.889 2.741.099.12.112.225.085.345-.09.375-.293 1.199-.334 1.363-.053.225-.174.271-.401.165-1.495-.69-2.433-2.878-2.433-4.646 0-3.776 2.748-7.252 7.92-7.252 4.158 0 7.392 2.967 7.392 6.923 0 4.135-2.607 7.462-6.233 7.462-1.214 0-2.354-.629-2.758-1.379l-.749 2.848c-.269 1.045-1.004 2.352-1.498 3.146 1.123.345 2.306.535 3.55.535 6.607 0 11.985-5.365 11.985-11.987C23.97 5.39 18.592.026 11.985.026L12.017 0z"/></svg>
+        <svg class="w-10 h-10 text-[color:var(--platform-pinterest)]/30" fill="currentColor" viewBox="0 0 24 24"><path d="M12.017 0C5.396 0 .029 5.367.029 11.987c0 5.079 3.158 9.417 7.618 11.162-.105-.949-.199-2.403.041-3.439.219-.937 1.406-5.957 1.406-5.957s-.359-.72-.359-1.781c0-1.663.967-2.911 2.168-2.911 1.024 0 1.518.769 1.518 1.688 0 1.029-.653 2.567-.992 3.992-.285 1.193.6 2.165 1.775 2.165 2.128 0 3.768-2.245 3.768-5.487 0-2.861-2.063-4.869-5.008-4.869-3.41 0-5.409 2.562-5.409 5.199 0 1.033.394 2.143.889 2.741.099.12.112.225.085.345-.09.375-.293 1.199-.334 1.363-.053.225-.174.271-.401.165-1.495-.69-2.433-2.878-2.433-4.646 0-3.776 2.748-7.252 7.92-7.252 4.158 0 7.392 2.967 7.392 6.923 0 4.135-2.607 7.462-6.233 7.462-1.214 0-2.354-.629-2.758-1.379l-.749 2.848c-.269 1.045-1.004 2.352-1.498 3.146 1.123.345 2.306.535 3.55.535 6.607 0 11.985-5.365 11.985-11.987C23.97 5.39 18.592.026 11.985.026L12.017 0z"/></svg>
     </div>
     {% endif %}
     <div class="p-3">
@@ -493,7 +493,7 @@
             {% if p.account.avatar_url %}
             <img src="{{ p.account.avatar_url }}" class="w-6 h-6 rounded-full object-cover">
             {% else %}
-            <div class="w-6 h-6 rounded-full bg-[#E60023] flex items-center justify-center text-[9px] font-bold text-white">{{ p.account.account_name|default:p.account.account_handle|make_list|first|upper }}</div>
+            <div class="w-6 h-6 rounded-full bg-[color:var(--platform-pinterest)] flex items-center justify-center text-[9px] font-bold text-white">{{ p.account.account_name|default:p.account.account_handle|make_list|first|upper }}</div>
             {% endif %}
             <span class="text-[11px] font-medium text-stone-600">{{ p.account.account_name|default:p.account.account_handle }}</span>
         </div>

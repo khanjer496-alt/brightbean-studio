@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load tz %}
 
-{% block title %}{{ action.actor_name }} - Activity - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
+{% block page_title %}{{ action.actor_name }} · Activity{% endblock %}
 
 {% block page_header %}
 <div class="flex flex-wrap items-center justify-between gap-2 mb-6">
@@ -15,11 +15,6 @@
 
 {% block content %}
 <div class="max-w-3xl space-y-5">
-    {% if messages %}
-    <div class="space-y-2" role="status">
-        {% for message in messages %}<p class="text-sm rounded-lg border px-3 py-2 {% if message.tags == 'error' %}border-red-200 bg-red-50 text-red-800{% else %}border-emerald-200 bg-emerald-50 text-emerald-800{% endif %}">{{ message }}</p>{% endfor %}
-    </div>
-    {% endif %}
 
     <section class="bg-white border border-stone-200 rounded-xl p-5" aria-labelledby="decision-title">
         <h2 id="decision-title" class="text-sm font-semibold text-stone-900 mb-2">What happened</h2>

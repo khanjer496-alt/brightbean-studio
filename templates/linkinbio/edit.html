@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}{{ page.title }} — Link in bio — {{ brand_short_name }}{% endblock %}
+{% block page_title %}{{ page.title }} · Link in bio{% endblock %}
 
 {% block content %}
 <div class="flex flex-1 flex-col">
@@ -39,9 +39,9 @@
                     </select>
                 </div>
                 <div>
-                    <label for="f-accent" class="mb-1 block text-sm font-semibold text-ink">Brand accent colour</label>
+                    <label for="f-accent" class="mb-1 block text-sm font-semibold text-ink">Brand accent color</label>
                     <input id="f-accent" name="accent_color" type="text" maxlength="7" pattern="#[0-9A-Fa-f]{6}" placeholder="#2D5BE3" value="{{ page.accent_color }}" aria-describedby="f-accent-help" class="form-input-styled text-sm">
-                    <p id="f-accent-help" class="m-0 mt-1 text-xs text-ink-3">Optional: a hex colour such as #2D5BE3 for the buttons. {% if brand_accent %}Leave blank to use your brand kit's {{ brand_accent }}.{% else %}Leave blank to use the theme's own.{% endif %}</p>
+                    <p id="f-accent-help" class="m-0 mt-1 text-xs text-ink-3">Optional: a hex color such as #2D5BE3 for the buttons. {% if brand_accent %}Leave blank to use your brand kit's {{ brand_accent }}.{% else %}Leave blank to use the theme's own.{% endif %}</p>
                 </div>
                 <fieldset class="m-0 min-w-0 border-0 p-0">
                     <legend class="mb-1 text-sm font-semibold text-ink">Avatar</legend>

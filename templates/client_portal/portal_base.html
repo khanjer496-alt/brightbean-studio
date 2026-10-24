@@ -1,17 +1,20 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ LANGUAGE_CODE }}" dir="{% if LANGUAGE_BIDI %}rtl{% else %}ltr{% endif %}" data-theme="postdelegate">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Client Portal{% endblock %}</title>
+    <title>{% block title %}{% block page_title %}Client portal{% endblock %}{% if workspace %} · {{ workspace.name }}{% endif %} · {{ brand_name }}{% endblock %}</title>
     <link rel="icon" href="{% static brand_favicon_ico_static %}" sizes="any">
     <link rel="icon" type="image/svg+xml" href="{% static brand_favicon_static %}">
     <link rel="icon" type="image/png" sizes="96x96" href="{% static 'favicon/favicon-96x96.png' %}">
     <link rel="apple-touch-icon" sizes="180x180" href="{% static brand_apple_touch_icon_static %}">
     <link rel="manifest" href="{% static brand_manifest_static %}">
     <link rel="stylesheet" href="{% static 'css/dist/styles.css' %}">
+    <link rel="stylesheet" href="{% static 'css/platforms.css' %}">
     {% block extra_head %}{% endblock %}
+    {# Same dark-theme mapping as the app, so the portal's cards are not light boxes on a dark page. #}
+    <link rel="stylesheet" href="{% static 'css/postdelegate.css' %}">
 </head>
 <body class="min-h-screen" style="background: var(--surface-1); font-family: var(--font-body); color: var(--text-primary);">
     {% csrf_token %}

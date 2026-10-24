@@ -1,7 +1,7 @@
 {% extends "layouts/settings.html" %}
 {% load static %}
 
-{% block title %}Organization Calendar - {{ brand_short_name }}{% endblock %}
+{% block page_title %}Organization Calendar{% endblock %}
 
 {% block page_header %}
 <h1 class="text-xl font-semibold text-ink mb-6 tracking-[-0.01em]">Organization Calendar</h1>
@@ -61,24 +61,7 @@
     .status-failed     { background: var(--error-50); color: var(--error-700); }
     .status-on_hold    { background: var(--accent-indigo-soft); color: var(--accent-indigo); }
 
-    /* Platform icon badges */
-    .pi-facebook   { background: #1877F2; }
-    .pi-instagram  { background: linear-gradient(135deg, #F58529, #DD2A7B, #8134AF); }
-    .pi-linkedin   { background: #0A66C2; }
-    .pi-linkedin_personal { background: #0A66C2; }
-    .pi-linkedin_company  { background: #0A66C2; }
-    .pi-tiktok     { background: #010101; }
-    .pi-youtube { background: transparent !important; width: auto !important; min-width: 45px; color: var(--text-secondary); font-size: 10px; }
-    .pi-pinterest  { background: #E60023; }
-    .pi-threads    { background: #000000; }
-    .pi-bluesky    { background: #0085FF; }
-    .pi-google_business { background: #4285F4; }
-    .pi-mastodon   { background: #6364FF; }
-    .pi-reddit   { background: #FF4500; }
-    .pi-x   { background: #000000; }
-    .pi-slack   { background: #4A154B; }
-    .pi-discord   { background: #5865F2; }
-    .pi-telegram   { background: #26A5E4; }
+    /* Platform badge fills (.pi-<platform>) come from static/css/platforms.css */
 
     /* Add-post button on calendar cells */
     .cal-add-btn {
@@ -130,11 +113,11 @@
         <div class="flex items-center gap-2">
             <a href="?view={{ view_type }}&date={{ prev_date }}{% for sid in selected_workspace_ids %}&workspace={{ sid }}{% endfor %}{% if request.GET.channel %}&channel={{ request.GET.channel }}{% endif %}{% if request.GET.tag %}&tag={{ request.GET.tag }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}"
                aria-label="Previous period" class="w-7 h-7 flex items-center justify-center rounded-md text-ink-3 hover:text-ink hover:bg-surface-2 transition-colors focus-visible:ring-2 focus-visible:ring-accent">
-                <svg aria-hidden="true" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                <svg aria-hidden="true" class="w-4 h-4 pd-icon-flip-rtl" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
             </a>
             <a href="?view={{ view_type }}&date={{ next_date }}{% for sid in selected_workspace_ids %}&workspace={{ sid }}{% endfor %}{% if request.GET.channel %}&channel={{ request.GET.channel }}{% endif %}{% if request.GET.tag %}&tag={{ request.GET.tag }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}"
                aria-label="Next period" class="w-7 h-7 flex items-center justify-center rounded-md text-ink-3 hover:text-ink hover:bg-surface-2 transition-colors focus-visible:ring-2 focus-visible:ring-accent">
-                <svg aria-hidden="true" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                <svg aria-hidden="true" class="w-4 h-4 pd-icon-flip-rtl" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
             </a>
         </div>
 

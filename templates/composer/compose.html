@@ -2,12 +2,11 @@
 {% load static %}
 {% load common_extras onboarding_tags %}
 
-{% block title %}{% if is_edit %}Edit Post{% else %}New Post{% endif %} - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
+{% block page_title %}{% if is_edit %}Edit Post{% else %}New Post{% endif %}{% endblock %}
 
 {% comment %}Header is rendered inside the content block to avoid overlap with the -m-6 layout{% endcomment %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{% static 'css/platforms.css' %}">
 <style>
     /* ── Composer-specific overrides ──────────────────────────── */
     /* Remove parent padding/overflow so the composer can fill the full area */
@@ -82,7 +81,7 @@
         font-size: 11px; font-weight: 700; color: white; flex-shrink: 0;
         letter-spacing: -0.02em;
     }
-    /* .pi-<platform> fills live in static/css/platforms.css */
+    /* .pi-<platform> fills live in static/css/platforms.css (loaded by base.html) */
 
     /* Character counter bar */
     .char-bar {
@@ -253,6 +252,9 @@
         border-top: 1px solid var(--border);
         padding: 12px 16px;
         display: flex; align-items: center; gap: 6px;
+        /* Delete + Save Draft + Submit for Approval + the schedule split button outgrow the column
+           next to the preview; wrap the actions (still end-aligned) rather than push them off-screen. */
+        flex-wrap: wrap; justify-content: flex-end; row-gap: 8px;
         position: relative;
         z-index: 51;
     }
@@ -299,7 +301,7 @@
      @keydown.meta.s.prevent="saveDraft()"
      @keydown.ctrl.s.prevent="saveDraft()">
 
-    {% onboarding_hint "composer" %}
+    {% onboarding_hint "composer" extra_class="mx-4 mt-3 sm:mx-6" %}
 
     <!-- Page header -->
     <div class="flex items-center gap-3 px-4 sm:px-6 py-3 border-b border-stone-100 flex-shrink-0">
@@ -369,7 +371,7 @@
                         <span class="text-sm font-medium text-stone-700 truncate">{{ account.account_name|default:account.account_handle }}{% if account.platform == "youtube" %} <small>YouTube</small>{% endif %}</span>
                     </button>
                     {% empty %}
-                    <span class="text-xs text-stone-400">No accounts connected</span>
+                    <span class="text-xs text-stone-500">No channels connected yet. <a href="{% url 'social_accounts:connect' workspace_id=workspace.id %}" class="font-medium text-accent hover:underline">Connect a channel</a> to schedule this post.</span>
                     {% endfor %}
                 </div>
 
@@ -1492,7 +1494,7 @@
 
                     <!-- Create Tag Modal (teleported to body to escape stacking contexts) -->
                     <template x-teleport="body">
-                        <div x-show="showCreateTagModal" x-cloak class="fixed inset-0 z-[200] flex items-center justify-center" @keydown.escape.window="showCreateTagModal = false" role="dialog" aria-modal="true" aria-label="Create new tag" x-a11y-modal="showCreateTagModal">
+                        <div x-show="showCreateTagModal" x-cloak class="fixed inset-0 z-[200] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Create new tag" x-pd-dialog="showCreateTagModal">
                             <div class="fixed inset-0 bg-black/30" @click="showCreateTagModal = false"></div>
                             <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6" @click.stop>
                                 <h3 class="text-base font-semibold text-stone-800 mb-4">Create new tag</h3>
@@ -1618,15 +1620,15 @@
                                     </div>
                                 </button>
 
-                                <!-- Prioritise -->
-                                <button type="button" data-mode="add_to_queue_priority" data-label="Prioritise" data-action-label="Prioritise"
+                                <!-- Prioritize -->
+                                <button type="button" data-mode="add_to_queue_priority" data-label="Prioritize" data-action-label="Prioritize"
                                         data-icon="priority"
                                         class="publish-mode-option w-full flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-stone-50 transition-colors text-start cursor-pointer">
                                     <div class="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0 mt-0.5">
                                         <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"/></svg>
                                     </div>
                                     <div>
-                                        <div class="text-sm font-semibold text-stone-800">Prioritise</div>
+                                        <div class="text-sm font-semibold text-stone-800">Prioritize</div>
                                         <div class="text-xs text-stone-400 mt-0.5">Add to top of queue</div>
                                     </div>
                                 </button>
@@ -1833,11 +1835,11 @@
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
          x-transition:leave-end="opacity-0"
-         class="panel-right-backdrop" data-a11y-backdrop></div>
+         class="panel-right-backdrop" data-pd-backdrop></div>
     <div id="preview-panel-drawer" class="panel-right border-s border-stone-200 bg-stone-50 lg:bg-stone-50 flex flex-col"
          :class="{ 'is-open': showPreviewPanel }"
          :role="previewIsDrawer ? 'dialog' : null" :aria-modal="previewIsDrawer ? 'true' : null" aria-label="Post preview"
-         x-a11y-modal="showPreviewPanel && previewIsDrawer" data-close="showPreviewPanel = false">
+         x-pd-dialog="showPreviewPanel && previewIsDrawer" data-dialog-close="showPreviewPanel = false">
         <div class="px-4 py-3 border-b border-stone-100 flex items-center justify-between">
             <h3 class="text-xs font-semibold text-stone-500 uppercase tracking-wider">Preview</h3>
             <div class="flex items-center gap-2">
@@ -1873,7 +1875,7 @@
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Media library" x-a11y-modal="showMediaPicker">
+         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Media library" x-pd-dialog="showMediaPicker">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="showMediaPicker = false"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[640px] mx-2 sm:mx-0 max-h-[85vh] sm:max-h-[70vh] overflow-hidden"
              x-transition:enter="transition ease-out duration-200"
@@ -1907,7 +1909,7 @@
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Select thumbnail" x-a11y-modal="showThumbnailPicker">
+         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Select thumbnail" x-pd-dialog="showThumbnailPicker">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="showThumbnailPicker = false"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[640px] mx-2 sm:mx-0 max-h-[85vh] sm:max-h-[70vh] overflow-hidden">
             <div class="px-4 sm:px-6 py-4 border-b border-stone-100 flex items-center justify-between">
@@ -1932,13 +1934,12 @@
     <div x-show="showThreadMediaPicker" x-cloak
          class="fixed inset-0 z-[60] flex items-center justify-center"
          role="dialog" aria-modal="true" aria-labelledby="thread-media-picker-title"
-         @keydown.escape.window="showThreadMediaPicker = false"
          x-transition:enter="transition ease-out duration-200"
          x-transition:enter-start="opacity-0"
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-labelledby="thread-media-picker-title" x-a11y-modal="showThreadMediaPicker">
+         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-labelledby="thread-media-picker-title" x-pd-dialog="showThreadMediaPicker">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="showThreadMediaPicker = false"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[640px] mx-2 sm:mx-0 max-h-[85vh] sm:max-h-[70vh] overflow-hidden">
             <div class="px-4 sm:px-6 py-4 border-b border-stone-100 flex items-center justify-between">
@@ -1964,13 +1965,12 @@
     {% if unsplash_enabled %}
     <div x-show="showUnsplashModal" x-cloak
          class="fixed inset-0 z-[60] flex items-center justify-center"
-         @keydown.escape.window="showUnsplashModal && closeUnsplashModal()"
          x-transition:enter="transition ease-out duration-200"
          x-transition:enter-start="opacity-0"
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Search Unsplash photos" x-a11y-modal="showUnsplashModal" data-close="closeUnsplashModal()">
+         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Search Unsplash photos" x-pd-dialog="showUnsplashModal" data-dialog-close="closeUnsplashModal()">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="closeUnsplashModal()"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[760px] mx-2 sm:mx-0 h-[640px] max-h-[85vh] flex flex-col overflow-hidden"
              x-transition:enter="transition ease-out duration-200"
@@ -1992,7 +1992,7 @@
             <div class="px-4 sm:px-6 pt-4 space-y-3 flex-shrink-0">
                 <div class="flex items-center gap-2 rounded-xl border-2 border-orange-400/70 focus-within:border-orange-500 transition-colors ps-4 pe-1.5 py-1.5">
                     <svg class="w-4 h-4 text-stone-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                    <input aria-label="Search free photos" type="text" x-model="unsplashQuery"
+                    <input aria-label="Search free photos" data-autofocus type="text" x-model="unsplashQuery"
                            @keydown.enter.prevent="unsplashActiveChip = ''; searchUnsplash()"
                            placeholder="Search free high-resolution photos…"
                            class="flex-1 text-sm bg-transparent outline-none border-none placeholder-stone-400 text-stone-900">
@@ -2055,13 +2055,12 @@
          ════════════════════════════════════════════════════════════ -->
     <div x-show="showFramePicker" x-cloak
          class="fixed inset-0 z-[60] flex items-center justify-center"
-         @keydown.escape.window="showFramePicker && closeFramePicker()"
          x-transition:enter="transition ease-out duration-200"
          x-transition:enter-start="opacity-0"
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Choose a video frame" x-a11y-modal="showFramePicker" data-close="closeFramePicker()">
+         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Choose a video frame" x-pd-dialog="showFramePicker" data-dialog-close="closeFramePicker()">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="closeFramePicker()"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[720px] mx-2 sm:mx-0 max-h-[90vh] flex flex-col overflow-hidden"
              x-transition:enter="transition ease-out duration-200"
@@ -2161,8 +2160,7 @@
     <!-- Delete Confirmation Modal -->
     <div x-data="{ showDeleteModal: false, deleting: false, deleteError: '' }" style="display: contents;"
          @open-delete-modal.window="showDeleteModal = true; deleteError = ''">
-        <div x-show="showDeleteModal" x-cloak class="fixed inset-0 z-[60] flex items-center justify-center"
-             @keydown.escape.window="showDeleteModal = false" role="dialog" aria-modal="true" aria-label="Delete post" x-a11y-modal="showDeleteModal">
+        <div x-show="showDeleteModal" x-cloak class="fixed inset-0 z-[60] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Delete post" x-pd-dialog="showDeleteModal">
             <div class="fixed inset-0 bg-black/30 backdrop-blur-sm" @click="showDeleteModal = false"
                  x-show="showDeleteModal"
                  x-transition:enter="transition ease-out duration-150"
@@ -2223,7 +2221,6 @@
 {% endblock %}
 
 {% block extra_js %}
-{% include "composer/partials/modal_a11y.html" %}
 <script nonce="{{ request.csp_nonce }}">
   // Reviewer approve / request-changes return 204 + toast + approvalAction. Let the
   // toast show, then reload so the status banner and history reflect the new state.
@@ -2705,25 +2702,7 @@ function composerApp() {
             document.body.addEventListener('autosaved', (e) => {
                 const detail = e.detail || {};
                 this.lastSaved = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                if (detail.postId && detail.isNew) {
-                    this.autosavedPostId = detail.postId;
-                    // Update the autosave trigger URL to use the edit endpoint
-                    const trigger = document.getElementById('autosave-trigger');
-                    if (trigger) {
-                        const editUrl = `/workspace/{{ workspace.id }}/compose/${detail.postId}/autosave/`;
-                        trigger.setAttribute('hx-post', editUrl);
-                        htmx.process(trigger);
-                    }
-                    // Also update the main form's action URL
-                    const form = document.getElementById('composer-form');
-                    if (form) {
-                        const editSaveUrl = `/workspace/{{ workspace.id }}/compose/${detail.postId}/save/`;
-                        form.setAttribute('hx-post', editSaveUrl);
-                        htmx.process(form);
-                    }
-                    // Update upload URL to attach media to the post directly
-                    this.uploadUrl = `/workspace/{{ workspace.id }}/compose/${detail.postId}/upload-media/`;
-                }
+                if (detail.postId && detail.isNew) this.adoptPostId(detail.postId);
             });
 
             // Track whether a video is attached (enables "Choose from video").
@@ -3236,18 +3215,49 @@ function composerApp() {
             actionInput.remove();
         },
 
+        // Point every save path at a post once it exists, so later saves update it instead of
+        // creating another draft (first autosave, or the first explicit Save Draft of a new post).
+        adoptPostId(postId) {
+            if (!postId || this.autosavedPostId === postId) return;
+            this.autosavedPostId = postId;
+            const trigger = document.getElementById('autosave-trigger');
+            if (trigger) {
+                trigger.setAttribute('hx-post', `/workspace/{{ workspace.id }}/compose/${postId}/autosave/`);
+                htmx.process(trigger);
+            }
+            const form = document.getElementById('composer-form');
+            if (form) {
+                form.setAttribute('hx-post', `/workspace/{{ workspace.id }}/compose/${postId}/save/`);
+                htmx.process(form);
+            }
+            // Attach later uploads to the post directly
+            this.uploadUrl = `/workspace/{{ workspace.id }}/compose/${postId}/upload-media/`;
+        },
+
         onFormSaved(event) {
             // Only react to the form's own submit, not htmx requests bubbling from
             // child elements (e.g. the pending-media remove button).
             if (event.detail.elt !== event.currentTarget) return;
             const xhr = event.detail.xhr;
             if (event.detail.successful) {
-                const action = document.getElementById('publish-action-btn')?.value;
+                // Act on the button that was pressed (Save Draft, Submit for Approval, the publish
+                // split button), not on whatever mode the publish button happens to show.
+                let action = '';
+                try { action = event.detail.requestConfig.formData.get('action') || ''; } catch (e) { /* no form data */ }
+                if (!action) action = document.getElementById('publish-action-btn')?.value;
                 if (action === 'schedule' || action === 'publish_now' || action === 'add_to_queue' || action === 'add_to_queue_priority') {
                     // Redirect to calendar after scheduling/publishing/queuing
                     window.location.href = '{% url "calendar:calendar" workspace_id=workspace.id %}';
                     return;
                 }
+                if (action === 'submit_for_approval' || action === 'resubmit_for_approval') {
+                    window.location.href = '{% url "calendar:calendar" workspace_id=workspace.id %}?mode=list&tab=approvals';
+                    return;
+                }
+                try {
+                    const saved = JSON.parse(xhr.getResponseHeader('HX-Trigger') || '{}').postSaved;
+                    if (saved) this.adoptPostId(saved.postId);
+                } catch (e) { /* no trigger header */ }
                 this.showSaveToast = true;
                 const now = new Date();
                 this.lastSaved = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
@@ -3596,6 +3606,14 @@ function repeatPanel() {
         });
     });
 
+    // The mode button names the chosen slot (wall-clock in the workspace timezone, as entered),
+    // so the time is visible before Schedule Post is pressed.
+    function scheduleLabel(dateVal, timeVal) {
+        var when = new Date(dateVal + 'T' + timeVal);
+        if (isNaN(when)) return 'Set date and time';
+        return when.toLocaleString(undefined, { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+    }
+
     // Schedule sub-view: confirm button sets mode to schedule and closes
     if (scheduleConfirm) {
         scheduleConfirm.addEventListener('click', function(e) {
@@ -3614,7 +3632,7 @@ function repeatPanel() {
                 return;
             }
             if (errEl) { errEl.classList.add('hidden'); }
-            setMode('schedule', 'Set date and time', 'Schedule Post', 'calendar');
+            setMode('schedule', scheduleLabel(dateVal, timeVal), 'Schedule Post', 'calendar');
             hidePopover();
         });
     }
@@ -3642,7 +3660,7 @@ function repeatPanel() {
     var schedDateInput = document.querySelector('input[name="scheduled_date"]');
     var schedTimeInput = document.querySelector('input[name="scheduled_time"]');
     if (schedDateInput && schedDateInput.value && schedTimeInput && schedTimeInput.value && !prefillIsProposed) {
-        setMode('schedule', 'Set date and time', 'Schedule Post', 'calendar');
+        setMode('schedule', scheduleLabel(schedDateInput.value, schedTimeInput.value), 'Schedule Post', 'calendar');
     }
 })();
 </script>

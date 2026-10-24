@@ -46,8 +46,8 @@
 .pi-discord { background: var(--platform-discord); }
 .pi-telegram { background: var(--platform-telegram); }
 
-/* YouTube renders its full wordmark-style label rather than a filled badge. */
-.platform-icon.pi-youtube {
+/* YouTube renders its full wordmark-style label rather than a filled badge (fixed w-4/w-5 badges too). */
+.pi-youtube {
     background: transparent;
     width: auto;
     min-width: 45px;

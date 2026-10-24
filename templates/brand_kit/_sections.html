@@ -26,8 +26,8 @@
 </section>
 
 <section aria-labelledby="kit-colors" class="mb-10">
-    <h3 id="kit-colors" class="text-base font-semibold mb-1 text-[var(--text-primary)]">Brand colours</h3>
-    <p class="text-sm mb-4 text-[var(--text-secondary)]">Named swatches, as hex values like #1a2b3c. The first is the primary colour used on reports.</p>
+    <h3 id="kit-colors" class="text-base font-semibold mb-1 text-[var(--text-primary)]">Brand colors</h3>
+    <p class="text-sm mb-4 text-[var(--text-secondary)]">Named swatches, as hex values like #1a2b3c. The first is the primary color used on reports.</p>
     <form method="POST" class="flex flex-col gap-3">
         {% csrf_token %}
         <input type="hidden" name="section" value="colors">
@@ -40,7 +40,7 @@
             <span aria-hidden="true" class="h-9 w-9 flex-none rounded-lg border border-line"{% if color.hex %} style="background: {{ color.hex }}"{% endif %}></span>
         </div>
         {% endfor %}
-        {% if can_edit %}<div><button type="submit" class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer bg-[var(--neutral-100)] text-[var(--text-primary)]">Save colours</button></div>{% endif %}
+        {% if can_edit %}<div><button type="submit" class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer bg-[var(--neutral-100)] text-[var(--text-primary)]">Save colors</button></div>{% endif %}
     </form>
 </section>
 

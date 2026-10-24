@@ -4,7 +4,7 @@
     <div class="text-xs font-semibold text-ink-2">{{ kpi.label }}</div>
     {% if kpi.value is None %}
         <div class="text-lg font-semibold text-ink-3">Not available</div>
-        <p class="m-0 text-[11px] leading-snug text-ink-3">None of the {{ kpi.total }} account{{ kpi.total|pluralize }} reports this.</p>
+        <p class="m-0 text-[11px] leading-snug text-ink-3">{% if kpi.total == 1 %}Your connected account doesn't report this.{% else %}None of your {{ kpi.total }} accounts report this.{% endif %}</p>
     {% else %}
         <div class="flex items-end justify-between gap-2">
             <span class="text-[1.6rem] font-bold leading-none tracking-tight text-ink">{{ kpi.value|fmt_metric:kpi.kind }}</span>

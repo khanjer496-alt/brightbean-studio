@@ -1,5 +1,6 @@
 {% extends "layouts/workspace_settings.html" %}
-{% block title %}Autonomy - {{ workspace.name }} - {{ brand_short_name }}{% endblock %}
+{% load common_extras %}
+{% block page_title %}Autonomy{% endblock %}
 {% block content %}
 <div class="max-w-3xl">
     <h2 class="text-xl font-semibold mb-2 text-[var(--text-primary)]">Autonomy</h2>
@@ -7,35 +8,42 @@
         Decide how much agents and automations may do on their own here. People are never held back by these settings: they follow your roles and approval workflow. Everything an agent or automation does is recorded in <a class="underline" href="{% url 'autonomy:activity' workspace_id=workspace.id %}">Activity</a>, with the reason.
     </p>
 
-    {% if messages %}
-    <div class="mb-6 space-y-2" role="status">
-        {% for message in messages %}<p class="text-sm rounded-lg border px-3 py-2 {% if message.tags == 'error' %}border-red-200 bg-red-50 text-red-800{% else %}border-emerald-200 bg-emerald-50 text-emerald-800{% endif %}">{{ message }}</p>{% endfor %}
-    </div>
-    {% endif %}
 
-    <section class="mb-10 rounded-xl border p-5 {% if policy.crisis_paused %}border-red-300 bg-red-50{% else %}border-stone-200 bg-white{% endif %}" aria-labelledby="crisis-title">
-        <h3 id="crisis-title" class="text-base font-semibold {% if policy.crisis_paused %}text-red-900{% else %}text-[var(--text-primary)]{% endif %}">Crisis pause</h3>
-        <p class="text-sm mt-1 mb-4 {% if policy.crisis_paused %}text-red-800{% else %}text-[var(--text-secondary)]{% endif %}">
+    <section class="mb-10 rounded-xl border p-5 {% if policy.crisis_paused %}border-[color:var(--error-500)] bg-bad-soft{% else %}border-line bg-surface-1{% endif %}" aria-labelledby="crisis-title">
+        <h3 id="crisis-title" class="text-base font-semibold {% if policy.crisis_paused %}text-bad{% else %}text-ink{% endif %}">Crisis pause</h3>
+        <p class="text-sm mt-1 mb-4 text-ink-2">
             {% if policy.crisis_paused %}
-            Crisis pause is <strong>on</strong>. Every autonomous action is stopped, and posts and replies already queued by agents or automations are held. Turn it off to let them continue.
+            Crisis pause is <strong class="text-ink">on</strong>. Every autonomous action is stopped, and posts and replies already queued by agents or automations are held. Turn it off to let them continue.
             {% else %}
             One switch to stop every autonomous action immediately and hold what is already queued. Use it when something is happening in the world and nothing automated should go out. Posts your team scheduled are not affected.
             {% endif %}
         </p>
         {% if can_pause %}
-        <form method="post" {% if not policy.crisis_paused %}x-data @submit="if (!confirm('Pause every autonomous action now? Queued automated posts and replies will be held until you resume.')) $event.preventDefault()"{% endif %}>
+        {% if policy.crisis_paused %}
+        <form method="post">
             {% csrf_token %}
             <input type="hidden" name="section" value="crisis">
-            {% if policy.crisis_paused %}
             <input type="hidden" name="crisis_paused" value="0">
-            <button type="submit" class="px-5 py-2.5 text-sm font-semibold rounded-full cursor-pointer bg-white text-red-900 border border-red-300 hover:bg-red-100">Resume autonomous actions</button>
-            {% else %}
-            <input type="hidden" name="crisis_paused" value="1">
-            <button type="submit" class="px-5 py-2.5 text-sm font-semibold rounded-full cursor-pointer bg-red-600 text-white hover:bg-red-700">Pause all autonomous actions</button>
-            {% endif %}
+            <button type="submit" class="btn-outline w-auto px-5 text-sm">Resume autonomous actions</button>
         </form>
         {% else %}
-        <p class="text-xs text-[var(--text-tertiary)]">Only people who can approve posts can change crisis pause.</p>
+        <div x-data="{ confirmPause: false }">
+            <button type="button" id="crisis-pause-btn" @click="confirmPause = true" class="px-5 py-2.5 text-sm font-semibold rounded-full cursor-pointer bg-red-600 text-white hover:bg-red-700">Pause all autonomous actions</button>
+            {% modal open="confirmPause" title="Pause every autonomous action?" description="Queued automated posts and replies are held until you resume. Posts your team scheduled are not affected." size="sm" return_focus="#crisis-pause-btn" %}
+                <form method="post">
+                    {% csrf_token %}
+                    <input type="hidden" name="section" value="crisis">
+                    <input type="hidden" name="crisis_paused" value="1">
+                    <div class="pd-modal-actions">
+                        <button type="button" @click="confirmPause = false" class="btn-outline w-auto text-sm">Cancel</button>
+                        <button type="submit" data-autofocus class="px-5 py-2 text-sm font-semibold rounded-full cursor-pointer bg-red-600 text-white hover:bg-red-700">Pause now</button>
+                    </div>
+                </form>
+            {% endmodal %}
+        </div>
+        {% endif %}
+        {% else %}
+        <p class="text-xs text-ink-3">Only people who can approve posts can change crisis pause.</p>
         {% endif %}
     </section>
 

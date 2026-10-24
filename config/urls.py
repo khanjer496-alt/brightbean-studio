@@ -5,6 +5,8 @@ from urllib.parse import urlsplit
 from allauth.account.decorators import secure_admin_login
 from django.conf import settings
 from django.contrib import admin
+from django.shortcuts import redirect
+from django.templatetags.static import static
 from django.urls import include, path, re_path
 from django.views.static import serve
 
@@ -18,9 +20,20 @@ logger = logging.getLogger(__name__)
 # to skip the two-factor step: Django's own admin login form never asks for it.
 admin.site.login = secure_admin_login(admin.site.login)
 
+
+def favicon(request):
+    """Browsers and feed readers ask for /favicon.ico whatever the page links; send them to the brand icon.
+
+    Resolved per request (not at import) so a hashed static name never has to exist when the URLconf loads,
+    and temporary because that name changes with every deploy.
+    """
+    return redirect(static(settings.BRAND_FAVICON_ICO_STATIC))
+
+
 urlpatterns = [
     path("admin/", admin.site.urls),
     path("health/", health_check, name="health_check"),
+    path("favicon.ico", favicon),
     path("accounts/", include("apps.accounts.urls")),
     path("accounts/", include("allauth.urls")),
     path("organizations/", include("apps.organizations.urls")),

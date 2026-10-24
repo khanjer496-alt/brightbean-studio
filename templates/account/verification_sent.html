@@ -28,9 +28,14 @@
                 <rect x="2" y="4" width="20" height="16" rx="2"/>
                 <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
             </svg>
+            {# Show allauth's "Confirmation email sent to <address>" here, so it does not linger to the next page. #}
+            {% for message in messages %}
+            <p class="text-sm mb-1 text-ink" role="status">{{ message }}</p>
+            {% empty %}
             <p class="text-sm mb-1 text-ink-2">
                 Check your inbox for the verification link.
             </p>
+            {% endfor %}
             <p class="text-xs text-ink-3">
                 If you don't see it, check your spam folder.
             </p>

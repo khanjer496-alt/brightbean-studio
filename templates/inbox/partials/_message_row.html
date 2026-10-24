@@ -1,4 +1,4 @@
-{% load humanize inbox_extras %}
+{% load humanize inbox_extras tz %}
 <div id="msg-{{ message.id }}"
      class="inbox-row {% if message.status == 'unread' %}is-unread{% endif %}"
      data-message-id="{{ message.id }}"
@@ -42,7 +42,7 @@
             {% if message.sender_handle %}
             <span class="text-[11px] text-stone-400 truncate">@{{ message.sender_handle }}</span>
             {% endif %}
-            <span class="text-[11px] text-stone-400 ml-auto flex-shrink-0" title="{{ message.received_at|date:'N j, Y g:i A' }}">{{ message.received_at|timesince }} ago</span>
+            <span class="text-[11px] text-stone-400 ms-auto flex-shrink-0" title="{% timezone workspace.effective_timezone %}{{ message.received_at|date:'N j, Y g:i A' }}{% endtimezone %}">{{ message.received_at|timesince_short }} ago</span>
         </div>
         <p dir="auto" class="inbox-row-preview text-[12px] text-stone-500 truncate leading-snug">{% if active_filters.q %}{{ message.body|highlight:active_filters.q }}{% else %}{{ message.body|truncatewords:20 }}{% endif %}</p>
         <div class="flex items-center gap-1.5 mt-1.5">

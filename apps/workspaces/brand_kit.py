@@ -179,7 +179,7 @@ def _clean_colors(value):
         try:
             validate_hex_color(hex_value)
         except Exception as exc:
-            raise BrandKitError(f"{hex_value or 'A colour'} is not a hex colour like #1a2b3c.") from exc
+            raise BrandKitError(f"{hex_value or 'A color'} is not a hex color like #1a2b3c.") from exc
         cleaned.append({"name": name or hex_value, "hex": hex_value})
     return cleaned
 

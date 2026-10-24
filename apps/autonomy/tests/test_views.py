@@ -311,11 +311,16 @@ class TestSettings:
         assert "start and end time" in response.content.decode()
 
     def test_crisis_pause_with_confirmation_markup_and_toggle(self, world, owner_client):
-        assert "confirm(" in self.page(world, owner_client).content.decode()
-        self.post(world, owner_client, section="crisis", crisis_paused="1")
+        page = self.page(world, owner_client).content.decode()
+        # the pause asks first, in the shared dialog rather than the browser's confirm()
+        assert 'x-pd-dialog="confirmPause"' in page and "Pause every autonomous action?" in page
+        assert "confirm(" not in page
+        paused_page = self.post(world, owner_client, section="crisis", crisis_paused="1").content.decode()
         policy = AutonomyPolicy.objects.get(workspace=world.workspace)
         assert policy.crisis_paused and policy.crisis_paused_by == world.owner and policy.crisis_paused_at
-        assert "Resume autonomous actions" in self.page(world, owner_client).content.decode()
+        assert "Resume autonomous actions" in paused_page
+        # the flash message shows once (the layout's list), not again inside the page
+        assert paused_page.count("Every autonomous action is stopped and queued ones are held.") == 1
         self.post(world, owner_client, section="crisis", crisis_paused="0")
         policy.refresh_from_db()
         assert not policy.crisis_paused and policy.crisis_paused_by is None

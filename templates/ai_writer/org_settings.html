@@ -1,5 +1,5 @@
 {% extends "layouts/settings.html" %}
-{% block title %}AI Assistant - {{ organization.name }} - {{ brand_short_name }}{% endblock %}
+{% block page_title %}AI Assistant{% endblock %}
 {% block content %}
 <div class="max-w-2xl">
     <h2 class="text-xl font-semibold mb-2 text-[var(--text-primary)]">AI Assistant</h2>
@@ -56,7 +56,7 @@
     <form method="POST">
         {% csrf_token %}
         <input type="hidden" name="action" value="remove_key">
-        <button type="submit" class="btn-danger-soft px-5 py-2 text-sm font-medium rounded-full cursor-pointer whitespace-nowrap bg-[var(--error-50)] text-[var(--error-700)]">
+        <button type="submit" class="btn-danger-soft px-5 py-2 text-sm font-medium rounded-full cursor-pointer whitespace-nowrap bg-bad-soft text-bad focus-visible:ring-2 focus-visible:ring-accent">
             Remove Key
         </button>
         <p class="text-xs mt-2 text-[var(--text-tertiary)]">

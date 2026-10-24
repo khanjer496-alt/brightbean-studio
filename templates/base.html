@@ -30,6 +30,7 @@
     <style>[x-cloak] { display: none !important; }</style>
     {% block extra_head %}{% endblock %}
     <link rel="stylesheet" href="{% static 'css/postdelegate.css' %}">
+    <link rel="stylesheet" href="{% static 'css/platforms.css' %}">
 </head>
 <body class="min-h-screen">
     <a href="#main-content" class="pd-skip-link">Skip to main content</a>
@@ -514,7 +515,7 @@
 
                 {% if request.workspace %}
                 {% if analytics_enabled_platforms and request.workspace_membership.effective_permissions.view_analytics %}
-                <a href="{% url 'analytics:index' workspace_id=request.workspace.id %}" class="mb-1 sidebar-nav-item {% if request.resolver_match.app_name == 'analytics' %}active{% endif %}">
+                <a href="{% url 'analytics:index' workspace_id=request.workspace.id %}" class="mb-1 sidebar-nav-item {% with app=request.resolver_match.app_name %}{% if app == 'analytics' or app == 'reports' or app == 'competitors' or app == 'ai_visibility' %}active{% endif %}{% endwith %}">
                     <svg class="flex-shrink-0" width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 12l4-4 4 4 6-6"/></svg>
                     <span class="sidebar-nav-label">Analytics</span>
                 </a>
@@ -765,6 +766,8 @@
                 {% if onboarding.is_sample_workspace %}{% include "onboarding/partials/_sample_banner.html" %}{% endif %}
                 <div class="flex-1 min-h-0 flex flex-col overflow-y-auto overflow-x-hidden">
                 {% block content %}{% endblock %}
+                {% comment %}Room to scroll the page's last row clear of the fixed "Get started" pill (the composer keeps its own layout).{% endcomment %}
+                {% if onboarding and not onboarding.checklist_dismissed and onboarding.checklist_items and not onboarding.checklist_hidden_on_phone %}<div class="h-16 shrink-0" aria-hidden="true"></div>{% endif %}
                 </div>
             </main>
         </div>

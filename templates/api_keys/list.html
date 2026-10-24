@@ -1,6 +1,6 @@
 {% extends "layouts/settings.html" %}
 {% load static %}
-{% block title %}API Keys - Settings - {{ brand_short_name }}{% endblock %}
+{% block page_title %}API Keys{% endblock %}
 {% block content %}
 <div x-data="{ showIssueModal: false, showRevealModal: {% if reveal_token %}true{% else %}false{% endif %} }">
     <div class="flex flex-wrap items-start justify-between mb-8 gap-4">
@@ -11,7 +11,7 @@
                 how much it can do in a day, and whether a person must approve its work.
             </p>
         </div>
-        <button type="button" @click="showIssueModal = true" class="btn-brand text-sm py-2 px-4 inline-flex items-center gap-1.5 whitespace-nowrap">
+        <button type="button" @click="showIssueModal = true" class="btn-brand w-auto text-sm py-2 px-4 inline-flex items-center gap-1.5 whitespace-nowrap">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
             Issue new token
         </button>
@@ -34,15 +34,6 @@
             <p class="mt-3 p-3 rounded-lg bg-[var(--surface-page)] text-[var(--text-secondary)]">List the accounts I can access and their publishing capabilities. Ask me which account to use, then create a draft from my brief. Do not schedule or publish it.</p>
         </details>
     </section>
-
-    {# Flash messages — success / error from the issue, edit, rotate and revoke flows. #}
-    {% if messages %}
-    <div class="mb-6 space-y-2" role="status">
-        {% for message in messages %}
-        <p class="text-sm rounded-lg border px-4 py-3 {% if message.tags == 'error' %}border-red-200 bg-red-50 text-red-800{% else %}border-stone-200 bg-[var(--surface-1)] text-[var(--text-primary)]{% endif %}">{{ message }}</p>
-        {% endfor %}
-    </div>
-    {% endif %}
 
     {% if revoked_count %}
     <div class="flex justify-end mb-3 text-xs">
@@ -103,6 +94,5 @@
         {% include "api_keys/_token_reveal.html" with token=reveal_token key_name=reveal_key_name %}
     {% endif %}
 </div>
-{% include "composer/partials/modal_a11y.html" %}
 <script src="{% static 'js/token-scope.js' %}"></script>
 {% endblock %}
