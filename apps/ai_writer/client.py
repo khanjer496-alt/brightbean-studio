@@ -259,7 +259,7 @@ _RETRY_BACKOFF_SECONDS = 1.0
 
 def _http_client() -> httpx.Client:
     """The client every OpenAI-style call goes through. Never follows redirects."""
-    return httpx.Client(timeout=max(settings.AI_REQUEST_TIMEOUT / 2, 1), follow_redirects=False)
+    return httpx.Client(timeout=settings.AI_REQUEST_TIMEOUT, follow_redirects=False)
 
 
 def _unavailable(message: str = "") -> AIUnavailableError:
@@ -394,10 +394,10 @@ class OpenAIStyleProvider(AIProvider):
         return payload
 
     def _post(self, endpoint: str, payload: dict) -> dict:
-        """One request, retried once after a timeout, a transport error, a 408 or a 5xx (not after a 4xx).
+        """One request, retried once after a connection failure, a 408 or a 5xx (not after a 4xx).
 
-        The address is checked again for the retry. Each attempt gets half of
-        ``AI_REQUEST_TIMEOUT``, so the composer never waits longer than that in total.
+        The address is checked again for the retry. A model too slow to answer
+        within ``AI_REQUEST_TIMEOUT`` isn't retried: it would only be as slow again.
         """
         try:
             return self._post_once(endpoint, payload)
@@ -423,8 +423,10 @@ class OpenAIStyleProvider(AIProvider):
             ):
                 status = response.status_code
                 content = self._read_capped(response) if status < 300 else b""
-        except httpx.TimeoutException as exc:
+        except httpx.ConnectTimeout as exc:
             raise _unavailable() from exc
+        except httpx.TimeoutException as exc:
+            raise AIUnavailableError() from exc
         except httpx.HTTPError as exc:
             raise _unavailable("The AI service couldn't be reached. Check the base URL and try again.") from exc
 

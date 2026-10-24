@@ -204,7 +204,7 @@ def test_error_mapping(server, reply, error):
 
 class TestRetry:
     @pytest.mark.parametrize(
-        "first", [(500, {}), (503, {}), (408, {}), httpx.ReadTimeout("slow"), httpx.ConnectError("x")]
+        "first", [(500, {}), (503, {}), (408, {}), httpx.ConnectTimeout("slow"), httpx.ConnectError("x")]
     )
     def test_one_retry_then_success(self, server, first):
         server.queue(first, chat('{"text": "back"}'))
@@ -228,9 +228,9 @@ class TestRetry:
             run(OpenAIProvider)
         assert len(server.requests) == 1
 
-    def test_each_attempt_gets_half_the_timeout(self, settings):
+    def test_each_attempt_gets_the_full_timeout(self, settings):
         settings.AI_REQUEST_TIMEOUT = 40
-        assert client._http_client().timeout.read == 20
+        assert client._http_client().timeout.read == 40
 
 
 class TestBodyCap:
