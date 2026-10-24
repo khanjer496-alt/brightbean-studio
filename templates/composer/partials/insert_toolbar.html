@@ -78,6 +78,16 @@ Context:
             </div>
         </div>
 
+        <div x-show="groups.length > 0" class="flex gap-0.5 mt-2" role="group" aria-label="Skin tone">
+            <template x-for="(choice, tone) in emojiToneChoices" :key="choice.label">
+                <button type="button"
+                        class="w-7 h-7 text-sm rounded-md cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-orange-500"
+                        :class="emojiTone === tone ? 'bg-stone-100' : 'hover:bg-stone-50'"
+                        :aria-label="choice.label" :title="choice.label" :aria-pressed="(emojiTone === tone).toString()"
+                        @click="setEmojiTone(tone)" x-text="choice.glyph"></button>
+            </template>
+        </div>
+
         <div x-show="!emojiQuery.trim() && groups.length > 0" class="flex gap-0.5 mt-2" role="group" aria-label="Emoji categories">
             <template x-for="(group, index) in groups" :key="group.name">
                 <button type="button"
@@ -92,7 +102,7 @@ Context:
             <template x-for="row in emojiShown" :key="row[0]">
                 <button type="button" data-emoji tabindex="-1"
                         class="w-8 h-8 text-lg rounded-md hover:bg-stone-100 focus-visible:ring-2 focus-visible:ring-orange-500 outline-none cursor-pointer"
-                        :aria-label="row[1]" :title="row[1]" @click="pickEmoji(row[0])" x-text="row[0]"></button>
+                        :aria-label="row[1]" :title="row[1]" @click="pickEmoji(emojiGlyph(row))" x-text="emojiGlyph(row)"></button>
             </template>
         </div>
         <p x-show="emojiQuery.trim() && emojiShown.length === 0 && !emojiLoading" class="text-xs text-stone-400 mt-2">No emoji match.</p>
