@@ -18,6 +18,7 @@
             <div class="flex items-center gap-2 mb-3">
                 <h2 class="text-[0.75rem] font-bold uppercase tracking-wider" style="color: var(--text-tertiary);">Needs your approval</h2>
                 <span class="px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-[0.6875rem] font-bold">{{ pending_posts|length }}</span>
+                <a href="{% url 'client_portal:review' %}" class="ml-auto min-h-11 inline-flex items-center rounded-full bg-orange-500 px-4 text-[0.8125rem] font-semibold text-white hover:bg-orange-600">Review all ({{ pending_posts|length }})</a>
             </div>
             <div class="space-y-4">
                 {% for post in pending_posts %}{% include "client_portal/_client_card.html" %}{% endfor %}

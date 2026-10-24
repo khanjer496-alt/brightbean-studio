@@ -87,6 +87,10 @@ urlpatterns = [
     ),
     # Approval Workflow (Stream F)
     path("workspace/<uuid:workspace_id>/", include("apps.approvals.urls")),
+    # One-tap decisions from approval emails (signed links; confirmation page, POST decides)
+    path("approve-link/", include("apps.approvals.urls_links")),
+    # Slack approval buttons (signature-verified) and the install callback
+    path("integrations/slack-approvals/", include("apps.approvals.urls_slack")),
     # Client Portal Admin (workspace settings)
     path("workspace/<uuid:workspace_id>/settings/clients/", include("apps.client_portal.urls_admin")),
     # Media Library

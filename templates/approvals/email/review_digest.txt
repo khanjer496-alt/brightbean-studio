@@ -1,0 +1,11 @@
+{% load tz %}{{ count }} post{{ count|pluralize }} waiting for your approval in {{ workspace.name }}
+{% if earliest_due_at %}Needs approval by {% timezone timezone %}{{ earliest_due_at|date:"D g:i A T" }}{% endtimezone %}
+{% endif %}
+{% for post in posts %}- {{ post.title|default:post.caption_snippet|default:"(no caption)" }}{% if post.waiting_due_at %} (by {% timezone timezone %}{{ post.waiting_due_at|date:"D g:i A" }}{% endtimezone %}){% endif %}
+{% endfor %}{% if hidden_count %}and {{ hidden_count }} more
+{% endif %}
+Review all ({{ count }}): {{ review_all_url }}
+
+---
+You received this because of your notification settings.
+Manage preferences: {{ app_url }}/notifications/preferences/
