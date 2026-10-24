@@ -102,7 +102,17 @@ def escape_commentary(text: str) -> str:
 # Videos run 3 seconds to 30 minutes; the documented 500 MB ceiling has been
 # raised for some members, so size only warns.
 # https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/videos-api
+# Documents (PDF, PPT(X), DOC(X)) up to 100 MB and 300 pages, uploaded through the Documents API and posted with
+# ``content.media`` {id, title}: https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/documents-api
+LINKEDIN_DOCUMENT_MAX_BYTES = 100 * 1024 * 1024
+LINKEDIN_DOCUMENT_MAX_PAGES = 300
 LINKEDIN_MEDIA_RULES = {
+    PostType.DOCUMENT: MediaRules(
+        source="https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/documents-api",
+        max_items=1,
+        media_types=frozenset({"document"}),
+        max_document_bytes=LINKEDIN_DOCUMENT_MAX_BYTES,
+    ),
     PostType.IMAGE: MediaRules(
         source="https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/multiimage-post-api",
         max_items=20,
@@ -119,12 +129,24 @@ LINKEDIN_MEDIA_RULES = {
 }
 
 
+def _pdf_page_count(path: str) -> int | None:
+    """Pages in the PDF at ``path``, or None when it can't be read (LinkedIn then judges it)."""
+    try:
+        from pypdf import PdfReader
+
+        return len(PdfReader(path).pages)
+    except Exception:  # noqa: BLE001 - an unreadable file is LinkedIn's to reject, not ours to guess about
+        return None
+
+
 class LinkedInProvider(SocialProvider):
     """LinkedIn Marketing API v2 provider."""
 
     media_rules = LINKEDIN_MEDIA_RULES
-    # PDF carousels are a native LinkedIn format, but this provider publishes images and video only.
+    # PDF carousels are a native LinkedIn format, published through the Documents API (see
+    # ``_publish_document_post``), so the repurposing pipeline attaches its carousel PDF to the post.
     document_carousel = True
+    publishes_documents = True
     # LinkedIn comments are capped at 1,250 characters.
     thread = ThreadCapability(mode=ThreadMode.COMMENTS, max_parts=10, part_max_length=1250)
 
@@ -166,11 +188,12 @@ class LinkedInProvider(SocialProvider):
             PostType.LINK,
             PostType.ARTICLE,
             PostType.POLL,
+            PostType.DOCUMENT,
         ]
 
     @property
     def supported_media_types(self) -> list[MediaType]:
-        return [MediaType.JPEG, MediaType.PNG, MediaType.GIF, MediaType.MP4]
+        return [MediaType.JPEG, MediaType.PNG, MediaType.GIF, MediaType.MP4, MediaType.PDF]
 
     @property
     def required_scopes(self) -> list[str]:
@@ -301,6 +324,8 @@ class LinkedInProvider(SocialProvider):
             return self._publish_image_post(access_token, author, content)
         if content.post_type == PostType.VIDEO and (content.media_files or content.media_urls):
             return self._publish_video_post(access_token, author, content)
+        if content.post_type == PostType.DOCUMENT and (content.media_files or content.media_urls):
+            return self._publish_document_post(access_token, author, content)
         if content.post_type == PostType.ARTICLE:
             return self._publish_article_post(access_token, author, content)
         if content.post_type == PostType.POLL:
@@ -395,6 +420,106 @@ class LinkedInProvider(SocialProvider):
             platform_post_id=post_urn,
             url=self._post_urn_to_url(post_urn),
             extra={"urn": post_urn, "image_urn": image_urn},
+        )
+
+    def _publish_document_post(self, access_token: str, author: str, content: PublishContent) -> PublishResult:
+        """Publish a document (a PDF carousel) through the Documents API, then post it.
+
+        initializeUpload -> PUT the file -> wait until AVAILABLE -> POST /rest/posts with content.media
+        {id, title}. Works for a person or an organization author alike.
+        """
+        source = content.media_files[0] if content.media_files else content.media_urls[0]
+        if content.media_files:
+            self._check_document_file(source)
+        init_resp = self._request(
+            "POST",
+            f"{API_BASE}/rest/documents",
+            access_token=access_token,
+            headers=LINKEDIN_HEADERS,
+            params={"action": "initializeUpload"},
+            json={"initializeUploadRequest": {"owner": author}},
+        )
+        init_data = init_resp.json().get("value", {})
+        upload_url = init_data.get("uploadUrl", "")
+        document_urn = init_data.get("document", "")
+        if not upload_url or not document_urn:
+            raise PublishError(
+                "Failed to initialize LinkedIn document upload",
+                platform=self.platform_name,
+                raw_response=init_data,
+            )
+        self._upload_binary(access_token, upload_url, source)
+        self._wait_for_document_available(access_token, document_urn, should_stop=content.should_stop)
+
+        body = self._build_post_body(author, content.text)
+        body["content"] = {"media": {"title": (content.title or "Document")[:400], "id": document_urn}}
+        resp = self._request(
+            "POST", f"{API_BASE}/rest/posts", access_token=access_token, headers=LINKEDIN_HEADERS, json=body
+        )
+        post_urn = resp.headers.get("x-restli-id", "")
+        return PublishResult(
+            platform_post_id=post_urn,
+            url=self._post_urn_to_url(post_urn),
+            extra={"urn": post_urn, "document_urn": document_urn},
+        )
+
+    def _check_document_file(self, path: str) -> None:
+        """Refuse a document LinkedIn would: over 100 MB, or a PDF of more than 300 pages."""
+        size = os.path.getsize(path)
+        if size > LINKEDIN_DOCUMENT_MAX_BYTES:
+            raise PublishError(
+                f"LinkedIn documents can be at most {LINKEDIN_DOCUMENT_MAX_BYTES // (1024 * 1024)} MB.",
+                platform=self.platform_name,
+                retryable=False,
+            )
+        if path.lower().endswith(".pdf"):
+            pages = _pdf_page_count(path)
+            if pages is not None and pages > LINKEDIN_DOCUMENT_MAX_PAGES:
+                raise PublishError(
+                    f"LinkedIn documents can have at most {LINKEDIN_DOCUMENT_MAX_PAGES} pages; this one has {pages}.",
+                    platform=self.platform_name,
+                    retryable=False,
+                )
+
+    def _wait_for_document_available(
+        self,
+        access_token: str,
+        document_urn: str,
+        *,
+        timeout_seconds: float = 120.0,
+        poll_interval: float = 2.0,
+        should_stop=None,
+    ) -> None:
+        """Poll the document until AVAILABLE; PROCESSING_FAILED is permanent."""
+        last_status: str | None = None
+
+        def available() -> bool:
+            nonlocal last_status
+            data = self._request(
+                "GET",
+                f"{API_BASE}/rest/documents/{_encode_urn(document_urn)}",
+                access_token=access_token,
+                headers=LINKEDIN_HEADERS,
+            ).json()
+            last_status = data.get("status")
+            if last_status == "PROCESSING_FAILED":
+                raise PublishError(
+                    "LinkedIn could not process the document (check its size, page count and format).",
+                    platform=self.platform_name,
+                    raw_response=data,
+                    retryable=False,
+                )
+            return last_status == "AVAILABLE"
+
+        self._poll_until(
+            available,
+            deadline=time.monotonic() + timeout_seconds,
+            interval=poll_interval,
+            should_stop=should_stop,
+            on_timeout=lambda: PublishError(
+                f"Timed out waiting for the LinkedIn document to become AVAILABLE (last status: {last_status})",
+                platform=self.platform_name,
+            ),
         )
 
     def _publish_video_post(self, access_token: str, author: str, content: PublishContent) -> PublishResult:

@@ -38,6 +38,7 @@ class PostType(enum.Enum):
     POLL = "poll"
     PIN = "pin"
     SHORT = "short"
+    DOCUMENT = "document"
 
 
 class MediaType(enum.Enum):
@@ -227,7 +228,7 @@ class MediaRules:
     only recommends, or whose official value isn't firm enough to refuse a
     post over. The names are ``max_items``, ``media_types``, ``aspect_ratio``
     (both bounds), ``min_resolution``, ``max_resolution``, ``min_duration``,
-    ``max_duration``, ``max_image_bytes`` and ``max_video_bytes``.
+    ``max_duration``, ``max_image_bytes``, ``max_video_bytes`` and ``max_document_bytes``.
     ``recommended_aspect_ratio`` and ``published_items`` only ever warn.
     Ratios are width / height (9:16 is 0.5625).
     """
@@ -253,6 +254,7 @@ class MediaRules:
     max_duration: float | None = None
     max_image_bytes: int | None = None
     max_video_bytes: int | None = None
+    max_document_bytes: int | None = None
     advisory: frozenset[str] = frozenset()
 
 

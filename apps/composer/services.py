@@ -590,6 +590,7 @@ _POST_TYPE_NOUNS = {
     "story": "a Story",
     "short": "a Short",
     "pin": "a Pin",
+    "document": "a document post",
 }
 
 # Ratios worth naming the usual way; anything else reads as "1.33:1".
@@ -735,9 +736,12 @@ def media_rule_issues(social_account, assets, *, platform_extra: dict | None = N
                     f"{_duration_label(rules.max_duration)} in {noun}.",
                 )
 
-        limit_name, max_bytes = (
-            ("max_video_bytes", rules.max_video_bytes) if is_video else ("max_image_bytes", rules.max_image_bytes)
-        )
+        if is_video:
+            limit_name, max_bytes = "max_video_bytes", rules.max_video_bytes
+        elif asset.media_type == MediaAsset.MediaType.DOCUMENT:
+            limit_name, max_bytes = "max_document_bytes", rules.max_document_bytes
+        else:
+            limit_name, max_bytes = "max_image_bytes", rules.max_image_bytes
         if max_bytes is not None and asset.file_size > max_bytes:
             add(
                 limit_name,

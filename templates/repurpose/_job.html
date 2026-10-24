@@ -46,7 +46,7 @@
                 {% if out.document %}
                 <p class="m-0 mt-2 text-xs text-ink-3">
                     <a href="{% url 'repurpose:pdf' workspace_id=workspace.id job_id=job.id output_id=out.id %}" class="font-semibold text-ink-2">Download the carousel PDF</a>
-                    &mdash; {{ out.social_account.get_platform_display|default:"This network" }} can't publish documents from here yet, so upload it there yourself.
+                    {% if out.publishes_document %}&mdash; it is attached to the draft and {{ out.social_account.get_platform_display }} publishes it as a document post.{% else %}&mdash; {{ out.social_account.get_platform_display|default:"This network" }} can't publish documents from here yet, so upload it there yourself.{% endif %}
                 </p>
                 {% endif %}
                 {% if out.post_id %}

@@ -1228,6 +1228,8 @@ class PublishEngine:
             return PostType.CAROUSEL
 
         # 4. Fallback based on first media type
+        if first_media_type == "document":
+            return PostType.DOCUMENT
         if first_media_type == "video":
             # Instagram has no standalone feed video — a lone video is a Reel.
             # Resolving that here keeps the platform rule next to the other
