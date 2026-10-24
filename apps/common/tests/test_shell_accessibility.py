@@ -72,7 +72,7 @@ def test_auth_pages_have_skip_link_single_main_and_convention_title(client, name
     html = client.get(reverse(name)).content.decode()
     assert 'class="pd-skip-link"' in html and 'href="#main-content"' in html
     assert html.count("<main") == 1 and 'id="main-content"' in html
-    assert re.search(r"<title>[^<·]+ · PostDelegate</title>", html)
+    assert re.search(rf"<title>[^<·]+ · {re.escape(settings.BRAND_NAME)}</title>", html)
     assert "<footer" in html
 
 
@@ -80,7 +80,7 @@ def test_auth_pages_have_skip_link_single_main_and_convention_title(client, name
 @pytest.mark.parametrize("name", ["terms", "privacy", "data_deletion", "subprocessors", "licenses"])
 def test_legal_pages_have_title_skip_link_and_single_main(client, name):
     html = client.get(reverse(f"legal:{name}")).content.decode()
-    assert re.search(r"<title>[^<·]+ · PostDelegate</title>", html)
+    assert re.search(rf"<title>[^<·]+ · {re.escape(settings.BRAND_NAME)}</title>", html)
     assert 'href="#legal-content"' in html and html.count("<main") == 1
 
 
@@ -94,14 +94,14 @@ def test_signed_in_shell_landmarks_and_labels(client, org_owner):
     assert 'aria-controls="app-sidebar"' in html and 'id="app-sidebar"' in html
     assert 'aria-label="Collapse sidebar"' in html
     assert "x-pd-dialog" in html  # the dialog directive is registered and used by the drawer
-    assert re.search(r"<title>[^<]+ · PostDelegate</title>", html)
+    assert re.search(rf"<title>[^<]+ · {re.escape(settings.BRAND_NAME)}</title>", html)
     # one banner at any breakpoint: the sidebar header and the mobile top bar exclude each other
     assert 'class="hidden lg:block"' in html and "pd-topbar lg:hidden" in html
 
 
 def test_settings_layouts_follow_title_convention():
-    rendered = render_to_string("layouts/settings.html", {"brand_name": "PostDelegate"})
-    assert "<title>Settings · Settings · PostDelegate</title>" in rendered
+    rendered = render_to_string("layouts/settings.html", {"brand_name": settings.BRAND_NAME})
+    assert f"<title>Settings · Settings · {settings.BRAND_NAME}</title>" in rendered
 
 
 # --- RTL / language ----------------------------------------------------------------------------
