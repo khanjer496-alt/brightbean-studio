@@ -64,9 +64,9 @@
             <div x-data="{ showEditModal: false }">
                 <button type="button" @click="showEditModal = true" class="px-4 py-1.5 text-xs font-medium rounded-full cursor-pointer border border-stone-300 bg-white text-stone-700 hover:bg-stone-50">Edit</button>
                 <template x-teleport="body">
-                    <div x-show="showEditModal" x-cloak x-transition.opacity @keydown.escape.window="showEditModal = false"
+                    <div x-show="showEditModal" x-cloak x-transition.opacity
                          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-                         role="dialog" aria-modal="true" aria-labelledby="edit-{{ row.id }}-title" x-a11y-modal="showEditModal">
+                         role="dialog" aria-modal="true" aria-labelledby="edit-{{ row.id }}-title" x-pd-dialog="showEditModal">
                         <div @click.outside="showEditModal = false" x-show="showEditModal" x-transition
                              class="w-full max-w-xl mx-4 max-h-[90vh] rounded-xl flex flex-col bg-[var(--surface-0)] border border-stone-200 shadow-2xl">
                             <form method="POST" action="{% url 'api_keys:edit' row.id %}" data-token-scope class="flex flex-col min-h-0">
@@ -143,9 +143,9 @@
             <div x-data="{ showRotateModal: false }">
                 <button type="button" @click="showRotateModal = true" class="px-4 py-1.5 text-xs font-medium rounded-full cursor-pointer border border-stone-300 bg-white text-stone-700 hover:bg-stone-50">Rotate</button>
                 <template x-teleport="body">
-                    <div x-show="showRotateModal" x-cloak x-transition.opacity @keydown.escape.window="showRotateModal = false"
+                    <div x-show="showRotateModal" x-cloak x-transition.opacity
                          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-                         role="dialog" aria-modal="true" aria-labelledby="rotate-{{ row.id }}-title" x-a11y-modal="showRotateModal">
+                         role="dialog" aria-modal="true" aria-labelledby="rotate-{{ row.id }}-title" x-pd-dialog="showRotateModal">
                         <div @click.outside="showRotateModal = false" x-show="showRotateModal" x-transition
                              class="w-full max-w-md mx-4 rounded-xl flex flex-col bg-[var(--surface-0)] border border-stone-200 shadow-2xl">
                             <div class="px-6 pt-6 pb-2">
@@ -168,9 +168,9 @@
             <div x-data="{ showRevokeModal: false }">
                 <button type="button" @click="showRevokeModal = true" class="px-4 py-1.5 text-xs font-medium rounded-full cursor-pointer bg-red-50 text-red-700 hover:bg-red-100">Revoke</button>
                 <template x-teleport="body">
-                    <div x-show="showRevokeModal" x-cloak x-transition.opacity @keydown.escape.window="showRevokeModal = false"
+                    <div x-show="showRevokeModal" x-cloak x-transition.opacity
                          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-                         role="dialog" aria-modal="true" aria-labelledby="revoke-{{ row.id }}-title" x-a11y-modal="showRevokeModal">
+                         role="dialog" aria-modal="true" aria-labelledby="revoke-{{ row.id }}-title" x-pd-dialog="showRevokeModal">
                         <div @click.outside="showRevokeModal = false" x-show="showRevokeModal" x-transition
                              class="w-full max-w-md mx-4 rounded-xl flex flex-col bg-[var(--surface-0)] border border-stone-200 shadow-2xl">
                             <div class="px-6 pt-6 pb-2">

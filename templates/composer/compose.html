@@ -1492,7 +1492,7 @@
 
                     <!-- Create Tag Modal (teleported to body to escape stacking contexts) -->
                     <template x-teleport="body">
-                        <div x-show="showCreateTagModal" x-cloak class="fixed inset-0 z-[200] flex items-center justify-center" @keydown.escape.window="showCreateTagModal = false" role="dialog" aria-modal="true" aria-label="Create new tag" x-a11y-modal="showCreateTagModal">
+                        <div x-show="showCreateTagModal" x-cloak class="fixed inset-0 z-[200] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Create new tag" x-pd-dialog="showCreateTagModal">
                             <div class="fixed inset-0 bg-black/30" @click="showCreateTagModal = false"></div>
                             <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6" @click.stop>
                                 <h3 class="text-base font-semibold text-stone-800 mb-4">Create new tag</h3>
@@ -1833,11 +1833,11 @@
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
          x-transition:leave-end="opacity-0"
-         class="panel-right-backdrop" data-a11y-backdrop></div>
+         class="panel-right-backdrop" data-pd-backdrop></div>
     <div id="preview-panel-drawer" class="panel-right border-s border-stone-200 bg-stone-50 lg:bg-stone-50 flex flex-col"
          :class="{ 'is-open': showPreviewPanel }"
          :role="previewIsDrawer ? 'dialog' : null" :aria-modal="previewIsDrawer ? 'true' : null" aria-label="Post preview"
-         x-a11y-modal="showPreviewPanel && previewIsDrawer" data-close="showPreviewPanel = false">
+         x-pd-dialog="showPreviewPanel && previewIsDrawer" data-dialog-close="showPreviewPanel = false">
         <div class="px-4 py-3 border-b border-stone-100 flex items-center justify-between">
             <h3 class="text-xs font-semibold text-stone-500 uppercase tracking-wider">Preview</h3>
             <div class="flex items-center gap-2">
@@ -1873,7 +1873,7 @@
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Media library" x-a11y-modal="showMediaPicker">
+         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Media library" x-pd-dialog="showMediaPicker">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="showMediaPicker = false"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[640px] mx-2 sm:mx-0 max-h-[85vh] sm:max-h-[70vh] overflow-hidden"
              x-transition:enter="transition ease-out duration-200"
@@ -1907,7 +1907,7 @@
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Select thumbnail" x-a11y-modal="showThumbnailPicker">
+         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Select thumbnail" x-pd-dialog="showThumbnailPicker">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="showThumbnailPicker = false"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[640px] mx-2 sm:mx-0 max-h-[85vh] sm:max-h-[70vh] overflow-hidden">
             <div class="px-4 sm:px-6 py-4 border-b border-stone-100 flex items-center justify-between">
@@ -1932,13 +1932,12 @@
     <div x-show="showThreadMediaPicker" x-cloak
          class="fixed inset-0 z-[60] flex items-center justify-center"
          role="dialog" aria-modal="true" aria-labelledby="thread-media-picker-title"
-         @keydown.escape.window="showThreadMediaPicker = false"
          x-transition:enter="transition ease-out duration-200"
          x-transition:enter-start="opacity-0"
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-labelledby="thread-media-picker-title" x-a11y-modal="showThreadMediaPicker">
+         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-labelledby="thread-media-picker-title" x-pd-dialog="showThreadMediaPicker">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="showThreadMediaPicker = false"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[640px] mx-2 sm:mx-0 max-h-[85vh] sm:max-h-[70vh] overflow-hidden">
             <div class="px-4 sm:px-6 py-4 border-b border-stone-100 flex items-center justify-between">
@@ -1964,13 +1963,12 @@
     {% if unsplash_enabled %}
     <div x-show="showUnsplashModal" x-cloak
          class="fixed inset-0 z-[60] flex items-center justify-center"
-         @keydown.escape.window="showUnsplashModal && closeUnsplashModal()"
          x-transition:enter="transition ease-out duration-200"
          x-transition:enter-start="opacity-0"
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Search Unsplash photos" x-a11y-modal="showUnsplashModal" data-close="closeUnsplashModal()">
+         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Search Unsplash photos" x-pd-dialog="showUnsplashModal" data-dialog-close="closeUnsplashModal()">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="closeUnsplashModal()"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[760px] mx-2 sm:mx-0 h-[640px] max-h-[85vh] flex flex-col overflow-hidden"
              x-transition:enter="transition ease-out duration-200"
@@ -1992,7 +1990,7 @@
             <div class="px-4 sm:px-6 pt-4 space-y-3 flex-shrink-0">
                 <div class="flex items-center gap-2 rounded-xl border-2 border-orange-400/70 focus-within:border-orange-500 transition-colors ps-4 pe-1.5 py-1.5">
                     <svg class="w-4 h-4 text-stone-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                    <input aria-label="Search free photos" type="text" x-model="unsplashQuery"
+                    <input aria-label="Search free photos" data-autofocus type="text" x-model="unsplashQuery"
                            @keydown.enter.prevent="unsplashActiveChip = ''; searchUnsplash()"
                            placeholder="Search free high-resolution photos…"
                            class="flex-1 text-sm bg-transparent outline-none border-none placeholder-stone-400 text-stone-900">
@@ -2055,13 +2053,12 @@
          ════════════════════════════════════════════════════════════ -->
     <div x-show="showFramePicker" x-cloak
          class="fixed inset-0 z-[60] flex items-center justify-center"
-         @keydown.escape.window="showFramePicker && closeFramePicker()"
          x-transition:enter="transition ease-out duration-200"
          x-transition:enter-start="opacity-0"
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Choose a video frame" x-a11y-modal="showFramePicker" data-close="closeFramePicker()">
+         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Choose a video frame" x-pd-dialog="showFramePicker" data-dialog-close="closeFramePicker()">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="closeFramePicker()"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[720px] mx-2 sm:mx-0 max-h-[90vh] flex flex-col overflow-hidden"
              x-transition:enter="transition ease-out duration-200"
@@ -2161,8 +2158,7 @@
     <!-- Delete Confirmation Modal -->
     <div x-data="{ showDeleteModal: false, deleting: false, deleteError: '' }" style="display: contents;"
          @open-delete-modal.window="showDeleteModal = true; deleteError = ''">
-        <div x-show="showDeleteModal" x-cloak class="fixed inset-0 z-[60] flex items-center justify-center"
-             @keydown.escape.window="showDeleteModal = false" role="dialog" aria-modal="true" aria-label="Delete post" x-a11y-modal="showDeleteModal">
+        <div x-show="showDeleteModal" x-cloak class="fixed inset-0 z-[60] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Delete post" x-pd-dialog="showDeleteModal">
             <div class="fixed inset-0 bg-black/30 backdrop-blur-sm" @click="showDeleteModal = false"
                  x-show="showDeleteModal"
                  x-transition:enter="transition ease-out duration-150"
@@ -2223,7 +2219,6 @@
 {% endblock %}
 
 {% block extra_js %}
-{% include "composer/partials/modal_a11y.html" %}
 <script nonce="{{ request.csp_nonce }}">
   // Reviewer approve / request-changes return 204 + toast + approvalAction. Let the
   // toast show, then reload so the status banner and history reflect the new state.

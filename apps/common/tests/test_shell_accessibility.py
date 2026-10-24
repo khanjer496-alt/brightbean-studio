@@ -68,6 +68,19 @@ def test_modal_requires_a_title():
         _render('{% modal open="o" title="" %}x{% endmodal %}')
 
 
+DIALOG_TAG = re.compile(r"<[a-z]+\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*\bx-pd-dialog=(?:[^>\"']|\"[^\"]*\"|'[^']*')*>")
+
+
+def test_one_dialog_pattern():
+    """Every modal uses x-pd-dialog; the older x-a11y-modal directive is gone."""
+    for path in (Path(settings.BASE_DIR) / "templates").rglob("*.html"):
+        source = path.read_text()
+        assert "x-a11y-modal=" not in source and "modal_a11y.html" not in source, path
+        for tag in DIALOG_TAG.findall(source):
+            # the directive owns Escape; a window handler on the same dialog would close twice
+            assert "@keydown.escape.window" not in tag, (path, tag)
+
+
 # --- landmarks, titles, skip link --------------------------------------------------------------
 
 

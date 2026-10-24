@@ -74,8 +74,7 @@
 
     <!-- Delete confirmation modal -->
     <div x-show="showDeleteConfirm" x-cloak
-         class="fixed inset-0 z-[60] flex items-center justify-center"
-         @keydown.escape.window="showDeleteConfirm = false" role="dialog" aria-modal="true" aria-label="Delete asset" x-a11y-modal="showDeleteConfirm">
+         class="fixed inset-0 z-[60] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Delete asset" x-pd-dialog="showDeleteConfirm">
       <div class="absolute inset-0 bg-black/30 backdrop-blur-sm" @click="showDeleteConfirm = false"></div>
       <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6" @click.stop>
         <div class="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-3 bg-[color:var(--error-50)]"

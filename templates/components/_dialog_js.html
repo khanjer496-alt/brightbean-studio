@@ -13,16 +13,9 @@ the data-return-focus selector (comma list allowed; first visible match wins) wh
 data-dialog-close="expr" overrides the close expression when the open expression is not assignable.
 Elements with role=alert/status, aria-live or data-pd-backdrop are not made inert.
 
-Replacing x-a11y-modal (templates/composer/partials/modal_a11y.html, composer batch) with this directive:
-    x-a11y-modal="expr"          ->  x-pd-dialog="expr"            (same: any condition, e.g. "open && isPhone")
-    data-close="closeIt()"       ->  data-dialog-close="closeIt()"
-    data-a11y-backdrop           ->  data-pd-backdrop
-    data-autofocus               ->  data-autofocus                (unchanged)
-    html overflow:hidden lock    ->  html.pd-scroll-locked         (styles.css; same effect)
-    {% include modal_a11y %}     ->  drop it; base.html includes this file once
-  Differences to check per call site: x-a11y-modal skips a leading "Close" button for initial focus, this
-  directive focuses the first focusable (put data-autofocus on the field you want); x-a11y-modal falls back to
-  a Tab trap where `inert` is unsupported (every supported browser has it now).
+This is the only dialog behaviour in the app: do not add page-level Escape/focus-trap handlers for a dialog.
+Nested dialogs stack, teleported or not: an inner dialog re-enables any ancestor an outer dialog made inert,
+and everything unwinds in reverse order when it closes.
 {% endcomment %}
 <script nonce="{{ request.csp_nonce }}">
 document.addEventListener('alpine:init', function () {
@@ -37,10 +30,12 @@ document.addEventListener('alpine:init', function () {
 
     // Make every node outside `el`'s ancestor chain inert, except live regions. Returns an undo function.
     function isolate(el) {
-        var marked = [];
+        var marked = [], released = [];
         for (var node = el; node && node !== document.body; node = node.parentElement) {
             var parent = node.parentElement;
             if (!parent) break;
+            // An outer dialog may have made this ancestor inert (an inner dialog that is not teleported).
+            if (node.inert) { node.inert = false; released.push(node); }
             Array.prototype.forEach.call(parent.children, function (sibling) {
                 if (sibling === node || sibling.inert || /^(SCRIPT|STYLE|TEMPLATE|LINK)$/.test(sibling.tagName)) return;
                 if (sibling.matches('[role="alert"],[role="status"],[aria-live],[data-pd-backdrop]')) return;
@@ -50,14 +45,17 @@ document.addEventListener('alpine:init', function () {
                 marked.push(sibling);
             });
         }
-        return function () { marked.forEach(function (n) { n.inert = false; }); };
+        return function () {
+            marked.forEach(function (n) { n.inert = false; });
+            released.forEach(function (n) { n.inert = true; });
+        };
     }
 
     // One listener for every dialog. Bubble phase on document: handlers inside the dialog run first
     // (a dropdown that stops Escape keeps it), and window-level handlers never see a handled Escape.
     document.addEventListener('keydown', function (event) {
         var top = stack[stack.length - 1];
-        // defaultPrevented: something inside (a combobox, x-a11y-modal's own handler) already took the key.
+        // defaultPrevented: something inside (a combobox, a menu) already took the key.
         if (!top || event.defaultPrevented) return;
         if (event.key === 'Escape') {
             event.stopPropagation();
@@ -86,7 +84,6 @@ document.addEventListener('alpine:init', function () {
         function open() {
             active = true;
             opener = document.activeElement;
-            el.inert = false;   // an earlier dialog may have made this (then hidden) sibling inert
             undo = isolate(el);
             stack.push(entry);
             document.documentElement.classList.add('pd-scroll-locked');

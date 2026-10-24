@@ -31,7 +31,7 @@
 
     <!-- Phones: the panel is a bottom sheet over a backdrop that closes it (same as the insert toolbar) -->
     <div x-show="aiOpen" x-cloak x-transition.opacity
-         class="fixed inset-0 bg-black/30 z-40 sm:hidden" aria-hidden="true" data-a11y-backdrop
+         class="fixed inset-0 bg-black/30 z-40 sm:hidden" aria-hidden="true" data-pd-backdrop
          @click="aiOpen = false"></div>
 
     <div id="ai-panel"
@@ -41,7 +41,7 @@
          @htmx:after-request="aiBusy = false"
          data-inline-error="#ai-error"
          role="dialog" aria-label="AI writing assistant" :aria-modal="aiSheet ? 'true' : null"
-         x-a11y-modal="aiOpen && aiSheet" data-close="aiOpen = false"
+         x-pd-dialog="aiOpen && aiSheet" data-dialog-close="aiOpen = false"
          class="fixed inset-x-4 bottom-4 z-50 sm:absolute sm:inset-x-auto sm:bottom-auto sm:top-full sm:mt-1 sm:end-0 bg-white rounded-xl shadow-lg ring-1 ring-stone-200 sm:w-96 max-h-[75vh] overflow-y-auto p-3">
 
         <div class="flex flex-wrap gap-1 mb-3" role="tablist" aria-label="AI actions"
