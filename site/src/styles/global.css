@@ -78,9 +78,7 @@
 .marquee-track { animation: marquee 50s linear infinite; width: max-content; }
 .marquee:hover .marquee-track { animation-play-state: paused; }
 .underline-draw path { stroke-dasharray: 400; animation: draw 1s .5s ease-out both; }
-@supports (animation-timeline: view()) {
-  .reveal { animation: rise linear both; animation-timeline: view(); animation-range: entry 0% entry 35%; }
-}
+/* Content is always visible: no scroll-driven reveals that start at opacity 0. */
 details > summary .chev { transition: transform .25s ease; }
 details[open] > summary .chev { transform: rotate(180deg); }
 @media (prefers-reduced-motion: reduce) {
