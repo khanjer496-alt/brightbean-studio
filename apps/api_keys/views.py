@@ -39,6 +39,7 @@ from django.views.decorators.http import require_http_methods
 from apps.api_keys import budgets, services
 from apps.api_keys import capabilities as caps
 from apps.api_keys.models import ApiKey, ConnectedApp
+from apps.billing.entitlements import get_entitlements
 from apps.members.models import (
     PERMISSION_KEYS,
     WorkspaceMembership,
@@ -773,13 +774,17 @@ def edit_connection(request, connection_id):
         for e in errors:
             messages.error(request, e)
         return redirect("api_keys:list")
+    plan_cap = get_entitlements(request.org).max_api_calls_per_day
+    request_budget = scope["daily_request_budget"]
+    if plan_cap is not None and request_budget is not None:
+        request_budget = min(request_budget, plan_cap)
     try:
         services.update_connected_app(
             connection,
             capabilities=scope["capabilities"],
             requires_approval=scope["requires_approval"],
             expires_at=expires_at,
-            daily_request_budget=scope["daily_request_budget"],
+            daily_request_budget=request_budget,
             daily_ai_budget=scope["daily_ai_budget"],
             daily_post_budget=scope["daily_post_budget"],
         )

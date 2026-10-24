@@ -211,7 +211,7 @@ class ConnectedApp(models.Model):
 class ApiKeyDailyUsage(models.Model):
     """What one token has spent of its budgets on one UTC day.
 
-    ``actor`` is ``key:<api_key_id>`` or ``oauth:<connection_id>``. A key's calls are counted from
+    ``actor`` is ``key:<api_key_id>`` or ``grant:<connected_app_id>``. A key's calls are counted from
     ``ApiKeyUsageHourly`` instead of ``requests``, which only an OAuth connection's request budget uses.
     """
 
