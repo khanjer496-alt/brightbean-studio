@@ -464,7 +464,6 @@ class RedditProvider(SocialProvider):
         if error:
             raise PublishError(error, platform=self.platform_name, retryable=False)
 
-        is_link = extra.get("post_kind") == "link"
         targets = [(subreddit, str(extra.get("flair_id") or ""))]
         for name, flair_name in parse_extra_subreddits(extra.get("extra_subreddits")):
             targets.append((name, self._flair_id_by_name(access_token, name, flair_name) if flair_name else ""))
