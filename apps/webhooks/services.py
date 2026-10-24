@@ -45,7 +45,16 @@ API_VERSION = "2026-10-01"
 MANAGE_PERMISSIONS = ("manage_workspace_settings", "manage_social_accounts")
 
 SECRET_PREFIX = "whsec_"
+# Each connect, write and read may wait this long...
 REQUEST_TIMEOUT_SECONDS = 10.0
+# ...but the whole exchange, response body included, is cut off after this
+# long, so a receiver dripping bytes cannot hold a worker open indefinitely.
+REQUEST_DEADLINE_SECONDS = 20.0
+# Text fields in an event's ``data`` longer than this are cut short and the
+# object holding them gets ``"truncated": true`` (see ``cap_text_fields``).
+MAX_TEXT_FIELD_CHARS = 5000
+# The whole encoded envelope is kept under this by shortening text fields further.
+MAX_PAYLOAD_BYTES = 256 * 1024
 # Seconds to wait after failed attempt 1, 2, ... : 1m, 5m, 30m, 2h, 12h. One
 # more attempt than there are waits, so a delivery is tried six times in all.
 RETRY_BACKOFF_SECONDS = [60, 5 * 60, 30 * 60, 2 * 60 * 60, 12 * 60 * 60]
@@ -212,7 +221,35 @@ def rotate_secret(endpoint) -> str:
 # ---------------------------------------------------------------------------
 
 
+def cap_text_fields(value, limit: int):
+    """Copy of ``value`` with every string longer than ``limit`` cut to ``limit`` characters.
+
+    An object that had a field cut gets ``"truncated": true`` next to it, so a
+    receiver knows to fetch the full text from the API instead of trusting it.
+    """
+    if isinstance(value, str):
+        return value[:limit]
+    if isinstance(value, list):
+        return [cap_text_fields(item, limit) for item in value]
+    if not isinstance(value, dict):
+        return value
+    capped = {key: cap_text_fields(item, limit) for key, item in value.items()}
+    if any(isinstance(item, str) and len(item) > limit for item in value.values()):
+        capped["truncated"] = True
+    return capped
+
+
+def limit_payload_size(data: dict) -> dict:
+    """``data`` with long text fields truncated, tighter until the encoded envelope fits ``MAX_PAYLOAD_BYTES``."""
+    for limit in (MAX_TEXT_FIELD_CHARS, MAX_TEXT_FIELD_CHARS // 5, MAX_TEXT_FIELD_CHARS // 20):
+        data = cap_text_fields(data, limit)
+        if len(encode_payload(data)) <= MAX_PAYLOAD_BYTES:
+            break
+    return data
+
+
 def build_envelope(event_type: str, workspace, data: dict, *, event_id: uuid.UUID, created_at=None) -> dict:
+    data = limit_payload_size(data)
     return {
         "id": str(event_id),
         "type": event_type,
@@ -336,6 +373,7 @@ def _send_request(url: str, body: bytes, headers: dict, *, pinned_ip: str | None
     if pinned_ip:
         url, host_header, extensions = _pinned(url, pinned_ip)
         headers = {**headers, **host_header}
+    deadline = time.monotonic() + REQUEST_DEADLINE_SECONDS
     client = httpx.Client(timeout=REQUEST_TIMEOUT_SECONDS, follow_redirects=False, transport=transport)
     with client, client.stream("POST", url, content=body, headers=headers, extensions=extensions) as response:
         received = bytearray()
@@ -343,6 +381,8 @@ def _send_request(url: str, body: bytes, headers: dict, *, pinned_ip: str | None
             received += chunk
             if len(received) >= RESPONSE_BODY_LIMIT * 4:
                 break
+            if time.monotonic() > deadline:
+                raise httpx.ReadTimeout("The response took too long to arrive.")
         text = bytes(received).decode("utf-8", errors="replace")
         return response.status_code, text[:RESPONSE_BODY_LIMIT]
 
@@ -404,7 +444,7 @@ def attempt_delivery(delivery_id) -> bool:
             endpoint.url, body, request_headers(delivery, body), pinned_ip=pinned_ip
         )
     except httpx.TimeoutException:
-        error = f"No response within {int(REQUEST_TIMEOUT_SECONDS)} seconds."
+        error = f"No complete response within {int(REQUEST_DEADLINE_SECONDS)} seconds."
     except httpx.HTTPError as exc:
         error = f"{type(exc).__name__}: {exc}"[:ERROR_LIMIT]
     duration_ms = int((time.monotonic() - started) * 1000)
@@ -476,16 +516,18 @@ def _count_failure(endpoint_id) -> None:
 
 
 def _notify_disabled(endpoint) -> None:
-    """Tell the workspace's owners their endpoint was switched off. Best-effort."""
+    """Tell everyone who can manage the workspace's webhooks that an endpoint was switched off. Best-effort."""
     try:
         from apps.members.models import WorkspaceMembership
         from apps.notifications.engine import notify
         from apps.notifications.models import EventType as NotificationEventType
 
-        owners = WorkspaceMembership.objects.filter(
-            workspace=endpoint.workspace, workspace_role=WorkspaceMembership.WorkspaceRole.OWNER
-        ).select_related("user")
-        for membership in owners:
+        memberships = WorkspaceMembership.objects.filter(workspace=endpoint.workspace).select_related(
+            "user", "custom_role"
+        )
+        for membership in memberships:
+            if not can_manage(membership.effective_permissions):
+                continue
             notify(
                 user=membership.user,
                 event_type=NotificationEventType.WEBHOOK_DISABLED,
@@ -497,7 +539,7 @@ def _notify_disabled(endpoint) -> None:
                 data={"endpoint_id": str(endpoint.id), "workspace_id": str(endpoint.workspace_id)},
             )
     except Exception:
-        logger.exception("Could not notify the owners that webhook endpoint %s was disabled", endpoint.id)
+        logger.exception("Could not notify the managers that webhook endpoint %s was disabled", endpoint.id)
 
 
 def due_delivery_ids(limit: int) -> list:

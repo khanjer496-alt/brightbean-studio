@@ -104,12 +104,21 @@ export function verify(secret, rawBody, header, tolerance = 300) {
 ## Retries and shut-off
 
 A failed delivery is retried after 1 minute, 5 minutes, 30 minutes, 2 hours and 12 hours (six attempts
-in all). After 15 failed attempts in a row an endpoint is turned off and the workspace owners are
+in all). After 15 failed attempts in a row an endpoint is turned off and everyone who can manage the workspace's webhooks (owners and managers) is
 notified; turn it back on from the settings page or with `PATCH /webhooks/{id}` (`"is_enabled": true`).
 The delivery log keeps the last 100 deliveries per endpoint on screen and is pruned after 30 days.
 
 A resend sends the same body under the same delivery id and starts the retry schedule again. It is
 refused while the delivery is being sent or is due for a retry within the next two minutes.
+
+## Timeouts and payload size
+
+Your receiver has 20 seconds in total to answer, response body included; a slower answer counts as a
+failed attempt. Answer with a 2xx quickly and do the work afterwards.
+
+Long text in an event (a comment body, an error message) is cut to 5,000 characters. The object that
+held a cut field gets `"truncated": true`, so fetch the full text from the API when you see it. If an
+event is still over 256 KB encoded, its text fields are cut shorter until it fits.
 
 ## URL rules
 
