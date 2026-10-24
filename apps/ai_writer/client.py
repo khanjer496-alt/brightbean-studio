@@ -18,6 +18,7 @@ import ipaddress
 import json
 import logging
 import re
+import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import ClassVar
@@ -74,6 +75,8 @@ class AIUnavailableError(AIError):
     code = "ai_unavailable"
     status_code = 503
     default_message = "The AI provider didn't respond in time. Please try again."
+    # Set by the OpenAI-style providers on failures worth one more attempt.
+    retryable = False
 
 
 class AIRefusalError(AIError):
@@ -250,9 +253,19 @@ _MAX_RESPONSE_BYTES = 2 * 1024 * 1024
 _FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.IGNORECASE)
 
 
+# Pause before the one retry of a request that failed on the network or with a 5xx.
+_RETRY_BACKOFF_SECONDS = 1.0
+
+
 def _http_client() -> httpx.Client:
     """The client every OpenAI-style call goes through. Never follows redirects."""
-    return httpx.Client(timeout=settings.AI_REQUEST_TIMEOUT, follow_redirects=False)
+    return httpx.Client(timeout=max(settings.AI_REQUEST_TIMEOUT / 2, 1), follow_redirects=False)
+
+
+def _unavailable(message: str = "") -> AIUnavailableError:
+    error = AIUnavailableError(message)
+    error.retryable = True
+    return error
 
 
 def _pinned_target(url: str) -> tuple[str, dict, dict]:
@@ -381,6 +394,20 @@ class OpenAIStyleProvider(AIProvider):
         return payload
 
     def _post(self, endpoint: str, payload: dict) -> dict:
+        """One request, retried once after a timeout, a transport error, a 408 or a 5xx (not after a 4xx).
+
+        The address is checked again for the retry. Each attempt gets half of
+        ``AI_REQUEST_TIMEOUT``, so the composer never waits longer than that in total.
+        """
+        try:
+            return self._post_once(endpoint, payload)
+        except AIUnavailableError as exc:
+            if not exc.retryable:
+                raise
+            time.sleep(_RETRY_BACKOFF_SECONDS)
+            return self._post_once(endpoint, payload)
+
+    def _post_once(self, endpoint: str, payload: dict) -> dict:
         url, headers, extensions = _pinned_target(endpoint)
         headers = {
             **headers,
@@ -390,14 +417,17 @@ class OpenAIStyleProvider(AIProvider):
             "Content-Type": "application/json",
         }
         try:
-            with _http_client() as client:
-                response = client.post(url, headers=headers, json=payload, extensions=extensions)
+            with (
+                _http_client() as client,
+                client.stream("POST", url, headers=headers, json=payload, extensions=extensions) as response,
+            ):
+                status = response.status_code
+                content = self._read_capped(response) if status < 300 else b""
         except httpx.TimeoutException as exc:
-            raise AIUnavailableError() from exc
+            raise _unavailable() from exc
         except httpx.HTTPError as exc:
-            raise AIUnavailableError("The AI service couldn't be reached. Check the base URL and try again.") from exc
+            raise _unavailable("The AI service couldn't be reached. Check the base URL and try again.") from exc
 
-        status = response.status_code
         if status in (301, 302, 303, 307, 308):
             raise AIEndpointError("The AI service address redirected somewhere else. Use its final address.")
         if status in (401, 403):
@@ -407,21 +437,29 @@ class OpenAIStyleProvider(AIProvider):
         if status == 404:
             raise AIModelNotFoundError()
         if status == 408 or status >= 500:
-            raise AIUnavailableError()
+            raise _unavailable()
         if status in (400, 422):
             raise _FormatRejectedError()
         if status >= 400:
             logger.warning("%s API error %s", self.name, status)
             raise AIError()
-        if len(response.content) > _MAX_RESPONSE_BYTES:
-            raise AIResponseError()
         try:
-            body = response.json()
+            body = json.loads(content)
         except ValueError as exc:
             raise AIResponseError() from exc
         if not isinstance(body, dict):
             raise AIResponseError()
         return body
+
+    @staticmethod
+    def _read_capped(response: httpx.Response) -> bytes:
+        """The body, read in chunks and abandoned once it passes ``_MAX_RESPONSE_BYTES``."""
+        buf = bytearray()
+        for chunk in response.iter_bytes():
+            buf += chunk
+            if len(buf) > _MAX_RESPONSE_BYTES:
+                raise AIResponseError()
+        return bytes(buf)
 
     def _completion(self, body: dict, schema: dict) -> Completion:
         try:

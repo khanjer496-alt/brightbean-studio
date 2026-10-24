@@ -15,7 +15,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
-from apps.ai_writer.client import AIError, resolve_ai
+from apps.ai_writer.client import AI_PROVIDERS, AIError, resolve_ai
 from apps.analytics.ranges import parse_range
 from apps.analytics.views import _get_workspace, _nav
 from apps.billing.entitlements import PlanLimitError, billing_enabled
@@ -80,6 +80,7 @@ def visibility_index(request: HttpRequest, workspace_id) -> HttpResponse:
         "can_save_ideas": _can(request, workspace, "create_posts"),
         "honesty_note": services.HONESTY_NOTE,
         "engine_labels": sorted(e.label for e in enabled_engines(organization)),
+        "provider_labels": {name: cls.label for name, cls in AI_PROVIDERS.items()},
     }
     return render(request, "ai_visibility/index.html", context)
 

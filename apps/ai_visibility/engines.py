@@ -1,10 +1,10 @@
 """The models the report asks, behind one interface.
 
 An engine answers a question the way an assistant would, from whatever
-``AIProvider`` it wraps. Anthropic is the only one today. To add OpenAI,
-Gemini or Perplexity: write the ``AIProvider`` in :mod:`apps.ai_writer.client`,
-register an ``AnswerEngine`` here, and name it in ``settings.AI_VISIBILITY_ENGINES``.
-An engine whose provider returns citations overrides :meth:`AnswerEngine.ask`
+``AIProvider`` it wraps. The one registered engine asks the organization's own
+AI connection, whichever provider that is, and is named after the provider so
+stored answers keep saying which AI wrote them. A provider that returns
+citations would get its own ``AnswerEngine`` overriding :meth:`AnswerEngine.ask`
 to pass them back in ``EngineAnswer.urls``.
 """
 
@@ -13,7 +13,6 @@ from __future__ import annotations
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import ClassVar
 
 from django.conf import settings
 
@@ -57,24 +56,31 @@ def extract_urls(text: str, sources: list) -> list[str]:
 
 
 class AnswerEngine(ABC):
-    name: ClassVar[str]
-    label: ClassVar[str]
-    # The ``AIProvider.name`` (apps.ai_writer.client.AI_PROVIDERS) this engine speaks through.
-    provider_name: ClassVar[str]
+    # Stored with each answer and as the key of ``VisibilityRun.engines``.
+    name: str
+    # Shown to the person reading the report: which AI answers.
+    label: str
 
+    @abstractmethod
     def available(self, organization) -> bool:
-        config = resolve_ai(organization)
-        return config is not None and config.provider.name == self.provider_name
+        """Whether this organization can use the engine right now."""
 
     @abstractmethod
     def ask(self, ctx: ai.AIContext, run: ai.AIRun, question: str) -> EngineAnswer:
         """Put ``question`` to the model. Raises an ``AIError`` subclass on failure."""
 
 
-class AnthropicEngine(AnswerEngine):
-    name = "anthropic"
-    label = "Claude (Anthropic)"
-    provider_name = "anthropic"
+class ConnectedAIEngine(AnswerEngine):
+    """Asks the organization's own AI connection, whatever provider it is."""
+
+    def __init__(self, organization=None):
+        config = resolve_ai(organization)
+        self.config = config
+        self.name = config.provider.name if config else ""
+        self.label = f"{config.provider.label} · {config.provider.model}" if config else ""
+
+    def available(self, organization) -> bool:
+        return self.config is not None
 
     def ask(self, ctx, run, question):
         data = ai.run_prompt(
@@ -94,10 +100,13 @@ class AnthropicEngine(AnswerEngine):
         )
 
 
-ENGINES: dict[str, type[AnswerEngine]] = {"anthropic": AnthropicEngine}
+# "anthropic" is the name this setting had when Anthropic was the only engine; it
+# still enables the organization's connection, whichever provider that is.
+ENGINES: dict[str, type[AnswerEngine]] = {"connected": ConnectedAIEngine, "anthropic": ConnectedAIEngine}
 
 
 def enabled_engines(organization) -> list[AnswerEngine]:
     """Engines named in settings that this organization can use right now."""
-    engines = [ENGINES[n]() for n in settings.AI_VISIBILITY_ENGINES if n in ENGINES]
+    classes = dict.fromkeys(ENGINES[n] for n in settings.AI_VISIBILITY_ENGINES if n in ENGINES)
+    engines = [cls(organization) for cls in classes]
     return [e for e in engines if e.available(organization)]

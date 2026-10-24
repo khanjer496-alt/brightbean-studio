@@ -72,7 +72,9 @@ class Server:
 def server(settings):
     settings.AI_ALLOW_PRIVATE_BASE_URLS = False
     srv = Server()
+    settings.AI_REQUEST_TIMEOUT = 10
     with (
+        patch.object(client, "_RETRY_BACKOFF_SECONDS", 0),
         patch.object(client, "_http_client", lambda: httpx.Client(transport=httpx.MockTransport(srv.handler))),
         patch("apps.common.validators.socket.getaddrinfo", return_value=[(2, 1, 6, "", (PUBLIC_IP, 443))]),
     ):
@@ -192,13 +194,67 @@ class TestCompatibleFallbackChain:
     ],
 )
 def test_error_mapping(server, reply, error):
-    server.queue(reply)
+    # Failures worth a retry fail the same way twice.
+    server.queue(reply, reply)
     with pytest.raises(error):
         run(OpenAIProvider)
+    retried = isinstance(reply, Exception) or (isinstance(reply, tuple) and reply[0] >= 500)
+    assert len(server.requests) == (2 if retried else 1)
+
+
+class TestRetry:
+    @pytest.mark.parametrize(
+        "first", [(500, {}), (503, {}), (408, {}), httpx.ReadTimeout("slow"), httpx.ConnectError("x")]
+    )
+    def test_one_retry_then_success(self, server, first):
+        server.queue(first, chat('{"text": "back"}'))
+        assert run(OpenAIProvider).data == {"text": "back"}
+        assert len(server.requests) == 2
+
+    @pytest.mark.parametrize("status", [400, 401, 404, 429])
+    def test_no_retry_on_client_errors(self, server, status):
+        server.queue((status, {}), chat('{"text": "never"}'))
+        with pytest.raises(AIError):
+            run(OpenAIProvider)
+        assert len(server.requests) == 1
+
+    def test_retry_resolves_the_address_again(self, server):
+        answers = iter([[(2, 1, 6, "", (PUBLIC_IP, 443))], [(2, 1, 6, "", ("127.0.0.1", 443))]])
+        server.queue((500, {}), chat('{"text": "x"}'))
+        with (
+            patch("apps.common.validators.socket.getaddrinfo", side_effect=lambda *a, **k: next(answers)),
+            pytest.raises(AIEndpointError),
+        ):
+            run(OpenAIProvider)
+        assert len(server.requests) == 1
+
+    def test_each_attempt_gets_half_the_timeout(self, settings):
+        settings.AI_REQUEST_TIMEOUT = 40
+        assert client._http_client().timeout.read == 20
+
+
+class TestBodyCap:
+    def test_huge_body_is_abandoned_while_streaming(self, server):
+        chunks_read = []
+
+        def big():
+            for _ in range(1000):
+                chunks_read.append(1)
+                yield b"x" * (1024 * 1024)
+
+        def handler(request):
+            return httpx.Response(200, content=big())
+
+        with (
+            patch.object(client, "_http_client", lambda: httpx.Client(transport=httpx.MockTransport(handler))),
+            pytest.raises(AIResponseError),
+        ):
+            run(OpenAIProvider)
+        assert len(chunks_read) < 10
 
 
 def test_key_never_in_errors_or_logs(server, caplog):
-    server.queue((500, {"error": "boom sk-secret-key-0000"}))
+    server.queue(*[(500, {"error": "boom sk-secret-key-0000"})] * 2)
     with caplog.at_level(logging.DEBUG), pytest.raises(AIError) as exc:
         run(OpenAIProvider)
     assert "sk-secret" not in str(exc.value) and "sk-secret" not in caplog.text

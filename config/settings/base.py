@@ -898,7 +898,8 @@ AI_REQUEST_TIMEOUT = env.int("AI_REQUEST_TIMEOUT", default=45)
 # publishing and the inbox). Reads past it wait for the next day.
 COMPETITOR_SHARED_QUOTA_UNITS_PER_DAY = env.int("COMPETITOR_SHARED_QUOTA_UNITS_PER_DAY", default=2000)
 # Which answer engines the "how AI describes your brand" report asks (see
-# apps.ai_visibility.engines). Names are registered engines; only "anthropic" exists today.
+# apps.ai_visibility.engines). "connected" asks the organization's own AI connection, whichever
+# provider it is; "anthropic" is the older name for the same engine and still works.
 AI_VISIBILITY_ENGINES = env.list("AI_VISIBILITY_ENGINES", default=["anthropic"])
 # No plan includes or limits AI, but this many requests a UTC day on an
 # organization's own key (answered or not) is a hard safety stop for a runaway
