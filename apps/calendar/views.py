@@ -11,6 +11,7 @@ from django.core.exceptions import PermissionDenied
 from django.db.models import QuerySet
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.http import require_POST
 
 from apps.common.validators import is_valid_hex_color
@@ -748,6 +749,12 @@ def calendar_view(request, workspace_id):
     else:  # month (and any fallback)
         is_today_in_view = (target_date.year, target_date.month) == (today.year, today.month)
 
+    # The channel rail lists every channel the workspace has, including the ones that need reconnecting
+    # (the filter list above only has connected ones). One query; the avatar and status read plain columns.
+    rail_accounts = list(SocialAccount.objects.for_workspace(workspace.id).order_by("platform", "account_name"))
+    rail_groups = _channel_rail_groups(workspace, rail_accounts)
+    rail_selected = set(_get_channel_filters(request))
+
     context = {
         "workspace": workspace,
         "mode": mode,
@@ -755,6 +762,13 @@ def calendar_view(request, workspace_id):
         "view_type": view_type,
         "target_date": target_date,
         "social_accounts": social_accounts,
+        "rail_accounts": rail_accounts,
+        "rail_groups": rail_groups,
+        "rail_selected": rail_selected,
+        # What the rail and chip actions offer; each endpoint still checks the permission itself.
+        "can_manage_channels": bool(membership and membership.effective_permissions.get("manage_social_accounts")),
+        "can_create_posts": bool(membership and membership.effective_permissions.get("create_posts")),
+        "view_options": _view_switch_options(workspace, view_type, target_date),
         "grid_available": grid.grid_accounts(workspace).exists(),
         "authors": authors,
         "categories": categories,
@@ -794,6 +808,50 @@ def calendar_view(request, workspace_id):
 
     # Full page in list mode
     return render(request, "calendar/calendar.html", context)
+
+
+def _channel_rail_groups(workspace, accounts):
+    """The channel rail's rows grouped by account set: ``[{"name": str or "", "accounts": [...]}, ...]``.
+
+    A channel in several sets is listed once, under the first set (by name) that holds it; channels in no set come
+    last. With no sets at all there is a single unnamed group, so the rail shows a plain list. Two queries.
+    """
+    from apps.account_sets.models import AccountSet
+
+    sets = list(AccountSet.objects.filter(workspace=workspace).only("id", "name"))
+    if not sets:
+        return [{"name": "", "key": "all", "accounts": accounts}]
+    members = defaultdict(set)
+    for set_id, account_id in AccountSet.accounts.through.objects.filter(accountset__workspace=workspace).values_list(
+        "accountset_id", "socialaccount_id"
+    ):
+        members[set_id].add(account_id)
+    placed = set()
+    groups = []
+    for account_set in sets:
+        rows = [a for a in accounts if a.id in members[account_set.id] and a.id not in placed]
+        placed.update(a.id for a in rows)
+        if rows:
+            groups.append({"name": account_set.name, "key": str(account_set.id), "accounts": rows})
+    rest = [a for a in accounts if a.id not in placed]
+    if rest:
+        groups.append({"name": "Other channels" if groups else "", "key": "rest", "accounts": rest})
+    return groups
+
+
+def _view_switch_options(workspace, view_type, target_date):
+    """The Day / Week / Month / List segments of the calendar toolbar: value, label, link and whether it is the current view."""
+    base = reverse("calendar:calendar", kwargs={"workspace_id": workspace.id})
+    current = view_type if view_type in ("day", "week", "month", "list") else "month"
+    return [
+        {
+            "value": value,
+            "label": label,
+            "url": f"{base}?mode=calendar&view={value}&date={target_date.isoformat()}",
+            "active": value == current,
+        }
+        for value, label in (("day", "Day"), ("week", "Week"), ("month", "Month"), ("list", "List"))
+    ]
 
 
 def _populate_calendar_context(request, workspace, view_type, target_date, context):

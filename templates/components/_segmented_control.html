@@ -1,0 +1,11 @@
+{% comment %}
+SEGMENTED CONTROL - a pill group of links where exactly one is current (calendar Day / Week / Month / List).
+
+    {% include "components/_segmented_control.html" with label="Calendar view" options=view_options %}
+
+Arguments:
+  label    REQUIRED. Accessible name of the group.
+  options  REQUIRED. List of dicts: label, url, active (bool), optional value (written to data-value).
+Links, not radios: choosing a segment navigates (full page or HTMX boost), so each one is an <a> with aria-current="page"
+on the current one. Styles: .pd-seg and .pd-seg-item in calendar.html / styles.css.
+{% endcomment %}<nav class="pd-seg" aria-label="{{ label }}">{% for option in options %}<a href="{{ option.url }}" class="pd-seg-item{% if option.active %} is-active{% endif %}"{% if option.active %} aria-current="page"{% endif %}{% if option.value %} data-value="{{ option.value }}"{% endif %}>{{ option.label }}</a>{% endfor %}</nav>

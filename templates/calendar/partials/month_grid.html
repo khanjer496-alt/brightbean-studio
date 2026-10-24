@@ -52,7 +52,7 @@ tapped day's agenda underneath (month_agenda_default is the day shown first). Wi
             {% for pp in day.agenda_posts %}
             <div class="flex items-center gap-2">
                 <span class="w-10 shrink-0 text-xs font-medium tabular-nums text-ink-3">{{ pp.effective_at|timezone:display_timezone|time:"H:i" }}</span>
-                <div class="min-w-0 flex-1">{% include "calendar/partials/_grid_chip.html" with pp=pp show_slot_check=True %}</div>
+                <div class="min-w-0 flex-1">{% include "calendar/partials/_grid_chip.html" with pp=pp show_slot_check=True hide_time=True %}</div>
             </div>
             {% empty %}
             {% if not day.events and not day.holidays %}<p class="text-xs text-ink-3">Nothing scheduled.</p>{% endif %}
@@ -63,14 +63,12 @@ tapped day's agenda underneath (month_agenda_default is the day shown first). Wi
 </div>
 
 {# Wider screens: the full month grid #}
-<div class="hidden md:block bg-white overflow-x-auto tab-slide-in" tabindex="0" role="region" aria-label="Month calendar">
+<div class="cal-month hidden md:block overflow-x-auto tab-slide-in" tabindex="0" role="region" aria-label="Month calendar">
   <div class="min-w-[640px]">
     <!-- Day headers -->
-    <div class="grid grid-cols-7 border-b border-stone-200 bg-stone-50">
+    <div class="grid grid-cols-7 gap-px border-b border-line bg-surface-1">
         {% for day_name in day_names %}
-        <div class="px-3 py-2.5 text-xs font-semibold text-stone-500 text-center border-r border-stone-200 last:border-r-0 tracking-wide">
-            {{ day_name }}
-        </div>
+        <div class="cal-month-head">{{ day_name }}</div>
         {% endfor %}
     </div>
 
@@ -78,11 +76,11 @@ tapped day's agenda underneath (month_agenda_default is the day shown first). Wi
     {% for week in calendar_weeks %}
     <div class="grid grid-cols-7">
         {% for day in week %}
-        <div class="cal-day cal-add-cell cal-drop {% if day.posts %}has-posts{% endif %} {% if day.is_today %}today{% elif day.is_past %}past{% endif %} {% if not day.is_current_month %}other-month{% endif %}"
-             data-date="{{ day.date|date:'Y-m-d' }}" data-time="09:00">
+        <div class="cal-day cal-add-cell cal-drop {% if day.posts %}has-posts{% endif %} {% if day.is_today %}today{% elif day.is_past %}past cal-past{% endif %} {% if not day.is_current_month %}other-month{% endif %}"
+             x-data="{ more: false }" data-date="{{ day.date|date:'Y-m-d' }}" data-time="09:00">
             {% if not day.is_past %}
-            <a href="{% url 'composer:compose' workspace_id=workspace.id %}?scheduled_date={{ day.date|date:'Y-m-d' }}&scheduled_time=09:00" class="cal-add-btn" aria-label="Create post on {{ day.date|date:'l, M j' }}">
-                <svg class="w-3 h-3" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+            <a href="{% url 'composer:compose' workspace_id=workspace.id %}?scheduled_date={{ day.date|date:'Y-m-d' }}&scheduled_time=09:00" class="cal-add-btn cal-add-tile" aria-label="Create post on {{ day.date|date:'l, M j' }}">
+                <svg class="size-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
             </a>
             {% endif %}
             <div class="flex items-center justify-between mb-1">
@@ -118,10 +116,14 @@ tapped day's agenda underneath (month_agenda_default is the day shown first). Wi
             {% endfor %}
 
             {% if day.overflow > 0 %}
-            <a href="{% url 'calendar:calendar' workspace_id=workspace.id %}?mode=calendar&view=day&date={{ day.date|date:'Y-m-d' }}"
-               class="mt-0.5 block ps-1 text-[11px] font-semibold text-stone-500 hover:text-stone-800">
-                +{{ day.overflow }} more<span class="sr-only"> on {{ day.date|date:"l, M j" }}</span>
-            </a>
+            {# The rest of the day's posts: direct children of the drop cell like the first three, hidden until "more". #}
+            {% for pp in day.agenda_posts|slice:"3:" %}
+            {% include "calendar/partials/_grid_chip.html" with pp=pp extra_chip=True %}
+            {% endfor %}
+            <button type="button" class="cal-more" @click="more = !more" :aria-expanded="more ? 'true' : 'false'" aria-expanded="false">
+                <span x-show="!more">+{{ day.overflow }} more<span class="sr-only"> on {{ day.date|date:"l, M j" }}</span></span>
+                <span x-show="more" x-cloak>Show less</span>
+            </button>
             {% endif %}
         </div>
         {% endfor %}
