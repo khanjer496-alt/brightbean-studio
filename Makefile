@@ -1,4 +1,4 @@
-.PHONY: help setup dev server worker tailwind test lint format typecheck migrate migrations docker-up docker-down docker-build
+.PHONY: help setup dev server worker tailwind test test-frontend lint format typecheck migrate migrations docker-up docker-down docker-build
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -43,6 +43,9 @@ migrations: ## Create new migrations
 
 test: ## Run tests
 	pytest
+
+test-frontend: ## Run frontend (node) tests
+	npm run test:frontend
 
 test-cov: ## Run tests with coverage
 	pytest --cov=apps --cov-report=term-missing

@@ -134,8 +134,8 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "22"
-      - name: Test inline template actions
-        run: node --test tests/frontend/template-actions.test.cjs tests/frontend/composer-inserts.test.cjs tests/frontend/inbox-keyboard.test.cjs tests/frontend/token-scope.test.cjs
+      - name: Run frontend tests (node --test with a glob; a bare directory fails)
+        run: npm run test:frontend
 
   build:
     name: Docker build
