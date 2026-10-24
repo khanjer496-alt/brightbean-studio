@@ -536,9 +536,27 @@ function calendarApp() {
         draggedPlatformPostId: null,
         calendarFilters: {
             status: '{{ active_filters.statuses.0|default:"" }}',
-            channels: [],
-            tag: '{{ active_filters.tags.0|default:"" }}',
+            channels: {{ active_channels_json|default:"[]"|safe }},
+            tag: '{{ active_filters.tags.0|default:""|escapejs }}',
             tz: '{{ display_timezone|default:"UTC" }}',
+        },
+
+        // The filters the page is showing, as a query string (everything but the date):
+        // what reloadCalendar fetches and what "Save current filters" keeps.
+        filterParams() {
+            const params = new URLSearchParams();
+            params.set('mode', 'calendar');
+            params.set('view', this.activeView);
+            if (this.calendarFilters.status) params.set('status', this.calendarFilters.status);
+            this.calendarFilters.channels.forEach(c => params.append('channel', c));
+            if (this.calendarFilters.tag) params.set('tag', this.calendarFilters.tag);
+            if (this.calendarFilters.tz) params.set('tz', this.calendarFilters.tz);
+            {% if show_holidays %}params.set('holidays', '1');{% endif %}
+            return params;
+        },
+
+        savedViewQuery() {
+            return this.filterParams().toString();
         },
 
         reloadCalendar() {
@@ -546,15 +564,8 @@ function calendarApp() {
             // filter change would otherwise leave rows ticked that the new grid
             // doesn't show — and Delete would hit them.
             Alpine.store('sel').clear();
-            const params = new URLSearchParams();
-            params.set('mode', 'calendar');
-            params.set('view', this.activeView);
+            const params = this.filterParams();
             params.set('date', '{{ target_date|date:"Y-m-d" }}');
-            if (this.calendarFilters.status) params.set('status', this.calendarFilters.status);
-            this.calendarFilters.channels.forEach(c => params.append('channel', c));
-            if (this.calendarFilters.tag) params.set('tag', this.calendarFilters.tag);
-            if (this.calendarFilters.tz) params.set('tz', this.calendarFilters.tz);
-            {% if show_holidays %}params.set('holidays', '1');{% endif %}
             const url = '{% url "calendar:calendar" workspace_id=workspace.id %}?' + params.toString();
             htmx.ajax('GET', url, {target: '#calendar-content', swap: 'innerHTML'});
         },
@@ -683,8 +694,8 @@ function calendarApp() {
 function publishList() {
     return {
         activeTab: '{{ active_tab|default:"queue" }}',
-        selectedChannels: [],
-        activeTag: '',
+        selectedChannels: {{ active_channels_json|default:"[]"|safe }},
+        activeTag: '{{ active_filters.tags.0|default:""|escapejs }}',
         displayTimezone: '{{ display_timezone|default:"UTC" }}',
 
         tabUrls: {
@@ -701,6 +712,17 @@ function publishList() {
         switchTab(tab) {
             this.activeTab = tab;
             this.reloadTab();
+        },
+
+        // What "Save current filters" keeps: the list mode, its tab and the filters in the toolbar.
+        savedViewQuery() {
+            const params = new URLSearchParams();
+            params.set('mode', 'list');
+            params.set('tab', this.activeTab);
+            this.selectedChannels.forEach(c => params.append('channel', c));
+            if (this.activeTag) params.set('tag', this.activeTag);
+            if (this.displayTimezone) params.set('tz', this.displayTimezone);
+            return params.toString();
         },
 
         reloadTab() {

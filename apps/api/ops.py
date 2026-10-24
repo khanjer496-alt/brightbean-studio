@@ -92,6 +92,8 @@ from apps.api.schemas import (
     MemberResponse,
     MembersListResponse,
     NextFreeSlotsResponse,
+    NoteResponse,
+    NotesListResponse,
     PlugNetworkResponse,
     PlugRuleResponse,
     PlugRulesListResponse,
@@ -125,6 +127,7 @@ from apps.api.schemas import (
     UsageResponse,
 )
 from apps.approvals import comments as comment_service
+from apps.approvals import notes as note_service
 from apps.approvals import services as approval_services
 from apps.approvals.models import Channel, PostComment
 from apps.autonomy import configure as autonomy_configure
@@ -809,7 +812,7 @@ def _visible_comments(actor: Actor, post: Post) -> list[PostComment]:
 
 def list_comments(actor: Actor, post_id: uuid.UUID) -> CommentsListResponse:
     """The post's comment threads. Client members see only ``external`` comments."""
-    actor.require_any("create_posts", "approve_posts")
+    actor.require_any("create_posts", "approve_posts", "comment_on_posts")
     post = _get_visible_post(actor, post_id, prefetch=False)
     return CommentsListResponse(
         comments=[CommentResponse.from_comment(c, replies=c.replies.all()) for c in _visible_comments(actor, post)]
@@ -824,12 +827,15 @@ def add_comment(
     visibility: str = "external",
     parent_id: uuid.UUID | None = None,
 ) -> CommentResponse:
-    actor.require_any("create_posts", "approve_posts")
+    actor.require_any("create_posts", "approve_posts", "comment_on_posts")
     user = actor.require_user()
     post = _get_visible_post(actor, post_id, prefetch=False)
     if not body.strip():
         raise OpError(422, "Comment body is required.")
     member = actor.real_membership()
+    # A comment-only reviewer holds just this permission; a role that was denied it can't comment, whatever the key says.
+    if member is None or not member.can("comment_on_posts"):
+        raise OpError(403, "Permission denied: comment_on_posts")
     is_client = bool(member and member.workspace_role == WorkspaceMembership.WorkspaceRole.CLIENT)
     if is_client and visibility != PostComment.Visibility.EXTERNAL:
         raise OpError(403, "Clients can only write external comments.")
@@ -839,9 +845,46 @@ def add_comment(
         if parent is None:
             raise OpError(404, "Parent comment not found")
     comment = comment_service.create_comment(
-        post=post, author=user, body=body.strip(), visibility=visibility, parent_id=parent_id
+        post=post, author=user, body=body.strip(), visibility=visibility, parent_id=parent_id, channel=Channel.API
     )
     return CommentResponse.from_comment(comment)
+
+
+def _require_notes(actor: Actor) -> Any:
+    """The calling person, once the key and the person both may use team notes."""
+    actor.require("create_posts")
+    user = actor.require_user()
+    if note_service.membership_for(user, actor.workspace) is None:
+        raise OpError(403, "Permission denied: use_internal_notes")
+    return user
+
+
+def list_notes(actor: Actor, post_id: uuid.UUID) -> NotesListResponse:
+    """The post's team-only notes, oldest first."""
+    _require_notes(actor)
+    post = _get_visible_post(actor, post_id, prefetch=False)
+    return NotesListResponse(notes=[NoteResponse.from_note(n) for n in note_service.notes_for_post(post)])
+
+
+def add_note(actor: Actor, post_id: uuid.UUID, *, body: str) -> NoteResponse:
+    """Add a team-only note to a post; an agent's note is recorded in the autonomy activity like its other writes."""
+    user = _require_notes(actor)
+    post = _get_visible_post(actor, post_id, prefetch=False)
+    try:
+        note = note_service.create_note(post, user, body)
+    except ValueError as exc:
+        raise OpError(422, str(exc)) from exc
+    autonomy_service.record(
+        workspace=actor.workspace,
+        actor=agent_actor(actor.api_key, actor.user),
+        action_type=ActionType.APPROVAL,
+        operation="note.create",
+        decision="executed",
+        post=post,
+        summary=f"Added a team note on behalf of {user.display_name}.",
+        final_text=note.body,
+    )
+    return NoteResponse.from_note(note)
 
 
 # ---------------------------------------------------------------------------

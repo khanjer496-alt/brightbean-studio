@@ -39,8 +39,11 @@ from apps.api.middleware import (
 )
 from apps.api.routers.common import run_op
 from apps.api.schemas import (
+    CreateNoteRequest,
     CreatePostRequest,
     DeletedResponse,
+    NoteResponse,
+    NotesListResponse,
     PostResponse,
     PostsListResponse,
     RecurrenceSpec,
@@ -567,6 +570,44 @@ def duplicate(request, post_id: uuid.UUID):
         idempotent=True,
     )
     return 201, post
+
+
+@router.get(
+    "/{post_id}/notes",
+    response=NotesListResponse,
+    summary="List a post's team notes",
+    description=(
+        "Team-only notes, oldest first; they are never shown to clients or published. Needs `create_posts` and a "
+        "member whose role allows internal notes."
+    ),
+)
+def list_notes(request, post_id: uuid.UUID):
+    return run_op(request, ops.list_notes, post_id, action="post.notes.list", is_write=False, target_id=post_id)
+
+
+@router.post(
+    "/{post_id}/notes",
+    response={201: NoteResponse},
+    summary="Add a team note to a post",
+    description=(
+        "A team-only note on a draft or scheduled post; `@name` notifies a teammate who can read notes. Needs "
+        "`create_posts` and a member whose role allows internal notes. An agent's note is recorded in the autonomy "
+        "activity."
+    ),
+)
+def add_note(request, post_id: uuid.UUID, payload: CreateNoteRequest):
+    note = run_op(
+        request,
+        ops.add_note,
+        post_id,
+        body=payload.body,
+        action="post.notes.create",
+        is_write=True,
+        target_id=lambda n: n.id,
+        status_code=201,
+        idempotent=True,
+    )
+    return 201, note
 
 
 @router.post(

@@ -386,6 +386,36 @@ def portal_request_hold(request, post_id):
     return redirect("client_portal:approval_queue")
 
 
+@portal_auth_required
+@require_POST
+def portal_comment(request, post_id):
+    """Leave a comment on a post without approving, rejecting or asking for changes.
+
+    Always an ``external`` comment: a client has no way to write one the rest of the
+    client side can't see, and none of the team-only notes are reachable from here.
+    """
+    workspace = request.portal_workspace
+    post = get_object_or_404(Post, id=post_id, workspace=workspace)
+    if not post.platform_posts.filter(status__in=["pending_client", "approved", "on_hold"]).exists():
+        raise Http404
+    if not request.portal_membership.can("comment_on_posts"):
+        return _portal_error(request, "Your access doesn't include commenting.")
+    body = request.POST.get("comment", "").strip()
+    if not body:
+        return _portal_error(request, "Write a comment first.")
+
+    approval_comments.create_comment(
+        post=post,
+        author=request.user,
+        body=body,
+        visibility=PostComment.Visibility.EXTERNAL,
+        channel=Channel.PORTAL,
+    )
+    if request.htmx:
+        return _portal_response(post.id, "commented", tone="info", title="Comment sent", body="The team was notified.")
+    return redirect("client_portal:approval_queue")
+
+
 # ---------------------------------------------------------------------------
 # Published Content
 # ---------------------------------------------------------------------------

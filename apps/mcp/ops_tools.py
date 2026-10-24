@@ -300,7 +300,7 @@ _tool(
     "list_post_comments",
     (
         "Read the comment threads on a post (top-level comments with their replies, oldest first). Client members "
-        "only see `external` comments; team members see `internal` ones too. Needs create_posts or approve_posts."
+        "only see `external` comments; team members see `internal` ones too. Needs create_posts, approve_posts or comment_on_posts."
     ),
     ops.list_comments,
     lambda a: {"_args": (_uuid_arg(a, "post_id", required=True),)},
@@ -314,7 +314,7 @@ _tool(
     (
         "Comment on a post, optionally replying to a top-level comment (parent_id). `visibility` is `external` "
         "(default; clients can see it) or `internal` (team only; client members can't write these). `@name` "
-        "mentions notify teammates. Needs create_posts or approve_posts."
+        "mentions notify teammates. Needs create_posts, approve_posts or comment_on_posts."
     ),
     ops.add_comment,
     lambda a: {
@@ -328,6 +328,43 @@ _tool(
         "body": _text_prop(max_length=10_000, min_length=1),
         "visibility": {"type": "string", "enum": ["internal", "external"], "default": "external"},
         "parent_id": _uuid_prop("A top-level comment on the same post to reply to."),
+    },
+    required=["post_id", "body"],
+    idempotent=True,
+)
+
+
+# ---------------------------------------------------------------------------
+# Team notes
+# ---------------------------------------------------------------------------
+
+_tool(
+    "list_post_notes",
+    (
+        "Read a post's team-only notes, oldest first (author, time, text). Notes are for the people working on the "
+        "post: clients never see them and they are never published. Needs create_posts and a member whose role "
+        "allows internal notes."
+    ),
+    ops.list_notes,
+    lambda a: {"_args": (_uuid_arg(a, "post_id", required=True),)},
+    properties={"post_id": _uuid_prop()},
+    required=["post_id"],
+    read_only=True,
+)
+
+_tool(
+    "add_post_note",
+    (
+        "Add a team-only note to a draft or scheduled post, for example why it was changed or what is still open. "
+        "Never shown to clients or published. `@name` notifies a teammate who can read notes (find handles with "
+        "list_members). The note is recorded in the autonomy activity. Needs create_posts and a member whose role "
+        "allows internal notes."
+    ),
+    ops.add_note,
+    lambda a: {"_args": (_uuid_arg(a, "post_id", required=True),), "body": a.get("body", "")},
+    properties={
+        "post_id": _uuid_prop(),
+        "body": _text_prop(max_length=5_000, min_length=1),
     },
     required=["post_id", "body"],
     idempotent=True,

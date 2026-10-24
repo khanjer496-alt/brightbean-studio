@@ -1713,6 +1713,44 @@ class CreateCommentRequest(Schema):
     parent_id: uuid.UUID | None = Field(None, description="Reply to this top-level comment of the same post.")
 
 
+class NoteResponse(Schema):
+    id: uuid.UUID
+    post_id: uuid.UUID
+    author_id: uuid.UUID | None = None
+    author_name: str = ""
+    body: str
+    created_at: dt.datetime
+
+    @field_serializer("created_at")
+    def _serialize_dt(self, value: dt.datetime) -> str | None:
+        return _serialize_utc_z(value)
+
+    @classmethod
+    def from_note(cls, note) -> NoteResponse:
+        author = note.author
+        return cls(
+            id=note.id,
+            post_id=note.post_id,
+            author_id=note.author_id,
+            author_name=(author.display_name if author else ""),
+            body=note.body,
+            created_at=note.created_at,
+        )
+
+
+class NotesListResponse(Schema):
+    notes: list[NoteResponse]
+
+
+class CreateNoteRequest(Schema):
+    body: str = Field(
+        ...,
+        min_length=1,
+        max_length=5_000,
+        description="The note text. Team-only: never shown to clients or published. ``@name`` mentions notify.",
+    )
+
+
 # ---------------------------------------------------------------------------
 # /queues and /slots
 # ---------------------------------------------------------------------------

@@ -37,6 +37,7 @@ Context: posts, workspace.
                     <span class="inline-flex items-center gap-1.5 max-w-full">
                         <span class="truncate">{{ post.caption_snippet|default:"(no caption)" }}</span>
                         {% include "calendar/partials/_thread_badge.html" with post=post %}
+                        {% include "calendar/partials/_note_badge.html" with n=post.note_count %}
                     </span>
                 </td>
                 <td class="px-4 py-3">

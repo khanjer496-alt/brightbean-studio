@@ -87,6 +87,7 @@ Shows all published/partially_published platform posts. Loaded via HTMX into #ta
                     <span class="inline-flex items-center gap-1.5 max-w-full">
                         <a href="{% url 'composer:compose_edit' workspace_id=workspace.id post_id=pp.post_id %}?account={{ pp.social_account_id }}" class="truncate hover:underline" @click.stop>{{ pp.post.title|default:pp.post.caption_snippet|default:"(no caption)" }}</a>
                         {% include "calendar/partials/_thread_badge.html" with post=pp.post pp=pp %}
+                        {% include "calendar/partials/_note_badge.html" with n=pp.note_count %}
                     </span>
                 </td>
                 <td class="px-4 py-3">

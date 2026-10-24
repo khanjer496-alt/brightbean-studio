@@ -46,6 +46,7 @@ can_approve, display_timezone, and the parent Alpine scope (selectedPosts, diffO
             <div class="flex items-center gap-1.5 mt-1.5">
                 <span class="w-[18px] h-[18px] rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0 bg-accent" aria-hidden="true">{{ post.author.display_name|default:"?"|make_list|first|upper }}</span>
                 <span class="text-[0.75rem] text-stone-500">by {{ post.author.display_name|default:"Unknown" }}</span>
+                {% include "calendar/partials/_note_badge.html" with n=post.note_count %}
                 <button type="button" @click="expanded = !expanded" :aria-expanded="expanded ? 'true' : 'false'" aria-expanded="false" aria-controls="approval-details-{{ post.id }}" class="min-h-6 text-[0.75rem] text-stone-500 hover:text-stone-700 inline-flex items-center gap-0.5 ms-1">
                     <span x-text="expanded ? 'Hide' : 'Details'"></span>
                     <svg class="w-3 h-3 transition-transform" aria-hidden="true" :class="expanded && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 9l6 6 6-6"/></svg>
@@ -95,6 +96,12 @@ can_approve, display_timezone, and the parent Alpine scope (selectedPosts, diffO
                     class="px-3 py-1.5 text-[0.8125rem] font-semibold rounded-full border transition-colors"
                     :class="panel ? 'border-stone-300 bg-stone-50 text-stone-700' : 'border-stone-200 text-stone-600 hover:bg-stone-50'">Review</button>
         </div>
+        {% elif can_comment and post.is_actionable %}
+        <div class="flex items-center gap-1.5 flex-shrink-0">
+            <button type="button" @click="panel = panel ? null : 'comment'" :aria-expanded="panel ? 'true' : 'false'" aria-expanded="false" aria-controls="review-panel-{{ post.id }}"
+                    class="min-h-8 px-3 py-1.5 text-[0.8125rem] font-semibold rounded-full border transition-colors"
+                    :class="panel ? 'border-stone-300 bg-stone-50 text-stone-700' : 'border-stone-200 text-stone-600 hover:bg-stone-50'">Comment</button>
+        </div>
         {% elif post.status == 'changes_requested' or post.status == 'rejected' or post.status == 'approved' %}
         <div class="flex items-center gap-1.5 flex-shrink-0">
             <a href="{% url 'composer:compose_edit' workspace_id=workspace.id post_id=post.id %}"
@@ -112,19 +119,25 @@ can_approve, display_timezone, and the parent Alpine scope (selectedPosts, diffO
         {% endif %}
     </div>
 
-    {# inline review panel (request changes / reject) #}
-    {% if can_approve and post.is_actionable %}
-    <div id="review-panel-{{ post.id }}" x-show="panel" x-cloak class="px-4 pb-4 anim-collapse">
+    {# inline review panel (request changes / reject / comment only) #}
+    {% if post.is_actionable and can_approve or post.is_actionable and can_comment %}
+    <div id="review-panel-{{ post.id }}" x-show="panel" x-cloak class="px-4 pb-4 anim-collapse" x-data="{ visibility: 'internal' }">
         <div class="pt-3 border-t border-stone-100">
             <div class="flex gap-1.5 mb-2">
+                {% if can_approve %}
                 <button type="button" @click="panel = 'changes'" :aria-pressed="panel === 'changes' ? 'true' : 'false'" aria-pressed="false" class="min-h-8 px-3 py-1.5 text-[0.75rem] font-semibold rounded-full transition-colors" :class="panel === 'changes' ? 'bg-amber-100 text-amber-800' : 'text-stone-600 hover:bg-stone-100'">Request changes</button>
                 <button type="button" @click="panel = 'reject'" :aria-pressed="panel === 'reject' ? 'true' : 'false'" aria-pressed="false" class="min-h-8 px-3 py-1.5 text-[0.75rem] font-semibold rounded-full transition-colors" :class="panel === 'reject' ? 'bg-red-100 text-red-800' : 'text-stone-600 hover:bg-stone-100'">Reject</button>
+                {% endif %}
+                {% if can_comment %}
+                <button type="button" @click="panel = 'comment'" :aria-pressed="panel === 'comment' ? 'true' : 'false'" aria-pressed="false" class="min-h-8 px-3 py-1.5 text-[0.75rem] font-semibold rounded-full transition-colors" :class="panel === 'comment' ? 'bg-stone-200 text-stone-800' : 'text-stone-600 hover:bg-stone-100'">Comment only</button>
+                {% endif %}
             </div>
-            <label for="review-comment-{{ post.id }}" class="sr-only" x-text="panel === 'reject' ? 'Reason for rejection' : 'Requested changes'"></label>
+            <label for="review-comment-{{ post.id }}" class="sr-only" x-text="panel === 'reject' ? 'Reason for rejection' : panel === 'comment' ? 'Comment' : 'Requested changes'"></label>
             <textarea id="review-comment-{{ post.id }}" name="comment" x-model="comment" rows="2"
-                      :placeholder="panel === 'reject' ? 'Reason for rejection (required), shared with the creator…' : 'What needs to change? (required)…'"
+                      :placeholder="panel === 'reject' ? 'Reason for rejection (required), shared with the creator…' : panel === 'comment' ? 'Leave a comment without approving or sending it back…' : 'What needs to change? (required)…'"
                       class="w-full px-3 py-2 text-[0.8125rem] border border-stone-200 rounded-lg resize-none"></textarea>
             <div class="flex items-center gap-2 mt-2">
+                {% if can_approve %}
                 <button type="button" x-show="panel === 'changes'"
                         hx-post="{% url 'approvals:request_changes' workspace_id=workspace.id post_id=post.id %}"
                         hx-include="#review-comment-{{ post.id }}" hx-swap="none" :disabled="!comment.trim()"
@@ -135,6 +148,23 @@ can_approve, display_timezone, and the parent Alpine scope (selectedPosts, diffO
                         hx-include="#review-comment-{{ post.id }}" hx-swap="none" :disabled="!comment.trim()"
                         class="px-3.5 py-1.5 text-[0.75rem] font-semibold rounded-full text-white transition-colors"
                         :class="comment.trim() ? 'bg-red-700 hover:bg-red-600' : 'bg-stone-500 cursor-not-allowed'">Reject post</button>
+                {% endif %}
+                {% if can_comment %}
+                    <div class="flex items-center gap-2" x-show="panel === 'comment'">
+                        <button type="button"
+                                hx-post="{% url 'approvals:comment_only' workspace_id=workspace.id post_id=post.id %}"
+                                hx-include="#review-comment-{{ post.id }}, #review-visibility-{{ post.id }}" hx-swap="none" :disabled="!comment.trim()"
+                                class="px-3.5 py-1.5 text-[0.75rem] font-semibold rounded-full text-white transition-colors"
+                                :class="comment.trim() ? 'bg-stone-800 hover:bg-stone-700' : 'bg-stone-500 cursor-not-allowed'">Add comment</button>
+                        <label class="text-[0.6875rem] text-stone-600 inline-flex items-center gap-1.5">
+                            <span class="sr-only">Who can see this comment</span>
+                            <select id="review-visibility-{{ post.id }}" name="visibility" x-model="visibility" class="text-[0.75rem] border border-stone-200 rounded-md py-1 ps-2 pe-6">
+                                <option value="internal">Team only</option>
+                                <option value="external">Shared with client</option>
+                            </select>
+                        </label>
+                    </div>
+                {% endif %}
                 <button type="button" @click="panel = null; comment = ''" class="min-h-8 px-3 py-1.5 text-[0.75rem] font-medium rounded-full text-stone-600 hover:bg-stone-100">Cancel</button>
                 <span x-show="!comment.trim()" class="text-[0.6875rem] text-stone-500 ms-auto">A comment is required</span>
             </div>

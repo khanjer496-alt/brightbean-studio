@@ -104,7 +104,7 @@ def reject(request, post_id: uuid.UUID, payload: ApprovalDecisionRequest):
     "/{post_id}/comments",
     response=CommentsListResponse,
     summary="List a post's comments",
-    description="Top-level comments with their replies. Needs `create_posts` or `approve_posts`.",
+    description="Top-level comments with their replies. Needs `create_posts`, `approve_posts` or `comment_on_posts` (a comment-only reviewer holds just the last).",
 )
 def list_comments(request, post_id: uuid.UUID):
     return run_op(
@@ -116,7 +116,7 @@ def list_comments(request, post_id: uuid.UUID):
     "/{post_id}/comments",
     response={201: CommentResponse},
     summary="Comment on a post",
-    description="Needs `create_posts` or `approve_posts`. Client members can only write `external` comments.",
+    description="Needs `create_posts`, `approve_posts` or `comment_on_posts` (a comment-only reviewer holds just the last). Client members can only write `external` comments.",
 )
 def add_comment(request, post_id: uuid.UUID, payload: CreateCommentRequest):
     comment = run_op(

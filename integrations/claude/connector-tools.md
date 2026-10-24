@@ -10,6 +10,7 @@ Generated from the tool registry (`apps/mcp`). Annotations come from the capabil
 | `add_competitor` | write_settings | no | no | no | Track a public competitor profile. |
 | `add_feed` | schedule_posts | no | no | yes | Follow an RSS or Atom feed (its address is fetched and checked first; an address already followed is returned as is). |
 | `add_post_comment` | manage_approvals | no | no | no | Comment on a post, optionally replying to a top-level comment (parent_id). |
+| `add_post_note` | draft_posts | no | no | no | Add a team-only note to a draft or scheduled post; clients never see it and it is never published. |
 | `add_post_to_queue` | schedule_posts | no | no | yes | Schedule an existing draft or approved post into a queue's next free posting slot — the way to keep an account posting on its usual rhythm without choosing times yourself. |
 | `add_to_evergreen` | schedule_posts | no | no | yes | Add content to the evergreen library so it is re-posted into empty queue slots: give exactly one of post_id (a published post; one item per published channel, or only social_account_id), template_id or idea_id (both need social_account_id). |
 | `apply_best_times` | schedule_posts | no | yes | no | Make an account's best times its weekly posting slots. |
@@ -89,6 +90,7 @@ Generated from the tool registry (`apps/mcp`). Annotations come from the capabil
 | `list_members` | read_calendar | yes | no | no | List the workspace's team members with their role and the @mention handle that notifies them from add_post_comment. |
 | `list_plug_rules` | read_calendar | yes | no | no | List engagement automations ('plugs') and what each allowed account's network supports. |
 | `list_post_comments` | manage_approvals | yes | no | no | Read the comment threads on a post (top-level comments with their replies, oldest first). |
+| `list_post_notes` | read_calendar | yes | no | no | Read a post's team-only notes, oldest first (author, time, text). |
 | `list_posting_slots` | read_calendar | yes | no | no | List the weekly posting slots (day of week 0=Monday…6=Sunday, wall-clock time in the workspace timezone) of the accounts this key can act on, optionally for one account. |
 | `list_posts` | read_calendar | yes | no | no | List and search posts in this API key's workspace, newest first (by creation time). |
 | `list_queues` | read_calendar | yes | no | no | List the publishing queues on the accounts this key can act on, each with its entry count and next free posting slot. |

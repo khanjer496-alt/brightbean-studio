@@ -31,6 +31,7 @@ class EventType(models.TextChoices):
     AGENT_ACTION_BLOCKED = "agent_action_blocked", "Agent action blocked"
     AI_VISIBILITY_REPORT = "ai_visibility_report", "AI visibility report ready"
     APPROVAL_DIGEST = "approval_digest", "Posts waiting for your approval"
+    POST_COMMENT = "post_comment", "New comment on your post"
 
 
 class Channel(models.TextChoices):

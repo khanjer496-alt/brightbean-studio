@@ -3,6 +3,7 @@
 Models:
     ApprovalAction - Audit trail of approval decisions on a post.
     PostComment - Threaded comments with internal/external visibility.
+    PostNote - Team-only notes on a post; never shown to clients, never published.
     ApprovalReminder - Tracks reminder state and the approval deadline per post per stage.
     ApprovalLink - Signed, single-use, expiring one-tap link from an approval email.
     SlackApprovalConnection - A workspace's Slack channel for approval requests.
@@ -36,6 +37,8 @@ class ApprovalAction(models.Model):
         REJECTED = "rejected", "Rejected"
         RESUBMITTED = "resubmitted", "Resubmitted"
         HELD = "held", "Hold Requested"
+        # A reviewer weighed in without deciding: the post stays where it is.
+        COMMENTED = "commented", "Commented"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     post = models.ForeignKey(
@@ -132,6 +135,49 @@ class PostComment(models.Model):
     def __str__(self):
         prefix = "[deleted] " if self.deleted_at else ""
         return f"{prefix}Comment by {self.author} on {self.post_id}"
+
+    @property
+    def is_deleted(self):
+        return self.deleted_at is not None
+
+
+class PostNote(models.Model):
+    """A team-only note on a post (draft or scheduled), kept as a thread.
+
+    Unlike a ``PostComment`` with ``visibility=internal`` a note has no external
+    form at all: no client-facing query or template reads this table, so a note
+    cannot be shown to a client by flipping a flag. It is also not part of the
+    post's published content.
+    """
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    post = models.ForeignKey(
+        "composer.Post",
+        on_delete=models.CASCADE,
+        related_name="notes",
+    )
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="post_notes",
+    )
+    body = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    deleted_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "approvals_post_note"
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["post", "created_at"], name="idx_note_post_date"),
+        ]
+
+    def __str__(self):
+        prefix = "[deleted] " if self.deleted_at else ""
+        return f"{prefix}Note by {self.author} on {self.post_id}"
 
     @property
     def is_deleted(self):

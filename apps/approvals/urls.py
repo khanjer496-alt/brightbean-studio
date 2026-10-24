@@ -1,6 +1,6 @@
 from django.urls import path
 
-from . import views, views_slack
+from . import views, views_notes, views_slack
 
 app_name = "approvals"
 
@@ -18,6 +18,10 @@ urlpatterns = [
         views.comment_attachment,
         name="comment_attachment",
     ),
+    path("approvals/<uuid:post_id>/comment-only/", views.comment_only, name="comment_only"),
+    path("approvals/<uuid:post_id>/notes/", views_notes.notes_panel, name="notes_panel"),
+    path("approvals/<uuid:post_id>/notes/add/", views_notes.add_note, name="add_note"),
+    path("approvals/<uuid:post_id>/notes/<uuid:note_id>/delete/", views_notes.delete_note, name="delete_note"),
     path("approvals/slack/connect/", views_slack.connect, name="slack_connect"),
     path("approvals/slack/channel/", views_slack.choose_channel, name="slack_channel"),
     path("approvals/slack/disconnect/", views_slack.disconnect, name="slack_disconnect"),

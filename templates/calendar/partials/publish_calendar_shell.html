@@ -72,6 +72,8 @@ Toolbar: nav arrows + period + Today + view dropdown | right: filter dropdowns.
             </div>
         </div>
 
+        {% include "calendar/partials/_saved_views.html" %}
+
         <!-- Right side: filter dropdowns -->
         <div class="cal-filters-scroll flex items-center gap-2 ms-auto max-w-full overflow-x-auto flex-nowrap [-webkit-overflow-scrolling:touch] [scrollbar-width:none]" role="group" aria-label="Calendar filters">
             <!-- Status filter -->

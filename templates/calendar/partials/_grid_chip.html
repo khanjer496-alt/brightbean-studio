@@ -25,6 +25,7 @@ Context: pp, workspace, optional show_slot_check.
         <span class="truncate">{{ pp.post.title|default:pp.post.caption_snippet|truncatechars:28 }}</span>
         {% include "calendar/partials/_recurrence_badge.html" with post=pp.post %}
         {% include "calendar/partials/_thread_badge.html" with post=pp.post pp=pp %}
+        {% include "calendar/partials/_note_badge.html" with n=pp.note_count %}
         {% if show_slot_check and pp.takes_calendar_slot %}
         <span class="calendar-post-slot-check" title="Scheduled in a channel slot">
             <svg class="w-3 h-3" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
