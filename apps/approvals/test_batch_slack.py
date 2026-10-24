@@ -347,6 +347,61 @@ class SlackTests(OneTapBase):
         self.assertEqual(decide.call_args.args[:3], (post, self.reviewer, self.ws))
         self.assertEqual(decide.call_args.kwargs["channel"], "slack")
 
+    def test_double_click_decides_once_and_tells_the_second_click(self):
+        post = self.make_post()
+        first, second = self.button(post), {**self.button(post), "trigger_id": "trig-2"}
+        with (
+            mock.patch("apps.approvals.slack._get", return_value=self.slack_user()),
+            mock.patch("apps.approvals.slack.api_call"),
+            mock.patch("apps.approvals.slack._respond") as respond,
+        ):
+            self.post(first, drain=False)
+            self.post(second)
+        self.assertEqual(self.status_of(post), {"approved"})
+        self.assertEqual(ApprovalAction.objects.filter(post=post, action="approved").count(), 1)
+        self.assertEqual(respond.call_count, 1)
+        self.assertEqual(respond.call_args.args[1]["response_type"], "ephemeral")
+
+    def test_deferred_work_rechecks_the_item_when_it_runs(self):
+        post = self.make_post()
+        with mock.patch("apps.approvals.slack._get"), mock.patch("apps.approvals.slack.api_call"):
+            self.post(self.button(post), drain=False)
+        # Edited between the click and the worker picking it up.
+        Post.objects.filter(pk=post.pk).update(caption="Edited while queued")
+        with (
+            mock.patch("apps.approvals.slack._get", return_value=self.slack_user()),
+            mock.patch("apps.approvals.slack.api_call"),
+            mock.patch("apps.approvals.slack._respond") as respond,
+        ):
+            self.drain()
+        self.assertEqual(self.status_of(post), {"pending_review"})
+        self.assertIn("changed", respond.call_args.args[1]["text"])
+
+    def test_a_failure_in_the_deferred_work_is_told_to_the_clicker(self):
+        post = self.make_post()
+        with (
+            mock.patch("apps.approvals.slack._get", side_effect=RuntimeError("slack down")),
+            mock.patch("apps.approvals.slack.api_call"),
+            mock.patch("apps.approvals.slack._respond") as respond,
+            self.assertLogs("apps.approvals.slack", "ERROR"),
+        ):
+            self.post(self.button(post))
+        self.assertEqual(respond.call_args.args[1]["response_type"], "ephemeral")
+        self.assertIn("went wrong", respond.call_args.args[1]["text"])
+
+    def test_disconnecting_before_the_work_runs_does_nothing_but_say_so(self):
+        post = self.make_post()
+        with mock.patch("apps.approvals.slack._get"), mock.patch("apps.approvals.slack.api_call"):
+            self.post(self.button(post), drain=False)
+        self.conn.delete()
+        with (
+            mock.patch("apps.approvals.slack._get", return_value=self.slack_user()),
+            mock.patch("apps.approvals.slack._respond") as respond,
+        ):
+            self.drain()
+        self.assertEqual(self.status_of(post), {"pending_review"})
+        self.assertIn("disconnected", respond.call_args.args[1]["text"])
+
     def test_held_buttons_are_deferred_and_release_through_the_autonomy_service(self):
         from background_task.models import Task
 

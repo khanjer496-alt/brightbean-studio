@@ -11,7 +11,7 @@ from allauth.account.internal.flows.login import perform_login
 from allauth.account.models import Login
 from allauth.mfa.utils import is_mfa_enabled
 from django.conf import settings
-from django.contrib.auth import login
+from django.contrib.auth import login, logout
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -203,9 +203,14 @@ def create_portal_session(request, user, workspace, *, next_url):
     produces an ordinary session, marked with the workspace so the portal
     views still recognise it.
 
+    Whatever session the browser had is ended first, so neither path inherits
+    anything from it: no earlier scope or workspace marker, no half-finished
+    sign-in, and the 2FA stage never runs on top of someone's live session.
+
     Returns the response to send when allauth takes over (the 2FA challenge),
     otherwise None.
     """
+    logout(request)
     if is_mfa_enabled(user):
         request.session[PORTAL_MFA_SESSION_KEY] = str(workspace.id)
         request.session.set_expiry(30 * 24 * 60 * 60)

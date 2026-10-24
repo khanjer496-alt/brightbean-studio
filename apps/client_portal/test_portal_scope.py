@@ -67,6 +67,71 @@ class PortalScopedSessionTests(PortalScopeTests):
         self.assertEqual(self.client.get("/api/v1/mcp").status_code, 403)
         self.assertEqual(self.client.get("/oauth/authorize/").status_code, 403)
 
+    def test_account_takeover_routes_are_closed(self):
+        """A forwarded magic link must not let anyone change the password or email, add 2FA or delete the account."""
+        self.enter()
+        for url in (
+            reverse("account_change_password"),
+            reverse("account_set_password"),
+            reverse("account_email"),
+            reverse("mfa_index"),
+            reverse("accounts:settings"),
+            reverse("accounts:delete_account"),
+            reverse("account_login"),
+            reverse("account_signup"),
+            reverse("account_reset_password"),
+            "/admin/",
+            f"/workspace/{self.workspace.id}/media/",
+            "/reports/share/x/",
+        ):
+            get = self.client.get(url)
+            self.assertRedirects(get, reverse("client_portal:dashboard"), fetch_redirect_response=False, msg_prefix=url)
+            self.assertEqual(self.client.post(url, {}).status_code, 403, url)
+        self.assertEqual(
+            self.client.post(
+                reverse("account_change_password"),
+                {"oldpassword": "pw-12345", "password1": "N3w-pass-word!", "password2": "N3w-pass-word!"},
+            ).status_code,
+            403,
+        )
+        self.assertEqual(
+            self.client.post(reverse("account_email"), {"action_add": "", "email": "attacker@example.com"}).status_code,
+            403,
+        )
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.check_password("pw-12345"))
+        self.assertFalse(self.user.emailaddress_set.filter(email="attacker@example.com").exists())
+
+    def test_htmx_partials_are_not_rendered(self):
+        self.enter()
+        response = self.client.get(f"/workspace/{self.workspace.id}/calendar/", HTTP_HX_REQUEST="true")
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response.content, b"")
+
+    def test_magic_link_rotates_the_session_and_is_single_use(self):
+        token = MagicLinkToken.objects.create(user=self.user, workspace=self.workspace)
+        url = reverse("client_portal:magic_link_entry", kwargs={"token": token.token})
+        self.client.get(url)
+        before = self.client.session.session_key
+        self.client.post(url)
+        self.assertNotEqual(self.client.session.session_key, before)
+        self.assertTrue(self.client.session["is_portal_session"])
+        other = self.client_class()
+        self.assertRedirects(
+            other.post(url), reverse("client_portal:magic_link_expired"), fetch_redirect_response=False
+        )
+        self.assertNotIn("_auth_user_id", other.session)
+
+    def test_magic_link_ends_whatever_session_the_browser_had(self):
+        staff = User.objects.create_user(email="owner@example.com", password="pw-12345", tos_accepted_at=timezone.now())
+        self.client.force_login(staff)
+        session = self.client.session
+        session["marker"] = "from the earlier session"
+        session.save()
+        self.enter()
+        self.assertEqual(self.client.session["_auth_user_id"], str(self.user.pk))
+        self.assertNotIn("marker", self.client.session)
+
     def test_session_still_opens_the_portal(self):
         self.enter()
         self.assertEqual(self.client.get(reverse("client_portal:dashboard")).status_code, 200)
@@ -156,3 +221,17 @@ class PortalMfaTests(PortalScopeTests):
             reverse("client_portal:magic_link_expired"),
             fetch_redirect_response=False,
         )
+
+    def test_2fa_challenge_does_not_run_on_top_of_a_portal_session(self):
+        """A user who added 2FA after getting a portal session: the next link ends that session and challenges them."""
+        self.enter()
+        self.assertTrue(self.client.session.get("is_portal_session"))
+        secret = self.add_totp()
+        self.assertRedirects(self.enter(), reverse("mfa_authenticate"), fetch_redirect_response=False)
+        self.assertNotIn("_auth_user_id", self.client.session)
+        self.assertNotIn("is_portal_session", self.client.session)
+        before = self.client.session.session_key
+        self.client.post(reverse("mfa_authenticate"), {"code": self.code(secret)})
+        self.assertNotEqual(self.client.session.session_key, before)
+        self.assertFalse(self.client.session.get("is_portal_session"))
+        self.assertEqual(self.client.get("/notifications/").status_code, 200)

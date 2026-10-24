@@ -581,9 +581,34 @@ def acknowledge_interaction(payload: dict, connection) -> dict | None:
 
 @background(schedule=0)
 def process_interaction_task(payload_json, connection_id):
+    """Run a queued interaction once; whatever stops it is told to the person who clicked.
+
+    Everything is looked up again here (the connection, the Slack user's
+    member, the post or held item and its state), because minutes may have
+    passed since the click. A failure is not retried by the queue: the person
+    is told and pointed at the app, where the item shows where it stands.
+    """
+    payload = json.loads(payload_json)
     connection = SlackApprovalConnection.objects.select_related("workspace").filter(pk=connection_id).first()
-    if connection is not None:
-        handle_interaction(json.loads(payload_json), connection)
+    if connection is None:
+        if payload.get("response_url"):
+            _respond(payload["response_url"], _ephemeral("Slack approvals were disconnected from that workspace."))
+        return
+    try:
+        handle_interaction(payload, connection)
+    except Exception:
+        logger.exception("Slack interaction failed")
+        channel = (payload.get("channel") or {}).get("id", "")
+        if not channel and payload.get("view"):
+            try:
+                channel = _submission_fields(payload)[2]
+            except (ValueError, KeyError, TypeError):
+                channel = ""
+        text = f"Something went wrong handling that. Check where it stands here: {_app_link(connection.workspace)}"
+        try:
+            _tell(connection, {**payload, "_channel": channel}, text)
+        except Exception:
+            logger.warning("Could not tell the Slack user about the failure", exc_info=True)
 
 
 def handle_interaction(payload: dict, connection) -> None:
@@ -685,8 +710,12 @@ def process_request(body: bytes, timestamp: str, signature: str, retry_num: str 
             respond_task(payload["response_url"], "That item isn't in a workspace connected to this Slack.")
         return 200, None
     try:
-        return 200, acknowledge_interaction(payload, owner)
+        body = acknowledge_interaction(payload, owner)
     except Exception:
         # Not handled after all: let Slack's resend through.
         cache.delete(claim)
         raise
+    if body and body.get("response_action") == "errors":
+        # Nothing was done, so the same submission may be sent again.
+        cache.delete(claim)
+    return 200, body
