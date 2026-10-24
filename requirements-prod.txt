@@ -4,6 +4,8 @@ django-environ>=0.11,<1.0
 defusedxml>=0.7,<1.0
 psycopg[binary]>=3.1,<4.0
 gunicorn>=22.0,<23.0
+# Client for the shared cache Django uses when REDIS_URL is set (rate limits across workers).
+redis>=5.0,<7.0
 
 # [mfa] brings qrcode (authenticator-app setup) and fido2, which allauth.mfa
 # imports even with WebAuthn left out of MFA_SUPPORTED_TYPES.
