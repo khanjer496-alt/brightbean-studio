@@ -3,8 +3,8 @@ One network in the connect grid. Expects: value, label, workspace_id, is_configu
 and optionally highlight (spotlight the card). Shared by the Connect page and the
 welcome flow so both offer the same cards.
 {% endcomment %}
-<div class="relative bg-white rounded-xl border p-5 transition-all duration-200 {% if highlight %}border-accent ring-1 ring-accent{% else %}border-stone-200{% endif %} {% if is_configured or value == 'youtube' %}{% else %}opacity-60{% endif %}">
-    {% if highlight %}<span class="absolute -top-2.5 left-4 rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-semibold text-white">Works right away</span>{% endif %}
+<div class="relative bg-white rounded-xl border p-5 transition-all duration-200 {% if highlight %}border-accent ring-1 ring-accent{% else %}border-stone-200{% endif %} {% if is_configured or value == 'youtube' %}{% else %}opacity-60 border-dashed{% endif %}">
+    {% if highlight %}<span class="absolute -top-2.5 start-4 rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-semibold text-white">Works right away</span>{% endif %}
     <div class="flex items-start gap-4">
         {% if value == "youtube" %}
         {# Generic video glyph in neutral colours: no YouTube logo, red, or play-button shape. #}
@@ -81,6 +81,6 @@ welcome flow so both offer the same cards.
     {% endif %}
 
     {% if not is_configured and value != 'youtube' %}
-    <div class="absolute inset-0 rounded-xl bg-white/40 cursor-not-allowed" title="Platform credentials not configured. Contact your administrator."></div>
+    <div class="absolute inset-0 rounded-xl cursor-not-allowed" title="Platform credentials not configured. Contact your administrator."></div>
     {% endif %}
 </div>

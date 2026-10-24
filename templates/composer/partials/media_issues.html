@@ -11,7 +11,7 @@ Errors block scheduling; warnings are advice. Rendered empty on page load; each 
         <div class="flex items-center gap-1.5 mb-1">
             {% include "partials/_platform_icon.html" with platform=group.account.platform size="sm" %}
             <span class="text-[11px] font-semibold text-stone-700 truncate">{{ group.account.account_name|default:group.account.account_handle }}</span>
-            <span class="ml-auto text-[10px] font-semibold uppercase tracking-wider {% if group.has_error %}text-red-600{% else %}text-amber-700{% endif %}">
+            <span class="ms-auto text-[10px] font-semibold uppercase tracking-wider {% if group.has_error %}text-red-600{% else %}text-amber-700{% endif %}">
                 {% if group.has_error %}Can't schedule{% else %}Check media{% endif %}
             </span>
         </div>

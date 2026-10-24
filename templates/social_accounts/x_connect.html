@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block page_title %}Connect X{% endblock %}
+{% block title %}Connect X - {{ brand_short_name }}{% endblock %}
 {% block content %}
 <div class="max-w-2xl">
     <!-- Header -->
@@ -22,7 +22,7 @@
         <p>X charges the owner of the developer app per use, on your own X account, not through us. At the time of writing a post costs about $0.015, and a post containing a link about $0.20. Add credits in the X Developer Console and check <a href="https://docs.x.com/x-api/getting-started/pricing" class="underline" target="_blank" rel="noopener noreferrer">X's current pricing</a>. If your credits run out, posts fail until you top up.</p>
     </div>
 
-    <ol class="mb-6 space-y-3 text-sm text-stone-600 list-decimal pl-5">
+    <ol class="mb-6 space-y-3 text-sm text-stone-600 list-decimal ps-5">
         <li>Open the <a href="https://console.x.com" class="underline" target="_blank" rel="noopener noreferrer">X Developer Console</a>, sign in and create an app (or open one you already have), and add credits.</li>
         <li>In the app's <span class="font-semibold">User authentication settings</span>, turn on <span class="font-semibold">OAuth 2.0</span>, choose <span class="font-semibold">Web App, Automated App or Bot</span> as the type, and set the permissions to <span class="font-semibold">Read and write</span>.</li>
         <li>Add this as the <span class="font-semibold">Callback URI / Redirect URL</span> exactly as shown, then save:

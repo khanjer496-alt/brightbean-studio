@@ -54,7 +54,7 @@
                 <input type="hidden" name="website_url" value="{{ feed.website }}">
                 <input type="hidden" name="source" value="explore">
                 <input type="hidden" name="category" value="{{ active_category }}">
-                <button type="submit"
+                <button aria-label="Add feed" type="submit"
                         hx-post="{% url 'composer:feed_add' workspace_id=workspace.id %}"
                         hx-target="#explore-feeds-content"
                         hx-swap="innerHTML"

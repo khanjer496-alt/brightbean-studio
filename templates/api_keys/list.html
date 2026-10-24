@@ -23,7 +23,7 @@
         <label for="agent-mcp-url" class="block text-sm font-semibold mb-2">MCP server URL</label>
         <input id="agent-mcp-url" readonly value="{{ agent_mcp_url }}" class="form-input text-sm w-full" aria-describedby="agent-mcp-help">
         <p id="agent-mcp-help" class="text-xs mt-2 mb-4 text-[var(--text-tertiary)]">Copy this URL into your client's remote MCP connector. A hosted AI client needs a reachable HTTPS deployment; localhost works only with local clients.</p>
-        <ol class="list-decimal pl-5 space-y-2 text-sm text-[var(--text-secondary)]">
+        <ol class="list-decimal ps-5 space-y-2 text-sm text-[var(--text-secondary)]">
             <li>For OAuth-capable clients, sign in and approve access. The consent screen lists what the app asks for in plain language, and you can untick anything before approving.</li>
             <li>For token-based clients, issue a token here and add it as a Bearer token in the client's secure settings. The <strong>Drafting assistant</strong> preset is the safe place to start.</li>
             <li>Ask the agent to list available accounts, then create a draft. Review it in the workspace before granting scheduling access.</li>
@@ -103,5 +103,6 @@
         {% include "api_keys/_token_reveal.html" with token=reveal_token key_name=reveal_key_name %}
     {% endif %}
 </div>
+{% include "composer/partials/modal_a11y.html" %}
 <script src="{% static 'js/token-scope.js' %}"></script>
 {% endblock %}

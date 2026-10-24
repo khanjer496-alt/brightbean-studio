@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block page_title %}Connect Social Account{% endblock %}
+{% block title %}Connect Social Account - {{ brand_short_name }}{% endblock %}
 {% block content %}
 <div class="max-w-4xl">
     <!-- Header -->
@@ -13,7 +13,7 @@
     </div>
 
     <!-- Platform grid -->
-    <div class="overflow-y-auto pr-1">
+    <div class="overflow-y-auto pe-1">
     <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {% for value, label in platform_choices %}
         {% if value in configured_platforms %}

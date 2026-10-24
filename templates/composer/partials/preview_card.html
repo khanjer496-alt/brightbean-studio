@@ -19,7 +19,7 @@
         <video src="{{ m.url }}#t=0.5" class="w-full h-full object-contain" muted preload="metadata"></video>
         <div class="absolute inset-0 flex items-center justify-center">
             <div class="w-12 h-12 rounded-full bg-red-600/90 flex items-center justify-center shadow-lg">
-                <svg class="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg>
+                <svg class="w-5 h-5 text-white ms-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg>
             </div>
         </div>
         {% else %}
@@ -62,7 +62,7 @@
         <div class="bg-[linear-gradient(135deg,#F58529,#DD2A7B,#8134AF)] w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-bold text-white">{{ p.account.account_name|default:p.account.account_handle|make_list|first|upper }}</div>
         {% endif %}
         <span class="text-[13px] font-semibold text-stone-900">{{ p.account.account_name|default:p.account.account_handle }}</span>
-        <svg class="w-4 h-4 text-stone-400 ml-auto" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="6" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="18" r="2"/></svg>
+        <svg class="w-4 h-4 text-stone-400 ms-auto" fill="currentColor" viewBox="0 0 24 24"><circle cx="12" cy="6" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="18" r="2"/></svg>
     </div>
     {% if media_items %}
     {% if media_items|length > 1 %}
@@ -78,17 +78,17 @@
         </div>
         {% endfor %}
         <!-- Counter badge -->
-        <div class="absolute top-3 right-3 bg-black/60 text-white text-[11px] font-medium px-2 py-0.5 rounded-full" x-text="(slide + 1) + '/' + count"></div>
+        <div class="absolute top-3 end-3 bg-black/60 text-white text-[11px] font-medium px-2 py-0.5 rounded-full" x-text="(slide + 1) + '/' + count"></div>
         <!-- Left arrow -->
-        <button type="button" x-show="slide > 0" @click.stop="slide = Math.max(0, slide - 1)" class="absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white transition-colors">
+        <button type="button" aria-label="Previous slide" x-show="slide > 0" @click.stop="slide = Math.max(0, slide - 1)" class="absolute start-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white transition-colors">
             <svg class="w-3.5 h-3.5 text-stone-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
         </button>
         <!-- Right arrow -->
-        <button type="button" x-show="slide < count - 1" @click.stop="slide = Math.min(count - 1, slide + 1)" class="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white transition-colors">
+        <button type="button" aria-label="Next slide" x-show="slide < count - 1" @click.stop="slide = Math.min(count - 1, slide + 1)" class="absolute end-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white transition-colors">
             <svg class="w-3.5 h-3.5 text-stone-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
         </button>
         <!-- Dot indicators -->
-        <div class="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5">
+        <div class="absolute bottom-3 start-1/2 -translate-x-1/2 flex gap-1.5">
             {% for m in media_items %}
             <button type="button" @click.stop="slide = {{ forloop.counter0 }}" class="w-1.5 h-1.5 rounded-full transition-colors" :class="slide === {{ forloop.counter0 }} ? 'bg-[#3897f0]' : 'bg-white/60'"></button>
             {% endfor %}
@@ -116,7 +116,7 @@
         <svg class="w-6 h-6 text-stone-800" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"/></svg>
         <svg class="w-6 h-6 text-stone-800" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.586 1.641a4.483 4.483 0 01-.923 1.785A5.969 5.969 0 006 21c1.282 0 2.47-.402 3.445-1.087.81.22 1.668.337 2.555.337z"/></svg>
         <svg class="w-6 h-6 text-stone-800" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
-        <svg class="w-5 h-5 text-stone-800 ml-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z"/></svg>
+        <svg class="w-5 h-5 text-stone-800 ms-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z"/></svg>
     </div>
     <div class="px-3 pb-3">
         {% if p.caption %}
@@ -157,24 +157,24 @@
         <div x-show="slide === {{ forloop.counter0 }}" class="absolute inset-0">
             {% if m.is_video %}
             <video src="{{ m.url }}#t=0.5" class="w-full h-full object-cover" muted preload="metadata"></video>
-            <div class="absolute inset-0 flex items-center justify-center"><div class="w-14 h-14 rounded-full bg-black/40 flex items-center justify-center"><svg class="w-6 h-6 text-white ml-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg></div></div>
+            <div class="absolute inset-0 flex items-center justify-center"><div class="w-14 h-14 rounded-full bg-black/40 flex items-center justify-center"><svg class="w-6 h-6 text-white ms-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg></div></div>
             {% else %}
             <img src="{{ m.url }}" class="w-full h-full object-cover" alt="">
             {% endif %}
         </div>
         {% endfor %}
         <!-- Counter badge -->
-        <div class="absolute top-3 right-3 bg-black/60 text-white text-[11px] font-medium px-2 py-0.5 rounded-full z-10" x-text="(slide + 1) + '/' + count"></div>
+        <div class="absolute top-3 end-3 bg-black/60 text-white text-[11px] font-medium px-2 py-0.5 rounded-full z-10" x-text="(slide + 1) + '/' + count"></div>
         <!-- Left arrow -->
-        <button type="button" x-show="slide > 0" @click.stop="slide = Math.max(0, slide - 1)" class="absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white transition-colors z-10 cursor-pointer">
+        <button type="button" aria-label="Previous slide" x-show="slide > 0" @click.stop="slide = Math.max(0, slide - 1)" class="absolute start-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white transition-colors z-10 cursor-pointer">
             <svg class="w-3.5 h-3.5 text-stone-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
         </button>
         <!-- Right arrow -->
-        <button type="button" x-show="slide < count - 1" @click.stop="slide = Math.min(count - 1, slide + 1)" class="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white transition-colors z-10">
+        <button type="button" aria-label="Next slide" x-show="slide < count - 1" @click.stop="slide = Math.min(count - 1, slide + 1)" class="absolute end-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white transition-colors z-10">
             <svg class="w-3.5 h-3.5 text-stone-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
         </button>
         <!-- Dot indicators -->
-        <div class="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+        <div class="absolute bottom-3 start-1/2 -translate-x-1/2 flex gap-1.5 z-10">
             {% for m in media_items %}
             <button type="button" @click.stop="slide = {{ forloop.counter0 }}" class="w-1.5 h-1.5 rounded-full transition-colors" :class="slide === {{ forloop.counter0 }} ? 'bg-[#1877F2]' : 'bg-white/60'"></button>
             {% endfor %}
@@ -186,7 +186,7 @@
     <div class="relative bg-stone-100">
         {% if m.is_video %}
         <div> class="aspect-[16/9]"<video src="{{ m.url }}#t=0.5" class="w-full h-full object-cover" muted preload="metadata"></video>
-        <div class="absolute inset-0 flex items-center justify-center"><div class="w-14 h-14 rounded-full bg-black/40 flex items-center justify-center"><svg class="w-6 h-6 text-white ml-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg></div></div></div>
+        <div class="absolute inset-0 flex items-center justify-center"><div class="w-14 h-14 rounded-full bg-black/40 flex items-center justify-center"><svg class="w-6 h-6 text-white ms-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg></div></div></div>
         {% else %}
         <img src="{{ m.url }}" class="max-h-[220px] w-full object-cover" alt="">
         {% endif %}
@@ -237,24 +237,24 @@
         <div x-show="slide === {{ forloop.counter0 }}" class="absolute inset-0">
             {% if m.is_video %}
             <video src="{{ m.url }}#t=0.5" class="w-full h-full object-cover" muted preload="metadata"></video>
-            <div class="absolute inset-0 flex items-center justify-center"><div class="w-14 h-14 rounded-full bg-[#0A66C2]/80 flex items-center justify-center"><svg class="w-6 h-6 text-white ml-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg></div></div>
+            <div class="absolute inset-0 flex items-center justify-center"><div class="w-14 h-14 rounded-full bg-[#0A66C2]/80 flex items-center justify-center"><svg class="w-6 h-6 text-white ms-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg></div></div>
             {% else %}
             <img src="{{ m.url }}" class="w-full h-full object-cover" alt="">
             {% endif %}
         </div>
         {% endfor %}
         <!-- Counter badge -->
-        <div class="absolute top-3 right-3 bg-black/60 text-white text-[11px] font-medium px-2 py-0.5 rounded-full z-10" x-text="(slide + 1) + '/' + count"></div>
+        <div class="absolute top-3 end-3 bg-black/60 text-white text-[11px] font-medium px-2 py-0.5 rounded-full z-10" x-text="(slide + 1) + '/' + count"></div>
         <!-- Left arrow -->
-        <button type="button" x-show="slide > 0" @click.stop="slide = Math.max(0, slide - 1)" class="absolute left-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white transition-colors z-10 cursor-pointer">
+        <button type="button" aria-label="Previous slide" x-show="slide > 0" @click.stop="slide = Math.max(0, slide - 1)" class="absolute start-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white transition-colors z-10 cursor-pointer">
             <svg class="w-3.5 h-3.5 text-stone-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
         </button>
         <!-- Right arrow -->
-        <button type="button" x-show="slide < count - 1" @click.stop="slide = Math.min(count - 1, slide + 1)" class="absolute right-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white transition-colors z-10">
+        <button type="button" aria-label="Next slide" x-show="slide < count - 1" @click.stop="slide = Math.min(count - 1, slide + 1)" class="absolute end-2 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white transition-colors z-10">
             <svg class="w-3.5 h-3.5 text-stone-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
         </button>
         <!-- Dot indicators -->
-        <div class="absolute bottom-3 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+        <div class="absolute bottom-3 start-1/2 -translate-x-1/2 flex gap-1.5 z-10">
             {% for m in media_items %}
             <button type="button" @click.stop="slide = {{ forloop.counter0 }}" class="w-1.5 h-1.5 rounded-full transition-colors" :class="slide === {{ forloop.counter0 }} ? 'bg-[#0A66C2]' : 'bg-white/60'"></button>
             {% endfor %}
@@ -266,7 +266,7 @@
     <div class="relative bg-stone-100">
         {% if m.is_video %}
         <div> class="aspect-[16/9]"<video src="{{ m.url }}#t=0.5" class="w-full h-full object-cover" muted preload="metadata"></video>
-        <div class="absolute inset-0 flex items-center justify-center"><div class="w-14 h-14 rounded-full bg-[#0A66C2]/80 flex items-center justify-center"><svg class="w-6 h-6 text-white ml-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg></div></div></div>
+        <div class="absolute inset-0 flex items-center justify-center"><div class="w-14 h-14 rounded-full bg-[#0A66C2]/80 flex items-center justify-center"><svg class="w-6 h-6 text-white ms-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg></div></div></div>
         {% else %}
         <img src="{{ m.url }}" class="max-h-[220px] w-full object-cover" alt="">
         {% endif %}
@@ -302,7 +302,7 @@
     {% endif %}
     <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent"></div>
     <!-- Right sidebar: avatar + action icons -->
-    <div class="absolute right-2.5 bottom-16 flex flex-col items-center gap-3.5">
+    <div class="absolute end-2.5 bottom-16 flex flex-col items-center gap-3.5">
         <!-- Avatar with follow badge -->
         <div class="relative mb-1">
             {% if p.account.avatar_url %}
@@ -310,7 +310,7 @@
             {% else %}
             <div class="w-10 h-10 rounded-full bg-stone-700 flex items-center justify-center text-[11px] font-bold text-white border-2 border-white">{{ p.account.account_name|default:p.account.account_handle|make_list|first|upper }}</div>
             {% endif %}
-            <div class="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-4.5 h-4.5 bg-[#FE2C55] rounded-full flex items-center justify-center">
+            <div class="absolute -bottom-1.5 start-1/2 -translate-x-1/2 w-4.5 h-4.5 bg-[#FE2C55] rounded-full flex items-center justify-center">
                 <svg class="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" d="M12 6v12m-6-6h12"/></svg>
             </div>
         </div>
@@ -339,7 +339,7 @@
         </div>
     </div>
     <!-- Bottom text overlay -->
-    <div class="absolute bottom-3 left-3 right-16">
+    <div class="absolute bottom-3 start-3 end-16">
         <div class="text-[13px] font-bold mb-1 drop-shadow-sm">@{{ p.account.account_name|default:p.account.account_handle }}</div>
         {% if p.caption %}
         <div class="text-[12px] leading-relaxed line-clamp-2 whitespace-pre-wrap drop-shadow-sm">{{ p.truncated_caption|truncatechars:100 }}</div>
@@ -386,15 +386,15 @@
                 </div>
                 {% endfor %}
                 <!-- Left arrow -->
-                <button type="button" x-show="slide > 0" @click.stop="slide = Math.max(0, slide - 1)" class="absolute left-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white transition-colors z-10">
+                <button type="button" aria-label="Previous slide" x-show="slide > 0" @click.stop="slide = Math.max(0, slide - 1)" class="absolute start-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white transition-colors z-10">
                     <svg class="w-3 h-3 text-stone-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5"/></svg>
                 </button>
                 <!-- Right arrow -->
-                <button type="button" x-show="slide < count - 1" @click.stop="slide = Math.min(count - 1, slide + 1)" class="absolute right-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white transition-colors z-10">
+                <button type="button" aria-label="Next slide" x-show="slide < count - 1" @click.stop="slide = Math.min(count - 1, slide + 1)" class="absolute end-1.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full bg-white/90 shadow flex items-center justify-center hover:bg-white transition-colors z-10">
                     <svg class="w-3 h-3 text-stone-700" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>
                 </button>
                 <!-- Dot indicators -->
-                <div class="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5 z-10">
+                <div class="absolute bottom-2 start-1/2 -translate-x-1/2 flex gap-1.5 z-10">
                     {% for m in media_items %}
                     <button type="button" @click.stop="slide = {{ forloop.counter0 }}" class="w-1.5 h-1.5 rounded-full transition-colors" :class="slide === {{ forloop.counter0 }} ? 'bg-stone-800' : 'bg-white/60'"></button>
                     {% endfor %}
@@ -436,7 +436,7 @@
             <div class="flex items-center gap-1.5 mb-0.5">
                 <span class="text-[13px] font-semibold text-stone-900">{{ p.account.account_name|default:p.account.account_handle }}</span>
                 <span class="text-[12px] text-stone-400">{{ p.account.account_handle|default:"@handle" }}</span>
-                <span class="text-[11px] text-stone-400 ml-auto">now</span>
+                <span class="text-[11px] text-stone-400 ms-auto">now</span>
             </div>
             {% if p.caption %}
             <div class="text-[13px] text-stone-800 leading-relaxed whitespace-pre-wrap break-words mb-2">{{ p.truncated_caption|truncatechars:200 }}</div>
@@ -454,7 +454,7 @@
             </div>
             {% endwith %}
             {% endif %}
-            <div class="flex items-center justify-between text-stone-400 pr-4">
+            <div class="flex items-center justify-between text-stone-400 pe-4">
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M12 20.25c4.97 0 9-3.694 9-8.25s-4.03-8.25-9-8.25S3 7.444 3 12c0 2.104.859 4.023 2.273 5.48.432.447.74 1.04.586 1.641a4.483 4.483 0 01-.923 1.785A5.969 5.969 0 006 21c1.282 0 2.47-.402 3.445-1.087.81.22 1.668.337 2.555.337z"/></svg>
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12c0-1.232-.046-2.453-.138-3.662a4.006 4.006 0 00-3.7-3.7 48.678 48.678 0 00-7.324 0 4.006 4.006 0 00-3.7 3.7c-.017.22-.032.441-.046.662M19.5 12l3-3m-3 3l-3-3m-12 3c0 1.232.046 2.453.138 3.662a4.006 4.006 0 003.7 3.7 48.656 48.656 0 007.324 0 4.006 4.006 0 003.7-3.7c.017-.22.032-.441.046-.662M4.5 12l3 3m-3-3l-3 3"/></svg>
                 <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M21 8.25c0-2.485-2.099-4.5-4.688-4.5-1.935 0-3.597 1.126-4.312 2.733-.715-1.607-2.377-2.733-4.313-2.733C5.1 3.75 3 5.765 3 8.25c0 7.22 9 12 9 12s9-4.78 9-12z"/></svg>
@@ -525,7 +525,7 @@
     <div class="rounded-lg overflow-hidden mb-3">
         {% if m.is_video %}
         <div class="aspect-[16/9] relative bg-stone-900"><video src="{{ m.url }}#t=0.5" class="w-full h-full object-cover" muted preload="metadata"></video>
-        <div class="absolute inset-0 flex items-center justify-center"><div class="w-12 h-12 rounded-full bg-black/40 flex items-center justify-center"><svg class="w-5 h-5 text-white ml-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg></div></div></div>
+        <div class="absolute inset-0 flex items-center justify-center"><div class="w-12 h-12 rounded-full bg-black/40 flex items-center justify-center"><svg class="w-5 h-5 text-white ms-0.5" fill="currentColor" viewBox="0 0 20 20"><path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z"/></svg></div></div></div>
         {% else %}
         <img src="{{ m.url }}" class="max-h-[200px] w-full object-cover" alt="">
         {% endif %}

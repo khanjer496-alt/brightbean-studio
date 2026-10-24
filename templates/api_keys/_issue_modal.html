@@ -7,7 +7,7 @@ form submit (no HTMX); the token is then shown once on the redirected list page.
     <div x-show="showIssueModal" x-cloak x-transition.opacity
          @keydown.escape.window="showIssueModal = false"
          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-         role="dialog" aria-modal="true" aria-labelledby="issue-key-title">
+         role="dialog" aria-modal="true" aria-labelledby="issue-key-title" x-a11y-modal="showIssueModal">
         <div @click.outside="showIssueModal = false"
              x-show="showIssueModal" x-transition
              class="w-full max-w-xl mx-4 max-h-[90vh] rounded-xl flex flex-col bg-[var(--surface-0)] border border-stone-200 shadow-2xl">

@@ -7,6 +7,7 @@
 {% comment %}Header is rendered inside the content block to avoid overlap with the -m-6 layout{% endcomment %}
 
 {% block extra_head %}
+<link rel="stylesheet" href="{% static 'css/platforms.css' %}">
 <style>
     /* ── Composer-specific overrides ──────────────────────────── */
     /* Remove parent padding/overflow so the composer can fill the full area */
@@ -22,22 +23,25 @@
         width: 100%; max-width: 380px;
         z-index: 58;
         transform: translateX(100%);
-        transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1);
+        /* visibility keeps the closed drawer's controls out of the tab order */
+        visibility: hidden;
+        transition: transform 200ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 200ms;
         box-shadow: -8px 0 24px rgba(23,20,18,0.08);
     }
-    .panel-right.is-open { transform: translateX(0); }
+    .panel-right.is-open { transform: translateX(0); visibility: visible; transition-delay: 0s; }
     @media (min-width: 1024px) {
         .panel-right {
             position: static; inset: auto;
             width: 340px; max-width: none;
             flex-shrink: 0;
             transform: none; transition: none;
+            visibility: visible;
             box-shadow: none;
         }
     }
     .panel-right-backdrop {
         position: fixed; inset: 0;
-        background: #000;
+        background: rgb(0 0 0 / 0.5);
         z-index: 57;
     }
     @media (min-width: 1024px) {
@@ -78,23 +82,7 @@
         font-size: 11px; font-weight: 700; color: white; flex-shrink: 0;
         letter-spacing: -0.02em;
     }
-    .pi-facebook   { background: #1877F2; }
-    .pi-instagram  { background: linear-gradient(135deg, #F58529, #DD2A7B, #8134AF); }
-    .pi-linkedin   { background: #0A66C2; }
-    .pi-linkedin_personal { background: #0A66C2; }
-    .pi-linkedin_company  { background: #0A66C2; }
-    .pi-tiktok     { background: #010101; }
-    .pi-youtube { background: transparent !important; width: auto !important; min-width: 45px; color: #57534e; font-size: 10px; }
-    .pi-pinterest  { background: #E60023; }
-    .pi-threads    { background: #000000; }
-    .pi-bluesky    { background: #0085FF; }
-    .pi-google_business { background: #4285F4; }
-    .pi-mastodon   { background: #6364FF; }
-    .pi-reddit   { background: #FF4500; }
-    .pi-x   { background: #000000; }
-    .pi-slack   { background: #4A154B; }
-    .pi-discord   { background: #5865F2; }
-    .pi-telegram   { background: #26A5E4; }
+    /* .pi-<platform> fills live in static/css/platforms.css */
 
     /* Character counter bar */
     .char-bar {
@@ -197,14 +185,27 @@
     .media-thumb img { width: 100%; height: 100%; object-fit: cover; }
     .media-thumb .remove-btn {
         position: absolute; top: 4px; right: 4px;
-        width: 20px; height: 20px; border-radius: 50%;
+        width: 24px; height: 24px; border-radius: 50%;
         background: rgba(0,0,0,0.55); color: white;
         display: flex; align-items: center; justify-content: center;
         font-size: 10px; cursor: pointer;
         transition: background 150ms ease;
         z-index: 2;
     }
-    .media-thumb .remove-btn:hover { background: #EF4444; }
+    .media-thumb .remove-btn:hover { background: var(--error-500); }
+    /* Move earlier / later: the keyboard and touch way to order attached media */
+    .media-thumb .media-move-bar {
+        position: absolute; inset-inline: 0; bottom: 0; z-index: 2;
+        display: flex; justify-content: space-between; padding: 4px;
+        background: linear-gradient(to top, rgba(0,0,0,0.55), transparent);
+    }
+    .media-thumb .media-move-btn {
+        width: 24px; height: 24px; border-radius: 50%;
+        display: flex; align-items: center; justify-content: center;
+        background: rgba(0,0,0,0.55); color: white; cursor: pointer;
+    }
+    .media-thumb .media-move-btn:hover { background: var(--primary); }
+    [dir="rtl"] .media-thumb .media-move-btn svg { transform: scaleX(-1); }
 
     /* Upload progress overlay */
     .media-thumb .upload-overlay {
@@ -215,7 +216,7 @@
     }
     .media-thumb .upload-overlay svg { filter: drop-shadow(0 1px 2px rgba(0,0,0,0.3)); }
     .media-thumb .upload-progress-ring { transition: stroke-dashoffset 150ms ease; }
-    .media-thumb.upload-failed { border-color: #EF4444; }
+    .media-thumb.upload-failed { border-color: var(--error-500); }
     .media-thumb.upload-failed .upload-overlay { background: rgba(239,68,68,0.25); }
     .media-thumb .retry-btn {
         position: absolute; inset: 0;
@@ -254,6 +255,10 @@
         display: flex; align-items: center; gap: 6px;
         position: relative;
         z-index: 51;
+    }
+    @media (max-width: 639px) {
+        /* Phones: keep the actions reachable above the home indicator */
+        .action-bar { padding: 10px 12px max(10px, env(safe-area-inset-bottom)); gap: 4px; }
     }
     @media (min-width: 640px) {
         .action-bar { padding: 20px 24px; gap: 8px; }
@@ -298,14 +303,14 @@
 
     <!-- Page header -->
     <div class="flex items-center gap-3 px-4 sm:px-6 py-3 border-b border-stone-100 flex-shrink-0">
-        <button @click="if (document.referrer && document.referrer.startsWith(location.origin)) { history.back(); } else { location.href='{% url 'composer:create_landing' workspace_id=workspace.id %}'; }"
+        <button aria-label="Go back" @click="if (document.referrer && document.referrer.startsWith(location.origin)) { history.back(); } else { location.href='{% url 'composer:create_landing' workspace_id=workspace.id %}'; }"
                 class="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-stone-200 text-stone-400 hover:text-stone-700 hover:border-stone-300 hover:bg-stone-50 transition-all duration-150 cursor-pointer">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
         </button>
-        <h1 class="text-base font-semibold text-stone-900" style="letter-spacing: -0.01em;">{% if is_edit %}Edit{% else %}Create{% endif %}</h1>
+        <h1 class="text-base font-semibold text-stone-900 tracking-[-0.01em]">{% if is_edit %}Edit{% else %}Create{% endif %}</h1>
         <!-- Preview toggle (mobile only) -->
-        <button type="button" @click="showPreviewPanel = true"
-                class="lg:hidden ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 text-stone-600 text-xs font-semibold hover:border-stone-300 hover:bg-stone-50 transition-all duration-150 cursor-pointer">
+        <button type="button" id="preview-toggle-btn" @click="showPreviewPanel = true; $nextTick(() => document.getElementById('preview-close-btn')?.focus())" :aria-expanded="showPreviewPanel.toString()" aria-controls="preview-panel-drawer"
+                class="lg:hidden ms-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 text-stone-600 text-xs font-semibold hover:border-stone-300 hover:bg-stone-50 transition-all duration-150 cursor-pointer">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
             <span>Preview</span>
             <span x-show="selectedAccounts.length > 0"
@@ -342,8 +347,9 @@
                 <!-- Platform account pills -->
                 <div class="flex items-center gap-2 flex-wrap">
                     {% for account in social_accounts %}
-                    <label class="acct-pill"
+                    <button type="button" class="acct-pill"
                            :class="{ 'selected': selectedAccounts.includes('{{ account.id }}') }"
+                           :aria-pressed="selectedAccounts.includes('{{ account.id }}')"
                            @click="toggleAccount('{{ account.id }}')">
                         <span class="checkmark">
                             <svg class="w-3 h-3 text-white" fill="none" stroke="currentColor" stroke-width="3" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
@@ -356,12 +362,12 @@
                                 {% if account.platform == "youtube" %}<span class="text-xs font-semibold">{{ account.account_name|default:account.account_handle|make_list|first|upper }}</span>{% else %}{% include "partials/_platform_icon.html" with platform=account.platform size="sm" %}{% endif %}
                             </div>
                             {% endif %}
-                            {% if account.platform != "youtube" %}<div class="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center">
+                            {% if account.platform != "youtube" %}<div class="absolute -bottom-0.5 -end-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center">
                                 {% include "partials/_platform_icon.html" with platform=account.platform size="sm" %}
                             </div>{% endif %}
                         </div>
                         <span class="text-sm font-medium text-stone-700 truncate">{{ account.account_name|default:account.account_handle }}{% if account.platform == "youtube" %} <small>YouTube</small>{% endif %}</span>
-                    </label>
+                    </button>
                     {% empty %}
                     <span class="text-xs text-stone-400">No accounts connected</span>
                     {% endfor %}
@@ -375,13 +381,13 @@
                         Publishing failed
                     </div>
                     {% for pp in failed_platform_posts %}
-                    <p class="text-xs text-red-600 pl-5.5">
+                    <p class="text-xs text-red-600 ps-5.5">
                         <span class="font-semibold">{{ pp.social_account.account_name|default:pp.social_account.account_handle }}:</span>
                         {{ pp.publish_error }}
                     </p>
                     {% endfor %}
                     {% if post %}
-                    <div class="pt-1 pl-5.5">
+                    <div class="pt-1 ps-5.5">
                         <button type="button"
                                 class="text-xs font-semibold text-red-700 hover:text-red-900 underline underline-offset-2"
                                 hx-post="{% url 'composer:clone_post' workspace_id=workspace.id post_id=post.id %}"
@@ -402,12 +408,12 @@
                         First comment not posted
                     </div>
                     {% for pp in failed_first_comments %}
-                    <p class="text-xs text-amber-700 pl-5.5">
+                    <p class="text-xs text-amber-700 ps-5.5">
                         <span class="font-semibold">{{ pp.social_account.account_name|default:pp.social_account.account_handle }}:</span>
                         {{ pp.first_comment_error|default:"The first comment couldn't be added. Add it manually on the post." }}
                     </p>
                     {% endfor %}
-                    <p class="text-[11px] text-amber-600 pl-5.5">The post itself published successfully — only the comment failed.</p>
+                    <p class="text-[11px] text-amber-600 ps-5.5">The post itself published successfully — only the comment failed.</p>
                 </div>
                 {% endif %}
 
@@ -420,7 +426,7 @@
                         Thread partially published
                     </div>
                     {% for pp in partial_threads %}
-                    <div class="flex flex-wrap items-start justify-between gap-2 pl-5.5">
+                    <div class="flex flex-wrap items-start justify-between gap-2 ps-5.5">
                         <p class="text-xs text-amber-700 flex-1 min-w-0">
                             <span class="font-semibold">{{ pp.social_account.account_name|default:pp.social_account.account_handle }}:</span>
                             {{ pp.thread_error|default:"The thread stopped before every part was published." }}
@@ -450,7 +456,7 @@
                         {% endif %}
                     </div>
                     {% endfor %}
-                    <p class="text-[11px] text-amber-600 pl-5.5">The parts already published stay as they are.</p>
+                    <p class="text-[11px] text-amber-600 ps-5.5">The parts already published stay as they are.</p>
                 </div>
                 {% endif %}
 
@@ -494,9 +500,9 @@
                 <div x-show="anyPlatformNeedsTitle" x-transition x-cloak>
                     <label class="block text-sm font-semibold text-stone-500 uppercase tracking-wider mb-2"
                            x-text="titleLabel">Title</label>
-                    <input type="text" name="title"
-                           class="w-full text-[15px] font-medium text-stone-900 px-4 py-3 rounded-xl border border-stone-200 bg-white outline-none transition-all duration-150 focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
-                           style="letter-spacing: -0.01em;"
+                    <input :aria-label="titleLabel" type="text" name="title"
+                           class="w-full text-[15px] font-medium text-stone-900 px-4 py-3 rounded-xl border border-stone-200 bg-white outline-none transition-all duration-150 focus:border-orange-500 focus:ring-2 focus:ring-orange-100 tracking-[-0.01em]"
+                          
                            x-model="title"
                            :placeholder="autoSuggestedTitle || 'Enter a title…'"
                            maxlength="255"
@@ -527,11 +533,11 @@
                                 </button>
                                 <div x-show="showSaveTemplate" x-cloak x-transition
                                      @click.outside="showSaveTemplate = false"
-                                     class="absolute z-50 mt-1 right-0 p-3 bg-white rounded-xl shadow-lg ring-1 ring-stone-200 w-72 max-w-[calc(100vw-2rem)]">
+                                     class="absolute z-50 mt-1 end-0 p-3 bg-white rounded-xl shadow-lg ring-1 ring-stone-200 w-72 max-w-[calc(100vw-2rem)]">
                                     <div x-data="{ tplName: '', tplDesc: '' }">
-                                        <input type="text" x-model="tplName" placeholder="Template name…"
+                                        <input aria-label="Template name" type="text" x-model="tplName" placeholder="Template name…"
                                                class="form-input w-full text-sm mb-2">
-                                        <textarea x-model="tplDesc" placeholder="Description (optional)…" rows="2"
+                                        <textarea aria-label="Template description" x-model="tplDesc" placeholder="Description (optional)…" rows="2"
                                                   class="form-input w-full text-xs mb-2"></textarea>
                                         <button type="button" class="btn-brand text-xs py-1.5 px-3 w-full"
                                                 :disabled="!tplName.trim()"
@@ -561,7 +567,7 @@
                             <div x-ref="templatePicker"
                                  x-show="showTemplatePicker" x-cloak x-transition
                                  @click.outside="showTemplatePicker = false"
-                                 class="absolute z-50 top-full mt-1 right-0 bg-white rounded-xl shadow-lg ring-1 ring-stone-200 w-80 max-w-[calc(100vw-2rem)] max-h-80 overflow-y-auto"
+                                 class="absolute z-50 top-full mt-1 end-0 bg-white rounded-xl shadow-lg ring-1 ring-stone-200 w-80 max-w-[calc(100vw-2rem)] max-h-80 overflow-y-auto"
                                  hx-get="{% url 'composer:template_picker' workspace_id=workspace.id %}"
                                  hx-trigger="load-picker, templateSaved from:body, templateChanged from:body"
                                  hx-target="this"
@@ -571,7 +577,7 @@
                         </div>
                     </div>
                     <div class="caption-wrap">
-                        <textarea name="caption"
+                        <textarea :aria-label="captionLabel" name="caption"
                                   id="caption-editor"
                                   class="caption-editor"
                                   placeholder="What would you like to share?"
@@ -584,7 +590,7 @@
                             <input type="file" x-ref="fileInput" class="hidden" multiple
                                    accept="image/*,video/*"
                                    @change="handleFileSelect($event)">
-                            <div class="media-dropzone-inline"
+                            <div class="media-dropzone-inline" role="button" tabindex="0" @keydown.enter.self.prevent="$el.click()" @keydown.space.self.prevent="$el.click()" aria-label="Add photos or videos"
                                  @dragover.prevent="$el.classList.add('dragover')"
                                  @dragleave="$el.classList.remove('dragover')"
                                  @drop.prevent="handleFileDrop($event); $el.classList.remove('dragover')"
@@ -593,7 +599,7 @@
                                 <span class="text-[11px] text-stone-400 leading-tight">Drag & drop or <span class="text-orange-500 font-medium">select files</span></span>
                             </div>
                             {% if unsplash_enabled %}
-                            <button type="button" class="media-unsplash-btn" title="Search Unsplash"
+                            <button aria-label="Search Unsplash" type="button" class="media-unsplash-btn" title="Search Unsplash"
                                     @click="openUnsplashModal()">
                                 <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M7.5 6.75V0h9v6.75h-9zm9 3.75H24V24H0V10.5h7.5v6.75h9V10.5z"/></svg>
                             </button>
@@ -652,7 +658,7 @@
                         </div>
                         <div>
                             <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1">Publish as</label>
-                            <select :name="'facebook_post_type_' + accId"
+                            <select aria-label="Facebook post type" :name="'facebook_post_type_' + accId"
                                     x-model="facebookPostType"
                                     @change="triggerPreviewUpdate()"
                                     :disabled="charLimits[accId]?.platform !== 'facebook' || !hasSingleVideoAttached"
@@ -695,7 +701,7 @@
                                             <span x-text="f.label"></span> <span x-show="f.required" class="text-red-400">*</span>
                                         </label>
                                         <template x-if="f.kind === 'select'">
-                                            <select :name="'ps_' + f.key + '_' + accId"
+                                            <select :aria-label="f.label" :name="'ps_' + f.key + '_' + accId"
                                                     x-model="vals[f.key]"
                                                     class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all">
                                                 <option value="">Select…</option>
@@ -705,7 +711,7 @@
                                             </select>
                                         </template>
                                         <template x-if="f.kind === 'text'">
-                                            <input type="text"
+                                            <input :aria-label="f.label" type="text"
                                                    :name="'ps_' + f.key + '_' + accId"
                                                    x-model="vals[f.key]"
                                                    @change="refreshDependents(f.key)"
@@ -749,7 +755,7 @@
                             <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1">
                                 Select Board <span class="text-red-400">*</span>
                             </label>
-                            <select :name="'pin_board_id_' + accId"
+                            <select aria-label="Pinterest board" :name="'pin_board_id_' + accId"
                                     class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all"
                                     :required="charLimits[accId]?.platform === 'pinterest' && selectedAccounts.includes(accId)">
                                 <option value="">Select a board…</option>
@@ -765,7 +771,7 @@
                         <!-- Destination Link -->
                         <div>
                             <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1">Destination Link</label>
-                            <input type="url"
+                            <input aria-label="Destination link" type="url"
                                    :name="'pin_link_url_' + accId"
                                    :value="platformExtras[accId]?.link_url || ''"
                                    placeholder="https://example.com/your-page"
@@ -776,7 +782,7 @@
                         <!-- Tag Products -->
                         <div>
                             <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1">Tag Products</label>
-                            <input type="text"
+                            <input aria-label="Tagged products" type="text"
                                    :name="'pin_tag_products_' + accId"
                                    :value="platformExtras[accId]?.tag_products || ''"
                                    placeholder="Product URLs or IDs (comma-separated)"
@@ -817,7 +823,7 @@
                                 <!-- Alt Text -->
                                 <div>
                                     <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1">Alt Text</label>
-                                    <textarea :name="'pin_alt_text_' + accId"
+                                    <textarea aria-label="Pin alt text" :name="'pin_alt_text_' + accId"
                                               placeholder="Describe this pin for accessibility…"
                                               maxlength="500"
                                               rows="2"
@@ -886,7 +892,7 @@
                             <div class="flex items-stretch gap-3">
                                 {% include "composer/partials/choose_from_video_card.html" with mode="upload" %}
                                 <template x-if="!platformExtras[accId]?.thumbnail_url">
-                                    <div class="flex-1 max-w-[480px] rounded-lg border-2 border-dashed border-stone-200 bg-stone-50 flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-orange-300 hover:bg-orange-50 transition-colors min-h-[104px]"
+                                    <div role="button" tabindex="0" @keydown.enter.self.prevent="$el.click()" @keydown.space.self.prevent="$el.click()" aria-label="Upload a thumbnail" class="flex-1 max-w-full sm:max-w-[480px] rounded-lg border-2 border-dashed border-stone-200 bg-stone-50 flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-orange-300 hover:bg-orange-50 transition-colors min-h-[104px]"
                                          @dragover.prevent="$el.classList.add('border-orange-400', 'bg-orange-50')"
                                          @dragleave="$el.classList.remove('border-orange-400', 'bg-orange-50')"
                                          @drop.prevent="handleThumbnailDrop(accId, $event); $el.classList.remove('border-orange-400', 'bg-orange-50')"
@@ -898,10 +904,10 @@
                                 <template x-if="platformExtras[accId]?.thumbnail_url">
                                     <div class="relative flex-shrink-0">
                                         <img :src="platformExtras[accId].thumbnail_url"
-                                             class="h-[104px] w-auto max-w-[480px] object-cover rounded-lg border border-stone-200">
-                                        <button type="button" @click="clearThumbnail(accId)"
+                                             class="h-[104px] w-auto max-w-full sm:max-w-[480px] object-cover rounded-lg border border-stone-200">
+                                        <button aria-label="Remove thumbnail" type="button" @click="clearThumbnail(accId)"
                                                 title="Remove thumbnail"
-                                                class="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/55 hover:bg-red-500 text-white flex items-center justify-center transition-colors cursor-pointer">
+                                                class="absolute top-2 end-2 w-6 h-6 rounded-full bg-black/55 hover:bg-red-500 text-white flex items-center justify-center transition-colors cursor-pointer">
                                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"/></svg>
                                         </button>
                                     </div>
@@ -921,7 +927,7 @@
                         <!-- Visibility -->
                         <div>
                             <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1">Visibility</label>
-                            <select :name="'yt_privacy_status_' + accId"
+                            <select aria-label="Privacy status" :name="'yt_privacy_status_' + accId"
                                     class="bb-select w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all">
                                 <option value="public" :selected="(platformExtras[accId]?.privacy_status || 'public') === 'public'">Public</option>
                                 <option value="unlisted" :selected="platformExtras[accId]?.privacy_status === 'unlisted'">Unlisted</option>
@@ -956,7 +962,7 @@
                                 <!-- Tags -->
                                 <div>
                                     <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1">Tags</label>
-                                    <input type="text"
+                                    <input aria-label="Video tags" type="text"
                                            :name="'yt_tags_' + accId"
                                            :value="(platformExtras[accId]?.tags || []).join(', ')"
                                            placeholder="vlog, travel, daily"
@@ -1041,7 +1047,7 @@
                                   :class="'pi-' + (charLimits[accId]?.platform || '')"
                                   x-html="platformIconSvg(charLimits[accId]?.platform || '')"></span>
                             <span class="text-xs font-semibold text-stone-600" x-text="charLimits[accId]?.name + ' - Post Settings'"></span>
-                            <span class="ml-auto text-[11px] text-stone-400" x-show="tt?.creator_nickname" x-text="'Posting to @' + (tt?.creator_nickname || '')"></span>
+                            <span class="ms-auto text-[11px] text-stone-400" x-show="tt?.creator_nickname" x-text="'Posting to @' + (tt?.creator_nickname || '')"></span>
                         </div>
                         <p x-show="!hasVideoAttached" class="px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
                             <span class="font-semibold">TikTok only publishes videos.</span>
@@ -1082,7 +1088,7 @@
                                         @keydown.arrow-up.prevent="openMenu()"
                                         :aria-expanded="open"
                                         aria-haspopup="listbox"
-                                        class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all flex items-center justify-between gap-2 text-left cursor-pointer">
+                                        class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all flex items-center justify-between gap-2 text-start cursor-pointer">
                                     <span :class="ttPrivacy ? 'text-stone-800' : 'text-stone-400'"
                                           x-text="ttPrivacy ? ttLabel(ttPrivacy) : 'Select who can view this post'"></span>
                                     <svg class="w-4 h-4 text-stone-400 flex-shrink-0 transition-transform" :class="open && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
@@ -1096,7 +1102,7 @@
                                     @keydown.home.prevent="$refs.list.querySelector('button[role=option]:not([disabled])')?.focus()"
                                     @keydown.end.prevent="[...$refs.list.querySelectorAll('button[role=option]:not([disabled])')].pop()?.focus()"
                                     role="listbox"
-                                    class="absolute z-50 top-full mt-1 left-0 w-full bg-white rounded-lg shadow-lg ring-1 ring-stone-200 py-1">
+                                    class="absolute z-50 top-full mt-1 start-0 w-full bg-white rounded-lg shadow-lg ring-1 ring-stone-200 py-1">
                                     <template x-for="lvl in ttOptions" :key="lvl">
                                         <li class="relative group">
                                             <button type="button"
@@ -1106,7 +1112,7 @@
                                                     :aria-disabled="ttBrandContent && lvl === 'SELF_ONLY'"
                                                     :disabled="ttBrandContent && lvl === 'SELF_ONLY'"
                                                     @click="ttPrivacy = lvl; open = false; $refs.trigger.focus()"
-                                                    class="w-full text-left text-sm px-3 py-2 flex items-center justify-between gap-2 transition-colors"
+                                                    class="w-full text-start text-sm px-3 py-2 flex items-center justify-between gap-2 transition-colors"
                                                     :class="(ttBrandContent && lvl === 'SELF_ONLY') ? 'opacity-40 cursor-not-allowed' : 'hover:bg-stone-50 cursor-pointer'">
                                                 <span x-text="ttLabel(lvl)"></span>
                                                 <svg x-show="ttPrivacy === lvl" class="w-4 h-4 text-orange-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
@@ -1114,7 +1120,7 @@
                                             <!-- Required hover prompt for the disabled private option (mouse); the
                                                  always-visible note below the dropdown covers keyboard/SR users. -->
                                             <span x-show="ttBrandContent && lvl === 'SELF_ONLY'"
-                                                  class="pointer-events-none absolute left-3 -top-6 opacity-0 group-hover:opacity-100 transition-opacity bg-stone-800 text-white text-[11px] rounded px-2 py-1 whitespace-nowrap z-50 shadow">
+                                                  class="pointer-events-none absolute start-3 -top-6 opacity-0 group-hover:opacity-100 transition-opacity bg-stone-800 text-white text-[11px] rounded px-2 py-1 whitespace-nowrap z-50 shadow">
                                                 Branded content visibility cannot be set to private.
                                             </span>
                                         </li>
@@ -1144,21 +1150,21 @@
                                 <template x-if="tiktokCoverPreview[accId]">
                                     <div class="relative flex-shrink-0">
                                         <img :src="tiktokCoverPreview[accId]"
-                                             class="h-[104px] w-auto max-w-[480px] object-cover rounded-lg border border-stone-200">
-                                        <button type="button" @click="clearTiktokCover(accId)"
+                                             class="h-[104px] w-auto max-w-full sm:max-w-[480px] object-cover rounded-lg border border-stone-200">
+                                        <button aria-label="Reset to default cover" type="button" @click="clearTiktokCover(accId)"
                                                 title="Reset to default cover"
-                                                class="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/55 hover:bg-red-500 text-white flex items-center justify-center transition-colors cursor-pointer">
+                                                class="absolute top-2 end-2 w-6 h-6 rounded-full bg-black/55 hover:bg-red-500 text-white flex items-center justify-center transition-colors cursor-pointer">
                                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"/></svg>
                                         </button>
                                     </div>
                                 </template>
                                 <template x-if="!tiktokCoverPreview[accId] && (platformExtras[accId]?.video_cover_timestamp_ms ?? null) !== null">
-                                    <div class="relative flex-1 max-w-[480px] rounded-lg border border-stone-200 bg-stone-50 flex items-center justify-center min-h-[104px]">
+                                    <div class="relative flex-1 max-w-full sm:max-w-[480px] rounded-lg border border-stone-200 bg-stone-50 flex items-center justify-center min-h-[104px]">
                                         <span class="text-xs text-stone-500 font-medium tabular-nums"
                                               x-text="'Cover at ' + formatTimecode((platformExtras[accId]?.video_cover_timestamp_ms || 0) / 1000)"></span>
-                                        <button type="button" @click="clearTiktokCover(accId)"
+                                        <button aria-label="Reset to default cover" type="button" @click="clearTiktokCover(accId)"
                                                 title="Reset to default cover"
-                                                class="absolute top-2 right-2 w-6 h-6 rounded-full bg-black/55 hover:bg-red-500 text-white flex items-center justify-center transition-colors cursor-pointer">
+                                                class="absolute top-2 end-2 w-6 h-6 rounded-full bg-black/55 hover:bg-red-500 text-white flex items-center justify-center transition-colors cursor-pointer">
                                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"/></svg>
                                         </button>
                                     </div>
@@ -1284,7 +1290,7 @@
                                 @click="overrides[accId] = !overrides[accId]"
                                 x-show="!overrides[accId]">
                             <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
-                            <span x-text="'Customize ' + (charLimits[accId]?.platform === 'youtube' ? 'YouTube' : (charLimits[accId]?.platform || ''))"></span>
+                            <span x-text="'Customize for ' + (charLimits[accId]?.name || 'this channel')"></span>
                         </button>
                     </template>
                 </div>
@@ -1298,20 +1304,20 @@
                                   :class="'pi-' + (charLimits[accId]?.platform || '')"
                                   x-html="platformIconSvg(charLimits[accId]?.platform || '')"></span>
                             <span class="text-xs font-semibold text-stone-600" x-text="charLimits[accId]?.name + ' - Custom Override'"></span>
-                            <button type="button" class="ml-auto text-xs text-red-400 hover:text-red-500 cursor-pointer" @click="overrides[accId] = false">Remove override</button>
+                            <button type="button" class="ms-auto text-xs text-red-400 hover:text-red-500 cursor-pointer" @click="overrides[accId] = false">Remove override</button>
                         </div>
                         <!-- Title override (only for platforms that need it) -->
                         <template x-if="charLimits[accId]?.needs_title">
                             <div class="mb-3">
                                 <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1"
                                        x-text="(charLimits[accId]?.title_label || 'Title') + ' Override'"></label>
-                                <input type="text" :name="'override_title_' + accId"
+                                <input aria-label="Custom title for this account" type="text" :name="'override_title_' + accId"
                                        class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all"
                                        :placeholder="'Custom ' + (charLimits[accId]?.title_label || 'title') + '…'"
                                        :maxlength="charLimits[accId]?.title_max_length || 255">
                             </div>
                         </template>
-                        <textarea :name="'override_caption_' + accId"
+                        <textarea aria-label="Custom caption for this account" :name="'override_caption_' + accId"
                                   x-model="overrideCaptions[accId]"
                                   class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all resize-none"
                                   style="font-family: system-ui, -apple-system, sans-serif;"
@@ -1341,7 +1347,7 @@
                 <!-- First Comment (conditional - only when a platform supporting comments is selected) -->
                 <div x-show="anyPlatformSupportsFirstComment" x-transition x-cloak>
                     <label class="block text-sm font-semibold text-stone-500 uppercase tracking-wider mb-2">First Comment</label>
-                    <textarea name="first_comment"
+                    <textarea aria-label="First comment" name="first_comment"
                               class="comment-editor"
                               placeholder="First comment posted after the main post…"
                               @input="debouncedPreviewUpdate()"
@@ -1356,7 +1362,7 @@
                 {% if categories %}
                 <div>
                     <label class="block text-xs font-semibold text-stone-500 uppercase tracking-wider mb-2">Category</label>
-                    <select name="category"
+                    <select aria-label="Category" name="category"
                             class="w-full text-sm px-4 py-2.5 rounded-xl border border-stone-200 bg-white text-stone-700 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all duration-150">
                         <option value="">No category</option>
                         {% for cat in categories %}
@@ -1425,13 +1431,13 @@
                         <template x-for="(tag, idx) in tags" :key="tag">
                             <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-stone-100 text-stone-700">
                                 <span x-text="tag"></span>
-                                <button type="button" @click.stop="removeTag(idx)" class="w-3.5 h-3.5 rounded-full flex items-center justify-center text-stone-400 hover:text-red-500 hover:bg-red-50 transition-colors">
+                                <button aria-label="Remove tag" type="button" @click.stop="removeTag(idx)" class="w-3.5 h-3.5 rounded-full flex items-center justify-center text-stone-400 hover:text-red-500 hover:bg-red-50 transition-colors">
                                     <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                                 </button>
                             </span>
                         </template>
                         <span x-show="!tags.length" class="text-sm text-stone-400">Select tags...</span>
-                        <svg class="w-4 h-4 ml-auto text-stone-400 shrink-0 transition-transform duration-150" :class="tagDropdownOpen && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                        <svg class="w-4 h-4 ms-auto text-stone-400 shrink-0 transition-transform duration-150" :class="tagDropdownOpen && 'rotate-180'" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
                     </div>
 
                     <!-- Dropdown -->
@@ -1440,7 +1446,7 @@
                          @click.stop>
                         <!-- Search input -->
                         <div class="px-2 py-1.5 border-b border-stone-100">
-                            <input type="text" x-ref="tagSearchInput" x-model="tagSearch"
+                            <input aria-label="Search or create tag" type="text" x-ref="tagSearchInput" x-model="tagSearch"
                                    @keydown.enter.prevent="if (tagSearch.trim() && !filteredTags.includes(tagSearch.trim())) { createTag(); } else if (filteredTags.length === 1) { toggleTag(filteredTags[0]); tagSearch = ''; }"
                                    class="w-full text-sm px-2 py-1.5 rounded-lg border border-stone-200 outline-none focus:border-orange-400 transition-colors"
                                    placeholder="Search or create tag...">
@@ -1486,11 +1492,11 @@
 
                     <!-- Create Tag Modal (teleported to body to escape stacking contexts) -->
                     <template x-teleport="body">
-                        <div x-show="showCreateTagModal" x-cloak class="fixed inset-0 z-[200] flex items-center justify-center" @keydown.escape.window="showCreateTagModal = false">
+                        <div x-show="showCreateTagModal" x-cloak class="fixed inset-0 z-[200] flex items-center justify-center" @keydown.escape.window="showCreateTagModal = false" role="dialog" aria-modal="true" aria-label="Create new tag" x-a11y-modal="showCreateTagModal">
                             <div class="fixed inset-0 bg-black/30" @click="showCreateTagModal = false"></div>
                             <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6" @click.stop>
                                 <h3 class="text-base font-semibold text-stone-800 mb-4">Create new tag</h3>
-                                <input type="text" x-ref="newTagNameInput" x-model="newTagName"
+                                <input aria-label="Tag name" type="text" x-ref="newTagNameInput" x-model="newTagName"
                                        @keydown.enter.prevent="if(newTagName.trim()) { _persistTag(newTagName.trim()); showCreateTagModal = false; newTagName = ''; }"
                                        class="w-full text-sm px-3 py-2.5 rounded-xl border border-stone-200 outline-none focus:border-orange-400 focus:ring-2 focus:ring-orange-100 transition-all"
                                        placeholder="Tag name...">
@@ -1501,8 +1507,8 @@
                                     </button>
                                     <button type="button"
                                             @click="if(newTagName.trim()) { _persistTag(newTagName.trim()); showCreateTagModal = false; newTagName = ''; }"
-                                            class="px-4 py-2 text-sm font-semibold text-white rounded-lg transition-colors"
-                                            style="background: var(--primary);"
+                                            class="px-4 py-2 text-sm font-semibold text-white rounded-lg transition-colors bg-[color:var(--primary)]"
+                                           
                                             :class="newTagName.trim() ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'">
                                         Create
                                     </button>
@@ -1519,7 +1525,7 @@
                         <label class="text-sm font-semibold text-stone-500 uppercase tracking-wider">Notes</label>
                         <span class="text-[10px] font-semibold text-stone-400 bg-stone-100 px-2 py-0.5 rounded-full uppercase tracking-wider">Internal team only</span>
                     </div>
-                    <textarea name="internal_notes"
+                    <textarea aria-label="Internal notes" name="internal_notes"
                               class="w-full text-sm font-normal px-4 py-3 rounded-xl border border-dashed border-stone-200 bg-stone-50/80 text-stone-600 outline-none focus:border-stone-300 transition-all duration-150 resize-none"
                               placeholder="Internal team notes - not visible to clients…"
                               rows="2">{{ form.internal_notes.value|default:"" }}</textarea>
@@ -1531,26 +1537,26 @@
             <div class="action-bar">
                 {% if is_edit %}
                 <!-- Delete Post -->
-                <button type="button" @click="$dispatch('open-delete-modal')"
+                <button type="button" @click="$dispatch('open-delete-modal')" aria-label="Delete post"
                         class="inline-flex items-center gap-1.5 px-2 sm:px-3 py-2 text-sm font-semibold text-red-500 hover:text-red-600 rounded-lg hover:bg-red-50 transition-all duration-150 cursor-pointer flex-shrink-0">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                    <span class="hidden sm:inline">Delete</span>
+                    <span class="max-sm:sr-only">Delete</span>
                 </button>
                 {% endif %}
 
                 <!-- Autosave indicator -->
-                <div id="autosave-status" class="text-xs text-stone-400 mr-auto hidden sm:flex items-center gap-1.5">
-                    <span class="w-1.5 h-1.5 rounded-full bg-stone-300" :class="{ 'bg-emerald-400': lastSaved }"></span>
-                    <span x-text="lastSaved ? 'Saved ' + lastSaved : 'Not saved yet'"></span>
+                <div id="autosave-status" class="text-xs text-stone-400 me-auto hidden sm:flex items-center gap-1.5 min-w-0">
+                    <span class="w-1.5 h-1.5 rounded-full bg-stone-300 flex-shrink-0" :class="{ 'bg-emerald-400': lastSaved }"></span>
+                    <span class="truncate whitespace-nowrap" x-text="lastSaved ? 'Saved ' + lastSaved : 'Unsaved'" :title="lastSaved ? 'Draft saved at ' + lastSaved : 'Not saved yet'"></span>
                 </div>
-                <div class="mr-auto sm:hidden"></div>
+                <div class="me-auto sm:hidden"></div>
 
                 {% if not post_is_readonly %}
                 <!-- Save Draft -->
                 <button type="submit" name="action" value="save_draft"
                         class="inline-flex items-center gap-1.5 px-2 sm:px-4 py-2 text-sm font-semibold text-stone-600 hover:text-stone-800 rounded-lg hover:bg-stone-100 transition-all duration-150 cursor-pointer flex-shrink-0">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4"/></svg>
-                    <span class="hidden sm:inline">Save Draft</span>
+                    <span class="max-sm:sr-only">Save Draft</span>
                 </button>
                 {% endif %}
 
@@ -1571,7 +1577,7 @@
                         :class="selectedAccounts.length === 0 && 'opacity-50 cursor-not-allowed'"
                         class="inline-flex items-center gap-1.5 px-2 sm:px-4 py-2 text-sm font-semibold text-orange-600 hover:text-orange-700 rounded-lg hover:bg-orange-50 transition-all duration-150 cursor-pointer flex-shrink-0">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182"/></svg>
-                    <span class="hidden sm:inline">Resubmit</span>
+                    <span class="max-sm:sr-only">Resubmit</span>
                 </button>
                 {% endif %}
 
@@ -1579,30 +1585,30 @@
                 <!-- Publish split-button -->
                 <div class="relative inline-flex flex-shrink-0" id="publish-anchor">
                     <!-- Mode selector (left) -->
-                    <button type="button" id="publish-mode-btn"
+                    <button type="button" id="publish-mode-btn" aria-haspopup="true" aria-expanded="false" aria-controls="publish-popover"
                             :disabled="selectedAccounts.length === 0"
                             :class="selectedAccounts.length === 0 && 'opacity-50 cursor-not-allowed'"
-                            class="inline-flex items-center gap-1.5 pl-2 sm:pl-3 pr-1.5 sm:pr-2 py-2 text-sm font-semibold text-orange-700 bg-orange-100 rounded-l-lg hover:bg-orange-200 border border-orange-200 border-r-0 transition-all duration-150 cursor-pointer">
+                            class="inline-flex items-center gap-1.5 ps-2 sm:ps-3 pe-1.5 sm:pe-2 py-2 text-sm font-semibold text-orange-700 bg-orange-100 rounded-s-lg hover:bg-orange-200 border border-orange-200 border-e-0 transition-all duration-150 cursor-pointer">
                         <svg id="publish-mode-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
-                        <span id="publish-mode-label" class="hidden sm:inline">Next available</span>
+                        <span id="publish-mode-label" class="max-sm:sr-only">Next available</span>
                         <svg class="w-3 h-3 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"/></svg>
                     </button>
                     <!-- Action button (right) -->
                     <button type="submit" id="publish-action-btn" name="action" value="add_to_queue"
                             :disabled="selectedAccounts.length === 0"
                             :class="selectedAccounts.length === 0 && 'opacity-50 cursor-not-allowed'"
-                            class="inline-flex items-center gap-1.5 pl-3 sm:pl-4 pr-3 sm:pr-5 py-2 text-sm font-semibold text-white bg-orange-500 rounded-r-lg hover:bg-orange-600 border border-orange-500 hover:border-orange-600 shadow-sm transition-all duration-150 cursor-pointer">
+                            class="inline-flex items-center gap-1.5 ps-3 sm:ps-4 pe-3 sm:pe-5 py-2 text-sm font-semibold text-white bg-orange-500 rounded-e-lg hover:bg-orange-600 border border-orange-500 hover:border-orange-600 shadow-sm transition-all duration-150 cursor-pointer">
                         <span id="publish-action-label">Add to Queue</span>
                     </button>
 
                     <!-- Mode popover - positioned above -->
-                    <div id="publish-popover" class="hidden absolute bottom-full right-0 mb-2 w-72 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-xl border border-stone-200/80" style="z-index: 50;">
+                    <div id="publish-popover" class="hidden absolute bottom-full end-0 mb-2 w-72 max-w-[calc(100vw-2rem)] bg-white rounded-xl shadow-xl border border-stone-200/80" style="z-index: 50;">
                             <!-- Main menu -->
                             <div id="publish-menu" class="p-1.5">
                                 <!-- Next Available -->
                                 <button type="button" data-mode="add_to_queue" data-label="Next available" data-action-label="Add to Queue"
                                         data-icon="clock"
-                                        class="publish-mode-option w-full flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-stone-50 transition-colors text-left cursor-pointer">
+                                        class="publish-mode-option w-full flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-stone-50 transition-colors text-start cursor-pointer">
                                     <div class="w-8 h-8 rounded-lg bg-blue-50 flex items-center justify-center flex-shrink-0 mt-0.5">
                                         <svg class="w-4 h-4 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
                                     </div>
@@ -1615,7 +1621,7 @@
                                 <!-- Prioritise -->
                                 <button type="button" data-mode="add_to_queue_priority" data-label="Prioritise" data-action-label="Prioritise"
                                         data-icon="priority"
-                                        class="publish-mode-option w-full flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-stone-50 transition-colors text-left cursor-pointer">
+                                        class="publish-mode-option w-full flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-stone-50 transition-colors text-start cursor-pointer">
                                     <div class="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center flex-shrink-0 mt-0.5">
                                         <svg class="w-4 h-4 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12"/></svg>
                                     </div>
@@ -1628,7 +1634,7 @@
                                 <!-- Now -->
                                 <button type="button" data-mode="publish_now" data-label="Now" data-action-label="Publish Now"
                                         data-icon="play"
-                                        class="publish-mode-option w-full flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-stone-50 transition-colors text-left cursor-pointer">
+                                        class="publish-mode-option w-full flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-stone-50 transition-colors text-start cursor-pointer">
                                     <div class="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0 mt-0.5">
                                         <svg class="w-4 h-4 text-emerald-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 3l14 9-14 9V3z"/></svg>
                                     </div>
@@ -1641,7 +1647,7 @@
                                 <!-- Set Date and Time -->
                                 <button type="button" data-mode="schedule" data-label="Schedule" data-action-label="Schedule Post"
                                         data-icon="calendar"
-                                        class="publish-mode-option w-full flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-stone-50 transition-colors text-left cursor-pointer"
+                                        class="publish-mode-option w-full flex items-start gap-3 px-3 py-2.5 rounded-lg hover:bg-stone-50 transition-colors text-start cursor-pointer"
                                         id="publish-schedule-btn">
                                     <div class="w-8 h-8 rounded-lg bg-violet-50 flex items-center justify-center flex-shrink-0 mt-0.5">
                                         <svg class="w-4 h-4 text-violet-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
@@ -1656,7 +1662,7 @@
                             <!-- Schedule sub-view -->
                             <div id="publish-schedule-view" class="hidden p-4 max-h-[75vh] overflow-y-auto">
                                 <div class="flex items-center gap-2 mb-4">
-                                    <button type="button" id="publish-schedule-back" class="w-6 h-6 rounded-md hover:bg-stone-100 flex items-center justify-center transition-colors">
+                                    <button aria-label="Back" type="button" id="publish-schedule-back" class="w-6 h-6 rounded-md hover:bg-stone-100 flex items-center justify-center transition-colors">
                                         <svg class="w-4 h-4 text-stone-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
                                     </button>
                                     <span class="text-sm font-semibold text-stone-800">Schedule Post</span>
@@ -1665,11 +1671,11 @@
                                 <div class="space-y-3">
                                     <div>
                                         <label class="block text-xs font-medium text-stone-500 mb-1">Date</label>
-                                        <input type="date" name="scheduled_date" class="form-datetime" value="{{ form.scheduled_date.value|default:'' }}">
+                                        <input aria-label="Schedule date" type="date" name="scheduled_date" class="form-datetime" value="{{ form.scheduled_date.value|default:'' }}">
                                     </div>
                                     <div>
                                         <label class="block text-xs font-medium text-stone-500 mb-1">Time</label>
-                                        <input type="time" name="scheduled_time" class="form-datetime" value="{{ form.scheduled_time.value|default:'' }}">
+                                        <input aria-label="Schedule time" type="time" name="scheduled_time" class="form-datetime" value="{{ form.scheduled_time.value|default:'' }}">
                                     </div>
                                     <div class="text-xs text-stone-400 flex items-center gap-1">
                                         <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
@@ -1736,20 +1742,20 @@
                 <span class="text-sm font-medium text-teal-700">Approved - saving changes sends it back for re-approval</span>
             </div>
             {% elif post.status == 'on_hold' %}
-            <div class="flex items-center gap-2 px-3 py-2 rounded-lg mb-3" style="background:#F5F3FF;border:1px solid #DDD6FE;">
-                <svg class="w-4 h-4 flex-shrink-0" style="color:#7C3AED;" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
-                <span class="text-sm font-medium" style="color:#6D28D9;">On hold - a client paused this; resume it from the approvals queue</span>
+            <div class="flex items-center gap-2 px-3 py-2 rounded-lg mb-3 border border-[var(--accent-indigo)] bg-[var(--accent-indigo-soft)]">
+                <svg class="w-4 h-4 flex-shrink-0 text-[var(--accent-indigo)]" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+                <span class="text-sm font-medium text-[var(--accent-indigo)]">On hold - a client paused this; resume it from the approvals queue</span>
             </div>
             {% endif %}
 
             <!-- Reviewer feedback to address (latest changes-requested / rejected comment) -->
             {% if show_resubmit_button and latest_feedback %}
-            <div class="flex gap-3 p-4 rounded-xl mb-3" style="background:#FFF7ED;border:1px solid #FED7AA;">
-                <span class="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0" style="background: var(--primary);">{{ latest_feedback.user.display_name|default:"?"|make_list|first|upper }}</span>
+            <div class="flex gap-3 p-4 rounded-xl mb-3 border border-[var(--warning-500)] bg-[var(--warning-50)]">
+                <span class="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0 bg-[color:var(--primary)]">{{ latest_feedback.user.display_name|default:"?"|make_list|first|upper }}</span>
                 <div class="min-w-0">
                     <div class="flex items-center gap-2 flex-wrap">
                         <span class="text-[0.8125rem] font-semibold text-stone-800">{{ latest_feedback.user.display_name|default:"Reviewer" }}</span>
-                        <span class="text-[0.6875rem] font-semibold px-2 py-0.5 rounded-full" style="background:#FFEDD5;color:#C2410C;">{% if latest_feedback.action == 'rejected' %}rejected{% else %}requested changes{% endif %}</span>
+                        <span class="text-[0.6875rem] font-semibold px-2 py-0.5 rounded-full bg-[var(--warning-50)] text-[var(--warning-700)] border border-[var(--warning-500)]">{% if latest_feedback.action == 'rejected' %}rejected{% else %}requested changes{% endif %}</span>
                         <span class="text-[0.6875rem] text-stone-400">{{ latest_feedback.created_at|timesince }} ago</span>
                     </div>
                     <p class="text-[0.875rem] text-stone-700 mt-1 leading-relaxed">{{ latest_feedback.comment }}</p>
@@ -1764,7 +1770,7 @@
                         class="px-3 py-1.5 text-xs font-semibold rounded-full bg-emerald-500 hover:bg-emerald-600 text-white transition-colors">Approve</button>
                 <button @click="showReviewComment = !showReviewComment" class="px-3 py-1.5 text-xs font-semibold rounded-full border border-stone-200 text-stone-600 hover:bg-stone-50 transition-colors">Request Changes</button>
                 <div x-show="showReviewComment" x-cloak class="absolute mt-9 z-10 bg-white rounded-lg shadow-lg border border-stone-200 p-3 w-80">
-                    <textarea id="composer-review-comment" name="comment" rows="2" x-model="reviewComment" class="w-full px-2 py-1.5 text-sm border border-stone-200 rounded-lg resize-none" placeholder="What needs to change?"></textarea>
+                    <textarea aria-label="What needs to change" id="composer-review-comment" name="comment" rows="2" x-model="reviewComment" class="w-full px-2 py-1.5 text-sm border border-stone-200 rounded-lg resize-none" placeholder="What needs to change?"></textarea>
                     <button hx-post="{% url 'approvals:request_changes' workspace_id=workspace.id post_id=post.id %}"
                             hx-include="#composer-review-comment" hx-swap="none"
                             :disabled="!reviewComment.trim()" :class="!reviewComment.trim() && 'opacity-50 cursor-not-allowed'"
@@ -1809,9 +1815,8 @@
         <div id="autosave-trigger"
              hx-post="{% if post %}{% url 'composer:autosave_edit' workspace_id=workspace.id post_id=post.id %}{% else %}{% url 'composer:autosave' workspace_id=workspace.id %}{% endif %}"
              hx-trigger="every 30s"
-             hx-target="#autosave-status"
              hx-include="#composer-form"
-             hx-swap="innerHTML"
+             hx-swap="none"
              style="display:none;"></div>
         {% endif %}
     </div>
@@ -1828,9 +1833,11 @@
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
          x-transition:leave-end="opacity-0"
-         class="panel-right-backdrop"></div>
-    <div class="panel-right border-l border-stone-200 bg-stone-50 lg:bg-stone-50 flex flex-col"
-         :class="{ 'is-open': showPreviewPanel }">
+         class="panel-right-backdrop" data-a11y-backdrop></div>
+    <div id="preview-panel-drawer" class="panel-right border-s border-stone-200 bg-stone-50 lg:bg-stone-50 flex flex-col"
+         :class="{ 'is-open': showPreviewPanel }"
+         :role="previewIsDrawer ? 'dialog' : null" :aria-modal="previewIsDrawer ? 'true' : null" aria-label="Post preview"
+         x-a11y-modal="showPreviewPanel && previewIsDrawer" data-close="showPreviewPanel = false">
         <div class="px-4 py-3 border-b border-stone-100 flex items-center justify-between">
             <h3 class="text-xs font-semibold text-stone-500 uppercase tracking-wider">Preview</h3>
             <div class="flex items-center gap-2">
@@ -1838,7 +1845,7 @@
                       x-show="selectedAccounts.length > 0"
                       x-text="selectedAccounts.length + (selectedAccounts.length === 1 ? ' platform' : ' platforms')">
                 </span>
-                <button type="button" @click="showPreviewPanel = false"
+                <button id="preview-close-btn" aria-label="Close preview" type="button" @click="showPreviewPanel = false"
                         class="lg:hidden w-7 h-7 rounded-md text-stone-400 hover:text-stone-600 hover:bg-stone-100 flex items-center justify-center transition-colors cursor-pointer">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
@@ -1866,7 +1873,7 @@
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0">
+         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Media library" x-a11y-modal="showMediaPicker">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="showMediaPicker = false"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[640px] mx-2 sm:mx-0 max-h-[85vh] sm:max-h-[70vh] overflow-hidden"
              x-transition:enter="transition ease-out duration-200"
@@ -1874,7 +1881,7 @@
              x-transition:enter-end="opacity-100 scale-100">
             <div class="px-4 sm:px-6 py-4 border-b border-stone-100 flex items-center justify-between">
                 <h2 class="text-base font-semibold text-stone-900">Media Library</h2>
-                <button @click="showMediaPicker = false"
+                <button aria-label="Close media library" @click="showMediaPicker = false"
                         class="w-8 h-8 rounded-lg border border-stone-200 text-stone-400 hover:text-stone-600 hover:border-stone-300 flex items-center justify-center transition-all duration-150 cursor-pointer">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
@@ -1900,12 +1907,12 @@
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0">
+         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Select thumbnail" x-a11y-modal="showThumbnailPicker">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="showThumbnailPicker = false"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[640px] mx-2 sm:mx-0 max-h-[85vh] sm:max-h-[70vh] overflow-hidden">
             <div class="px-4 sm:px-6 py-4 border-b border-stone-100 flex items-center justify-between">
                 <h2 class="text-base font-semibold text-stone-900">Select Thumbnail</h2>
-                <button @click="showThumbnailPicker = false"
+                <button aria-label="Close thumbnail picker" @click="showThumbnailPicker = false"
                         class="w-8 h-8 rounded-lg border border-stone-200 text-stone-400 hover:text-stone-600 hover:border-stone-300 flex items-center justify-center transition-all duration-150 cursor-pointer">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
@@ -1931,7 +1938,7 @@
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0">
+         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-labelledby="thread-media-picker-title" x-a11y-modal="showThreadMediaPicker">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="showThreadMediaPicker = false"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[640px] mx-2 sm:mx-0 max-h-[85vh] sm:max-h-[70vh] overflow-hidden">
             <div class="px-4 sm:px-6 py-4 border-b border-stone-100 flex items-center justify-between">
@@ -1963,7 +1970,7 @@
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0">
+         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Search Unsplash photos" x-a11y-modal="showUnsplashModal" data-close="closeUnsplashModal()">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="closeUnsplashModal()"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[760px] mx-2 sm:mx-0 h-[640px] max-h-[85vh] flex flex-col overflow-hidden"
              x-transition:enter="transition ease-out duration-200"
@@ -1977,15 +1984,15 @@
                     <h2 class="text-base font-semibold text-stone-900">Search Unsplash</h2>
                     <p class="text-xs text-stone-400 truncate">Free high-resolution photos &middot; add one or many</p>
                 </div>
-                <button @click="closeUnsplashModal()"
-                        class="ml-auto w-8 h-8 rounded-lg border border-stone-200 text-stone-400 hover:text-stone-600 hover:border-stone-300 flex items-center justify-center transition-all duration-150 cursor-pointer flex-shrink-0">
+                <button aria-label="Close Unsplash search" @click="closeUnsplashModal()"
+                        class="ms-auto w-8 h-8 rounded-lg border border-stone-200 text-stone-400 hover:text-stone-600 hover:border-stone-300 flex items-center justify-center transition-all duration-150 cursor-pointer flex-shrink-0">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
             </div>
             <div class="px-4 sm:px-6 pt-4 space-y-3 flex-shrink-0">
-                <div class="flex items-center gap-2 rounded-xl border-2 border-orange-400/70 focus-within:border-orange-500 transition-colors pl-4 pr-1.5 py-1.5">
+                <div class="flex items-center gap-2 rounded-xl border-2 border-orange-400/70 focus-within:border-orange-500 transition-colors ps-4 pe-1.5 py-1.5">
                     <svg class="w-4 h-4 text-stone-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
-                    <input type="text" x-model="unsplashQuery"
+                    <input aria-label="Search free photos" type="text" x-model="unsplashQuery"
                            @keydown.enter.prevent="unsplashActiveChip = ''; searchUnsplash()"
                            placeholder="Search free high-resolution photos…"
                            class="flex-1 text-sm bg-transparent outline-none border-none placeholder-stone-400 text-stone-900">
@@ -2011,12 +2018,12 @@
                 </div>
                 <div x-show="!unsplashLoading && !unsplashError" class="columns-2 sm:columns-3 gap-3">
                     <template x-for="photo in unsplashResults" :key="photo.id">
-                        <div class="mb-3 break-inside-avoid relative rounded-lg overflow-hidden cursor-pointer group"
+                        <div role="button" tabindex="0" @keydown.enter.self.prevent="$el.click()" @keydown.space.self.prevent="$el.click()" :aria-pressed="!!unsplashSelected[photo.id]" :aria-label="(photo.alt || 'Photo') + ' by ' + photo.photographer" class="mb-3 break-inside-avoid relative rounded-lg overflow-hidden cursor-pointer group"
                              :class="unsplashSelected[photo.id] ? 'ring-2 ring-inset ring-orange-500' : ''"
                              @click="toggleUnsplashSelect(photo)">
                             <img :src="photo.thumb" :alt="photo.alt" loading="lazy"
                                  class="w-full block" :style="photo.color ? `background:${photo.color}` : ''">
-                            <span class="absolute top-2 right-2 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all"
+                            <span class="absolute top-2 end-2 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all"
                                   :class="unsplashSelected[photo.id] ? 'bg-orange-500 border-orange-500' : 'bg-black/25 border-white/90'">
                                 <svg x-show="unsplashSelected[photo.id]" class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
                             </span>
@@ -2029,7 +2036,7 @@
             <div class="px-4 sm:px-6 py-4 border-t border-stone-100 flex items-center gap-3 flex-shrink-0">
                 <span class="text-sm text-stone-400"
                       x-text="unsplashSelectedCount ? unsplashSelectedCount + (unsplashSelectedCount === 1 ? ' photo selected' : ' photos selected') : 'Select photos to add'"></span>
-                <div class="ml-auto flex items-center gap-2">
+                <div class="ms-auto flex items-center gap-2">
                     <button type="button" @click="closeUnsplashModal()"
                             class="px-4 py-2 rounded-lg text-sm font-semibold text-stone-600 hover:text-stone-900 transition-colors cursor-pointer">Cancel</button>
                     <button type="button"
@@ -2054,7 +2061,7 @@
          x-transition:enter-end="opacity-100"
          x-transition:leave="transition ease-in duration-150"
          x-transition:leave-start="opacity-100"
-         x-transition:leave-end="opacity-0">
+         x-transition:leave-end="opacity-0" role="dialog" aria-modal="true" aria-label="Choose a video frame" x-a11y-modal="showFramePicker" data-close="closeFramePicker()">
         <div class="absolute inset-0 bg-stone-900/40 backdrop-blur-sm" @click="closeFramePicker()"></div>
         <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 w-[calc(100vw-1rem)] sm:w-[720px] mx-2 sm:mx-0 max-h-[90vh] flex flex-col overflow-hidden"
              x-transition:enter="transition ease-out duration-200"
@@ -2065,7 +2072,7 @@
                     <h2 class="text-base font-semibold text-stone-900">Choose thumbnail from video</h2>
                     <p class="text-xs text-stone-400">Scrub to the frame you want, then grab it</p>
                 </div>
-                <button @click="closeFramePicker()"
+                <button aria-label="Close frame picker" @click="closeFramePicker()"
                         class="w-8 h-8 rounded-lg border border-stone-200 text-stone-400 hover:text-stone-600 hover:border-stone-300 flex items-center justify-center transition-all duration-150 cursor-pointer flex-shrink-0">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
@@ -2078,10 +2085,10 @@
                            muted playsinline preload="metadata"
                            @loadedmetadata="frameDuration = $el.duration"
                            @timeupdate="frameCurrentTime = $el.currentTime"></video>
-                    <span class="absolute top-3 right-3 px-2 py-1 rounded bg-black/70 text-white text-xs font-mono tabular-nums"
+                    <span class="absolute top-3 end-3 px-2 py-1 rounded bg-black/70 text-white text-xs font-mono tabular-nums"
                           x-text="formatTimecode(frameCurrentTime) + ' / ' + formatTimecode(frameDuration)"></span>
                 </div>
-                <input type="range" min="0" :max="frameDuration || 0" step="0.04"
+                <input aria-label="Video frame position" type="range" min="0" :max="frameDuration || 0" step="0.04"
                        :value="frameCurrentTime"
                        @input="frameCurrentTime = parseFloat($event.target.value); if ($refs.frameVideo) $refs.frameVideo.currentTime = frameCurrentTime"
                        class="w-full accent-orange-500 cursor-pointer">
@@ -2105,7 +2112,7 @@
                 <span x-show="!frameError" class="text-sm text-stone-400">
                     Frame at <span class="font-mono font-semibold text-stone-700 tabular-nums" x-text="formatTimecode(frameCurrentTime)"></span>
                 </span>
-                <div class="ml-auto flex items-center gap-2">
+                <div class="ms-auto flex items-center gap-2">
                     <button type="button" @click="closeFramePicker()"
                             class="px-4 py-2 rounded-lg text-sm font-semibold text-stone-600 hover:text-stone-900 transition-colors cursor-pointer">Cancel</button>
                     <button type="button"
@@ -2136,8 +2143,8 @@
 
     <!-- Error toast -->
     <div x-show="formError" x-cloak
-         class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl text-sm font-medium shadow-lg"
-         style="background: var(--error-500, #EF4444); color: white;"
+         class="fixed bottom-6 start-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl text-sm font-medium shadow-lg bg-[color:var(--error-500)] text-[color:var(--text-inverse)]"
+        
          x-transition:enter="transition ease-out duration-300"
          x-transition:enter-start="opacity-0 translate-y-4"
          x-transition:enter-end="opacity-100 translate-y-0"
@@ -2155,7 +2162,7 @@
     <div x-data="{ showDeleteModal: false, deleting: false, deleteError: '' }" style="display: contents;"
          @open-delete-modal.window="showDeleteModal = true; deleteError = ''">
         <div x-show="showDeleteModal" x-cloak class="fixed inset-0 z-[60] flex items-center justify-center"
-             @keydown.escape.window="showDeleteModal = false">
+             @keydown.escape.window="showDeleteModal = false" role="dialog" aria-modal="true" aria-label="Delete post" x-a11y-modal="showDeleteModal">
             <div class="fixed inset-0 bg-black/30 backdrop-blur-sm" @click="showDeleteModal = false"
                  x-show="showDeleteModal"
                  x-transition:enter="transition ease-out duration-150"
@@ -2216,6 +2223,7 @@
 {% endblock %}
 
 {% block extra_js %}
+{% include "composer/partials/modal_a11y.html" %}
 <script nonce="{{ request.csp_nonce }}">
   // Reviewer approve / request-changes return 204 + toast + approvalAction. Let the
   // toast show, then reload so the status banner and history reflect the new state.
@@ -2290,6 +2298,8 @@ function composerApp() {
         thumbnailPickerAccId: null,
         thumbnailUploading: {},
         showPreviewPanel: false,
+        // Below lg the preview is an off-canvas drawer (a modal); from lg it is a docked column.
+        previewIsDrawer: !window.matchMedia('(min-width: 1024px)').matches,
         showSaveToast: false,
         formError: '',
         lastSaved: null,
@@ -2651,6 +2661,11 @@ function composerApp() {
         },
 
         init() {
+            const docked = window.matchMedia('(min-width: 1024px)');
+            docked.addEventListener('change', (e) => {
+                this.previewIsDrawer = !e.matches;
+                if (e.matches) this.showPreviewPanel = false;
+            });
             // Initialize overrides map
             this.selectedAccounts.forEach(id => {
                 this.overrides[id] = false;
@@ -2689,6 +2704,7 @@ function composerApp() {
             // This prevents duplicate drafts by reusing the same post on subsequent autosaves
             document.body.addEventListener('autosaved', (e) => {
                 const detail = e.detail || {};
+                this.lastSaved = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                 if (detail.postId && detail.isNew) {
                     this.autosavedPostId = detail.postId;
                     // Update the autosave trigger URL to use the edit endpoint
@@ -3413,7 +3429,7 @@ function composerApp() {
             });
             // Add remove button
             thumb.insertAdjacentHTML('beforeend', `
-                <button type="button" class="remove-btn" style="z-index:4;">
+                <button type="button" class="remove-btn" style="z-index:4;" aria-label="Remove media">
                     <svg class="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>`);
             thumb.querySelector('.remove-btn').addEventListener('click', function(e) {
@@ -3502,12 +3518,25 @@ function repeatPanel() {
         calendar: '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>',
     };
 
-    function showPopover() { popover.classList.remove('hidden'); }
-    function hidePopover() { popover.classList.add('hidden'); showMenu(); }
+    function showPopover() {
+        popover.classList.remove('hidden');
+        modeBtn.setAttribute('aria-expanded', 'true');
+        var first = menu.querySelector('button:not([disabled])');
+        if (first) first.focus({ preventScroll: true });
+    }
+    function hidePopover() {
+        // Focus would be lost inside the hidden popover: hand it back to the toggle.
+        var hadFocus = popover.contains(document.activeElement);
+        popover.classList.add('hidden');
+        modeBtn.setAttribute('aria-expanded', 'false');
+        showMenu();
+        if (hadFocus) modeBtn.focus({ preventScroll: true });
+    }
     function showMenu() { menu.classList.remove('hidden'); scheduleView.classList.add('hidden'); }
     function showSchedule() {
         menu.classList.add('hidden');
         scheduleView.classList.remove('hidden');
+        if (backBtn) backBtn.focus({ preventScroll: true });
         window.dispatchEvent(new CustomEvent('publish-mode-change', { detail: { mode: 'schedule' } }));
     }
 
@@ -3548,6 +3577,8 @@ function repeatPanel() {
         backBtn.addEventListener('click', function(e) {
             e.stopPropagation();
             showMenu();
+            var scheduleOption = menu.querySelector('[data-mode="schedule"]');
+            if (scheduleOption) scheduleOption.focus({ preventScroll: true });
         });
     }
 
