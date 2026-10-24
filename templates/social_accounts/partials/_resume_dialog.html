@@ -15,7 +15,7 @@ workspace_id, overdue (how many held posts are already past their time). Only re
         <legend class="sr-only">What to do with the held posts</legend>
         <label class="flex cursor-pointer items-start gap-2 rounded-lg border border-line bg-surface-0 p-3 text-sm text-ink">
             <input type="radio" name="held_posts" value="requeue" class="mt-1" checked data-autofocus>
-            <span><span class="font-semibold">Re-queue</span><br><span class="text-xs text-ink-3">Move them into the next free posting slots, in their original order.</span></span>
+            <span><span class="font-semibold">Re-queue</span><br><span class="text-xs text-ink-3">Move them into the next free posting slots, in their original order. Any without a free slot become drafts.</span></span>
         </label>
         <label class="flex cursor-pointer items-start gap-2 rounded-lg border border-line bg-surface-0 p-3 text-sm text-ink">
             <input type="radio" name="held_posts" value="publish_now" class="mt-1">
