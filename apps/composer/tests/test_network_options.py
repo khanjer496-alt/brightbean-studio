@@ -141,3 +141,41 @@ class TestXOptions:
         api = api_client_for(user, workspace, x)
         response = api_create(api, x, action="draft", post_settings={"made_with_ai": "yes"})
         assert response.status_code in (400, 422)
+
+
+@pytest.mark.django_db
+class TestGoogleBusinessOptions:
+    def test_composer_describes_date_and_time_fields_with_visibility(self, client, user, workspace):
+        account = make_account(workspace, "google_business")
+        client.force_login(user)
+        response = client.get(reverse("composer:compose", kwargs={"workspace_id": workspace.id}))
+        fields = {f["key"]: f for f in response.context["char_limits"][str(account.id)]["post_settings"]}
+        assert fields["event_start_date"]["kind"] == "date"
+        assert fields["event_start_time"]["kind"] == "time"
+        assert fields["event_title"]["show_when"] == "topic_type=EVENT|OFFER"
+        assert fields["cta_type"]["show_when"] == "topic_type=|EVENT"
+
+    def test_api_stores_a_button_and_validates_an_incomplete_event(self, user, workspace):
+        account = make_account(workspace, "google_business")
+        api = api_client_for(user, workspace, account)
+        ok = api_create(api, account, action="draft", post_settings={"cta_type": "BOOK", "cta_url": "https://e.com/b"})
+        assert ok.status_code == 201, ok.content
+        assert PlatformPost.objects.get(social_account=account).platform_extra["cta_type"] == "BOOK"
+
+    @pytest.mark.usefixtures("autonomous_agents")
+    def test_scheduling_an_event_without_dates_is_refused(self, user, workspace):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        account = make_account(workspace, "google_business")
+        api = api_client_for(user, workspace, account)
+        response = api_create(
+            api,
+            account,
+            action="schedule",
+            scheduled_at=(timezone.now() + timedelta(hours=2)).isoformat(),
+            post_settings={"topic_type": "EVENT", "event_title": "Open day"},
+        )
+        assert response.status_code == 422
+        assert "start and end" in response.json()["detail"]

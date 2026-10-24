@@ -704,8 +704,8 @@
                                                 </template>
                                             </select>
                                         </template>
-                                        <template x-if="f.kind === 'text'">
-                                            <input :aria-label="f.label" type="text"
+                                        <template x-if="f.kind === 'text' || f.kind === 'date' || f.kind === 'time'">
+                                            <input :aria-label="f.label" :type="f.kind"
                                                    :name="'ps_' + f.key + '_' + accId"
                                                    :disabled="!visible(f)"
                                                    x-model="vals[f.key]"

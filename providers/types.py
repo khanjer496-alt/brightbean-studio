@@ -332,7 +332,7 @@ class PostSetting:
     knowing the platform. Values live in ``PlatformPost.platform_extra`` under
     ``key`` and reach the provider as ``PublishContent.extra[key]``.
 
-    ``kind`` is ``text``, ``select`` or ``checkbox``. A ``select`` takes either
+    ``kind`` is ``text``, ``select``, ``checkbox``, ``date`` (YYYY-MM-DD) or ``time`` (HH:MM). A ``select`` takes either
     static ``choices`` or, with ``options_from_provider``, options fetched live
     through ``SocialProvider.get_setting_options`` (optionally scoped by another
     setting named in ``depends_on``, like a flair that belongs to a subreddit).
