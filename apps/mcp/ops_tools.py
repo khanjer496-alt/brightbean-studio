@@ -1599,7 +1599,7 @@ _PLUG_TRIGGERS = ["likes", "reposts", "views"]
 _PLUG_ACTIONS = ["repost", "reply", "quote"]
 
 
-def _validated(model, fields: dict):
+def _model_from(model, fields: dict):
     from pydantic import ValidationError
 
     try:
@@ -1654,7 +1654,7 @@ _tool(
         "account must be in the allowlist."
     ),
     ops.create_plug_rule,
-    lambda a: {"_args": (_validated(CreatePlugRuleRequest, a),)},
+    lambda a: {"_args": (_model_from(CreatePlugRuleRequest, a),)},
     properties={
         "social_account_id": _uuid_prop("The account whose post is watched."),
         "post_id": _uuid_prop("One post; omit for a default applied to the account's new posts."),
@@ -1680,7 +1680,7 @@ _tool(
     lambda a: {
         "_args": (
             _uuid_arg(a, "rule_id", required=True),
-            _validated(UpdatePlugRuleRequest, {k: v for k, v in a.items() if k != "rule_id"}),
+            _model_from(UpdatePlugRuleRequest, {k: v for k, v in a.items() if k != "rule_id"}),
         )
     },
     properties={
@@ -1744,7 +1744,7 @@ _tool(
         "publish_directly."
     ),
     ops.add_feed,
-    lambda a: {"_args": (_validated(AddFeedRequest, a),)},
+    lambda a: {"_args": (_model_from(AddFeedRequest, a),)},
     properties={"url": _text_prop("A public feed address.", max_length=500), "name": _text_prop(max_length=255)},
     required=["url"],
     idempotent=True,
@@ -1765,7 +1765,7 @@ _tool(
     lambda a: {
         "_args": (
             _uuid_arg(a, "feed_id", required=True),
-            _validated(UpdateFeedAutopostRequest, {k: v for k, v in a.items() if k != "feed_id"}),
+            _model_from(UpdateFeedAutopostRequest, {k: v for k, v in a.items() if k != "feed_id"}),
         )
     },
     properties={
