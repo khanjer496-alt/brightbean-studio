@@ -5,6 +5,7 @@ Enhanced with: holidays, custom events, category colors, recurring badges.
 Phones (< md) get a compact month instead of the 7-column grid: one button per day with a dot per post, and the
 tapped day's agenda underneath (month_agenda_default is the day shown first). Wider screens get the full grid.
 {% endcomment %}
+{% load tz %}
 
 {# Phone: compact month + agenda for the tapped day #}
 <div class="cal-compact-month md:hidden tab-slide-in" x-data="{ selected: '{{ month_agenda_default }}' }">
@@ -48,7 +49,12 @@ tapped day's agenda underneath (month_agenda_default is the day shown first). Wi
             </div>
             {% for h in day.holidays %}<p class="pb-1 text-xs font-medium text-warn">{{ h.emoji }} {{ h.name }}</p>{% endfor %}
             {% for event in day.events %}<p class="pb-1 text-xs font-semibold text-ink-2" title="{{ event.description }}">{{ event.title }}</p>{% endfor %}
-            {% for pp in day.agenda_posts %}{% include "calendar/partials/_grid_chip.html" with pp=pp show_slot_check=True %}{% empty %}
+            {% for pp in day.agenda_posts %}
+            <div class="flex items-center gap-2">
+                <span class="w-10 shrink-0 text-xs font-medium tabular-nums text-ink-3">{{ pp.effective_at|timezone:display_timezone|time:"H:i" }}</span>
+                <div class="min-w-0 flex-1">{% include "calendar/partials/_grid_chip.html" with pp=pp show_slot_check=True %}</div>
+            </div>
+            {% empty %}
             {% if not day.events and not day.holidays %}<p class="text-xs text-ink-3">Nothing scheduled.</p>{% endif %}
             {% endfor %}
         </section>
