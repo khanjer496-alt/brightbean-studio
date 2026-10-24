@@ -298,7 +298,7 @@
      @keydown.meta.s.prevent="saveDraft()"
      @keydown.ctrl.s.prevent="saveDraft()">
 
-    {% onboarding_hint "composer" %}
+    {% onboarding_hint "composer" extra_class="mx-4 mt-3 sm:mx-6" %}
 
     <!-- Page header -->
     <div class="flex items-center gap-3 px-4 sm:px-6 py-3 border-b border-stone-100 flex-shrink-0">
@@ -368,7 +368,7 @@
                         <span class="text-sm font-medium text-stone-700 truncate">{{ account.account_name|default:account.account_handle }}{% if account.platform == "youtube" %} <small>YouTube</small>{% endif %}</span>
                     </button>
                     {% empty %}
-                    <span class="text-xs text-stone-400">No accounts connected</span>
+                    <span class="text-xs text-stone-500">No channels connected yet. <a href="{% url 'social_accounts:connect' workspace_id=workspace.id %}" class="font-medium text-accent hover:underline">Connect a channel</a> to schedule this post.</span>
                     {% endfor %}
                 </div>
 

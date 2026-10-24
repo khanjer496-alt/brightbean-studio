@@ -24,12 +24,15 @@ def empty_state(context, key, workspace, has_channels=None, show_action=True):
 
 
 @register.inclusion_tag("onboarding/partials/_hint.html", takes_context=True)
-def onboarding_hint(context, key):
-    """Render the first-visit hint ``key`` unless the user has closed it."""
+def onboarding_hint(context, key, extra_class=""):
+    """Render the first-visit hint ``key`` unless the user has closed it.
+
+    ``extra_class`` adds spacing classes for full-bleed pages such as the composer.
+    """
     request = context.get("request")
     user = getattr(request, "user", None)
     workspace = getattr(request, "workspace", None)
     # The example workspace already carries its own banner; no second callout.
     if not user or (workspace and is_sample_workspace(workspace.id)):
         return {"hint": None, "request": request}
-    return {"hint": hints.hint_for(user, key), "request": request}
+    return {"hint": hints.hint_for(user, key), "request": request, "extra_class": extra_class}

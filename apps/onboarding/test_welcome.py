@@ -226,7 +226,9 @@ def at_post_step(flow):
 
 def test_post_step_without_a_channel_asks_to_connect_one(owner_client, at_post_step, workspace):
     html = owner_client.get(url("welcome_post", workspace)).content.decode()
-    assert "Connect a channel to schedule a post" in html
+    assert "No channel connected yet" in html and "Connect a channel" in html
+    assert url("sample_create", workspace) in html  # not a dead end: the example workspace is offered
+    assert "We wrote a friendly example" not in html
     assert "Schedule post" not in html
 
 

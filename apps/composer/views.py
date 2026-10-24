@@ -2005,6 +2005,11 @@ def autosave(request, workspace_id, post_id=None):
             post = Post(workspace=workspace, author=request.user)
             is_new = True
 
+    # Opening the composer and walking away must not leave a blank draft behind: the first tick
+    # only creates the post once there is something in it.
+    if is_new and not _autosave_has_content(request, workspace):
+        return HttpResponse("")
+
     post.title = request.POST.get("title", "")
     post.caption = request.POST.get("caption", "")
     post.first_comment = request.POST.get("first_comment", "")
@@ -2060,6 +2065,20 @@ def autosave(request, workspace_id, post_id=None):
         f'<span class="text-xs text-gray-400">Saved {timezone.now().strftime("%H:%M")}</span>',
         headers={"HX-Trigger": json.dumps({"autosaved": {"postId": str(post.id), "isNew": is_new}})},
     )
+
+
+def _autosave_has_content(request, workspace):
+    """Whether an autosave for a not-yet-created post carries anything worth keeping."""
+    fields = ("title", "caption", "first_comment", "internal_notes", "tags", "selected_accounts")
+    if any(request.POST.get(name, "").strip() for name in fields):
+        return True
+    if request.session.get(f"pending_media_{workspace.id}"):
+        return True
+    try:
+        thread_specs, _assets = _composer_thread_parts(request, workspace)
+    except ValueError:
+        return False
+    return bool(thread_specs)
 
 
 @login_required
