@@ -5,10 +5,12 @@
 {% block content %}
 <div hx-trigger="portalAction from:body"
      hx-get="{% url 'client_portal:approval_queue' %}"
-     hx-target="#portal-posts" hx-select="#portal-posts" hx-swap="outerHTML">
+     hx-target="#portal-posts" hx-select="#portal-posts" hx-swap="outerHTML"
+     x-data
+     @htmx:after-settle="if (!document.activeElement || document.activeElement === document.body) ($el.querySelector('#portal-posts button[hx-post$=&quot;/approve/&quot;]') || $refs.queueHeading).focus({ preventScroll: false })">
 
     <div class="mb-6">
-        <h1 class="text-[1.375rem] font-bold tracking-tight text-[color:var(--text-primary)]">Posts for your review</h1>
+        <h1 x-ref="queueHeading" tabindex="-1" class="text-[1.375rem] font-bold tracking-tight text-[color:var(--text-primary)] outline-none">Posts for your review</h1>
         <p class="text-[0.875rem] mt-0.5 text-[color:var(--text-secondary)]">Approve or request changes before anything goes live.</p>
     </div>
 

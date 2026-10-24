@@ -671,7 +671,7 @@
 
                 <!-- Body -->
                 <div class="idea-modal-body" @click="createGroupDropdownOpen = false; createTagDropdownOpen = false">
-                    <input aria-label="Idea title" type="text" name="title" required class="idea-title-input" placeholder="Give your idea a title">
+                    <input aria-label="Idea title" data-autofocus type="text" name="title" required class="idea-title-input" placeholder="Give your idea a title">
                     <textarea aria-label="Idea description" name="description" class="idea-desc-input" placeholder="Let it flow... or"></textarea>
                     <input type="file" name="media" x-ref="ideaFileInput" accept="image/*,video/*,.gif" style="display:none" multiple
                            @change="_handleFileSelect($event)">
@@ -868,7 +868,7 @@
 
                 <!-- Body -->
                 <div class="idea-modal-body" @click="editGroupDropdownOpen = false; editTagDropdownOpen = false">
-                    <input aria-label="Idea title" type="text" name="title" required
+                    <input aria-label="Idea title" data-autofocus type="text" name="title" required
                            :value="editingIdea?.title || ''"
                            class="idea-title-input" placeholder="Give your idea a title">
                     <textarea aria-label="Idea description" name="description" class="idea-desc-input" placeholder="Let it flow... or"

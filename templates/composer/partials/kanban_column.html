@@ -9,7 +9,7 @@
          @mousedown="columnHeaderMouseDown()">
         <div class="flex items-center gap-2">
             <span class="group-label text-[13px] font-bold text-stone-800">{{ col.label }}</span>
-            <span class="column-count inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-semibold bg-stone-200/70 text-stone-500">{{ col.ideas|length }}</span>
+            <span class="column-count inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full text-[11px] font-semibold bg-[color:var(--surface-3)] text-[color:var(--text-secondary)]">{{ col.ideas|length }}</span>
         </div>
         <div class="flex items-center gap-0.5">
             <button type="button" aria-label="Add idea to {{ col.label }}" @click="showCreateModal = true; createGroupId = '{{ col.id }}'; createSelectedGroup = '{{ col.id }}'"

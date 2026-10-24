@@ -38,7 +38,7 @@
   }
   .ml-sidebar {
     background: var(--surface-0);
-    border-right: 1px solid var(--border);
+    border-inline-end: 1px solid var(--border);
   }
   .ml-filter-pill {
     font-size: 0.75rem;
@@ -97,10 +97,14 @@
 {% endblock %}
 
 {% block content %}
-<div x-data="{ ...mediaLibrary(), folderSidebarOpen: false }" class="flex flex-1 min-h-0 -m-3 sm:-m-4 lg:-m-6 -mb-3 sm:-mb-4 lg:-mb-6">
+<div x-data="{ ...mediaLibrary(), folderSidebarOpen: false, folderSidebarDocked: window.matchMedia('(min-width: 1024px)').matches }"
+     x-init="window.matchMedia('(min-width: 1024px)').addEventListener('change', e => { folderSidebarDocked = e.matches; if (e.matches) folderSidebarOpen = false })"
+     @keydown.escape="if (folderSidebarOpen) { folderSidebarOpen = false; $refs.folderToggle.focus() }"
+     class="flex flex-1 min-h-0 -m-3 sm:-m-4 lg:-m-6 -mb-3 sm:-mb-4 lg:-mb-6">
 
   <!-- Mobile folder sidebar toggle -->
-  <button @click="folderSidebarOpen = !folderSidebarOpen"
+  <button @click="folderSidebarOpen = !folderSidebarOpen; if (folderSidebarOpen) $nextTick(() => $refs.folderSidebar.querySelector('a, button')?.focus())"
+          x-ref="folderToggle" aria-controls="ml-folder-sidebar" :aria-expanded="folderSidebarOpen.toString()"
           class="lg:hidden fixed bottom-4 start-4 z-40 flex items-center gap-2 px-3 py-2.5 bg-white border border-stone-200 rounded-xl shadow-lg text-sm font-medium text-stone-600 hover:bg-stone-50 transition-colors cursor-pointer"
           x-show="!detailOpen">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4 6a2 2 0 012-2h2l2 2h6a2 2 0 012 2v2M4 6v10a2 2 0 002 2h12a2 2 0 002-2V10a2 2 0 00-2-2H4z"/></svg>
@@ -114,10 +118,12 @@
        x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"></div>
 
   <!-- ═══════ FOLDER SIDEBAR ═══════ -->
-  <div class="ml-sidebar w-56 flex-shrink-0 flex flex-col overflow-y-auto rounded-tl-xl rounded-bl-xl
+  <div id="ml-folder-sidebar" x-ref="folderSidebar" role="navigation" aria-label="Folders"
+       :inert="!folderSidebarOpen && !folderSidebarDocked"
+       class="ml-sidebar w-56 flex-shrink-0 flex flex-col overflow-y-auto rounded-tl-xl rounded-bl-xl
               fixed inset-y-0 start-0 z-50 transition-transform duration-200
               lg:relative lg:z-auto lg:translate-x-0"
-       :class="folderSidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'"
+       :class="folderSidebarOpen ? 'translate-x-0' : '-translate-x-full rtl:translate-x-full lg:translate-x-0 lg:rtl:translate-x-0'"
        @click="if (window.innerWidth < 1024 && $event.target.closest('a')) { folderSidebarOpen = false }">
     <div class="p-4">
       <div class="flex items-center justify-between mb-3">
