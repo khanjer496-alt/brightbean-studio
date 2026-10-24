@@ -34,7 +34,7 @@ Refreshes itself when the account's slots change.
 
     <div id="suggest-slots-{{ account.id }}" class="mb-3" aria-live="polite"></div>
 
-    <div class="relative overflow-x-auto" role="region" aria-label="Best times heatmap for {{ account.account_name|default:account.account_handle }}" tabindex="0">
+    <div class="relative overflow-x-auto" role="region" aria-label="Best times heatmap for {{ account.display_name }}" tabindex="0">
         <table class="table-fixed border-separate border-spacing-px min-w-[34rem] w-full text-[10px] text-stone-500">
             <caption class="sr-only">Posting score by weekday and hour, {{ best.basis_label }}. Higher scores are better times to post.</caption>
             <thead>

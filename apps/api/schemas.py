@@ -85,6 +85,13 @@ class AccountSummary(Schema):
             "If false, ``first_comment`` is silently dropped at publish time."
         ),
     )
+    paused: bool = Field(
+        False,
+        description=(
+            "True while a workspace member has paused publishing to this account. Posts scheduled to it are "
+            "held (see ``held_reason`` on the post's platform entry) and go out when it is resumed."
+        ),
+    )
     requires_video: bool = Field(
         False,
         description=(
@@ -139,6 +146,7 @@ class AccountSummary(Schema):
             caption_counting=sa.caption_counting,
             needs_title=bool(sa.field_config.get("needs_title", False)),
             supports_first_comment=sa.supports_first_comment(),
+            paused=sa.is_paused,
             requires_video=is_video_only(sa.platform),
             requires_media=requires_media(sa.platform),
             thread_mode=thread.mode.value,
@@ -497,6 +505,13 @@ class PlatformPostSummary(Schema):
     post_settings: dict[str, Any] = Field(
         default_factory=dict, description="The per-post settings this account's platform declares, as saved."
     )
+    held_reason: str = Field(
+        "",
+        description=(
+            "Why a scheduled post is not being sent: publishing to its account is paused. It stays scheduled and "
+            "goes out when a workspace member resumes the account. Empty otherwise."
+        ),
+    )
 
     @field_serializer("scheduled_at", "published_at")
     def _serialize_dt(self, value: dt.datetime | None) -> str | None:
@@ -522,6 +537,7 @@ class PlatformPostSummary(Schema):
             thread_status=pp.thread_status,
             thread_error=pp.thread_error or "",
             post_settings=_saved_post_settings(pp),
+            held_reason=pp.social_account.paused_reason if pp.status == "scheduled" else "",
             thread_parts=[
                 PlatformPostPartSummary(
                     part_id=state.part_id,

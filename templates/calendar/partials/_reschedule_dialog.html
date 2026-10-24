@@ -9,7 +9,7 @@ Context: workspace, pp, denial_message, current_value, timezone_name, schedules_
         <h2 id="reschedule-dialog-title" class="text-base font-semibold text-ink">Reschedule post</h2>
         <p class="mt-0.5 truncate text-xs text-ink-3">
             {{ pp.post.title|default:pp.post.caption_snippet|default:"Untitled post"|truncatechars:60 }}
-            · {{ pp.social_account.account_name|default:pp.social_account.account_handle }}
+            · {{ pp.social_account.display_name }}
         </p>
     </div>
     <button type="button" data-dialog-close aria-label="Close"

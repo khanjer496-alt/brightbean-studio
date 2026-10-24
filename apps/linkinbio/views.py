@@ -176,14 +176,11 @@ def page_edit(request, workspace_id, page_id):
         for link in page.links.select_related("thumbnail").order_by("position", "id")
     ]
     selected = set(page.social_accounts.values_list("id", flat=True))
-    from providers import PROVIDER_REGISTRY
 
     accounts = [
         {
             "account": account,
-            "has_profile": bool(
-                PROVIDER_REGISTRY.get(account.platform) and PROVIDER_REGISTRY[account.platform].profile_url(account)
-            ),
+            "has_profile": bool(account.profile_link),
             "selected": account.id in selected,
         }
         for account in SocialAccount.objects.filter(workspace=workspace).order_by("account_name")

@@ -181,7 +181,7 @@
                         @change="window.location.href='?view={{ view_type }}&date={{ target_date|date:'Y-m-d' }}{% for sid in selected_workspace_ids %}&workspace={{ sid }}{% endfor %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}{% if request.GET.tag %}&tag={{ request.GET.tag }}{% endif %}' + ($event.target.value ? '&channel=' + $event.target.value : '')">
                     <option value="">Channels</option>
                     {% for acc in social_accounts %}
-                    <option value="{{ acc.id }}" {% if request.GET.channel == acc.id|stringformat:'s' %}selected{% endif %}>{{ acc.account_name|default:acc.account_handle }} ({{ acc.get_platform_display }})</option>
+                    <option value="{{ acc.id }}" {% if request.GET.channel == acc.id|stringformat:'s' %}selected{% endif %}>{{ acc.display_name }} ({{ acc.get_platform_display }})</option>
                     {% endfor %}
                 </select>
             </div>

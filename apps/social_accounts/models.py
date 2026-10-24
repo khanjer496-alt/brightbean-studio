@@ -173,6 +173,19 @@ class SocialAccount(models.Model):
     # Contains only object IDs/cursors, never OAuth tokens or message bodies.
     instagram_dm_poll_state = models.JSONField(default=dict, blank=True)
 
+    # Display-only overrides set from the account card (never sent to the platform): a nickname shown in place of
+    # the platform name, a picture shown in place of its avatar, and the address the account links out to.
+    nickname = models.CharField(max_length=100, blank=True, default="")
+    custom_avatar_url = models.URLField(max_length=2000, blank=True, default="")
+    custom_profile_url = models.URLField(max_length=2000, blank=True, default="")
+
+    # Publishing is paused while this is set: posts scheduled to the account are held (they stay scheduled)
+    # until it is cleared, then go out as overdue.
+    paused_at = models.DateTimeField(blank=True, null=True)
+    paused_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name="+"
+    )
+
     objects = WorkspaceScopedManager()
 
     class Meta:
@@ -263,14 +276,53 @@ class SocialAccount(models.Model):
         return status_message(self)
 
     @property
-    def display_label(self) -> str:
-        """Human name for pickers and filters: the account name, else the handle.
+    def display_name(self) -> str:
+        """What the account is called in the app: its nickname, else the account name, else the handle."""
+        return self.nickname or self.account_name or self.account_handle
 
-        Mirrors the ``account_name|default:account_handle`` the channel filters
-        used inline, so a component that can only read one attribute (the
-        ``ui_select`` tag's ``label_field``) still renders the same text.
+    @property
+    def display_label(self) -> str:
+        """Human name for pickers and filters: the nickname, else the account name, else the handle.
+
+        A single attribute, so a component that can only read one (the ``ui_select`` tag's ``label_field``)
+        renders the same text as the templates that use ``display_name``.
         """
-        return self.account_name or self.account_handle
+        return self.display_name
+
+    @property
+    def display_avatar_url(self) -> str:
+        """The picture shown for the account: the custom one when set, else the platform's."""
+        return self.custom_avatar_url or self.avatar_url
+
+    @property
+    def profile_link(self) -> str:
+        """Where the account links out to: the custom address when set, else the platform's profile page ("" if none)."""
+        if self.custom_profile_url:
+            return self.custom_profile_url
+        from providers import PROVIDER_REGISTRY
+
+        provider_cls = PROVIDER_REGISTRY.get(self.platform)
+        return provider_cls.profile_url(self) if provider_cls else ""
+
+    @property
+    def is_paused(self) -> bool:
+        return self.paused_at is not None
+
+    @property
+    def held_post_count(self) -> int:
+        """Scheduled posts waiting on this account while publishing is paused (0 when it is on)."""
+        if not self.is_paused:
+            return 0
+        from apps.composer.models import PlatformPost
+
+        return PlatformPost.objects.filter(social_account=self, status=PlatformPost.Status.SCHEDULED).count()
+
+    @property
+    def paused_reason(self) -> str:
+        """A sentence saying why posts to this account are being held, or "" when publishing is on."""
+        if not self.is_paused:
+            return ""
+        return f"Publishing to {self.display_name} is paused. Resume it on the Social Accounts page to send held posts."
 
     def token_expires_within(self, window) -> bool:
         """Whether the recorded expiry falls inside ``window`` from now.

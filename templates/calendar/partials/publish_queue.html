@@ -43,7 +43,7 @@ Shows all scheduled platform posts grouped by date. Loaded via HTMX into #tab-co
                                 {% include "partials/_platform_icon.html" with platform=pp.social_account.platform size="sm" %}
                             </span>
                             <span class="text-sm font-semibold text-stone-800">
-                                {{ pp.social_account.account_name|default:pp.social_account.account_handle }}
+                                {{ pp.social_account.display_name }}
                             </span>
                         </div>
 

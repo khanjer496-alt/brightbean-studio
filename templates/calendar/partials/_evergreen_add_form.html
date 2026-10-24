@@ -7,7 +7,7 @@ Loaded into the Sent tab's #evergreen-modal.
     <div class="p-5">
         <h2 id="eg-dialog-title" class="text-base font-semibold text-stone-900">Add to evergreen</h2>
         <p class="mt-1 text-sm text-stone-500 break-words">{{ pp.post.caption_snippet|default:"(no text)" }}</p>
-        <p class="mt-1 text-xs text-stone-500">{{ pp.social_account.account_name|default:pp.social_account.account_handle }} · {{ pp.social_account.get_platform_display }}</p>
+        <p class="mt-1 text-xs text-stone-500">{{ pp.social_account.display_name }} · {{ pp.social_account.get_platform_display }}</p>
 
         {% if error %}<p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{{ error }}</p>{% endif %}
 

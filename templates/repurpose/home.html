@@ -87,7 +87,7 @@
                                     {% for account in item.accounts %}
                                     <label class="inline-flex min-h-11 cursor-pointer items-center gap-2 text-sm text-ink-2">
                                         <input type="checkbox" name="accounts_{{ item.spec.key }}" value="{{ account.id }}" class="h-5 w-5 shrink-0">
-                                        {{ account.account_name|default:account.account_handle }} <span class="text-xs text-ink-3">{{ account.get_platform_display }}</span>
+                                        {{ account.display_name }} <span class="text-xs text-ink-3">{{ account.get_platform_display }}</span>
                                     </label>
                                     {% endfor %}
                                 </div>

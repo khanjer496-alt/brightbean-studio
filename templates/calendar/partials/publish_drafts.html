@@ -69,7 +69,7 @@ Shows all draft platform posts in a table. Loaded via HTMX into #tab-content.
                         <span class="w-5 h-5 rounded-[5px] flex items-center justify-center">
                             {% include "partials/_platform_icon.html" with platform=pp.social_account.platform size="sm" %}
                         </span>
-                        <span class="text-xs text-stone-500">{{ pp.social_account.account_name|default:pp.social_account.account_handle }}</span>
+                        <span class="text-xs text-stone-500">{{ pp.social_account.display_name }}</span>
                     </div>
                 </td>
                 <td class="px-4 py-3 text-xs text-stone-500">

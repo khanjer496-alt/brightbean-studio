@@ -27,7 +27,7 @@
             <label for="eg-account" class="block text-xs font-medium text-stone-600 mb-1">Channel</label>
             <select id="eg-account" name="account" class="form-input text-sm" @change="$el.form.requestSubmit()">
                 <option value="">All channels</option>
-                {% for account in accounts %}<option value="{{ account.id }}" {% if selected_account == account.id|stringformat:"s" %}selected{% endif %}>{{ account.account_name|default:account.account_handle }} ({{ account.get_platform_display }})</option>{% endfor %}
+                {% for account in accounts %}<option value="{{ account.id }}" {% if selected_account == account.id|stringformat:"s" %}selected{% endif %}>{{ account.display_name }} ({{ account.get_platform_display }})</option>{% endfor %}
             </select>
         </div>
         <div>

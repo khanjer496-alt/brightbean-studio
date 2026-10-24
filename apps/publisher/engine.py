@@ -526,6 +526,8 @@ class PublishEngine:
             .exclude(autonomy_hold_exclusion(now))
             # The example workspace holds sample drafts that must never go out.
             .exclude(post__workspace__sample_marker__isnull=False)
+            # A paused account holds its scheduled posts: they stay scheduled and go out, overdue, on resume.
+            .exclude(social_account__paused_at__isnull=False)
             .select_related("post__workspace", "social_account")
             .order_by("effective_at")[: _max_concurrent_publishes()]
         )
@@ -566,6 +568,8 @@ class PublishEngine:
                 for pp in locked
                 if pp.id in due_ids
                 and pp.status == PlatformPost.Status.SCHEDULED
+                # Re-checked under the lock: an account paused since the query still holds its posts.
+                and not pp.social_account.is_paused
                 and not is_autonomy_held(pp, now)
                 and (
                     (
@@ -1417,6 +1421,8 @@ class PublishEngine:
             )
             .exclude(post__platform_posts__status=PlatformPost.Status.ON_HOLD)
             .exclude(autonomy_hold_exclusion(now))
+            # A paused account holds a retrying post too; it retries on resume.
+            .exclude(social_account__paused_at__isnull=False)
             .select_related("social_account", "post")
         )
 
@@ -2228,6 +2234,14 @@ def _publish_thread_part_task(platform_post_id, part_id):
     state = states[part.id]
     # A thread an automation started stops between parts when crisis pause is switched on or
     # its publishing level is lowered: the live parts stay, the rest wait for a person to resume.
+    if state.status == PartStatus.PENDING and platform_post.social_account.is_paused:
+        _stop_thread(
+            platform_post,
+            part,
+            f"Publishing to {platform_post.social_account.display_name} is paused. Resume the thread after you "
+            "resume the account.",
+        )
+        return
     reason = autonomy_send_blocker(platform_post) if state.status == PartStatus.PENDING else ""
     if reason:
         autonomy_hold_at_send(platform_post, reason, what="thread")

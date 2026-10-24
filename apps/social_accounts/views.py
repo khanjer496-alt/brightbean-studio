@@ -28,6 +28,7 @@ from apps.webhooks import events as webhook_events
 from providers.exceptions import APIError, PublishError, QuotaExceededError
 
 from .error_messages import quota_connect_error
+from .forms import ChannelOptionsForm
 from .models import MastodonAppRegistration, PlatformVisibility, SocialAccount
 from .oauth_aliases import from_url_slug, redirect_uri_from_request, to_url_slug
 from .oauth_pkce import issue_pkce_verifier, pkce_kwargs
@@ -1133,13 +1134,64 @@ def retry_webhooks(request, workspace_id, account_id):
     return redirect("social_accounts:list", workspace_id=workspace_id)
 
 
-def _render_account_card(request, account, workspace_id):
+def _render_account_card(request, account, workspace_id, **context):
     """Render one account card for an htmx ``outerHTML`` swap of ``#account-<id>``."""
     return render(
         request,
         "social_accounts/partials/_account_card.html",
-        {"account": account, "workspace_id": workspace_id},
+        {"account": account, "workspace_id": workspace_id, **context},
     )
+
+
+# ------------------------------------------------------------------
+# Channel options: nickname, picture, profile address, pause
+# ------------------------------------------------------------------
+
+
+@login_required
+@require_permission("manage_social_accounts")
+@require_POST
+def update_options(request, workspace_id, account_id):
+    """Save the account's display overrides (nickname, picture, profile address). Display only."""
+    account = get_object_or_404(SocialAccount.objects.for_workspace(workspace_id), id=account_id)
+    form = ChannelOptionsForm(request.POST)
+    if form.is_valid():
+        for field, value in form.cleaned_data.items():
+            setattr(account, field, value)
+        account.save(update_fields=[*form.cleaned_data, "updated_at"])
+        form = None
+    if request.headers.get("HX-Request"):
+        # Errors re-render the card with the dialog still open, so the person can fix the field.
+        return _render_account_card(request, account, workspace_id, options_form=form)
+    if form is None:
+        messages.success(request, f"Saved the options for {account.display_name}.")
+    else:
+        messages.error(request, "; ".join(error for errors in form.errors.values() for error in errors))
+    return redirect("social_accounts:list", workspace_id=workspace_id)
+
+
+@login_required
+@require_permission("manage_social_accounts")
+@require_POST
+def set_paused(request, workspace_id, account_id):
+    """Pause or resume publishing to the account (``paused=1`` / ``paused=0``).
+
+    Posts scheduled to a paused account stay scheduled and are held by the publisher; resuming sends them
+    as overdue.
+    """
+    account = get_object_or_404(SocialAccount.objects.for_workspace(workspace_id), id=account_id)
+    pause = request.POST.get("paused") == "1"
+    if pause != account.is_paused:
+        account.paused_at = timezone.now() if pause else None
+        account.paused_by = request.user if pause else None
+        account.save(update_fields=["paused_at", "paused_by", "updated_at"])
+    if request.headers.get("HX-Request"):
+        return _render_account_card(request, account, workspace_id)
+    messages.success(
+        request,
+        f"Publishing to {account.display_name} is paused." if pause else f"Publishing to {account.display_name} is on.",
+    )
+    return redirect("social_accounts:list", workspace_id=workspace_id)
 
 
 # ------------------------------------------------------------------

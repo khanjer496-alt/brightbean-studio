@@ -65,6 +65,16 @@ urlpatterns = [
         name="retry_webhooks",
     ),
     path(
+        "<uuid:workspace_id>/<uuid:account_id>/options/",
+        views.update_options,
+        name="update_options",
+    ),
+    path(
+        "<uuid:workspace_id>/<uuid:account_id>/paused/",
+        views.set_paused,
+        name="set_paused",
+    ),
+    path(
         "<uuid:workspace_id>/<uuid:account_id>/disconnect/",
         views.disconnect,
         name="disconnect",
