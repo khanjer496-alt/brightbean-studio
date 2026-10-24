@@ -1,6 +1,6 @@
 {% load static %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ LANGUAGE_CODE }}" dir="{% if LANGUAGE_BIDI %}rtl{% else %}ltr{% endif %}" data-theme="postdelegate">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -13,6 +13,8 @@
     <link rel="stylesheet" href="{% static 'css/dist/styles.css' %}">
     <link rel="stylesheet" href="{% static 'css/platforms.css' %}">
     {% block extra_head %}{% endblock %}
+    {# Same dark-theme mapping as the app, so the portal's cards are not light boxes on a dark page. #}
+    <link rel="stylesheet" href="{% static 'css/postdelegate.css' %}">
 </head>
 <body class="min-h-screen" style="background: var(--surface-1); font-family: var(--font-body); color: var(--text-primary);">
     {% csrf_token %}

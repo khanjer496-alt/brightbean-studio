@@ -280,7 +280,8 @@ def portal_review_approve(request):
     return toast_response(
         tone="success",
         title=f"{approved} post{plural} approved",
-        body="Thanks — they are scheduled to publish.",
+        # Approval clears the post to go out; it may not have a time yet, so don't promise one.
+        body=f"Thanks — the team can now publish {'it' if approved == 1 else 'them'}.",
         events={"portalAction": {"action": "batch"}},
     )
 
@@ -312,7 +313,7 @@ def portal_approve(request, post_id):
 
     if request.htmx:
         return _portal_response(
-            post.id, "approved", tone="success", title="Approved", body="Thanks — scheduled to publish."
+            post.id, "approved", tone="success", title="Approved", body="Thanks — the team can now publish it."
         )
     return redirect("client_portal:approval_queue")
 

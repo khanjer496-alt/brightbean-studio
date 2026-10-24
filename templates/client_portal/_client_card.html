@@ -52,14 +52,14 @@ already-approved posts get "Put on hold"; held posts show their state.
         <div class="px-5 py-4 border-t border-stone-100 flex flex-wrap items-center gap-2 bg-stone-50">
             {% if post.client_pending %}
             <button hx-post="{% url 'client_portal:approve' post_id=post.id %}" hx-swap="none"
-                    class="px-4 py-2 text-[0.8125rem] font-semibold rounded-full text-white transition-all hover:-translate-y-px" style="background:#22C55E;">Approve</button>
+                    class="px-4 py-2 text-[0.8125rem] font-semibold rounded-full transition-all hover:-translate-y-px" style="background:var(--success-500);color:var(--surface-page);">Approve</button>
             <button @click="panel = panel === 'changes' ? null : 'changes'"
-                    class="px-4 py-2 text-[0.8125rem] font-semibold rounded-full" style="background:#FEFCE8;color:#A16207;border:1px solid rgba(234,179,8,0.25);">Request changes</button>
+                    class="px-4 py-2 text-[0.8125rem] font-semibold rounded-full" style="background:var(--warning-50);color:var(--warning-700);border:1px solid color-mix(in srgb, var(--warning-500) 35%, transparent);">Request changes</button>
             <button @click="panel = panel === 'reject' ? null : 'reject'"
-                    class="px-4 py-2 text-[0.8125rem] font-semibold rounded-full" style="background:#FEF2F2;color:#B91C1C;border:1px solid rgba(239,68,68,0.18);">Reject</button>
+                    class="px-4 py-2 text-[0.8125rem] font-semibold rounded-full" style="background:var(--error-50);color:var(--error-700);border:1px solid color-mix(in srgb, var(--error-500) 35%, transparent);">Reject</button>
             {% elif post.client_on_hold %}
             <span class="text-[0.8125rem] text-stone-500 inline-flex items-center gap-1.5">
-                <svg class="w-[15px] h-[15px]" style="color:#7C3AED;" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
+                <svg class="w-[15px] h-[15px]" style="color:var(--text-brand);" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
                 On hold — the team has been notified.
             </span>
             {% elif post.client_approved %}
@@ -68,7 +68,7 @@ already-approved posts get "Put on hold"; held posts show their state.
                 You approved this. Scheduled to publish
             </span>
             <button @click="panel = panel === 'hold' ? null : 'hold'"
-                    class="px-4 py-2 text-[0.8125rem] font-semibold rounded-full inline-flex items-center gap-1.5" style="background:#F5F3FF;color:#6D28D9;border:1px solid rgba(124,58,237,0.2);">
+                    class="px-4 py-2 text-[0.8125rem] font-semibold rounded-full inline-flex items-center gap-1.5" style="background:var(--primary-soft);color:var(--text-brand);border:1px solid var(--primary-ring);">
                 <svg class="w-[13px] h-[13px]" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg>
                 Put on hold
             </button>
@@ -85,13 +85,13 @@ already-approved posts get "Put on hold"; held posts show their state.
             <div class="flex gap-2 mt-3">
                 <button x-show="panel === 'changes'" hx-post="{% url 'client_portal:request_changes' post_id=post.id %}" hx-include="#client-comment-{{ post.id }}" hx-swap="none"
                         :disabled="!comment.trim()" :class="!comment.trim() && 'opacity-50 cursor-not-allowed'"
-                        class="px-4 py-2 text-[0.8125rem] font-semibold rounded-full text-white" style="background:#EAB308;">Submit feedback</button>
+                        class="px-4 py-2 text-[0.8125rem] font-semibold rounded-full" style="background:var(--warning-500);color:var(--surface-page);">Submit feedback</button>
                 <button x-show="panel === 'reject'" hx-post="{% url 'client_portal:reject' post_id=post.id %}" hx-include="#client-comment-{{ post.id }}" hx-swap="none"
                         :disabled="!comment.trim()" :class="!comment.trim() && 'opacity-50 cursor-not-allowed'"
-                        class="px-4 py-2 text-[0.8125rem] font-semibold rounded-full text-white" style="background:#EF4444;">Reject post</button>
+                        class="px-4 py-2 text-[0.8125rem] font-semibold rounded-full" style="background:var(--error-500);color:var(--surface-page);">Reject post</button>
                 <button x-show="panel === 'hold'" hx-post="{% url 'client_portal:request_hold' post_id=post.id %}" hx-include="#client-comment-{{ post.id }}" hx-swap="none"
                         :disabled="!comment.trim()" :class="!comment.trim() && 'opacity-50 cursor-not-allowed'"
-                        class="px-4 py-2 text-[0.8125rem] font-semibold rounded-full text-white" style="background:#7C3AED;">Request hold</button>
+                        class="px-4 py-2 text-[0.8125rem] font-semibold rounded-full text-white" style="background:var(--primary);">Request hold</button>
                 <button @click="panel = null; comment = ''" class="px-4 py-2 text-[0.8125rem] font-medium rounded-full text-stone-500 hover:bg-stone-100">Cancel</button>
             </div>
         </div>

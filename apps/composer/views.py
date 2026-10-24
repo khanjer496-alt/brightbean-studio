@@ -1189,7 +1189,12 @@ def compose(request, workspace_id, post_id=None):
     )
     # Fresh drafts get "Submit for Approval"; posts already in the workflow
     # (changes-requested / rejected / approved-but-edited) get "Resubmit" instead.
-    show_submit_button = workflow_mode != "none" and not show_resubmit_button and not post_is_readonly
+    # submit_for_review only moves draft children, so a post that is already
+    # waiting for review or scheduled doesn't offer a button that would do nothing.
+    has_submittable_child = not platform_post_list or any(pp.status == "draft" for pp in platform_post_list)
+    show_submit_button = (
+        workflow_mode != "none" and not show_resubmit_button and not post_is_readonly and has_submittable_child
+    )
     # Once the post is committed to publishing, the Schedule Post panel re-times
     # a live schedule; while still a draft it captures a *proposed* time on save.
     # Mirror _capture_proposed_publish_at's guard exactly (scheduled_at OR a

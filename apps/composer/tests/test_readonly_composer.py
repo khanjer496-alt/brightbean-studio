@@ -152,6 +152,14 @@ class ActionBarGatingTests(ReadonlyComposerTestsBase):
         body = self._compose(self._make_post(PlatformPost.Status.DRAFT)).content.decode("utf-8")
         self.assertIn(SUBMIT_BTN, body)
 
+    def test_scheduled_or_waiting_post_offers_no_submit_for_approval(self):
+        # submit_for_review only moves drafts; the button would save and silently do nothing.
+        self.ws.approval_workflow_mode = "internal"
+        self.ws.save(update_fields=["approval_workflow_mode"])
+        for status in (PlatformPost.Status.SCHEDULED, PlatformPost.Status.PENDING_REVIEW):
+            body = self._compose(self._make_post(status)).content.decode("utf-8")
+            self.assertNotIn(SUBMIT_BTN, body, status)
+
     def test_scoped_to_failed_child_is_not_readonly(self):
         # Opened on the failed channel of a partially-published post, the
         # composer is showing an editable thing — the published sibling must not

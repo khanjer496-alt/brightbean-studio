@@ -17,13 +17,13 @@
             <div class="flex-1 min-w-0">
                 <div class="text-sm font-medium truncate text-[color:var(--text-primary)]">{{ invite.email }}</div>
                 <div class="text-xs text-[color:var(--text-tertiary)]">
-                    Invited by {{ invite.invited_by.display_name }} · Expires {{ invite.expires_at|timesince }} from now
+                    Invited by {{ invite.invited_by.display_name }} · Expires in {{ invite.expires_at|timeuntil }}
                 </div>
             </div>
 
             <!-- Role Badge -->
             <div class="flex-shrink-0">
-                <span class="text-xs font-medium px-2.5 py-1 rounded-full" style="background: #FEF3C7; color: #92400E;">Client</span>
+                <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-[var(--warning-50)] text-[var(--warning-700)]">Client</span>
             </div>
 
             <!-- Actions -->

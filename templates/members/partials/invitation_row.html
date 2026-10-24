@@ -8,7 +8,7 @@
     <div class="flex-1 min-w-[10rem]">
         <div class="text-sm font-medium truncate text-ink">{{ invite.email }}</div>
         <div class="text-xs text-ink-3">
-            Invited by {{ invite.invited_by.display_name }} · Expires {{ invite.expires_at|timesince }} from now
+            Invited by {{ invite.invited_by.display_name }} · Expires in {{ invite.expires_at|timeuntil }}
         </div>
     </div>
 

@@ -53,8 +53,12 @@
         transition: background 150ms ease;
         background: var(--surface-1);
     }
+    /* Short laptop screens (~800px) fit a five-week month without scrolling the grid; taller ones get roomier days. */
     @media (min-width: 768px) {
-        .cal-day { min-height: 130px; padding: 8px; }
+        .cal-day { min-height: 92px; padding: 8px; }
+    }
+    @media (min-width: 768px) and (min-height: 940px) {
+        .cal-day { min-height: 130px; }
     }
     .cal-day:hover { background: var(--surface-0); }
     .cal-day.past { background: var(--surface-2); }

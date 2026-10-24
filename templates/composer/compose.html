@@ -252,6 +252,9 @@
         border-top: 1px solid var(--border);
         padding: 12px 16px;
         display: flex; align-items: center; gap: 6px;
+        /* Delete + Save Draft + Submit for Approval + the schedule split button outgrow the column
+           next to the preview; wrap the actions (still end-aligned) rather than push them off-screen. */
+        flex-wrap: wrap; justify-content: flex-end; row-gap: 8px;
         position: relative;
         z-index: 51;
     }
@@ -2699,25 +2702,7 @@ function composerApp() {
             document.body.addEventListener('autosaved', (e) => {
                 const detail = e.detail || {};
                 this.lastSaved = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-                if (detail.postId && detail.isNew) {
-                    this.autosavedPostId = detail.postId;
-                    // Update the autosave trigger URL to use the edit endpoint
-                    const trigger = document.getElementById('autosave-trigger');
-                    if (trigger) {
-                        const editUrl = `/workspace/{{ workspace.id }}/compose/${detail.postId}/autosave/`;
-                        trigger.setAttribute('hx-post', editUrl);
-                        htmx.process(trigger);
-                    }
-                    // Also update the main form's action URL
-                    const form = document.getElementById('composer-form');
-                    if (form) {
-                        const editSaveUrl = `/workspace/{{ workspace.id }}/compose/${detail.postId}/save/`;
-                        form.setAttribute('hx-post', editSaveUrl);
-                        htmx.process(form);
-                    }
-                    // Update upload URL to attach media to the post directly
-                    this.uploadUrl = `/workspace/{{ workspace.id }}/compose/${detail.postId}/upload-media/`;
-                }
+                if (detail.postId && detail.isNew) this.adoptPostId(detail.postId);
             });
 
             // Track whether a video is attached (enables "Choose from video").
@@ -3230,18 +3215,49 @@ function composerApp() {
             actionInput.remove();
         },
 
+        // Point every save path at a post once it exists, so later saves update it instead of
+        // creating another draft (first autosave, or the first explicit Save Draft of a new post).
+        adoptPostId(postId) {
+            if (!postId || this.autosavedPostId === postId) return;
+            this.autosavedPostId = postId;
+            const trigger = document.getElementById('autosave-trigger');
+            if (trigger) {
+                trigger.setAttribute('hx-post', `/workspace/{{ workspace.id }}/compose/${postId}/autosave/`);
+                htmx.process(trigger);
+            }
+            const form = document.getElementById('composer-form');
+            if (form) {
+                form.setAttribute('hx-post', `/workspace/{{ workspace.id }}/compose/${postId}/save/`);
+                htmx.process(form);
+            }
+            // Attach later uploads to the post directly
+            this.uploadUrl = `/workspace/{{ workspace.id }}/compose/${postId}/upload-media/`;
+        },
+
         onFormSaved(event) {
             // Only react to the form's own submit, not htmx requests bubbling from
             // child elements (e.g. the pending-media remove button).
             if (event.detail.elt !== event.currentTarget) return;
             const xhr = event.detail.xhr;
             if (event.detail.successful) {
-                const action = document.getElementById('publish-action-btn')?.value;
+                // Act on the button that was pressed (Save Draft, Submit for Approval, the publish
+                // split button), not on whatever mode the publish button happens to show.
+                let action = '';
+                try { action = event.detail.requestConfig.formData.get('action') || ''; } catch (e) { /* no form data */ }
+                if (!action) action = document.getElementById('publish-action-btn')?.value;
                 if (action === 'schedule' || action === 'publish_now' || action === 'add_to_queue' || action === 'add_to_queue_priority') {
                     // Redirect to calendar after scheduling/publishing/queuing
                     window.location.href = '{% url "calendar:calendar" workspace_id=workspace.id %}';
                     return;
                 }
+                if (action === 'submit_for_approval' || action === 'resubmit_for_approval') {
+                    window.location.href = '{% url "calendar:calendar" workspace_id=workspace.id %}?mode=list&tab=approvals';
+                    return;
+                }
+                try {
+                    const saved = JSON.parse(xhr.getResponseHeader('HX-Trigger') || '{}').postSaved;
+                    if (saved) this.adoptPostId(saved.postId);
+                } catch (e) { /* no trigger header */ }
                 this.showSaveToast = true;
                 const now = new Date();
                 this.lastSaved = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
