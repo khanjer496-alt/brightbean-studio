@@ -13,7 +13,16 @@ from collections.abc import Callable
 from typing import Any
 
 from apps.api import ops
-from apps.api.schemas import AddCompetitorRequest, CreateBioLinkRequest, UpdateBioLinkRequest, UpdateBioPageRequest
+from apps.api.schemas import (
+    AddCompetitorRequest,
+    AddFeedRequest,
+    CreateBioLinkRequest,
+    CreatePlugRuleRequest,
+    UpdateBioLinkRequest,
+    UpdateBioPageRequest,
+    UpdateFeedAutopostRequest,
+    UpdatePlugRuleRequest,
+)
 from apps.mcp.handlers import (
     _PARTS_INPUT_SCHEMA,
     _POST_SETTINGS_INPUT_SCHEMA,
@@ -1579,4 +1588,220 @@ _tool(
     lambda a: {"_args": (_uuid_arg(a, "job_id", required=True),)},
     properties={"job_id": _uuid_prop()},
     required=["job_id"],
+)
+
+
+# ---------------------------------------------------------------------------
+# Engagement automations ("plugs")
+# ---------------------------------------------------------------------------
+
+_PLUG_TRIGGERS = ["likes", "reposts", "views"]
+_PLUG_ACTIONS = ["repost", "reply", "quote"]
+
+
+def _validated(model, fields: dict):
+    from pydantic import ValidationError
+
+    try:
+        return model.model_validate(fields)
+    except ValidationError as exc:
+        err = exc.errors()[0]
+        where = ".".join(str(p) for p in err["loc"])
+        raise JsonRpcError(INVALID_PARAMS, f"{where}: {err['msg']}") from exc
+
+
+_tool(
+    "list_plug_rules",
+    (
+        "List engagement automations ('plugs') and what each allowed account's network supports. A rule says: when a "
+        "post reaches N likes, reposts or views within T hours of publishing, repost it, reply under it with a "
+        "message, or have another account in the workspace repost or quote it. Each rule fires once per post. "
+        "`networks` lists, per account, the counts the network reports (triggers), what the account itself can do "
+        "(own_actions), what another account can do to its posts (cross_actions) and the accounts that can be named "
+        "as the reposter. A rule with no post_id is a default for the account's new posts. Needs create_posts. "
+        "Paginated: pass next_cursor back as cursor."
+    ),
+    ops.list_plug_rules,
+    lambda a: {"social_account_id": _uuid_arg(a, "social_account_id"), **_page(a)},
+    properties={"social_account_id": _uuid_prop("Only this account's rules."), **_list_props()},
+    read_only=True,
+)
+
+_tool(
+    "get_plug_rule",
+    (
+        "Read one engagement rule with how it has gone on each post it watched: status (watching, queued, "
+        "awaiting_approval, done, failed, blocked, expired, cancelled, unconfirmed), the count that triggered it, "
+        "the platform id of what it made and any detail. Needs create_posts."
+    ),
+    ops.get_plug_rule,
+    lambda a: {"_args": (_uuid_arg(a, "rule_id", required=True),)},
+    properties={"rule_id": _uuid_prop()},
+    required=["rule_id"],
+    read_only=True,
+)
+
+_tool(
+    "create_plug_rule",
+    (
+        "Add an engagement automation: when the post (post_id on social_account_id, or every new post of the account "
+        "when post_id is omitted) reaches `threshold` likes, reposts or views within `window_hours` of publishing, "
+        "`action` it: repost (boost), reply (message posted under the post) or quote (repost with the message). Give "
+        "reposter_account_id to have another connected account of the workspace on the same network act "
+        "(repost or quote only). Check list_plug_rules `networks` for what each network allows; an unsupported "
+        "combination is refused with the reason. The rule acts later as an automation, so the autonomy policy "
+        "decides then whether it goes out, is held for a person or is blocked. Needs publish_directly; every "
+        "account must be in the allowlist."
+    ),
+    ops.create_plug_rule,
+    lambda a: {"_args": (_validated(CreatePlugRuleRequest, a),)},
+    properties={
+        "social_account_id": _uuid_prop("The account whose post is watched."),
+        "post_id": _uuid_prop("One post; omit for a default applied to the account's new posts."),
+        "trigger": {"type": "string", "enum": _PLUG_TRIGGERS},
+        "threshold": {"type": "integer", "minimum": 1, "maximum": 100_000_000},
+        "window_hours": {"type": "integer", "minimum": 1, "maximum": 168, "default": 24},
+        "action": {"type": "string", "enum": _PLUG_ACTIONS},
+        "reposter_account_id": _uuid_prop("Another account (same workspace and network) that reposts or quotes."),
+        "message": _text_prop("Reply or quote text; ignored for a repost.", max_length=2000),
+    },
+    required=["social_account_id", "trigger", "threshold", "action"],
+    idempotent=True,
+)
+
+_tool(
+    "update_plug_rule",
+    (
+        "Change an engagement rule (trigger, threshold, window_hours, action, message, reposter) or switch it on or "
+        "off with is_active; omitted fields are unchanged. clear_reposter returns the action to the post's own "
+        "account. Needs publish_directly."
+    ),
+    ops.update_plug_rule,
+    lambda a: {
+        "_args": (
+            _uuid_arg(a, "rule_id", required=True),
+            _validated(UpdatePlugRuleRequest, {k: v for k, v in a.items() if k != "rule_id"}),
+        )
+    },
+    properties={
+        "rule_id": _uuid_prop(),
+        "trigger": {"type": "string", "enum": _PLUG_TRIGGERS},
+        "threshold": {"type": "integer", "minimum": 1, "maximum": 100_000_000},
+        "window_hours": {"type": "integer", "minimum": 1, "maximum": 168},
+        "action": {"type": "string", "enum": _PLUG_ACTIONS},
+        "reposter_account_id": _uuid_prop(),
+        "clear_reposter": {"type": "boolean"},
+        "message": _text_prop(max_length=2000),
+        "is_active": {"type": "boolean"},
+    },
+    required=["rule_id"],
+)
+
+_tool(
+    "delete_plug_rule",
+    "Remove an engagement rule; waiting watches end with it, what it already did stays. Needs publish_directly.",
+    ops.delete_plug_rule,
+    lambda a: {"_args": (_uuid_arg(a, "rule_id", required=True),)},
+    properties={"rule_id": _uuid_prop()},
+    required=["rule_id"],
+)
+
+
+# ---------------------------------------------------------------------------
+# RSS auto-posting ("feeds")
+# ---------------------------------------------------------------------------
+
+_tool(
+    "list_feeds",
+    (
+        "List the RSS/Atom feeds the workspace follows with their auto-posting settings (accounts, mode, destination, "
+        "keyword filters, daily limit, last check and any error). `autopost` is null for a feed that is followed but "
+        "not posted. Needs create_posts."
+    ),
+    ops.list_feeds,
+    lambda a: {},
+    read_only=True,
+)
+
+_tool(
+    "get_feed",
+    (
+        "Read one feed with the latest items and what became of each: scheduled, draft, held for approval, skipped "
+        "(with the filter that skipped it), failed, plus whether the AI wrote it. Needs create_posts."
+    ),
+    ops.get_feed,
+    lambda a: {"_args": (_uuid_arg(a, "feed_id", required=True),)},
+    properties={"feed_id": _uuid_prop()},
+    required=["feed_id"],
+    read_only=True,
+)
+
+_tool(
+    "add_feed",
+    (
+        "Follow an RSS or Atom feed (its address is fetched and checked first; an address already followed is "
+        "returned as is). Following posts nothing; switch posting on with update_feed_autopost. Needs "
+        "publish_directly."
+    ),
+    ops.add_feed,
+    lambda a: {"_args": (_validated(AddFeedRequest, a),)},
+    properties={"url": _text_prop("A public feed address.", max_length=500), "name": _text_prop(max_length=255)},
+    required=["url"],
+    idempotent=True,
+)
+
+_tool(
+    "update_feed_autopost",
+    (
+        "Switch RSS auto-posting on for a feed, or change it. To switch on give account_ids (allowlisted accounts); "
+        "other fields default to mode link, destination draft, 3 items a day. mode: link (title and link), ai (a post "
+        "in the brand voice; falls back to the link when the AI is unavailable or its allowance is spent) or ai_image "
+        "(adds the article's image). destination: queue (next free slot), delay (delay_minutes after the item is "
+        "found) or draft. include_keywords / exclude_keywords filter items. Only items published after switching on "
+        "are posted, never the back catalogue. Posts go through the autonomy policy and the approval workflow, so "
+        "they may be held as drafts. Needs publish_directly."
+    ),
+    ops.update_feed_autopost,
+    lambda a: {
+        "_args": (
+            _uuid_arg(a, "feed_id", required=True),
+            _validated(UpdateFeedAutopostRequest, {k: v for k, v in a.items() if k != "feed_id"}),
+        )
+    },
+    properties={
+        "feed_id": _uuid_prop(),
+        "account_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}, "minItems": 1},
+        "mode": {"type": "string", "enum": ["link", "ai", "ai_image"]},
+        "destination": {"type": "string", "enum": ["queue", "delay", "draft"]},
+        "delay_minutes": {"type": "integer", "minimum": 1, "maximum": 10080},
+        "include_keywords": {"type": "array", "items": {"type": "string", "maxLength": 60}, "maxItems": 20},
+        "exclude_keywords": {"type": "array", "items": {"type": "string", "maxLength": 60}, "maxItems": 20},
+        "max_posts_per_day": {"type": "integer", "minimum": 1, "maximum": 50},
+        "is_active": {
+            "type": "boolean",
+            "description": "false pauses; true resumes (items found while paused are not posted).",
+        },
+    },
+    required=["feed_id"],
+)
+
+_tool(
+    "check_feed",
+    (
+        "Read a feed now instead of waiting for the next check (at most once a minute) and handle its new items. "
+        "Returns how many new items were found and how many produced posts. Needs publish_directly."
+    ),
+    ops.check_feed,
+    lambda a: {"_args": (_uuid_arg(a, "feed_id", required=True),)},
+    properties={"feed_id": _uuid_prop()},
+    required=["feed_id"],
+)
+
+_tool(
+    "stop_feed_autopost",
+    "Stop auto-posting a feed. It stays followed and posts already made stay. Needs publish_directly.",
+    ops.stop_feed_autopost,
+    lambda a: {"_args": (_uuid_arg(a, "feed_id", required=True),)},
+    properties={"feed_id": _uuid_prop()},
+    required=["feed_id"],
 )

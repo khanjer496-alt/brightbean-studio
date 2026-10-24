@@ -7,14 +7,12 @@ is a 404). The autonomy policy still decides what each post may do; the page say
 
 from __future__ import annotations
 
-import datetime as dt
 import uuid
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
-from django.utils import timezone
 from django.views.decorators.http import require_GET, require_POST
 
 from apps.autonomy.policy import get_policy
@@ -24,8 +22,6 @@ from apps.social_accounts.models import SocialAccount
 
 from . import services
 from .models import FeedAutopost
-
-CHECK_NOW_COOLDOWN = dt.timedelta(minutes=1)
 
 
 def _uuids(values):
@@ -219,10 +215,11 @@ def toggle(request, workspace_id, feed_id):
 @require_POST
 def check_now(request, workspace_id, feed_id):
     feed, autopost = _existing(request, feed_id)
-    if autopost.last_checked_at and timezone.now() - autopost.last_checked_at < CHECK_NOW_COOLDOWN:
-        messages.info(request, "It was checked a moment ago. Try again in a minute.")
+    try:
+        result = services.check_now(autopost)
+    except services.TooSoonError as exc:
+        messages.info(request, str(exc))
     else:
-        result = services.poll(autopost, force=True)
         if result.status == "error":
             messages.error(request, result.error)
         else:

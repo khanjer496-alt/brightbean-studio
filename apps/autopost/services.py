@@ -60,8 +60,16 @@ WHO = "RSS autopost"
 IMAGE_EXTENSIONS = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"}
 
 
+# A person's "check now" is refused when the feed was read this recently.
+CHECK_NOW_COOLDOWN = dt.timedelta(minutes=1)
+
+
 class AutopostError(ValueError):
     """A setting or request the caller can't have; the message is written for the person."""
+
+
+class TooSoonError(AutopostError):
+    """The feed was read a moment ago."""
 
 
 # ---------------------------------------------------------------------------
@@ -237,6 +245,14 @@ def poll_due(*, now=None) -> int:
             continue
         polled += result.status != "skipped"
     return polled
+
+
+def check_now(autopost: FeedAutopost, *, now=None) -> PollResult:
+    """Read the feed now at a person's (or agent's) request, at most once per ``CHECK_NOW_COOLDOWN``."""
+    now = now or timezone.now()
+    if autopost.last_checked_at and now - autopost.last_checked_at < CHECK_NOW_COOLDOWN:
+        raise TooSoonError("It was checked a moment ago. Try again in a minute.")
+    return poll(autopost, now=now, force=True)
 
 
 def _claim(autopost: FeedAutopost, now) -> bool:

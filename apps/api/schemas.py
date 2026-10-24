@@ -2540,3 +2540,191 @@ class RepurposeJobResponse(Schema):
 
 class AcceptRepurposeOutputsRequest(Schema):
     output_ids: list[uuid.UUID] = Field(..., min_length=1, max_length=100)
+
+
+# ---------------------------------------------------------------------------
+# /plugs — engagement automations on published posts
+# ---------------------------------------------------------------------------
+
+
+class PlugRunResponse(Schema):
+    id: uuid.UUID
+    post_id: uuid.UUID = Field(..., description="The post the rule watched.")
+    status: str = Field(
+        ...,
+        description=(
+            "``watching``, ``queued`` (waiting out the undo window), ``awaiting_approval`` (held by the autonomy policy), "
+            "``retry``, ``done``, ``failed``, ``blocked``, ``expired``, ``cancelled`` or ``unconfirmed`` "
+            "(the network may or may not have done it; check the account before repeating)."
+        ),
+    )
+    reached_value: int | None = Field(None, description="The count that triggered the rule.")
+    last_counts: dict[str, int] = Field(default_factory=dict, description="The post's counts at the last check.")
+    detail: str = ""
+    result_post_id: str = Field("", description="The platform id of the repost, reply or quote that was made.")
+    fired_at: dt.datetime | None = None
+    updated_at: dt.datetime
+
+    @field_serializer("fired_at", "updated_at")
+    def _serialize_dt(self, value: dt.datetime | None) -> str | None:
+        return _serialize_utc_z(value)
+
+
+class PlugRuleResponse(Schema):
+    id: uuid.UUID
+    social_account_id: uuid.UUID = Field(..., description="The account whose post is watched.")
+    post_id: uuid.UUID | None = Field(
+        None, description="The post watched; null for a default applied to the account's new posts."
+    )
+    trigger: Literal["likes", "reposts", "views"]
+    threshold: int
+    window_hours: int
+    action: Literal["repost", "reply", "quote"]
+    reposter_account_id: uuid.UUID | None = Field(
+        None, description="Another account in the workspace that acts instead of the post's own account."
+    )
+    message: str = ""
+    is_active: bool
+    summary: str
+    runs: list[PlugRunResponse] = Field(default_factory=list, description="Only on a single-rule read.")
+    created_at: dt.datetime
+
+    @field_serializer("created_at")
+    def _serialize_dt(self, value: dt.datetime) -> str | None:
+        return _serialize_utc_z(value)
+
+
+class PlugNetworkResponse(Schema):
+    social_account_id: uuid.UUID
+    platform: str
+    triggers: list[str] = Field(..., description="Counts the network reports for a post.")
+    own_actions: list[str] = Field(..., description="What the post's own account can do.")
+    cross_actions: list[str] = Field(..., description="What another account on the same network can do to it.")
+    reposter_account_ids: list[uuid.UUID] = Field(..., description="Accounts that can be named as the reposter.")
+    message_max_length: int | None = None
+    check_interval_minutes: int
+    metered_reads: bool = Field(..., description="True when each read is billed to the customer's own developer app.")
+
+
+class PlugRulesListResponse(Schema):
+    rules: list[PlugRuleResponse]
+    networks: list[PlugNetworkResponse] = Field(..., description="What each allowed account's network supports.")
+    limit: int
+    next_cursor: str | None = None
+
+
+class CreatePlugRuleRequest(Schema):
+    social_account_id: uuid.UUID = Field(..., description="The account whose post is watched.")
+    post_id: uuid.UUID | None = Field(
+        None,
+        description="One post (its version on that account). Omit for a default applied to the account's new posts.",
+    )
+    trigger: Literal["likes", "reposts", "views"]
+    threshold: int = Field(..., ge=1, le=100_000_000)
+    window_hours: int = Field(24, ge=1, le=168, description="Hours after publishing during which the count is watched.")
+    action: Literal["repost", "reply", "quote"]
+    reposter_account_id: uuid.UUID | None = Field(
+        None, description="Another connected account (same workspace and network) that reposts or quotes instead."
+    )
+    message: str = Field("", max_length=2000, description="The reply or quote text; ignored for a repost.")
+
+
+class UpdatePlugRuleRequest(Schema):
+    trigger: Literal["likes", "reposts", "views"] | None = None
+    threshold: int | None = Field(None, ge=1, le=100_000_000)
+    window_hours: int | None = Field(None, ge=1, le=168)
+    action: Literal["repost", "reply", "quote"] | None = None
+    reposter_account_id: uuid.UUID | None = Field(
+        None, description="Send null with ``clear_reposter`` to go back to the account itself."
+    )
+    clear_reposter: bool = False
+    message: str | None = Field(None, max_length=2000)
+    is_active: bool | None = None
+
+
+# ---------------------------------------------------------------------------
+# /feeds — RSS auto-posting
+# ---------------------------------------------------------------------------
+
+
+class FeedAutopostResponse(Schema):
+    is_active: bool
+    account_ids: list[uuid.UUID]
+    mode: Literal["link", "ai", "ai_image"]
+    destination: Literal["queue", "delay", "draft"]
+    delay_minutes: int
+    include_keywords: list[str]
+    exclude_keywords: list[str]
+    max_posts_per_day: int
+    started_at: dt.datetime = Field(..., description="Only items published after this are posted.")
+    last_checked_at: dt.datetime | None = None
+    next_check_at: dt.datetime | None = None
+    consecutive_failures: int
+    last_error: str = ""
+
+    @field_serializer("started_at", "last_checked_at", "next_check_at")
+    def _serialize_dt(self, value: dt.datetime | None) -> str | None:
+        return _serialize_utc_z(value)
+
+
+class FeedItemResponse(Schema):
+    id: uuid.UUID
+    title: str
+    link: str
+    published_at: dt.datetime | None
+    status: str = Field(
+        ..., description="``scheduled``, ``draft``, ``held``, ``skipped``, ``failed`` or ``processing``."
+    )
+    reason: str
+    ai_used: bool
+    outcomes: list[dict[str, Any]] = Field(..., description="Per target account: status, reason and the post made.")
+    created_at: dt.datetime
+
+    @field_serializer("published_at", "created_at")
+    def _serialize_dt(self, value: dt.datetime | None) -> str | None:
+        return _serialize_utc_z(value)
+
+
+class FeedResponse(Schema):
+    id: uuid.UUID
+    name: str
+    url: str
+    website_url: str
+    autopost: FeedAutopostResponse | None = Field(
+        None, description="Null while the feed is followed but not auto-posted."
+    )
+
+
+class FeedDetailResponse(FeedResponse):
+    items: list[FeedItemResponse] = Field(
+        default_factory=list, description="The most recent items and what became of them."
+    )
+
+
+class FeedsListResponse(Schema):
+    feeds: list[FeedResponse]
+
+
+class AddFeedRequest(Schema):
+    url: str = Field(..., max_length=500, description="A public RSS or Atom address. It is checked before it is added.")
+    name: str = Field("", max_length=255)
+
+
+class UpdateFeedAutopostRequest(Schema):
+    """Switch auto-posting on or change it. Omitted fields keep their value (or the default when switching on)."""
+
+    account_ids: list[uuid.UUID] | None = Field(None, description="Accounts to post to; required when switching on.")
+    mode: Literal["link", "ai", "ai_image"] | None = None
+    destination: Literal["queue", "delay", "draft"] | None = None
+    delay_minutes: int | None = Field(None, ge=1, le=10_080)
+    include_keywords: list[str] | None = Field(None, max_length=20)
+    exclude_keywords: list[str] | None = Field(None, max_length=20)
+    max_posts_per_day: int | None = Field(None, ge=1, le=50)
+    is_active: bool | None = None
+
+
+class CheckFeedResponse(Schema):
+    status: str = Field(..., description="``ok``, ``not_modified``, ``error`` or ``skipped``.")
+    new_items: int
+    posted: int = Field(..., description="Items that produced posts (scheduled, drafted or held).")
+    error: str = ""
