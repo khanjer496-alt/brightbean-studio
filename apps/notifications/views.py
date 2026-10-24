@@ -17,6 +17,10 @@ from .models import (
 @require_GET
 def notification_drawer(request):
     """HTMX partial: renders the 50 most recent notifications for the drawer."""
+    return _render_drawer(request)
+
+
+def _render_drawer(request):
     notifications = Notification.objects.filter(user=request.user).order_by("-created_at")[:50]
     return render(
         request,
@@ -27,14 +31,12 @@ def notification_drawer(request):
     )
 
 
-@login_required
-@require_GET
-def notification_list(request):
-    """Full notification history page with filtering."""
-    event_type = request.GET.get("event_type", "")
-    read_status = request.GET.get("read_status", "")
+def _history_context(user, params):
+    """Context for the history page / list partial, filtered and paginated by `params` (GET or POST data)."""
+    event_type = params.get("event_type", "")
+    read_status = params.get("read_status", "")
 
-    qs = Notification.objects.filter(user=request.user)
+    qs = Notification.objects.filter(user=user)
 
     if event_type:
         qs = qs.filter(event_type=event_type)
@@ -44,24 +46,32 @@ def notification_list(request):
         qs = qs.filter(is_read=False)
 
     # Pagination
-    page = int(request.GET.get("page", 1))
+    try:
+        page = max(int(params.get("page", 1)), 1)
+    except (TypeError, ValueError):
+        page = 1
     per_page = 30
     offset = (page - 1) * per_page
     notifications = qs[offset : offset + per_page]
     total = qs.count()
-    has_next = total > offset + per_page
-    has_prev = page > 1
 
-    context = {
+    return {
         "notifications": notifications,
         "event_types": EventType.choices,
         "selected_event_type": event_type,
         "selected_read_status": read_status,
         "page": page,
-        "has_next": has_next,
-        "has_prev": has_prev,
+        "has_next": total > offset + per_page,
+        "has_prev": page > 1,
         "total": total,
     }
+
+
+@login_required
+@require_GET
+def notification_list(request):
+    """Full notification history page with filtering."""
+    context = _history_context(request.user, request.GET)
 
     if request.htmx:
         return render(request, "notifications/partials/history_list.html", context)
@@ -88,7 +98,12 @@ def mark_all_read(request):
     Notification.objects.filter(user=request.user, is_read=False).update(is_read=True, read_at=timezone.now())
 
     if request.htmx:
-        return notification_drawer(request)
+        # The history page swaps its own list (keeping its filters); the drawer swaps the drawer.
+        if request.htmx.target == "notification-history-list":
+            return render(
+                request, "notifications/partials/history_list.html", _history_context(request.user, request.POST)
+            )
+        return _render_drawer(request)
     return JsonResponse({"ok": True})
 
 

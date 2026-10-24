@@ -134,6 +134,13 @@ class ActionBarGatingTests(ReadonlyComposerTestsBase):
         body = self._compose(self._make_post(PlatformPost.Status.PUBLISHED)).content.decode("utf-8")
         self.assertIn(DELETE_BTN, body)
 
+    def test_unsaved_changes_guard_only_on_editable_posts(self):
+        draft = self._compose(self._make_post(PlatformPost.Status.DRAFT)).content.decode("utf-8")
+        self.assertIn("data-unsaved-guard", draft)
+        self.assertIn("js/composer-unsaved.js", draft)
+        published = self._compose(self._make_post(PlatformPost.Status.PUBLISHED)).content.decode("utf-8")
+        self.assertNotIn("data-unsaved-guard", published)
+
     def test_readonly_post_stops_autosaving(self):
         body = self._compose(self._make_post(PlatformPost.Status.PUBLISHED)).content.decode("utf-8")
         self.assertNotIn(AUTOSAVE_TRIGGER, body)

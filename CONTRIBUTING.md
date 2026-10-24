@@ -53,6 +53,14 @@ With coverage:
 pytest --cov=apps --cov-report=term-missing
 ```
 
+Frontend interaction tests (Node 22, no dependencies to install):
+
+```bash
+npm run test:frontend    # node --test tests/frontend/*.test.cjs
+```
+
+Pass a glob, not the bare `tests/frontend` directory: `node --test tests/frontend` fails because Node treats a bare directory argument as a module to run.
+
 ### Code style
 
 We use [Ruff](https://docs.astral.sh/ruff/) for linting and formatting, and [mypy](https://mypy-lang.org/) for type checking. Run these before submitting a PR:

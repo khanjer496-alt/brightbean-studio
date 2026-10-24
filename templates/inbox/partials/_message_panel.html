@@ -123,7 +123,7 @@
                     hx-post="{% url 'inbox:delete_review_reply' workspace_id=workspace.id message_id=message.id %}"
                     hx-target="#inbox-detail-panel"
                     hx-swap="innerHTML"
-                    hx-confirm="Delete your public reply? It disappears from the review on the platform.">
+                    hx-confirm="Delete your public reply? It disappears from the review on the platform." data-confirm-title="Delete reply" data-confirm-label="Delete" data-confirm-variant="danger">
                 Delete reply
             </button>
             {% endif %}

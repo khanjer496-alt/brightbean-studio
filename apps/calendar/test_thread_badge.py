@@ -57,8 +57,8 @@ class CalendarThreadBadgeTests(TestCase):
     def test_a_thread_chip_shows_its_part_count(self):
         self._post(3)
         html = self._month().content.decode()
-        # Tooltip and screen-reader text.
-        self.assertEqual(html.count("Thread of 3 parts"), 2)
+        # Tooltip and screen-reader text, in the desktop grid and in the phone agenda.
+        self.assertEqual(html.count("Thread of 3 parts"), 4)
 
     def test_a_single_post_has_no_badge(self):
         self._post(1)

@@ -443,8 +443,9 @@ class CalendarSeriesChipTests(_SeriesMixin, TestCase):
         response = self._month()
 
         self.assertEqual(response.status_code, 200)
-        # Each of the 3 chips carries the summary twice: tooltip and screen-reader text.
-        self.assertEqual(response.content.decode().count("Repeats: Every day, 3 times"), 6)
+        # Each of the 3 chips carries the summary twice (tooltip and screen-reader text), and is drawn in both
+        # the desktop grid and the phone agenda.
+        self.assertEqual(response.content.decode().count("Repeats: Every day, 3 times"), 12)
 
     def test_a_stopped_series_is_not_marked(self):
         source = self._source(self.start)

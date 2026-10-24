@@ -1,0 +1,23 @@
+{% comment %}
+The one confirmation dialog (replaces window.confirm). Included once by base.html; driven by static/js/confirm-dialog.js:
+put hx-confirm="..." (htmx) or data-confirm="..." (plain forms, submit buttons, links) on the triggering element, with
+optional data-confirm-title / data-confirm-label / data-confirm-variant="danger". See the header of confirm-dialog.js.
+Built on x-pd-dialog (components/_dialog_js.html), so it traps focus, closes on Escape and returns focus to the opener.
+{% endcomment %}
+<div x-data="pdConfirmDialog()" x-show="open" x-cloak x-pd-dialog="open"
+     x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+     x-transition:leave="transition ease-in duration-100" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+     class="pd-modal-root pd-modal-root--confirm" @click.self="open = false">
+    <div class="pd-modal pd-modal--sm" role="alertdialog" aria-modal="true" aria-labelledby="pd-confirm-title" aria-describedby="pd-confirm-message" tabindex="-1">
+        <div class="pd-modal-head">
+            <h2 id="pd-confirm-title" class="pd-modal-title" x-text="title"></h2>
+        </div>
+        <p id="pd-confirm-message" class="pd-modal-desc" x-text="message"></p>
+        <div class="pd-modal-body">
+            <div class="pd-modal-actions">
+                <button type="button" class="btn-outline w-auto" @click="open = false" :data-autofocus="variant === 'danger' ? '' : null" x-text="cancel">Cancel</button>
+                <button type="button" class="btn-brand" :class="variant === 'danger' && 'btn-brand--danger'" @click="accept()" :data-autofocus="variant === 'danger' ? null : ''" x-text="label"></button>
+            </div>
+        </div>
+    </div>
+</div>

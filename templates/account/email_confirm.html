@@ -32,7 +32,7 @@
                 <form method="post" action="{{ action_url }}">
                     {% csrf_token %}
                     {{ redirect_field }}
-                    <button type="submit" class="btn-brand">
+                    <button type="submit" class="btn-brand btn-brand--block">
                         Confirm email
                     </button>
                 </form>
@@ -45,7 +45,7 @@
             <div class="alert-error mb-4">
                 This confirmation link has expired or is invalid.
             </div>
-            <a href="{% url 'account_login' %}" class="btn-brand">
+            <a href="{% url 'account_login' %}" class="btn-brand btn-brand--block">
                 Sign In
             </a>
         {% endif %}

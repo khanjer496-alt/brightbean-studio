@@ -581,6 +581,33 @@ def _resolve_account_allowlist(account_ids, workspace) -> tuple[list, str | None
     return accounts, None
 
 
+# Fields of the issue dialog that can show their own error, in page order.
+_ISSUE_ERROR_FIELDS = ("name", "workspace_id", "social_account_ids", "scope", "expires_at")
+
+
+def _issue_rejected(request, errors: dict[str, list[str]]):
+    """The server refused the issue form.
+
+    The dialog posts with htmx, so it stays open exactly as the user left it and gets the errors next to the
+    fields they belong to (422, swapped by the form's before-swap hook). A plain form post, or one the dialog
+    could not send, still gets the flash messages and the list page.
+    """
+    if request.headers.get("HX-Request"):
+        return render(
+            request,
+            "api_keys/_issue_errors.html",
+            {
+                "fields": [(field, errors.get(field, [])) for field in _ISSUE_ERROR_FIELDS],
+                "form_errors": errors.get("form", []),
+            },
+            status=422,
+        )
+    for texts in errors.values():
+        for text in texts:
+            messages.error(request, text)
+    return redirect("api_keys:list")
+
+
 @_require_manage_api_keys
 @require_http_methods(["POST"])
 def issue_key(request):
@@ -597,13 +624,20 @@ def issue_key(request):
     expires_at_str = (request.POST.get("expires_at") or "").strip()
     scope, scope_errors = _scope_from_post(request.POST)
 
-    errors: list[str] = list(scope_errors)
+    # Keyed by the form field they belong to, so the dialog can show each one next to its input.
+    errors: dict[str, list[str]] = {}
+
+    def fail(field: str, text: str) -> None:
+        errors.setdefault(field, []).append(text)
+
+    for text in scope_errors:
+        fail("scope", text)
     if not name:
-        errors.append("Name is required.")
+        fail("name", "Name is required.")
     if not workspace_id:
-        errors.append("Workspace is required.")
+        fail("workspace_id", "Workspace is required.")
     if not account_ids:
-        errors.append("Select at least one connected account.")
+        fail("social_account_ids", "Select at least one connected account.")
 
     workspace = None
     if workspace_id and not errors:
@@ -613,22 +647,20 @@ def issue_key(request):
             # ``ValidationError`` covers the malformed-UUID path; see the
             # corresponding catch in ``workspace_options_partial`` for
             # the full rationale.
-            errors.append("Selected workspace is not in this organisation.")
+            fail("workspace_id", "Selected workspace is not in this organisation.")
 
     accounts: list[SocialAccount] = []
     if workspace is not None:
         accounts, acct_err = _resolve_account_allowlist(account_ids, workspace)
         if acct_err:
-            errors.append(acct_err)
+            fail("social_account_ids", acct_err)
 
     expires_at, exp_err = _parse_expires_at(expires_at_str)
     if exp_err:
-        errors.append(exp_err)
+        fail("expires_at", exp_err)
 
     if errors:
-        for e in errors:
-            messages.error(request, e)
-        return redirect("api_keys:list")
+        return _issue_rejected(request, errors)
 
     if "daily_request_budget" in scope:
         scope["daily_request_budget"] = services.fit_request_budget(workspace, scope["daily_request_budget"])
@@ -643,8 +675,7 @@ def issue_key(request):
             **scope,
         )
     except ValueError as exc:
-        messages.error(request, str(exc))
-        return redirect("api_keys:list")
+        return _issue_rejected(request, {"form": [str(exc)]})
 
     # Post/Redirect/Get. Stash the one-time token in the session and
     # redirect to the list, which pops it and renders the reveal modal on
@@ -659,6 +690,10 @@ def issue_key(request):
     # it's still shown exactly once and a later reload sees nothing.
     request.session["reveal_token"] = issued.plaintext_token
     request.session["reveal_key_name"] = issued.api_key.name
+    if request.headers.get("HX-Request"):
+        response = HttpResponse(status=204)
+        response["HX-Redirect"] = reverse("api_keys:list")
+        return response
     return redirect("api_keys:list")
 
 

@@ -55,12 +55,12 @@
                        @change="filename = $event.target.files[0]?.name">
             </div>
 
-            <div class="mt-4 flex items-center justify-between">
+            <div class="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div class="text-xs text-stone-400">
                     Expected columns: date, time, platforms, caption, category, tags, first_comment
                     <br>Media URLs are not imported. Upload files to Media Library and attach them to drafts before scheduling.
                 </div>
-                <button type="submit" class="btn-brand text-sm py-2 px-5">
+                <button type="submit" class="btn-brand shrink-0 whitespace-nowrap text-sm py-2 px-5">
                     Upload &amp; Map Columns
                 </button>
             </div>

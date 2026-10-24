@@ -91,6 +91,22 @@ class TestChipControls:
         assert 'aria-label="Reschedule:' in html and 'id="reschedule-dialog"' in html
         assert 'role="checkbox"' in html
 
+    def test_month_view_has_a_compact_phone_layout_with_every_post_in_the_day_agenda(self, world):
+        when = timezone.now() + timedelta(days=1)
+        for _ in range(5):
+            make_pp(world, "scheduled", when)
+        r = world.owner.get(
+            url("calendar", world), {"mode": "calendar", "view": "month", "date": when.date().isoformat()}
+        )
+        html = r.content.decode()
+        assert 'class="cal-compact-month md:hidden tab-slide-in"' in html and "cal-compact-day" in html
+        assert 'aria-pressed="false"' in html and 'aria-labelledby="month-agenda-' in html
+        # The desktop grid caps a day at three chips ("+2 more"); the phone agenda lists all five.
+        assert "+2 more" in html
+        assert html.count('class="post-chip ') >= 3 + 5
+        # It opens on a day of the shown month (today when that is in it).
+        assert f"selected: '{r.context['month_agenda_default']}'" in html
+
     def test_published_chip_has_no_reschedule_button(self, world):
         when = timezone.now() - timedelta(hours=30)
         make_pp(world, "published", when)

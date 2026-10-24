@@ -30,7 +30,7 @@
             <form method="post" action="{% url 'client_portal:magic_link_entry' token=token %}">
                 {% csrf_token %}
                 {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
-                <button type="submit" class="btn-brand">
+                <button type="submit" class="btn-brand btn-brand--block">
                     Continue to portal
                 </button>
             </form>

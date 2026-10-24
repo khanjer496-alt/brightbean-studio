@@ -1,0 +1,10 @@
+{% comment %}
+Errors for the issue-token dialog (422 from api_keys.views._issue_rejected). The body fills #issue-errors; each
+field's message box is replaced out of band, which also clears the ones that are fine now.
+Context: fields (list of (field, messages)), form_errors (messages that belong to no single field).
+{% endcomment %}
+<p class="text-sm font-semibold">The token was not created. Fix what is marked below and try again.</p>
+{% for text in form_errors %}<p class="text-sm">{{ text }}</p>{% endfor %}
+{% for field, texts in fields %}
+<div id="issue-error-{{ field }}" hx-swap-oob="true" class="pd-error">{% for text in texts %}<p>{{ text }}</p>{% endfor %}</div>
+{% endfor %}

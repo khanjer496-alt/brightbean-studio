@@ -191,6 +191,36 @@ class TestNotificationViews:
         assert response.status_code == 200
         assert Notification.objects.filter(user=user, is_read=False).count() == 0
 
+    def test_mark_all_read_from_drawer_returns_drawer(self, client, user):
+        # Regression: the htmx path used to call the GET-only drawer view and answer 405.
+        client.force_login(user)
+        Notification.objects.create(user=user, event_type=EventType.POST_APPROVED, title="Drawer item")
+        response = client.post(
+            "/notifications/mark-all-read/",
+            HTTP_HX_REQUEST="true",
+            HTTP_HX_TARGET="notification-drawer-content",
+        )
+        assert response.status_code == 200
+        assert "Drawer item" in response.content.decode()
+        assert not Notification.objects.filter(user=user, is_read=False).exists()
+
+    def test_mark_all_read_from_history_returns_filtered_list(self, client, user):
+        client.force_login(user)
+        Notification.objects.create(user=user, event_type=EventType.POST_APPROVED, title="Approved one")
+        Notification.objects.create(user=user, event_type=EventType.POST_FAILED, title="Failed one")
+        response = client.post(
+            "/notifications/mark-all-read/",
+            {"event_type": EventType.POST_FAILED, "read_status": ""},
+            HTTP_HX_REQUEST="true",
+            HTTP_HX_TARGET="notification-history-list",
+        )
+        assert response.status_code == 200
+        body = response.content.decode()
+        assert "Failed one" in body
+        assert "Approved one" not in body
+        assert "Mark all read" not in body  # the list partial, not the drawer
+        assert not Notification.objects.filter(user=user, is_read=False).exists()
+
     def test_notification_list_page(self, client, user):
         client.force_login(user)
         response = client.get("/notifications/")
