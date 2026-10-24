@@ -1,0 +1,66 @@
+---
+import { PLANS, yearlyPerMonth } from '../data/plans';
+import { SITE } from '../data/site';
+interface Props { heading?: boolean }
+const { heading = true } = Astro.props;
+const fmt = (n: number) => `$${n}`;
+---
+<div class="pricing" data-interval="month">
+  {heading && (
+    <div class="mx-auto max-w-2xl text-center">
+      <p class="eyebrow">Pricing</p>
+      <h2 class="h2 mt-3">Every feature on every paid plan. Pick how much.</h2>
+      <p class="lead mt-4">Plans differ only in channels, workspaces, seats and allowances. AI is never a line item: bring your own key.</p>
+    </div>
+  )}
+  <div class="mt-8 flex justify-center">
+    <div role="radiogroup" aria-label="Billing interval" class="inline-flex rounded-full border border-line bg-surface-1 p-1 text-sm font-bold">
+      <button type="button" role="radio" aria-checked="true" data-set="month" class="int-btn rounded-full px-5 py-2 transition">Monthly</button>
+      <button type="button" role="radio" aria-checked="false" data-set="year" class="int-btn rounded-full px-5 py-2 transition">Yearly <span class="ml-1 rounded-full bg-lime/15 px-2 py-0.5 text-[11px] text-lime">save 20%</span></button>
+    </div>
+  </div>
+  <div class="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+    {PLANS.map((p) => (
+      <div class:list={['card flex flex-col p-6', p.popular && 'border-brand/60 bg-gradient-to-b from-brand-600/20 to-surface-1 shadow-[0_20px_60px_-30px_rgba(115,87,255,.8)]']}>
+        <div class="flex items-center justify-between">
+          <h3 class="text-lg font-extrabold">{p.name}</h3>
+          {p.popular && <span class="rounded-full bg-brand-600 px-2.5 py-1 text-[11px] font-bold">Best for teams</span>}
+        </div>
+        <p class="mt-2 min-h-10 text-sm text-ink-2">{p.tagline}</p>
+        <p class="mt-5 flex items-baseline gap-1">
+          <span class="m text-4xl font-extrabold tracking-tight">{fmt(p.monthly)}</span>
+          <span class="y text-4xl font-extrabold tracking-tight">{fmt(yearlyPerMonth(p))}</span>
+          <span class="text-sm text-ink-3">{p.monthly === 0 ? 'forever' : '/ month'}</span>
+        </p>
+        <p class="mt-1 h-5 text-xs text-ink-3">
+          {p.monthly > 0 ? (<><span class="m">billed monthly</span><span class="y">{fmt(p.yearly)} billed yearly</span></>) : 'No card needed'}
+        </p>
+        <a href={SITE.signup} class:list={['btn mt-5', p.popular ? 'btn-primary' : 'btn-ghost']}>{p.monthly === 0 ? 'Start free' : 'Start 14-day trial'}</a>
+        <ul class="mt-6 space-y-2.5 border-t border-line pt-5 text-sm text-ink-2">
+          <li><b class="text-ink">{p.channels}</b> social channels</li>
+          <li><b class="text-ink">{p.workspaces}</b> workspace{p.workspaces === '1' ? '' : 's'}</li>
+          <li><b class="text-ink">{p.members}</b> team members</li>
+          <li><b class="text-ink">{p.apiCalls}</b> API &amp; MCP calls / day</li>
+          <li>{p.slug === 'free' ? '30 scheduled posts / month' : 'Unlimited scheduled posts'}</li>
+          <li>{p.slug === 'free' ? 'Core scheduling & calendar' : 'Approvals, inbox, analytics, client portal, reports'}</li>
+          <li>AI with your own key</li>
+        </ul>
+      </div>
+    ))}
+  </div>
+  <p class="mx-auto mt-8 max-w-2xl text-center text-sm text-ink-3">Every new workspace gets a 14-day trial with Ultimate allowances, no card required; without a subscription afterwards it moves to Free. Nothing is deleted on a downgrade. Yearly billing is 20% off the monthly price.</p>
+</div>
+<style>
+  .pricing[data-interval='month'] .y, .pricing[data-interval='year'] .m { display: none; }
+  .int-btn[aria-checked='true'] { background: var(--color-brand-600); color: #fff; }
+  .int-btn[aria-checked='false'] { color: var(--color-ink-2); }
+</style>
+<script>
+  document.querySelectorAll<HTMLElement>('.pricing').forEach((root) => {
+    const btns = root.querySelectorAll<HTMLButtonElement>('.int-btn');
+    btns.forEach((b) => b.addEventListener('click', () => {
+      root.dataset.interval = b.dataset.set;
+      btns.forEach((x) => x.setAttribute('aria-checked', String(x === b)));
+    }));
+  });
+</script>

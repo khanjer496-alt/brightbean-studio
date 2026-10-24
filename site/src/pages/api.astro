@@ -1,0 +1,27 @@
+---
+import Doc from '../layouts/Doc.astro';
+import { SITE } from '../data/site';
+---
+<Doc title="PostDelegate REST API — create drafts and schedule posts" description="A scoped REST API for drafts, media, scheduling, approvals and analytics, with idempotent writes and clear errors." h1="Build with the PostDelegate REST API" eyebrow="REST API" lead="Create drafts, upload media and schedule reviewed posts with scoped bearer keys.">
+  <a slot="actions" href={SITE.signup} class="btn btn-primary btn-lg">Start free — 14-day trial, no card</a>
+  <a slot="actions" href={`${SITE.app}/api/v1/docs`} class="btn btn-ghost btn-lg">Open the API reference</a>
+  <h2>1. Check access</h2>
+  <p>The interactive reference is at <a href={`${SITE.app}/api/v1/docs`}>{SITE.app}/api/v1/docs</a>. Authenticate with an API key in the <code>Authorization: Bearer</code> header. Call <code>GET /api/v1/me/</code> to see your scope and <code>GET /api/v1/accounts/</code> for the accounts you can use.</p>
+  <h2>2. Create a draft</h2>
+  <pre><code>POST /api/v1/posts/
+Idempotency-Key: 8c1e…   # new per post, reused only to retry the same request</code></pre>
+  <p>The key needs <code>create_posts</code>. Create routes accept an <code>Idempotency-Key</code>: the same key with the same body returns the first result for 24 hours; a different body is refused.</p>
+  <h2>3. Schedule after review</h2>
+  <p>A user with <code>create_posts</code> and <code>publish_directly</code> can schedule with an ISO 8601 timestamp. Required approvals still apply. Check status with <code>GET /posts/&#123;id&#125;</code> and cancel back to draft with <code>/cancel</code>.</p>
+  <h2>4. Handle errors</h2>
+  <ul>
+    <li><code>401</code> check or reissue the key. <code>403</code> missing permission, capability or account outside the allowlist.</li>
+    <li><code>404</code> unknown id. <code>409</code> state conflict or identical request still in progress. <code>422</code> invalid input.</li>
+    <li><code>429</code> daily API cap or rate limit: respect <code>Retry-After</code>. <code>402</code> a plan limit was reached.</li>
+    <li>If a publish times out, check whether it went live before sending a new post.</li>
+  </ul>
+  <h2>Limits by plan</h2>
+  <p>API and MCP calls per day: Free 100, Starter 2,000, Team 4,000, Pro 10,000, Ultimate 20,000. See <a href="/pricing">pricing</a>.</p>
+  <h2>Related</h2>
+  <p><a href="/mcp">MCP server</a> · <a href="/agents">AI agents</a> · <a href="/claude-cowork">Claude</a> · <a href="/codex">Codex</a></p>
+</Doc>

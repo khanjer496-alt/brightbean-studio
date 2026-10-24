@@ -1,0 +1,29 @@
+---
+import Doc from '../layouts/Doc.astro';
+import { SCHEDULERS } from '../data/schedulers';
+import { NETWORKS } from '../data/networks';
+import { SITE } from '../data/site';
+export function getStaticPaths() { return SCHEDULERS.map((s) => ({ params: { scheduler: s.slug }, props: { s } })); }
+const { s } = Astro.props;
+const net = NETWORKS.find((n) => n.key === s.key)!;
+const others = SCHEDULERS.filter((o) => o.slug !== s.slug).slice(0, 6);
+const crumbs = { '@context': 'https://schema.org', '@type': 'BreadcrumbList', itemListElement: [
+  { '@type': 'ListItem', position: 1, name: 'Platforms', item: `${SITE.url}/platforms` },
+  { '@type': 'ListItem', position: 2, name: `${s.name} scheduler`, item: `${SITE.url}/${s.slug}` }] };
+---
+<Doc title={`${s.name} scheduler for people and AI agents — PostDelegate`} description={`${s.intro} Free plan, 14-day trial, no card.`} h1={s.h1} eyebrow={`${s.name} scheduling`} lead={s.intro} jsonLd={[crumbs]}>
+  <a slot="actions" href={SITE.signup} class="btn btn-primary btn-lg">Start free — 14-day trial, no card</a>
+  <a slot="actions" href="/tools/caption-checker" class="btn btn-ghost btn-lg">Check a {s.name} caption</a>
+  <h2>What you can plan</h2>
+  <ul>{s.plan.map((p) => <li>{p}</li>)}</ul>
+  <h2>Limits to know about</h2>
+  <ul>{s.limits.map((p) => <li>{p}</li>)}</ul>
+  {net.note && <p>{net.note}</p>}
+  <h2>Working with an AI agent</h2>
+  <p>{s.agent}</p>
+  <p>New workspaces start at “Draft only”, so an agent can prepare drafts but a person approves what goes out. See <a href="/agents">how agents connect</a> and how the <a href="/#safety">autonomy dial</a> works.</p>
+  <h2>Availability</h2>
+  <p>{s.name} publishing depends on that platform’s API access, account type and permissions, which the platform controls. If something does not work on your account, <a href="/support">contact support</a> and name the platform.</p>
+  <h2>Other schedulers</h2>
+  <ul>{others.map((o) => <li><a href={`/${o.slug}`}>{o.name} scheduler</a></li>)}<li><a href="/platforms">All platforms</a></li></ul>
+</Doc>

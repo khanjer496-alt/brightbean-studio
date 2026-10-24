@@ -1,0 +1,64 @@
+---
+import Base from '../../layouts/Base.astro';
+import PageHero from '../../components/PageHero.astro';
+import CtaBand from '../../components/CtaBand.astro';
+import NetworkBadge from '../../components/NetworkBadge.astro';
+import { NETWORKS } from '../../data/networks';
+const app = { '@context': 'https://schema.org', '@type': 'WebApplication', name: 'Social media caption checker', applicationCategory: 'UtilitiesApplication', operatingSystem: 'Any', offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' }, url: 'https://postdelegate.com/tools/caption-checker' };
+---
+<Base title="Social media caption checker — character count per network | PostDelegate" description="Free caption checker that counts characters the way each network does: X weighting, Bluesky graphemes, Threads emoji bytes, Mastodon links and more. Runs in your browser." jsonLd={[app]}>
+  <PageHero eyebrow="Free tool" title="Caption checker for every network" lead="Paste a caption and see how each network counts it against its limit. It runs in your browser: your text is never sent anywhere or saved." />
+  <section class="section"><div class="container-x">
+    <label for="cap" class="mb-2 block text-sm font-bold">Your caption</label>
+    <textarea id="cap" rows="6" class="w-full rounded-2xl border border-line-hover bg-surface-1 p-4 text-base text-ink placeholder:text-ink-3 focus:border-brand-300" placeholder="Write or paste your caption here…"></textarea>
+    <p id="summary" class="mt-2 text-sm text-ink-3" aria-live="polite">0 characters · 0 words</p>
+    <ul id="rows" class="mt-8 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+      {NETWORKS.map((n) => (
+        <li class="card p-4" data-net={JSON.stringify({ unit: n.unit, urlCost: n.urlCost, noMentionDomain: n.noMentionDomain, limit: n.limit })}>
+          <div class="flex items-center gap-3"><NetworkBadge n={n} size="sm" /><span class="font-bold">{n.name}</span><span class="ml-auto text-sm tabular-nums"><b class="count">0</b> <span class="text-ink-3">/ {n.limit.toLocaleString('en-US')}</span></span></div>
+          <div class="mt-3 h-1.5 overflow-hidden rounded-full bg-surface-3"><div class="bar h-full w-0 rounded-full bg-brand transition-[width] duration-200"></div></div>
+          <p class="state mt-2 text-xs text-ink-3">{n.note ?? ''}</p>
+        </li>
+      ))}
+    </ul>
+    <div class="prose-pd mt-12 max-w-3xl">
+      <h2>How each network counts</h2>
+      <ul>
+        <li><strong>X</strong> weights characters (most Latin letters 1, many others and emoji 2) and counts every link as 23.</li>
+        <li><strong>Bluesky</strong> counts graphemes, so an emoji or a flag is 1.</li>
+        <li><strong>Threads</strong> counts an emoji as its UTF-8 byte length.</li>
+        <li><strong>TikTok</strong> counts UTF-16 units, so some emoji count as 2.</li>
+        <li><strong>YouTube</strong> and <strong>Farcaster</strong> count UTF-8 bytes, so non-Latin text uses more.</li>
+        <li><strong>Mastodon</strong> counts every link as 23 and a remote mention as just @user.</li>
+      </ul>
+      <p>These are the same rules the PostDelegate composer uses. Platforms can change how they count, so confirm in each platform’s own composer before publishing.</p>
+    </div>
+  </div></section>
+  <CtaBand title="Count, preview and schedule in one place" text="The composer shows these live counts per channel while you write." />
+</Base>
+<script>
+  import { captionLength } from '../../scripts/caption-count';
+  const ta = document.getElementById('cap') as HTMLTextAreaElement;
+  const summary = document.getElementById('summary')!;
+  const rows = Array.from(document.querySelectorAll<HTMLElement>('#rows li'));
+  const cfg = rows.map((r) => JSON.parse(r.dataset.net!));
+  const update = () => {
+    const t = ta.value;
+    summary.textContent = `${Array.from(t).length} characters · ${(t.trim().match(/\S+/g) || []).length} words`;
+    rows.forEach((r, i) => {
+      const rule = cfg[i]; const n = captionLength(t, rule);
+      (r.querySelector('.count') as HTMLElement).textContent = n.toLocaleString('en-US');
+      const bar = r.querySelector('.bar') as HTMLElement;
+      bar.style.width = Math.min(100, (n / rule.limit) * 100) + '%';
+      const over = n > rule.limit;
+      bar.className = 'bar h-full rounded-full transition-[width] duration-200 ' + (over ? 'bg-red-400' : n / rule.limit > 0.9 ? 'bg-amber-400' : 'bg-brand');
+      const st = r.querySelector('.state') as HTMLElement;
+      if (over) st.textContent = `${(n - rule.limit).toLocaleString('en-US')} over the limit`;
+      else if (t) st.textContent = `${(rule.limit - n).toLocaleString('en-US')} left`;
+      else st.textContent = st.dataset.base ?? '';
+      st.className = 'state mt-2 text-xs ' + (over ? 'font-bold text-red-300' : 'text-ink-3');
+    });
+  };
+  rows.forEach((r) => { const s = r.querySelector('.state') as HTMLElement; s.dataset.base = s.textContent ?? ''; });
+  ta.addEventListener('input', update);
+</script>

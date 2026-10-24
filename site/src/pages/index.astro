@@ -1,0 +1,242 @@
+---
+import { Picture } from 'astro:assets';
+import Base from '../layouts/Base.astro';
+import Pricing from '../components/Pricing.astro';
+import Faq from '../components/Faq.astro';
+import CtaBand from '../components/CtaBand.astro';
+import NetworkBadge from '../components/NetworkBadge.astro';
+import { NETWORKS, NETWORK_COUNT } from '../data/networks';
+import { PLANS } from '../data/plans';
+import { FAQ } from '../data/faq';
+import { SITE, CTA_LABEL } from '../data/site';
+import calendar from '../assets/calendar.jpg';
+import composer from '../assets/composer.jpg';
+import schedule from '../assets/schedule.jpg';
+import week from '../assets/week.jpg';
+import mobile from '../assets/mobile-calendar.jpg';
+
+const software = {
+  '@context': 'https://schema.org', '@type': 'SoftwareApplication', name: 'PostDelegate',
+  applicationCategory: 'BusinessApplication', operatingSystem: 'Web',
+  description: 'Social media scheduler for people and AI agents with an autonomy dial, undo window, crisis pause and audit trail.',
+  url: SITE.url,
+  offers: PLANS.map((p) => ({ '@type': 'Offer', name: p.name, price: String(p.monthly), priceCurrency: 'USD', url: `${SITE.url}/pricing`,
+    priceSpecification: { '@type': 'UnitPriceSpecification', price: p.monthly, priceCurrency: 'USD', billingDuration: 'P1M' } })),
+};
+const faqLd = { '@context': 'https://schema.org', '@type': 'FAQPage', mainEntity: FAQ.map((f) => ({ '@type': 'Question', name: f.q, acceptedAnswer: { '@type': 'Answer', text: f.a.replace(/<[^>]+>/g, '') } })) };
+
+const levels = [
+  { n: 'Off', d: 'The action is refused. Nothing is saved.' },
+  { n: 'Draft only', d: 'Drafts are written; anything that would go out waits for a person.', on: true },
+  { n: 'Auto with guardrails', d: 'Goes out after the undo window if every guardrail passes.' },
+  { n: 'Full auto', d: 'Goes out after the undo window. Blocked phrases and crisis pause still apply.' },
+];
+const safety = [
+  { t: 'Undo window', d: 'Autonomous posts and replies wait 5 minutes by default in “Going out soon”, where you can undo or hold them.', i: 'M12 8v4l3 2M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
+  { t: 'Crisis pause', d: 'One switch stops every autonomous action and holds queued ones. The publisher re-checks it at the moment of sending.', i: 'M10 9v6m4-6v6M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z' },
+  { t: 'Guardrails', d: 'Blocked phrases, links, @mentions, prices, health, financial and legal claims, a daily cap per account and quiet hours.', i: 'M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6l-8-3Z' },
+  { t: 'Audit trail', d: 'Every action by a person, agent or automation is logged with the decision, guardrail results and a diff. Entries cannot be edited or deleted.', i: 'M9 12h6m-6 4h6M7 3h7l5 5v13H7V3Z' },
+];
+const features = [
+  { t: 'Calendar & queues', d: 'Day, week, month and list views, drag to reschedule, posting slots and best-time suggestions learned from your own posts.' },
+  { t: 'Composer with per-channel tweaks', d: 'Write once, then customise any channel. Live character counts follow each network’s own counting rules.' },
+  { t: 'Approvals & client portal', d: 'Internal review, a separate client sign-off, change requests and holds. Clients review without seeing your internals.' },
+  { t: 'Social inbox', d: 'Comments and conversations from supported channels in one place, with replies that follow your autonomy settings.' },
+  { t: 'Analytics & reports', d: 'Channel analytics (limited to what each platform exposes), scheduled white-label client reports and competitor benchmarks.' },
+  { t: 'Evergreen & recurring', d: 'Recycle your best posts, repeat on a schedule, and pause any series. Agents follow the same rules as people.' },
+  { t: 'Link in bio & short links', d: 'Branded link-in-bio pages and short links with UTM support, included with every plan.' },
+  { t: 'Media library', d: 'Upload once and reuse everywhere, with per-network media checks before you schedule.' },
+  { t: 'REST API & MCP', d: 'Scoped API keys, capability presets, idempotent writes and webhooks, for agents and for your own tools.' },
+];
+const aiCards = [
+  { t: 'Claude', d: 'Add PostDelegate as a custom connector in Claude. It signs in with OAuth and acts with your own permissions.', href: '/claude-cowork' },
+  { t: 'ChatGPT & other MCP clients', d: 'Any client that speaks MCP can connect to your workspace’s MCP endpoint and use the tools it is allowed to.', href: '/mcp' },
+  { t: 'Codex & coding agents', d: 'Point Codex, Claude Code or Cursor at the same endpoint with a scoped API key.', href: '/codex' },
+  { t: 'Your own key, any provider', d: 'Anthropic, OpenAI, Google Gemini or any OpenAI-compatible service. Billed by them, never by us.', href: '/agents' },
+];
+---
+<Base title="PostDelegate — the safest way to let AI run your social media" description="Schedule posts to 27 networks and let any AI draft and publish with an autonomy dial, undo window, crisis pause and audit trail. Free plan and 14-day trial, no card." jsonLd={[software, faqLd]}>
+  <!-- Hero -->
+  <section class="relative overflow-hidden">
+    <div class="hero-glow absolute inset-0" aria-hidden="true"></div>
+    <div class="grid-bg absolute inset-0" aria-hidden="true"></div>
+    <div class="container-x relative pt-14 text-center sm:pt-20">
+      <a href="/agents" class="rise inline-flex items-center gap-2 rounded-full border border-line bg-surface-1/70 px-4 py-1.5 text-xs font-bold text-ink-2 transition hover:border-line-hover hover:text-white sm:text-sm">
+        <span class="size-1.5 rounded-full bg-lime" aria-hidden="true"></span> Works with Claude, ChatGPT and any AI you choose <span aria-hidden="true">→</span>
+      </a>
+      <h1 class="rise rise-1 mx-auto mt-6 max-w-4xl text-[2.5rem] font-extrabold leading-[1.05] tracking-tight text-balance sm:text-6xl lg:text-7xl">
+        The safest way to let <span class="relative inline-block grad-text">AI run
+          <svg class="underline-draw absolute -bottom-2 left-0 w-full" viewBox="0 0 300 14" fill="none" preserveAspectRatio="none" aria-hidden="true"><path d="M3 9c60-8 130-9 294-3" stroke="#c8ff4d" stroke-width="4" stroke-linecap="round"/></svg>
+        </span> your social media
+      </h1>
+      <p class="rise rise-2 mx-auto mt-6 max-w-2xl text-lg leading-relaxed text-ink-2 sm:text-xl text-pretty">with any AI you choose. Draft, approve, schedule and publish across {NETWORK_COUNT} networks, while you decide exactly how much your agent may do alone.</p>
+      <div class="rise rise-3 mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+        <a href={SITE.signup} class="btn btn-primary btn-lg w-full sm:w-auto">{CTA_LABEL}</a>
+        <a href={SITE.login} class="btn btn-ghost btn-lg w-full sm:w-auto">Sign in</a>
+      </div>
+      <p class="rise rise-3 mt-4 text-sm text-ink-3">Free plan on 3 channels, forever. Bring your own AI key or use Claude or ChatGPT.</p>
+      <div class="rise rise-4 relative mx-auto mt-14 max-w-5xl">
+        <div class="absolute -inset-x-6 -top-6 bottom-0 rounded-[2rem] bg-brand/20 blur-3xl" aria-hidden="true"></div>
+        <div class="shot relative overflow-hidden rounded-t-2xl border border-line bg-surface">
+          <div class="flex items-center gap-1.5 border-b border-line bg-surface-1 px-4 py-3" aria-hidden="true"><span class="size-2.5 rounded-full bg-white/15"></span><span class="size-2.5 rounded-full bg-white/15"></span><span class="size-2.5 rounded-full bg-white/15"></span></div>
+          <Picture src={calendar} alt="The PostDelegate calendar in month view with scheduled posts across Facebook, Instagram, LinkedIn and X" widths={[640, 960, 1440]} sizes="(min-width: 1024px) 1024px, 100vw" formats={['avif', 'webp']} loading="eager" fetchpriority="high" class="block h-auto w-full" />
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Network marquee -->
+  <section aria-label="Supported networks" class="border-y border-line bg-surface py-8">
+    <p class="mb-5 text-center text-xs font-bold uppercase tracking-[0.14em] text-ink-3">{NETWORK_COUNT} networks, one calendar</p>
+    <div class="marquee overflow-hidden [mask-image:linear-gradient(90deg,transparent,#000_12%,#000_88%,transparent)]">
+      <ul class="marquee-track flex gap-8">
+        {[...NETWORKS, ...NETWORKS].map((n, i) => (
+          <li class="flex items-center gap-3 text-sm font-semibold text-ink-2" aria-hidden={i >= NETWORKS.length ? 'true' : undefined}><NetworkBadge n={n} size="sm" />{n.name}</li>
+        ))}
+      </ul>
+    </div>
+  </section>
+
+  <!-- Audiences -->
+  <section class="section" id="who">
+    <div class="container-x">
+      <div class="mx-auto max-w-2xl text-center"><p class="eyebrow">Built for people who delegate</p><h2 class="h2 mt-3">One workspace for the creator, the team and the agent.</h2></div>
+      <div class="mt-12 grid gap-4 md:grid-cols-3">
+        {[
+          { t: 'Creators & founders', d: 'Let an AI draft a week of posts in your voice, then approve with a tap. Free on 3 channels.' },
+          { t: 'Teams', d: 'Roles, internal review and shared calendars so nothing goes out without the right sign-off.' },
+          { t: 'Agencies', d: 'Separate client workspaces, a client approval portal and white-label reports on every paid plan.' },
+        ].map((c) => (
+          <div class="card card-hover reveal p-7"><h3 class="text-xl font-extrabold">{c.t}</h3><p class="mt-3 text-ink-2 leading-relaxed">{c.d}</p></div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- Works with your AI -->
+  <section class="section border-t border-line bg-surface" id="ai">
+    <div class="container-x grid items-center gap-12 lg:grid-cols-2">
+      <div>
+        <p class="eyebrow">Works with your AI</p>
+        <h2 class="h2 mt-3">Bring Claude, ChatGPT or your own API key.</h2>
+        <p class="lead mt-4">PostDelegate does not resell AI, and it does not lock you to one. Connect the assistant you already use over MCP, or add your own key and use the built-in writing tools. You pay your AI provider directly.</p>
+        <ul class="mt-6 space-y-3 text-ink-2">
+          <li class="flex gap-3"><span class="mt-1 text-lime" aria-hidden="true">✓</span>Scoped API keys: choose exactly which tools a token gets</li>
+          <li class="flex gap-3"><span class="mt-1 text-lime" aria-hidden="true">✓</span>An agent can only tighten your autonomy policy, never loosen it</li>
+          <li class="flex gap-3"><span class="mt-1 text-lime" aria-hidden="true">✓</span>Retry-safe writes with idempotency keys</li>
+        </ul>
+        <a href="/agents" class="btn btn-ghost mt-8">Guides for AI agents →</a>
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        {aiCards.map((c) => (
+          <a href={c.href} class="card card-hover reveal block p-6"><h3 class="font-extrabold">{c.t}</h3><p class="mt-2 text-sm leading-relaxed text-ink-2">{c.d}</p></a>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- Agent safety -->
+  <section class="section" id="safety">
+    <div class="container-x">
+      <div class="mx-auto max-w-3xl text-center">
+        <p class="eyebrow">Agent safety</p>
+        <h2 class="h2 mt-3">You set the dial. The agent works inside it.</h2>
+        <p class="lead mt-4">Each workspace chooses a level for four kinds of action: drafting, scheduling and publishing, replying, and recycling. New workspaces start at Draft only.</p>
+      </div>
+      <ol class="mx-auto mt-12 grid max-w-5xl gap-3 md:grid-cols-4" aria-label="Autonomy levels">
+        {levels.map((l, i) => (
+          <li class:list={['card reveal p-5', l.on && 'border-lime/50 bg-lime/[.04]']}>
+            <span class="text-xs font-bold text-ink-3">Level {i + 1}</span>
+            <h3 class="mt-1 font-extrabold">{l.n}</h3>
+            <p class="mt-2 text-sm text-ink-2 leading-relaxed">{l.d}</p>
+            {l.on && <span class="mt-3 inline-block rounded-full bg-lime/15 px-2.5 py-1 text-[11px] font-bold text-lime">Default for new workspaces</span>}
+          </li>
+        ))}
+      </ol>
+      <div class="mt-4 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {safety.map((s) => (
+          <div class="card card-hover reveal p-6">
+            <span class="inline-flex size-10 items-center justify-center rounded-xl bg-brand/15 text-brand-200"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d={s.i}/></svg></span>
+            <h3 class="mt-4 font-extrabold">{s.t}</h3><p class="mt-2 text-sm leading-relaxed text-ink-2">{s.d}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  </section>
+
+  <!-- Product -->
+  <section class="section border-t border-line bg-surface" id="product">
+    <div class="container-x space-y-24 sm:space-y-32">
+      <div class="grid items-center gap-10 lg:grid-cols-[1fr_1.35fr]">
+        <div>
+          <p class="eyebrow">Composer</p><h2 class="h2 mt-3">Write once. Tune every channel.</h2>
+          <p class="lead mt-4">Pick your channels, write a caption and see a live preview for each network with the right character count. Customise one channel without losing the shared draft.</p>
+        </div>
+        <Picture src={composer} alt="The post composer with per-channel tabs, a character counter and live previews for Instagram, LinkedIn and X" widths={[640, 960, 1440]} sizes="(min-width: 1024px) 700px, 100vw" formats={['avif', 'webp']} loading="lazy" class="shot reveal block h-auto w-full rounded-2xl border border-line" />
+      </div>
+      <div class="grid items-center gap-10 lg:grid-cols-[1.35fr_1fr]">
+        <Picture src={schedule} alt="The schedule menu in the composer offering next available slot, best times and custom date and time" widths={[640, 960, 1440]} sizes="(min-width: 1024px) 700px, 100vw" formats={['avif', 'webp']} loading="lazy" class="shot reveal block h-auto w-full rounded-2xl border border-line lg:order-1" />
+        <div class="lg:order-2">
+          <p class="eyebrow">Scheduling</p><h2 class="h2 mt-3">Queues, slots and best times.</h2>
+          <p class="lead mt-4">Add to a queue, take the next free slot or pick a time. Best-time suggestions are learned from each account’s own posts, and clearly labelled industry defaults when there is too little data.</p>
+        </div>
+      </div>
+      <div class="grid items-center gap-10 lg:grid-cols-[1fr_1.35fr]">
+        <div>
+          <p class="eyebrow">Calendar</p><h2 class="h2 mt-3">Everything going out, at a glance.</h2>
+          <p class="lead mt-4">Day, week, month and list views with filters for channel, tag and status. Drag a post to move it. Failed posts and channels that need reconnecting are flagged right where you work.</p>
+          <div class="mt-6 w-40 overflow-hidden rounded-2xl border border-line shot"><Picture src={mobile} alt="The calendar on a phone" widths={[320, 480]} sizes="160px" formats={['avif', 'webp']} loading="lazy" class="block h-auto w-full" /></div>
+        </div>
+        <Picture src={week} alt="The week view of the PostDelegate calendar" widths={[640, 960, 1440]} sizes="(min-width: 1024px) 700px, 100vw" formats={['avif', 'webp']} loading="lazy" class="shot reveal block h-auto w-full rounded-2xl border border-line" />
+      </div>
+    </div>
+  </section>
+
+  <!-- Features -->
+  <section class="section" id="features">
+    <div class="container-x">
+      <div class="mx-auto max-w-2xl text-center"><p class="eyebrow">Features</p><h2 class="h2 mt-3">Everything you need to run social, without the pile of tools.</h2></div>
+      <div class="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {features.map((f) => (<div class="card card-hover reveal p-6"><h3 class="font-extrabold">{f.t}</h3><p class="mt-2 text-sm leading-relaxed text-ink-2">{f.d}</p></div>))}
+      </div>
+    </div>
+  </section>
+
+  <!-- Networks -->
+  <section class="section border-t border-line bg-surface" id="networks">
+    <div class="container-x">
+      <div class="mx-auto max-w-2xl text-center"><p class="eyebrow">Networks</p><h2 class="h2 mt-3">{NETWORK_COUNT} networks in one place.</h2>
+        <p class="lead mt-4">Each platform controls its own API access, account types and permissions, so features vary by channel.</p></div>
+      <ul class="mt-12 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        {NETWORKS.map((n) => (
+          <li><a href={n.scheduler ? `/${n.scheduler}` : '/platforms'} class="card card-hover flex items-center gap-3 p-3.5 text-sm font-bold"><NetworkBadge n={n} />{n.name}</a></li>
+        ))}
+      </ul>
+      <p class="mt-6 text-center"><a href="/platforms" class="text-sm font-bold text-brand-200 underline underline-offset-4 hover:text-white">See every platform →</a></p>
+    </div>
+  </section>
+
+  <!-- Compare teaser -->
+  <section class="section">
+    <div class="container-x">
+      <div class="mx-auto max-w-2xl text-center"><p class="eyebrow">Compare</p><h2 class="h2 mt-3">Choosing a scheduler? Compare honestly.</h2></div>
+      <div class="mx-auto mt-10 grid max-w-3xl gap-4 sm:grid-cols-2">
+        <a href="/compare/postiz" class="card card-hover reveal block p-6"><h3 class="font-extrabold">PostDelegate vs Postiz</h3><p class="mt-2 text-sm text-ink-2">An open-source scheduler with its own AI tools. Where we differ on agent safety and review.</p><span class="mt-4 inline-block text-sm font-bold text-brand-200">Read the comparison →</span></a>
+        <a href="/compare/post-bridge" class="card card-hover reveal block p-6"><h3 class="font-extrabold">PostDelegate vs Post Bridge</h3><p class="mt-2 text-sm text-ink-2">A creator-focused scheduler with an API. How agent access and approvals compare.</p><span class="mt-4 inline-block text-sm font-bold text-brand-200">Read the comparison →</span></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing -->
+  <section class="section border-t border-line bg-surface" id="pricing"><div class="container-x"><Pricing /></div></section>
+
+  <!-- FAQ -->
+  <section class="section" id="faq">
+    <div class="container-x max-w-3xl">
+      <div class="text-center"><p class="eyebrow">FAQ</p><h2 class="h2 mt-3">Questions, answered plainly.</h2></div>
+      <div class="mt-10"><Faq items={FAQ} /></div>
+    </div>
+  </section>
+
+  <CtaBand />
+</Base>

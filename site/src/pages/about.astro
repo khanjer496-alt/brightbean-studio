@@ -1,0 +1,14 @@
+---
+import Doc from '../layouts/Doc.astro';
+import { SITE } from '../data/site';
+---
+<Doc title="About PostDelegate" description="PostDelegate is a social media scheduler for people and AI agents, built on open source by Nasida Apps LLC." h1="About PostDelegate" eyebrow="About" lead="We think you should be able to hand your social media to an AI and still sleep at night.">
+  <h2>What we build</h2>
+  <p>PostDelegate is a social media scheduler for people and AI agents. It covers planning, review, scheduling and publishing in one shared workspace for creators, teams and agencies, with an autonomy dial, undo window, crisis pause and audit trail so an agent never does more than you allow.</p>
+  <h2>Choose your interface</h2>
+  <ul><li><strong>Web app</strong> to plan, write, review and publish.</li><li><strong>REST API</strong> for your own tools, with scoped keys.</li><li><strong>MCP</strong> for Claude, ChatGPT and other compatible AI clients.</li></ul>
+  <h2>Open source</h2>
+  <p>The PostDelegate workspace is open source under AGPL-3.0 and built on <a href={SITE.upstream} rel="noopener">BrightBean Studio</a>. Read the <a href={SITE.source} rel="noopener">source code</a> and the <a href={SITE.legal.licenses}>licenses and source offer</a>.</p>
+  <h2>Who runs it</h2>
+  <p>PostDelegate is operated by {SITE.operator}. Questions, feedback and partnership enquiries: <a href={`mailto:${SITE.email}`}>{SITE.email}</a>.</p>
+</Doc>

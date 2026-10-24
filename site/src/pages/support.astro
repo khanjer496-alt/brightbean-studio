@@ -1,0 +1,16 @@
+---
+import Doc from '../layouts/Doc.astro';
+import { SITE } from '../data/site';
+---
+<Doc title="Support — PostDelegate" description="How to get help with PostDelegate, report a platform connection problem or request data deletion." h1="Support" eyebrow="Help" lead="We answer by email. Tell us what happened and we will help.">
+  <a slot="actions" href={`mailto:${SITE.email}`} class="btn btn-primary btn-lg">{SITE.email}</a>
+  <h2>What to include</h2>
+  <p>Your workspace name, the affected channel, the time and timezone, and what you expected to happen. Screenshots or error messages help; remove anything sensitive first.</p>
+  <p><strong>Never send</strong> passwords, API keys, access tokens, payment-card details or recovery codes, and never share your social account password with support.</p>
+  <h2>Platform access</h2>
+  <p>A channel appearing in the product does not guarantee that every account type or publishing feature is available, because each platform controls its own API access. When reporting a connection or permission problem, name the platform.</p>
+  <h2>Privacy and data requests</h2>
+  <p>To remove account or connected-channel data, follow the <a href={SITE.legal.dataDeletion}>data deletion instructions</a>. The <a href={SITE.legal.privacy}>privacy policy</a> describes what data the service processes.</p>
+  <h2>Self-service</h2>
+  <p><a href="/agents">Agent guides</a> · <a href={`${SITE.app}/api/v1/docs`}>API reference</a> · <a href="/status">Status</a></p>
+</Doc>

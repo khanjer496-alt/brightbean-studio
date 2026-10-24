@@ -1,0 +1,13 @@
+---
+import Base from '../layouts/Base.astro';
+import Pricing from '../components/Pricing.astro';
+import Faq from '../components/Faq.astro';
+import CtaBand from '../components/CtaBand.astro';
+import { FAQ } from '../data/faq';
+const faq = [FAQ[1], FAQ[5], FAQ[6]];
+---
+<Base title="Pricing — PostDelegate" description="Free for 3 channels. Starter $19, Team $29, Pro $39, Ultimate $79 a month. Every paid plan has every feature; 20% off yearly; 14-day trial, no card.">
+  <section class="section"><div class="container-x"><Pricing /></div></section>
+  <section class="pb-8"><div class="container-x max-w-3xl"><Faq items={faq} /></div></section>
+  <CtaBand />
+</Base>

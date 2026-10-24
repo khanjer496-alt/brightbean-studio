@@ -1,0 +1,11 @@
+---
+import type { Network } from '../data/networks';
+interface Props { n: Network; size?: 'sm' | 'md' | 'lg' }
+const { n, size = 'md' } = Astro.props;
+const dim = { sm: 'size-8 text-[11px]', md: 'size-10 text-xs', lg: 'size-14 text-base' }[size];
+// Light brand colours need dark text for contrast.
+const lum = (hex: string) => { const c = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16) / 255).map((v) => (v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4)); return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+const L = lum(n.color);
+const light = (L + 0.05) / 0.05 > 1.05 / (L + 0.05); // dark text contrasts more than white
+---
+<span aria-hidden="true" class={`inline-flex shrink-0 items-center justify-center rounded-xl font-extrabold ${dim}`} style={`background:${n.color};color:${light ? '#080a0f' : '#fff'}`}>{n.abbr}</span>
