@@ -26,8 +26,8 @@ from .linkedin_company import LinkedInCompanyProvider
 from .linkedin_personal import LinkedInPersonalProvider
 from .listmonk import ListmonkProvider
 from .mastodon import MastodonProvider
-from .nostr import NostrProvider
 from .medium import MediumProvider
+from .nostr import NostrProvider
 from .pinterest import PinterestProvider
 from .reddit import RedditProvider
 from .slack import SlackProvider
