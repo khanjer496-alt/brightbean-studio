@@ -2,17 +2,16 @@
 "Add to evergreen" dialog for one published post. Context: pp, categories, can_pre_approve, defaults, error.
 Loaded into the Sent tab's #evergreen-modal.
 {% endcomment %}
-<div x-data="{ open: true }" x-show="open" x-cloak @keydown.escape.window="open = false; $el.parentElement.replaceChildren()"
-     class="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 p-0 sm:p-4"
-     role="dialog" aria-modal="true" aria-labelledby="eg-dialog-title">
-    <div class="w-full max-w-md max-h-[90vh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white border border-stone-200 p-5">
+<dialog x-data x-init="$el.showModal()" @close="$el.parentElement.replaceChildren()" @click.self="$el.close()" aria-labelledby="eg-dialog-title"
+        class="m-auto w-[calc(100vw-2rem)] max-w-md max-h-[90vh] overflow-y-auto rounded-2xl border border-line bg-surface-1 p-0 text-ink backdrop:bg-black/60">
+    <div class="p-5">
         <h2 id="eg-dialog-title" class="text-base font-semibold text-stone-900">Add to evergreen</h2>
         <p class="mt-1 text-sm text-stone-500 break-words">{{ pp.post.caption_snippet|default:"(no text)" }}</p>
-        <p class="mt-1 text-xs text-stone-400">{{ pp.social_account.account_name|default:pp.social_account.account_handle }} · {{ pp.social_account.get_platform_display }}</p>
+        <p class="mt-1 text-xs text-stone-500">{{ pp.social_account.account_name|default:pp.social_account.account_handle }} · {{ pp.social_account.get_platform_display }}</p>
 
         {% if error %}<p class="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{{ error }}</p>{% endif %}
 
-        <form hx-post="{% url 'calendar:evergreen_add' workspace_id=workspace.id %}" hx-target="closest [role=dialog]" hx-swap="outerHTML" class="mt-4 space-y-4">
+        <form hx-post="{% url 'calendar:evergreen_add' workspace_id=workspace.id %}" hx-target="closest dialog" hx-swap="outerHTML" class="mt-4 space-y-4">
             {% csrf_token %}
             <input type="hidden" name="platform_post_id" value="{{ pp.id }}">
             <div>
@@ -37,18 +36,18 @@ Loaded into the Sent tab's #evergreen-modal.
             <fieldset>
                 <legend class="block text-xs font-medium text-stone-600 mb-1">Wording</legend>
                 <label class="flex items-center gap-1.5 text-sm text-stone-700"><input type="radio" name="wording" value="original" checked> Post as is</label>
-                <label class="flex items-start gap-1.5 text-sm text-stone-700 mt-1"><input type="radio" name="wording" value="ai" class="mt-1"> <span>Vary the wording with AI<span class="block text-xs text-stone-400">Uses your brand voice and AI allowance. Posts as written if the AI isn't available.</span></span></label>
+                <label class="flex items-start gap-1.5 text-sm text-stone-700 mt-1"><input type="radio" name="wording" value="ai" class="mt-1"> <span>Vary the wording with AI<span class="block text-xs text-stone-500">Uses your brand voice and AI allowance. Posts as written if the AI isn't available.</span></span></label>
             </fieldset>
             {% if can_pre_approve %}
             <label class="flex items-start gap-2 text-sm text-stone-700">
                 <input type="checkbox" name="pre_approved" class="mt-0.5">
-                <span>Pre-approve repeats<span class="block text-xs text-stone-400">Skip the approval workflow for this item as it is now. AI-varied wording still goes to review.</span></span>
+                <span>Pre-approve repeats<span class="block text-xs text-stone-500">Skip the approval workflow for this item as it is now. AI-varied wording still goes to review.</span></span>
             </label>
             {% endif %}
             <div class="flex items-center justify-end gap-2 pt-1">
-                <button type="button" class="text-sm text-stone-500 hover:text-stone-700 py-2 px-3 cursor-pointer" @click="open = false; $el.closest('[role=dialog]').parentElement.replaceChildren()">Cancel</button>
+                <button type="button" class="min-h-9 text-sm text-stone-600 hover:text-stone-800 py-2 px-3 cursor-pointer" @click="$el.closest('dialog').close()">Cancel</button>
                 <button type="submit" class="btn-brand text-sm py-2 px-4">Add to evergreen</button>
             </div>
         </form>
     </div>
-</div>
+</dialog>
