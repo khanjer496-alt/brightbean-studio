@@ -38,7 +38,6 @@ button, a, input, textarea, select, summary { -webkit-tap-highlight-color: trans
 [dir="rtl"] .sidebar-nav-item.active { box-shadow: inset -2px 0 var(--brand-400); }
 .sidebar-section-label { color: var(--text-tertiary); }
 .sidebar-logo-mark:not(img) { background: var(--brand-100); color: var(--brand-700); border: 1px solid var(--brand-200); }
-.sidebar-initial, .sidebar-collapsed { background: var(--surface-page); }
 /* Legacy utility classes on menus, settings forms and dialogs use the same tokens. */
 html[data-theme="postdelegate"] :where(.bg-white):not([data-platform-preview], [data-platform-preview] *) { background-color: var(--surface-0); }
 html[data-theme="postdelegate"] :where(.bg-gray-50,.bg-stone-50,.bg-slate-50):not([data-platform-preview], [data-platform-preview] *) { background-color: var(--surface-1); }

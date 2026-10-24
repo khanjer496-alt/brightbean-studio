@@ -16,7 +16,7 @@ apps.onboarding.context_processors.
        hx-trigger="ideaChanged from:body"
        hx-swap="outerHTML"
        {% endif %}
-       class="fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] end-3 z-30 sm:bottom-4 sm:end-4 {% if onboarding.checklist_hidden_on_phone %}max-sm:hidden{% endif %}">
+       class="fixed bottom-[calc(0.75rem+var(--pd-tabbar-h,env(safe-area-inset-bottom)))] end-3 z-30 sm:bottom-[calc(1rem+var(--pd-tabbar-h,0px))] sm:end-4 {% if onboarding.checklist_hidden_on_phone %}max-sm:hidden{% endif %}">
 
     <button type="button" x-ref="pill" x-show="!open" x-cloak
             @click="toggle(true); $nextTick(() => $refs.panel.focus())"

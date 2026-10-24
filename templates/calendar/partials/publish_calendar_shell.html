@@ -4,7 +4,7 @@ Toolbar: nav arrows + period + Today + view dropdown | right: filter dropdowns.
 {% endcomment %}
 
 <div class="flex-1 flex flex-col min-h-0 -mx-3 sm:-mx-4 lg:-mx-6"
-     x-data="{ ...calendarApp(), showEventForm: false, viewOpen: false }"
+     x-data="{ ...calendarApp(), showEventForm: false, viewOpen: false, filtersOpen: false }"
      @calendar-refresh.window="htmx.trigger('#calendar-content', 'refresh')"
      hx-trigger="calendarRefresh from:body"
      hx-get="{% url 'calendar:calendar' workspace_id=workspace.id %}?mode=calendar&view={{ view_type }}&date={{ target_date|date:'Y-m-d' }}{% if show_holidays %}&holidays=1{% endif %}"
@@ -74,8 +74,15 @@ Toolbar: nav arrows + period + Today + view dropdown | right: filter dropdowns.
 
         {% include "calendar/partials/_saved_views.html" %}
 
-        <!-- Right side: filter dropdowns -->
-        <div class="cal-filters-scroll flex items-center gap-2 ms-auto max-w-full overflow-x-auto flex-nowrap [-webkit-overflow-scrolling:touch] [scrollbar-width:none]" role="group" aria-label="Calendar filters">
+        <!-- Phones: the filters live in a bottom sheet behind one button -->
+        <button type="button" id="calendar-filters-btn" @click="filtersOpen = true" aria-haspopup="dialog" :aria-expanded="filtersOpen"
+                class="md:hidden ms-auto touch-44 inline-flex min-h-8 items-center gap-1.5 px-3 py-1 text-xs font-semibold text-stone-600 border border-stone-200 rounded-md hover:bg-stone-50 transition-colors">
+            <svg class="w-3.5 h-3.5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            Filters
+        </button>
+
+        <!-- Right side: filter dropdowns (md and up) -->
+        <div class="cal-filters-scroll hidden md:flex items-center gap-2 ms-auto max-w-full overflow-x-auto flex-nowrap [-webkit-overflow-scrolling:touch] [scrollbar-width:none]" role="group" aria-label="Calendar filters">
             <!-- Status filter -->
             {% ui_select model="calendarFilters.status" options=status_choices onchange="reloadCalendar()" placeholder="All Posts" icon="status" %}
 
@@ -89,6 +96,18 @@ Toolbar: nav arrows + period + Today + view dropdown | right: filter dropdowns.
             {% ui_select model="calendarFilters.tz" options=timezone_options onchange="reloadCalendar()" placeholder="Timezone" icon="clock" %}
         </div>
     </div>
+
+    {% modal open="filtersOpen" title="Filters" size="sheet" teleport=False return_focus="#calendar-filters-btn" %}
+        <div class="grid gap-3" role="group" aria-label="Calendar filters">
+            {% ui_select model="calendarFilters.status" options=status_choices onchange="reloadCalendar()" placeholder="All Posts" icon="status" %}
+            {% ui_select model="calendarFilters.channels" options=social_accounts multiple=True onchange="reloadCalendar()" placeholder="Channels" icon="channel" label_field="display_label" icon_field="platform" %}
+            {% ui_select model="calendarFilters.tag" options=all_tags onchange="reloadCalendar()" placeholder="Tags" icon="tag" %}
+            {% ui_select model="calendarFilters.tz" options=timezone_options onchange="reloadCalendar()" placeholder="Timezone" icon="clock" %}
+        </div>
+        <div class="pd-modal-actions">
+            <button type="button" class="btn-brand w-auto" data-autofocus @click="filtersOpen = false">Done</button>
+        </div>
+    {% endmodal %}
 
     <!-- Event creation form (overlay) -->
     <div x-show="showEventForm" x-cloak

@@ -1,8 +1,8 @@
 {% load onboarding_tags %}{% comment %}Empty state when no assets match. Expects: query (optional), workspace{% endcomment %}
 {% if query %}
-<div class="flex flex-col items-center justify-center px-6 py-16 text-center">
-  <h3 class="mb-1 text-base font-semibold text-ink">No media matches your search</h3>
-  <p class="mb-4 text-sm text-ink-2">Try adjusting your search terms or filters.</p>
+<div class="pd-empty">
+  <h3 class="pd-empty-title">No media matches your search</h3>
+  <p class="pd-empty-body">Try adjusting your search terms or filters.</p>
   <a href="{% url 'media_library:index' workspace_id=workspace.id %}" class="btn-outline min-h-11 w-auto px-5">Clear search</a>
 </div>
 {% else %}

@@ -1,0 +1,32 @@
+{% comment %}
+SHARED EMPTY STATE - one shape everywhere: 64px tinted icon tile, 18px/600 title, 14px body (max 24rem), one primary action.
+
+    {% include "components/_empty_state.html" with icon_svg=svg_paths title="No posts yet" body="Create your first post." cta_label="Create post" cta_url=url %}
+
+Arguments:
+  title        REQUIRED. Plain text.
+  body         optional supporting sentence.
+  icon_svg     optional inner markup for a 24px stroke icon (paths only, trusted server markup).
+  cta_label    label of the one primary action, with either
+  cta_url      (a link) or
+  cta_click    (an Alpine expression for a button).
+  key          optional, written to data-empty-state for tests and analytics hooks.
+  secondary_post_url / secondary_label   optional quiet POST action under the primary one (CSRF token included).
+Pages with richer content (platform icons, notes) use the same .pd-empty, .pd-empty-icon, .pd-empty-title and
+.pd-empty-body classes from theme/static_src/src/styles.css instead of the include.
+{% endcomment %}<div class="pd-empty"{% if key %} data-empty-state="{{ key }}"{% endif %}>
+    <div class="pd-empty-icon">{% if icon_svg %}<svg class="h-8 w-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">{{ icon_svg|safe }}</svg>{% endif %}</div>
+    <h3 class="pd-empty-title">{{ title }}</h3>
+    {% if body %}<p class="pd-empty-body">{{ body }}</p>{% endif %}
+    {% if cta_url %}
+    <a href="{{ cta_url }}" class="btn-brand min-h-11 w-auto px-5">{{ cta_label }}</a>
+    {% elif cta_click %}
+    <button type="button" @click="{{ cta_click }}" class="btn-brand min-h-11 w-auto px-5">{{ cta_label }}</button>
+    {% endif %}
+    {% if secondary_post_url %}
+    <form method="post" action="{{ secondary_post_url }}" class="mt-3">
+        <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+        <button type="submit" class="min-h-11 cursor-pointer rounded-full px-4 text-sm font-medium text-accent hover:bg-accent-soft">{{ secondary_label }}</button>
+    </form>
+    {% endif %}
+</div>
