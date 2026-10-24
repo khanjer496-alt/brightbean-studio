@@ -7,6 +7,8 @@ from django.shortcuts import redirect
 from apps.members.models import WorkspaceMembership
 from apps.workspaces.models import Workspace
 
+from .services import PORTAL_MFA_SESSION_KEY
+
 
 def portal_auth_required(view_func):
     """Decorator that enforces portal session authentication.
@@ -20,10 +22,12 @@ def portal_auth_required(view_func):
         if not request.user.is_authenticated:
             return redirect("client_portal:magic_link_expired")
 
-        if not request.session.get("is_portal_session"):
-            return redirect("client_portal:magic_link_expired")
-
-        workspace_id = request.session.get("portal_workspace_id")
+        # Either a portal-scoped session, or a full one that a magic link led to
+        # through the 2FA challenge (it carries the workspace the link was for).
+        if request.session.get("is_portal_session"):
+            workspace_id = request.session.get("portal_workspace_id")
+        else:
+            workspace_id = request.session.get(PORTAL_MFA_SESSION_KEY)
         if not workspace_id:
             return redirect("client_portal:magic_link_expired")
 

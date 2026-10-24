@@ -5,6 +5,7 @@ from collections import defaultdict
 from django.db.models import F, Prefetch
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
@@ -54,8 +55,9 @@ def magic_link_entry(request, token):
         user, workspace, is_valid = consume_magic_link(token)
         if not is_valid:
             return redirect("client_portal:magic_link_expired")
-        create_portal_session(request, user, workspace)
-        return redirect(PORTAL_LANDINGS.get(request.POST.get("next", ""), "client_portal:dashboard"))
+        landing = PORTAL_LANDINGS.get(request.POST.get("next", ""), "client_portal:dashboard")
+        challenge = create_portal_session(request, user, workspace, next_url=reverse(landing))
+        return challenge or redirect(landing)
 
     magic_token = peek_magic_link(token)
     if magic_token is None:
