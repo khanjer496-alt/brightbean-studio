@@ -198,7 +198,10 @@ def test_error_mapping(server, reply, error):
     server.queue(reply, reply)
     with pytest.raises(error):
         run(OpenAIProvider)
-    retried = isinstance(reply, Exception) or (isinstance(reply, tuple) and reply[0] >= 500)
+    # A read timeout isn't retried: a model too slow once would be as slow again.
+    retried = (isinstance(reply, Exception) and not isinstance(reply, httpx.ReadTimeout)) or (
+        isinstance(reply, tuple) and reply[0] >= 500
+    )
     assert len(server.requests) == (2 if retried else 1)
 
 
