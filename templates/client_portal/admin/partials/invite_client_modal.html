@@ -6,13 +6,13 @@
         <div @click.outside="showInviteModal = false"
              x-show="showInviteModal"
              x-transition
-             class="w-full max-w-md rounded-xl shadow-xl flex flex-col"
-             style="background: var(--surface-0);">
+             class="w-full max-w-md rounded-xl shadow-xl flex flex-col bg-[color:var(--surface-0)]"
+            >
 
             <!-- Header -->
-            <div class="flex items-center justify-between px-6 py-4 flex-shrink-0" style="border-bottom: 1px solid var(--border);">
-                <h3 class="text-base font-semibold" style="color: var(--text-primary);">Invite Client</h3>
-                <button aria-label="Close" @click="showInviteModal = false" class="cursor-pointer" style="color: var(--text-tertiary);">
+            <div class="flex items-center justify-between px-6 py-4 flex-shrink-0 border-b border-[color:var(--border)]">
+                <h3 class="text-base font-semibold text-[color:var(--text-primary)]">Invite Client</h3>
+                <button aria-label="Close" @click="showInviteModal = false" class="cursor-pointer text-[color:var(--text-tertiary)]">
                     <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
             </div>
@@ -27,14 +27,14 @@
 
                 <!-- Email -->
                 <div class="mb-5">
-                    <label for="client-email" class="block text-sm font-medium mb-1.5" style="color: var(--text-primary);">Email Address</label>
+                    <label for="client-email" class="block text-sm font-medium mb-1.5 text-[color:var(--text-primary)]">Email Address</label>
                     <input type="email" id="client-email" name="email" required placeholder="client@example.com"
-                           class="input-focus-surface w-full px-4 py-2.5 text-sm rounded-lg outline-none"
-                           style="border: 1px solid var(--border); color: var(--text-primary); background: var(--surface-1);">
+                           class="input-focus-surface w-full px-4 py-2.5 text-sm rounded-lg outline-none border border-[color:var(--border)]! text-[color:var(--text-primary)]! bg-[color:var(--surface-1)]!"
+                          >
                 </div>
 
                 <!-- Info -->
-                <div class="mb-5 px-3 py-2.5 rounded-lg text-xs" style="background: var(--neutral-50); color: var(--text-secondary);">
+                <div class="mb-5 px-3 py-2.5 rounded-lg text-xs bg-[color:var(--neutral-50)] text-[color:var(--text-secondary)]">
                     <p>The client will receive an invitation email to create an account. Once accepted, they will have <strong>Client</strong> access to this workspace, allowing them to review and approve posts via the Client Portal.</p>
                 </div>
 
@@ -44,13 +44,13 @@
                 <!-- Submit -->
                 <div class="flex justify-end gap-3">
                     <button type="button" @click="showInviteModal = false"
-                            class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer"
-                            style="background: var(--neutral-100); color: var(--text-primary);">
+                            class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer bg-[color:var(--neutral-100)]! text-[color:var(--text-primary)]!"
+                           >
                         Cancel
                     </button>
                     <button type="submit"
-                            class="btn-opacity px-5 py-2 text-sm font-medium rounded-full cursor-pointer"
-                            style="background: var(--primary); color: white;">
+                            class="btn-opacity px-5 py-2 text-sm font-medium rounded-full cursor-pointer bg-[color:var(--primary)]!"
+                            style="color: white">
                         Send Invitation
                     </button>
                 </div>

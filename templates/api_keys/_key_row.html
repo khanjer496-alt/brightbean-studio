@@ -145,7 +145,7 @@
                 <template x-teleport="body">
                     <div x-show="showRotateModal" x-cloak x-transition.opacity @keydown.escape.window="showRotateModal = false"
                          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-                         role="dialog" aria-modal="true" aria-labelledby="rotate-{{ row.id }}-title">
+                         role="dialog" aria-modal="true" aria-labelledby="rotate-{{ row.id }}-title" x-a11y-modal="showRotateModal">
                         <div @click.outside="showRotateModal = false" x-show="showRotateModal" x-transition
                              class="w-full max-w-md mx-4 rounded-xl flex flex-col bg-[var(--surface-0)] border border-stone-200 shadow-2xl">
                             <div class="px-6 pt-6 pb-2">
@@ -170,7 +170,7 @@
                 <template x-teleport="body">
                     <div x-show="showRevokeModal" x-cloak x-transition.opacity @keydown.escape.window="showRevokeModal = false"
                          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-                         role="dialog" aria-modal="true" aria-labelledby="revoke-{{ row.id }}-title">
+                         role="dialog" aria-modal="true" aria-labelledby="revoke-{{ row.id }}-title" x-a11y-modal="showRevokeModal">
                         <div @click.outside="showRevokeModal = false" x-show="showRevokeModal" x-transition
                              class="w-full max-w-md mx-4 rounded-xl flex flex-col bg-[var(--surface-0)] border border-stone-200 shadow-2xl">
                             <div class="px-6 pt-6 pb-2">

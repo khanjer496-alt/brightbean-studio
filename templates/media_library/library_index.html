@@ -7,18 +7,18 @@
 <style>
   /* ── Media Library Tokens (inherit from brand) ── */
   .ml-dropzone {
-    border: 2px dashed var(--border, #E7E5E4);
+    border: 2px dashed var(--border);
     border-radius: var(--radius-xl, 0.75rem);
     transition: border-color var(--dur-base, 200ms) var(--ease-out, ease),
                 background var(--dur-base, 200ms) var(--ease-out, ease);
   }
   .ml-dropzone.drag-over {
-    border-color: var(--primary, #F97316);
-    background: var(--primary-soft, #FFF7ED);
+    border-color: var(--primary);
+    background: var(--primary-soft);
   }
   .ml-asset-card {
-    background: var(--surface-0, #FFF);
-    border: 1px solid var(--border, #E7E5E4);
+    background: var(--surface-0);
+    border: 1px solid var(--border);
     border-radius: var(--radius-xl, 0.75rem);
     transition: all var(--dur-base, 200ms) var(--ease-out, ease);
   }
@@ -30,42 +30,42 @@
   .ml-folder-item {
     transition: all var(--dur-fast, 150ms) ease;
   }
-  .ml-folder-item:hover { background: var(--surface-1, #FAFAF9); }
+  .ml-folder-item:hover { background: var(--surface-1); }
   .ml-folder-item.active {
-    background: var(--primary-soft, #FFF7ED);
-    color: var(--brand-700, #C2410C);
+    background: var(--primary-soft);
+    color: var(--brand-700);
     font-weight: 600;
   }
   .ml-sidebar {
-    background: var(--surface-0, #FFF);
-    border-right: 1px solid var(--border, #E7E5E4);
+    background: var(--surface-0);
+    border-right: 1px solid var(--border);
   }
   .ml-filter-pill {
     font-size: 0.75rem;
     font-weight: 600;
     padding: 5px 12px;
     border-radius: 9999px;
-    border: 1px solid var(--border, #E7E5E4);
-    background: var(--surface-0, #FFF);
-    color: var(--text-secondary, #57534E);
+    border: 1px solid var(--border);
+    background: var(--surface-0);
+    color: var(--text-secondary);
     cursor: pointer;
     transition: all var(--dur-fast, 150ms) ease;
   }
-  .ml-filter-pill:hover { border-color: var(--border-hover, #D6D3D1); }
+  .ml-filter-pill:hover { border-color: var(--border-hover); }
   .ml-filter-pill.active {
-    background: var(--primary, #F97316);
-    color: var(--text-inverse, #FFF);
-    border-color: var(--primary, #F97316);
+    background: var(--primary);
+    color: var(--text-inverse);
+    border-color: var(--primary);
   }
   .ml-progress-bar {
-    background: var(--surface-2, #F5F5F4);
+    background: var(--surface-2);
     border-radius: 9999px;
     overflow: hidden;
     height: 4px;
   }
   .ml-progress-fill {
     height: 100%;
-    background: var(--primary, #F97316);
+    background: var(--primary);
     border-radius: 9999px;
     transition: width 150ms ease;
   }
@@ -82,14 +82,14 @@
     border-radius: var(--radius-sm, 0.25rem);
   }
   .ml-thumb-placeholder {
-    background: linear-gradient(135deg, var(--surface-2, #F5F5F4) 0%, var(--surface-1, #FAFAF9) 100%);
+    background: linear-gradient(135deg, var(--surface-2) 0%, var(--surface-1) 100%);
   }
   @keyframes ml-shimmer {
     0% { background-position: -200% 0; }
     100% { background-position: 200% 0; }
   }
   .ml-shimmer {
-    background: linear-gradient(90deg, var(--surface-2, #F5F5F4) 25%, var(--surface-1, #FAFAF9) 50%, var(--surface-2, #F5F5F4) 75%);
+    background: linear-gradient(90deg, var(--surface-2) 25%, var(--surface-1) 50%, var(--surface-2) 75%);
     background-size: 200% 100%;
     animation: ml-shimmer 1.5s ease infinite;
   }
@@ -121,10 +121,10 @@
        @click="if (window.innerWidth < 1024 && $event.target.closest('a')) { folderSidebarOpen = false }">
     <div class="p-4">
       <div class="flex items-center justify-between mb-3">
-        <span class="text-xs font-bold uppercase tracking-wider" style="color: var(--text-tertiary, #78716C);">Folders</span>
+        <span class="text-xs font-bold uppercase tracking-wider text-[color:var(--text-tertiary)]">Folders</span>
         <button aria-label="New folder" @click="showNewFolder = true"
-                class="w-6 h-6 flex items-center justify-center rounded-md hover:bg-stone-100 cursor-pointer transition-colors"
-                style="color: var(--text-tertiary, #78716C);"
+                class="w-6 h-6 flex items-center justify-center rounded-md hover:bg-stone-100 cursor-pointer transition-colors text-[color:var(--text-tertiary)]"
+               
                 title="New folder">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/></svg>
         </button>
@@ -144,7 +144,7 @@
         Starred
       </a>
 
-      <div class="my-3 border-t" style="border-color: var(--surface-2, #F5F5F4);"></div>
+      <div class="my-3 border-t border-[color:var(--surface-2)]"></div>
 
       <!-- Folder tree -->
       <div id="folder-tree"
@@ -165,17 +165,17 @@
   <div class="flex-1 flex flex-col overflow-hidden">
 
     <!-- ── Toolbar ── -->
-    <div class="flex flex-wrap items-center gap-2 sm:gap-3 px-3 sm:px-4 lg:px-6 py-3 border-b rounded-tr-xl" style="border-color: var(--border, #E7E5E4); background: var(--surface-0, #FFF);">
+    <div class="flex flex-wrap items-center gap-2 sm:gap-3 px-3 sm:px-4 lg:px-6 py-3 border-b rounded-tr-xl border-[color:var(--border)] bg-[color:var(--surface-0)]">
 
       <!-- Search -->
       <div class="relative flex-1 min-w-[160px] sm:max-w-sm">
-        <svg class="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4" style="color: var(--text-ghost, #A8A29E);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+        <svg class="absolute start-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[color:var(--text-ghost)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
         <input aria-label="Search media" type="search"
                name="q"
                value="{{ query }}"
                placeholder="Search media..."
-               class="input-focus w-full ps-9 pe-4 py-2 text-sm border rounded-lg outline-none"
-               style="border-color: var(--border, #E7E5E4); background: var(--surface-0, #FFF);"
+               class="input-focus w-full ps-9 pe-4 py-2 text-sm border rounded-lg outline-none border-[color:var(--border)]! bg-[color:var(--surface-0)]!"
+              
                hx-get="{% url 'media_library:index' workspace_id=workspace.id %}{% if current_folder %}?folder={{ current_folder }}{% endif %}"
                hx-trigger="keyup changed delay:400ms"
                hx-target="#asset-grid"
@@ -197,7 +197,7 @@
       <!-- Sort -->
       <select aria-label="Sort media" name="sort"
               class="text-xs border rounded-lg ps-3 pe-7 py-2 outline-none cursor-pointer appearance-none"
-              style="border-color: var(--border, #E7E5E4); color: var(--text-secondary, #57534E); background-image: url(&quot;data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2378716C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: right 8px center;"
+              style="border-color: var(--border); color: var(--text-secondary); background-image: url(&quot;data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2378716C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: right 8px center;"
               hx-get="{% url 'media_library:index' workspace_id=workspace.id %}{% if current_folder %}?folder={{ current_folder }}{% endif %}"
               hx-trigger="change"
               hx-target="#asset-grid"
@@ -211,7 +211,7 @@
       </select>
 
       <!-- View toggle -->
-      <div class="flex border rounded-lg overflow-hidden" style="border-color: var(--border, #E7E5E4);">
+      <div class="flex border rounded-lg overflow-hidden border-[color:var(--border)]">
         <button aria-label="Grid view" @click="viewMode = 'grid'"
                 :class="viewMode === 'grid' ? 'bg-stone-100 text-stone-800' : 'text-stone-400 hover:text-stone-600'"
                 class="p-2 transition-colors">
@@ -249,9 +249,9 @@
            @keydown.space.prevent="if (!uploading) $refs.fileInput.click()">
         <template x-if="!uploading">
           <div>
-            <svg class="w-10 h-10 mx-auto mb-3" style="color: var(--text-ghost, #A8A29E);" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
-            <p class="text-sm font-medium" style="color: var(--text-secondary, #57534E);">Drop files here to upload</p>
-            <p class="text-xs mt-1" style="color: var(--text-ghost, #A8A29E);">Images up to 20MB, videos up to 1GB</p>
+            <svg class="w-10 h-10 mx-auto mb-3 text-[color:var(--text-ghost)]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+            <p class="text-sm font-medium text-[color:var(--text-secondary)]">Drop files here to upload</p>
+            <p class="text-xs mt-1 text-[color:var(--text-ghost)]">Images up to 20MB, videos up to 1GB</p>
           </div>
         </template>
         <template x-if="uploading">
@@ -259,17 +259,17 @@
             <template x-for="(file, i) in uploadQueue" :key="i">
               <div class="flex items-center gap-3 py-1.5">
                 <div class="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold"
-                     :style="'background: var(--surface-2, #F5F5F4); color: var(--text-tertiary, #78716C);'">
+                     :style="'background: var(--surface-2); color: var(--text-tertiary);'">
                   <span x-text="file.name.split('.').pop().toUpperCase().slice(0,3)"></span>
                 </div>
                 <div class="flex-1 min-w-0">
-                  <p class="text-xs font-medium truncate" style="color: var(--text-primary, #1C1917);" x-text="file.name"></p>
+                  <p class="text-xs font-medium truncate text-[color:var(--text-primary)]" x-text="file.name"></p>
                   <div class="ml-progress-bar mt-1">
                     <div class="ml-progress-fill" :style="'width: ' + (file.progress || 0) + '%'"></div>
                   </div>
                 </div>
-                <span x-show="file.status === 'complete'" class="text-xs font-semibold" style="color: var(--success-500, #22C55E);">Done</span>
-                <span x-show="file.status === 'error'" class="text-xs font-semibold" style="color: var(--error-500, #EF4444);" x-text="file.error || 'Failed'"></span>
+                <span x-show="file.status === 'complete'" class="text-xs font-semibold text-[color:var(--success-500)]">Done</span>
+                <span x-show="file.status === 'error'" class="text-xs font-semibold text-[color:var(--error-500)]" x-text="file.error || 'Failed'"></span>
               </div>
             </template>
           </div>

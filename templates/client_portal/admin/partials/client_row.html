@@ -1,17 +1,17 @@
-<div class="px-6 py-4 flex items-center gap-4" id="client-{{ client.membership.id }}"
-     style="border-bottom: 1px solid var(--border);">
+<div class="px-6 py-4 flex items-center gap-4 border-b border-[color:var(--border)]" id="client-{{ client.membership.id }}"
+    >
     <!-- Avatar -->
-    <div class="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-semibold"
-         style="background: var(--neutral-200); color: var(--text-secondary);">
+    <div class="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 text-sm font-semibold bg-[color:var(--neutral-200)] text-[color:var(--text-secondary)]"
+        >
         {{ client.user.display_name|first|upper }}
     </div>
 
     <!-- Name & Email -->
     <div class="flex-1 min-w-0">
-        <div class="text-sm font-medium truncate" style="color: var(--text-primary);">
+        <div class="text-sm font-medium truncate text-[color:var(--text-primary)]">
             {{ client.user.display_name }}
         </div>
-        <div class="text-xs truncate" style="color: var(--text-tertiary);">{{ client.user.email }}</div>
+        <div class="text-xs truncate text-[color:var(--text-tertiary)]">{{ client.user.email }}</div>
     </div>
 
     <!-- Portal Link Status -->
@@ -21,7 +21,7 @@
             Link active
         </span>
         {% else %}
-        <span class="text-xs font-medium px-2.5 py-1 rounded-full" style="background: var(--neutral-100); color: var(--text-tertiary);">
+        <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-[color:var(--neutral-100)] text-[color:var(--text-tertiary)]">
             No link sent
         </span>
         {% endif %}
@@ -35,8 +35,8 @@
               hx-swap="outerHTML">
             {% csrf_token %}
             <button type="submit"
-                    class="btn-neutral-surface text-xs px-3 py-1.5 rounded-full font-medium cursor-pointer transition-colors"
-                    style="border: 1px solid var(--border); color: var(--text-primary); background: var(--surface-0);">
+                    class="btn-neutral-surface text-xs px-3 py-1.5 rounded-full font-medium cursor-pointer transition-colors border border-[color:var(--border)]! text-[color:var(--text-primary)]! bg-[color:var(--surface-0)]!"
+                   >
                 {% if client.token %}Resend Link{% else %}Send Portal Link{% endif %}
             </button>
         </form>

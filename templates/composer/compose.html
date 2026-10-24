@@ -322,9 +322,9 @@
                 class="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-stone-200 text-stone-400 hover:text-stone-700 hover:border-stone-300 hover:bg-stone-50 transition-all duration-150 cursor-pointer">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
         </button>
-        <h1 class="text-base font-semibold text-stone-900" style="letter-spacing: -0.01em;">{% if is_edit %}Edit{% else %}Create{% endif %}</h1>
+        <h1 class="text-base font-semibold text-stone-900 tracking-[-0.01em]">{% if is_edit %}Edit{% else %}Create{% endif %}</h1>
         <!-- Preview toggle (mobile only) -->
-        <button type="button" @click="showPreviewPanel = true" :aria-expanded="showPreviewPanel.toString()" aria-controls="preview-panel-drawer"
+        <button type="button" id="preview-toggle-btn" @click="showPreviewPanel = true; $nextTick(() => document.getElementById('preview-close-btn')?.focus())" :aria-expanded="showPreviewPanel.toString()" aria-controls="preview-panel-drawer"
                 class="lg:hidden ms-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 text-stone-600 text-xs font-semibold hover:border-stone-300 hover:bg-stone-50 transition-all duration-150 cursor-pointer">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
             <span>Preview</span>
@@ -516,8 +516,8 @@
                     <label class="block text-sm font-semibold text-stone-500 uppercase tracking-wider mb-2"
                            x-text="titleLabel">Title</label>
                     <input :aria-label="titleLabel" type="text" name="title"
-                           class="w-full text-[15px] font-medium text-stone-900 px-4 py-3 rounded-xl border border-stone-200 bg-white outline-none transition-all duration-150 focus:border-orange-500 focus:ring-2 focus:ring-orange-100"
-                           style="letter-spacing: -0.01em;"
+                           class="w-full text-[15px] font-medium text-stone-900 px-4 py-3 rounded-xl border border-stone-200 bg-white outline-none transition-all duration-150 focus:border-orange-500 focus:ring-2 focus:ring-orange-100 tracking-[-0.01em]"
+                          
                            x-model="title"
                            :placeholder="autoSuggestedTitle || 'Enter a title…'"
                            maxlength="255"
@@ -907,7 +907,7 @@
                             <div class="flex items-stretch gap-3">
                                 {% include "composer/partials/choose_from_video_card.html" with mode="upload" %}
                                 <template x-if="!platformExtras[accId]?.thumbnail_url">
-                                    <div role="button" tabindex="0" @keydown.enter.self.prevent="$el.click()" @keydown.space.self.prevent="$el.click()" aria-label="Upload a thumbnail" class="flex-1 max-w-[480px] rounded-lg border-2 border-dashed border-stone-200 bg-stone-50 flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-orange-300 hover:bg-orange-50 transition-colors min-h-[104px]"
+                                    <div role="button" tabindex="0" @keydown.enter.self.prevent="$el.click()" @keydown.space.self.prevent="$el.click()" aria-label="Upload a thumbnail" class="flex-1 max-w-full sm:max-w-[480px] rounded-lg border-2 border-dashed border-stone-200 bg-stone-50 flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-orange-300 hover:bg-orange-50 transition-colors min-h-[104px]"
                                          @dragover.prevent="$el.classList.add('border-orange-400', 'bg-orange-50')"
                                          @dragleave="$el.classList.remove('border-orange-400', 'bg-orange-50')"
                                          @drop.prevent="handleThumbnailDrop(accId, $event); $el.classList.remove('border-orange-400', 'bg-orange-50')"
@@ -919,7 +919,7 @@
                                 <template x-if="platformExtras[accId]?.thumbnail_url">
                                     <div class="relative flex-shrink-0">
                                         <img :src="platformExtras[accId].thumbnail_url"
-                                             class="h-[104px] w-auto max-w-[480px] object-cover rounded-lg border border-stone-200">
+                                             class="h-[104px] w-auto max-w-full sm:max-w-[480px] object-cover rounded-lg border border-stone-200">
                                         <button aria-label="Remove thumbnail" type="button" @click="clearThumbnail(accId)"
                                                 title="Remove thumbnail"
                                                 class="absolute top-2 end-2 w-6 h-6 rounded-full bg-black/55 hover:bg-red-500 text-white flex items-center justify-center transition-colors cursor-pointer">
@@ -1165,7 +1165,7 @@
                                 <template x-if="tiktokCoverPreview[accId]">
                                     <div class="relative flex-shrink-0">
                                         <img :src="tiktokCoverPreview[accId]"
-                                             class="h-[104px] w-auto max-w-[480px] object-cover rounded-lg border border-stone-200">
+                                             class="h-[104px] w-auto max-w-full sm:max-w-[480px] object-cover rounded-lg border border-stone-200">
                                         <button aria-label="Reset to default cover" type="button" @click="clearTiktokCover(accId)"
                                                 title="Reset to default cover"
                                                 class="absolute top-2 end-2 w-6 h-6 rounded-full bg-black/55 hover:bg-red-500 text-white flex items-center justify-center transition-colors cursor-pointer">
@@ -1174,7 +1174,7 @@
                                     </div>
                                 </template>
                                 <template x-if="!tiktokCoverPreview[accId] && (platformExtras[accId]?.video_cover_timestamp_ms ?? null) !== null">
-                                    <div class="relative flex-1 max-w-[480px] rounded-lg border border-stone-200 bg-stone-50 flex items-center justify-center min-h-[104px]">
+                                    <div class="relative flex-1 max-w-full sm:max-w-[480px] rounded-lg border border-stone-200 bg-stone-50 flex items-center justify-center min-h-[104px]">
                                         <span class="text-xs text-stone-500 font-medium tabular-nums"
                                               x-text="'Cover at ' + formatTimecode((platformExtras[accId]?.video_cover_timestamp_ms || 0) / 1000)"></span>
                                         <button aria-label="Reset to default cover" type="button" @click="clearTiktokCover(accId)"
@@ -1522,8 +1522,8 @@
                                     </button>
                                     <button type="button"
                                             @click="if(newTagName.trim()) { _persistTag(newTagName.trim()); showCreateTagModal = false; newTagName = ''; }"
-                                            class="px-4 py-2 text-sm font-semibold text-white rounded-lg transition-colors"
-                                            style="background: var(--primary);"
+                                            class="px-4 py-2 text-sm font-semibold text-white rounded-lg transition-colors bg-[color:var(--primary)]"
+                                           
                                             :class="newTagName.trim() ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'">
                                         Create
                                     </button>
@@ -1766,7 +1766,7 @@
             <!-- Reviewer feedback to address (latest changes-requested / rejected comment) -->
             {% if show_resubmit_button and latest_feedback %}
             <div class="flex gap-3 p-4 rounded-xl mb-3 border border-[var(--warning-500)] bg-[var(--warning-50)]">
-                <span class="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0" style="background: var(--primary);">{{ latest_feedback.user.display_name|default:"?"|make_list|first|upper }}</span>
+                <span class="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold text-white flex-shrink-0 bg-[color:var(--primary)]">{{ latest_feedback.user.display_name|default:"?"|make_list|first|upper }}</span>
                 <div class="min-w-0">
                     <div class="flex items-center gap-2 flex-wrap">
                         <span class="text-[0.8125rem] font-semibold text-stone-800">{{ latest_feedback.user.display_name|default:"Reviewer" }}</span>
@@ -1852,7 +1852,8 @@
          class="panel-right-backdrop"></div>
     <div id="preview-panel-drawer" class="panel-right border-s border-stone-200 bg-stone-50 lg:bg-stone-50 flex flex-col"
          :class="{ 'is-open': showPreviewPanel }"
-         @keydown.escape.window="showPreviewPanel = false">
+         @keydown.escape.window="showPreviewPanel = false"
+         x-effect="if (!showPreviewPanel && $el.contains(document.activeElement)) document.getElementById('preview-toggle-btn')?.focus()">
         <div class="px-4 py-3 border-b border-stone-100 flex items-center justify-between">
             <h3 class="text-xs font-semibold text-stone-500 uppercase tracking-wider">Preview</h3>
             <div class="flex items-center gap-2">
@@ -1860,7 +1861,7 @@
                       x-show="selectedAccounts.length > 0"
                       x-text="selectedAccounts.length + (selectedAccounts.length === 1 ? ' platform' : ' platforms')">
                 </span>
-                <button aria-label="Close preview" type="button" @click="showPreviewPanel = false"
+                <button id="preview-close-btn" aria-label="Close preview" type="button" @click="showPreviewPanel = false"
                         class="lg:hidden w-7 h-7 rounded-md text-stone-400 hover:text-stone-600 hover:bg-stone-100 flex items-center justify-center transition-colors cursor-pointer">
                     <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
                 </button>
@@ -2158,8 +2159,8 @@
 
     <!-- Error toast -->
     <div x-show="formError" x-cloak
-         class="fixed bottom-6 start-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl text-sm font-medium shadow-lg"
-         style="background: var(--error-500); color: var(--text-inverse);"
+         class="fixed bottom-6 start-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-xl text-sm font-medium shadow-lg bg-[color:var(--error-500)] text-[color:var(--text-inverse)]"
+        
          x-transition:enter="transition ease-out duration-300"
          x-transition:enter-start="opacity-0 translate-y-4"
          x-transition:enter-end="opacity-100 translate-y-0"

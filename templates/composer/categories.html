@@ -5,7 +5,7 @@
 {% block page_header %}
 <div class="flex items-center justify-between mb-6">
     <div>
-        <h1 class="text-base font-semibold text-stone-900" style="letter-spacing: -0.01em;">Content Categories</h1>
+        <h1 class="text-base font-semibold text-stone-900 tracking-[-0.01em]">Content Categories</h1>
         <p class="text-sm text-stone-500 mt-1">Organize posts by category for calendar filtering and queue scheduling.</p>
     </div>
     <a href="{% url 'calendar:calendar' workspace_id=workspace.id %}" class="text-sm text-stone-500 hover:text-stone-700 flex items-center gap-1">
@@ -86,7 +86,7 @@
                         {% csrf_token %}
                         <input aria-label="Category colour" type="color" name="color" value="{{ cat.color }}" class="w-8 h-8 rounded border border-stone-200 cursor-pointer p-0.5">
                         <input aria-label="Category name" type="text" name="name" value="{{ cat.name }}" class="form-input flex-1 text-sm" required>
-                        <button type="submit" class="text-sm font-semibold" style="color: var(--primary);">Save</button>
+                        <button type="submit" class="text-sm font-semibold text-[color:var(--primary)]">Save</button>
                         <button type="button" @click="editing = false" class="text-sm text-stone-500">Cancel</button>
                     </form>
                 </template>

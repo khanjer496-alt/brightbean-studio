@@ -46,7 +46,9 @@ document.addEventListener('alpine:init', function () {
                     el.addEventListener('keydown', onKey);
                     setTimeout(function () {
                         if (el.contains(document.activeElement)) return;
-                        var target = el.querySelector('[autofocus]') || focusables()[0];
+                        var items = focusables();
+                        // Prefer the first field over a leading Close button.
+                        var target = el.querySelector('[autofocus]') || items.find(function (n) { return !/^close/i.test(n.getAttribute('aria-label') || ''); }) || items[0];
                         if (!target) { el.tabIndex = -1; target = el; }
                         target.focus({ preventScroll: true });
                     }, 60);

@@ -34,7 +34,9 @@ class KeyboardReorderTests(TestCase):
         self.viewer = self._member("viewer@example.com", WorkspaceMembership.WorkspaceRole.VIEWER)
         self.post = Post.objects.create(workspace=self.workspace, author=self.editor, caption="hello")
         self.assets = [self._asset(f"a{i}.png") for i in range(3)]
-        self.attachments = [PostMedia.objects.create(post=self.post, media_asset=a, position=i) for i, a in enumerate(self.assets)]
+        self.attachments = [
+            PostMedia.objects.create(post=self.post, media_asset=a, position=i) for i, a in enumerate(self.assets)
+        ]
         self.client.force_login(self.editor)
 
     def _member(self, email, role):
@@ -99,7 +101,9 @@ class KeyboardReorderTests(TestCase):
         )
         response = self.client.post(url, {"direction": "earlier"})
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(self.client.session[key], [str(self.assets[0].id), str(self.assets[2].id), str(self.assets[1].id)])
+        self.assertEqual(
+            self.client.session[key], [str(self.assets[0].id), str(self.assets[2].id), str(self.assets[1].id)]
+        )
 
     def test_pending_reorder_denied_for_viewer(self):
         self.client.force_login(self.viewer)

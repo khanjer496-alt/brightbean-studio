@@ -7,26 +7,26 @@
   <!-- Modal -->
   <div class="relative bg-white rounded-2xl shadow-xl w-full max-w-sm mx-4 p-6"
        @click.stop>
-    <h3 class="text-base font-semibold mb-4" style="color: var(--text-primary, #1C1917);">New Folder</h3>
+    <h3 class="text-base font-semibold mb-4 text-[color:var(--text-primary)]">New Folder</h3>
 
     <form hx-post="{% url 'media_library:folder_create' workspace_id=workspace.id %}"
           hx-target="#folder-tree"
           hx-swap="innerHTML"
           @htmx:after-request="showNewFolder = false">
       <input aria-label="Folder name" type="text" name="name" placeholder="Folder name..."
-             class="input-focus w-full text-sm px-3 py-2 border rounded-lg outline-none mb-4"
-             style="border-color: var(--border, #E7E5E4);"
+             class="input-focus w-full text-sm px-3 py-2 border rounded-lg outline-none mb-4 border-[color:var(--border)]!"
+            
              required autofocus>
 
       <div class="flex justify-end gap-2">
         <button type="button" @click="showNewFolder = false"
-                class="btn-surface-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors cursor-pointer"
-                style="color: var(--text-secondary, #57534E);">
+                class="btn-surface-2 px-4 py-2 text-sm font-medium rounded-lg transition-colors cursor-pointer text-[color:var(--text-secondary)]!"
+               >
           Cancel
         </button>
         <button type="submit"
-                class="btn-primary-hover px-4 py-2 text-sm font-semibold text-white rounded-lg transition-colors cursor-pointer"
-                style="background: var(--primary, #F97316);">
+                class="btn-primary-hover px-4 py-2 text-sm font-semibold text-white rounded-lg transition-colors cursor-pointer bg-[color:var(--primary)]!"
+               >
           Create Folder
         </button>
       </div>
