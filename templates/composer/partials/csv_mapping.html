@@ -58,6 +58,17 @@
                 {% endfor %}
             </div>
 
+            {% if account_sets %}
+            <div class="mt-5 max-w-sm">
+                <label for="csv-default-set" class="block text-[11px] font-semibold text-stone-500 mb-1 uppercase tracking-wide">Account set for rows with no set</label>
+                <select id="csv-default-set" name="default_set" class="form-input w-full text-xs py-1.5" aria-describedby="csv-default-set-help">
+                    <option value="">None</option>
+                    {% for item in account_sets %}<option value="{{ item.id }}">{{ item.name }}</option>{% endfor %}
+                </select>
+                <p id="csv-default-set-help" class="text-[11px] text-stone-500 mt-1">Rows go to every connected account in the set, with the set's saved settings. Map a "set" column to choose a set per row.</p>
+            </div>
+            {% endif %}
+
             <div class="mt-5 flex justify-end">
                 <button type="submit" class="btn-brand text-sm py-2 px-5">
                     Validate &amp; Preview

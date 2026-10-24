@@ -74,6 +74,13 @@
                     <div x-show="on" x-cloak class="mt-2 ps-8">
                         {% if item.spec.needs_accounts %}
                             {% if item.accounts %}
+                            {% if account_sets %}
+                            <label for="set-{{ item.spec.key }}" class="block text-xs font-semibold text-ink-3">Or a saved set</label>
+                            <select id="set-{{ item.spec.key }}" name="set_{{ item.spec.key }}" class="mb-2 mt-1 min-h-11 rounded-lg border border-line bg-white px-3 text-sm">
+                                <option value="">No set</option>
+                                {% for account_set in account_sets %}<option value="{{ account_set.id }}">{{ account_set.name }}</option>{% endfor %}
+                            </select>
+                            {% endif %}
                             <fieldset class="m-0 border-0 p-0">
                                 <legend class="text-xs font-semibold text-ink-3">For these accounts</legend>
                                 <div class="mt-1 flex flex-wrap gap-x-4">
