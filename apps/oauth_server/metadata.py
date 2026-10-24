@@ -27,7 +27,9 @@ def authorization_server_metadata() -> dict:
         "scopes_supported": ["mcp"],
         "response_types_supported": ["code"],
         "grant_types_supported": ["authorization_code", "refresh_token"],
-        "token_endpoint_auth_methods_supported": ["none"],
+        # "none" for the public clients dynamic registration creates; the secret methods for confidential clients an
+        # admin registers with ``manage.py oauth_client`` (registration itself only issues public clients).
+        "token_endpoint_auth_methods_supported": ["none", "client_secret_basic", "client_secret_post"],
         "code_challenge_methods_supported": ["S256"],
         "service_documentation": f"{settings.MCP_PUBLIC_BASE_URL}/api/v1/docs",
     }

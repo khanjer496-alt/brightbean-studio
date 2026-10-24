@@ -71,7 +71,20 @@ class TestDynamicClientRegistration:
 
     @pytest.mark.parametrize(
         "uri",
-        ["http://localhost.evil.example/cb", "http://10.0.0.1/cb", "http://127.0.0.1/cb#frag", "ftp://127.0.0.1/cb"],
+        [
+            "http://localhost.evil.example/cb",
+            "http://10.0.0.1/cb",
+            "http://127.0.0.1/cb#frag",
+            "ftp://127.0.0.1/cb",
+            "https://claude.ai/cb#frag",
+            # Stored space-separated: one value must not smuggle in a second, non-loopback http URI.
+            "https://claude.ai/cb http://evil.example/cb",
+            "https://claude.ai/cb\nhttp://evil.example/cb",
+            "https://user@claude.ai/cb",
+            "https://*.example.com/cb",
+            "http://127.0.0.1:99999/cb",
+            "https:///cb",
+        ],
     )
     def test_rejects_non_loopback_http_redirect(self, uri):
         r = _register(Client(), {"redirect_uris": [uri]})
@@ -114,7 +127,7 @@ class TestDiscoveryMetadata:
         assert data["registration_endpoint"].endswith("/oauth/register")
         assert data["revocation_endpoint"].endswith("/oauth/revoke_token/")
         assert data["code_challenge_methods_supported"] == ["S256"]
-        assert data["token_endpoint_auth_methods_supported"] == ["none"]
+        assert data["token_endpoint_auth_methods_supported"][0] == "none"
         assert data["scopes_supported"] == ["mcp"]
 
     def test_protected_resource_metadata(self):
@@ -144,6 +157,7 @@ class _FakeOAuthRequest:
         return None
 
 
+@pytest.mark.django_db
 class TestS256PkceEnforcement:
     def test_plain_method_rejected(self):
         from oauthlib.oauth2.rfc6749 import errors as oauthlib_errors

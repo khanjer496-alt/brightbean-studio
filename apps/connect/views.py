@@ -47,7 +47,7 @@ def mcp_server_card(request):
 
     return JsonResponse(
         {
-            "serverInfo": {"name": settings.BRAND_NAME, "version": SERVER_VERSION},
+            "serverInfo": {"name": settings.MCP_SERVER_NAME, "title": settings.BRAND_NAME, "version": SERVER_VERSION},
             "authentication": {"required": True, "schemes": ["oauth2"]},
             "tools": [tool.to_mcp_dict() for tool in all_tools()],
         }

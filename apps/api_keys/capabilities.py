@@ -625,8 +625,9 @@ def tool_uses_ai(name: str) -> bool:
 # * ``destructiveHint``: a write that is not purely additive. Creating something new is additive; updating, deleting,
 #   cancelling, rotating, reviewing or sending changes or discards something that was there.
 # * ``idempotentHint``: repeating a write with the same arguments has no further effect (updates, deletes, cancels).
-# * ``openWorldHint``: the tool reaches beyond the workspace: it publishes to or acts on a connected network, emails
-#   people, calls a URL the caller chose, or returns text strangers wrote (inbox).
+# * ``openWorldHint``: the tool reaches beyond the workspace: it publishes to or acts on a connected network (directly,
+#   or by approving or queueing something that then goes out), emails people, calls or points deliveries at a URL the
+#   caller chose, or returns text strangers wrote (inbox).
 
 _READ_VERBS = ("get_", "list_", "find_", "search_")
 _ADDITIVE_VERBS = (
@@ -655,6 +656,8 @@ OPEN_WORLD_TOOLS = frozenset(
         "schedule_draft",
         "resume_thread",
         "add_post_to_queue",
+        "add_to_evergreen",
+        "review_post",
         "send_reply",
         "create_plug_rule",
         "update_plug_rule",
@@ -663,6 +666,8 @@ OPEN_WORLD_TOOLS = frozenset(
         "update_feed_autopost",
         "create_repurpose_job",
         "upload_media",
+        "create_webhook_endpoint",
+        "update_webhook_endpoint",
         "send_webhook_test",
         "resend_webhook_delivery",
         "run_report",

@@ -71,7 +71,8 @@ class TestAnnotationsFromCapabilities:
     def test_open_world_tools_are_real_tools_that_reach_outside_the_workspace(self):
         registered = {t.name for t in all_tools()}
         assert registered >= caps.OPEN_WORLD_TOOLS
-        assert caps.tool_annotations("schedule_post")["openWorldHint"]
+        for name in ("schedule_post", "review_post", "add_to_evergreen", "create_webhook_endpoint", "check_feed"):
+            assert caps.tool_annotations(name)["openWorldHint"], name
         assert not caps.tool_annotations("create_draft")["openWorldHint"]
         assert not caps.tool_annotations("update_brand_voice")["openWorldHint"]
 

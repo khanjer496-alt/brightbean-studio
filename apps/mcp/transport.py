@@ -63,7 +63,7 @@ def _initialize(params: dict, context: dict[str, Any]) -> dict:
             # The UI widgets that a few tools render in (apps.mcp.widgets).
             "resources": {"subscribe": False, "listChanged": False},
         },
-        "serverInfo": {"name": settings.MCP_SERVER_NAME, "version": SERVER_VERSION},
+        "serverInfo": {"name": settings.MCP_SERVER_NAME, "title": settings.BRAND_NAME, "version": SERVER_VERSION},
     }
 
 

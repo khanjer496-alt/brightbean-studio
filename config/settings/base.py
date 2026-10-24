@@ -837,8 +837,12 @@ OAUTH2_PROVIDER = {
     # Always show the consent screen: it is where the person narrows what the client may do, so a returning
     # client must not be waved through on an earlier grant.
     "REQUEST_APPROVAL_PROMPT": "force",
-    # Hosted clients redirect over https; http is allowed for loopback redirects only: dynamic client registration refuses any other http URI.
+    # Hosted clients redirect over https. http is for RFC 8252 loopback redirects only: dynamic registration and
+    # ``manage.py oauth_client`` refuse any other http URI (apps.oauth_server.views.is_allowed_redirect_uri).
     "ALLOWED_REDIRECT_URI_SCHEMES": ["https", "http"],
+    # A loopback redirect registered as ``localhost`` matches on any port, like 127.0.0.1 and [::1] (RFC 8252 §7.3,
+    # §8.3): Claude Code and other CLIs register ``http://localhost:<port>/callback`` and may get another port later.
+    "ALLOW_LOCALHOST_LOOPBACK": True,
 }
 
 

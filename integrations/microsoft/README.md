@@ -28,11 +28,17 @@ Conversion notes: summaries are cleaned to Power Platform's rule (80 characters,
 
 ## Publishing the connector for other tenants (Microsoft certification)
 
-Needs: a Microsoft Partner Center account for **Nasida Apps LLC** (verified publisher), an Entra ID to sign the SAS URL, and an owner decision on OAuth client registration.
+Needs: a Microsoft Partner Center account for **Nasida Apps LLC** (verified publisher) and an Entra ID to sign the SAS URL.
 
 1. Create the custom connector from `postdelegate-mcp.swagger.json` inside a solution. Title: `PostDelegate` (max 30 characters; must not contain "API", "Connector" or product names). Description 30 to 500 characters, no Power Platform product names.
 2. Icon: 1:1, 100 to 230 px, non-white background matching the brand colour, logo under 70 percent of the frame, PNG named `icon.png`. Make it from `../assets/icon.svg`: the mark sits on a dark tile, which satisfies the non-white background rule; set `iconBrandColor` in `apiProperties.json` to match the tile you submit.
-3. OAuth: certification asks for a static client id and secret in Partner Center. PostDelegate's authorization server only issues **public clients through dynamic registration** (PKCE, no secret). Register one client for the Microsoft redirect (`https://global.consent.azure-apim.net/redirect`) by calling `POST https://app.postdelegate.com/oauth/register`, record the `client_id`, and put it in `apiProperties.json`. If Microsoft requires a secret, ask the engineering owner to add a confidential-client path first; until then the wizard route above is the supported one.
+3. OAuth: certification asks for a static client id and secret in Partner Center. Register a **confidential client** for the connector's redirect URL (with `redirectMode: GlobalPerConnector` it is `https://global.consent.azure-apim.net/redirect/<connector id>`; copy it from the connector's Security tab):
+
+       python manage.py oauth_client create --name "Microsoft Copilot Studio" --redirect-uri https://global.consent.azure-apim.net/redirect/<connector id>
+       python manage.py oauth_client rotate --client-id <id>   # new secret; the old one stops working at once
+       python manage.py oauth_client list
+
+   The secret is printed once and stored hashed. Put the client id in `apiProperties.json` and the secret in Partner Center only. The client goes through the same consent screen as every other (shown as verified), may omit PKCE (the secret authenticates it at the token endpoint), and must use S256 if it sends PKCE. A redirect host other than `global.consent.azure-apim.net` must also be added to `OAUTH_CLIENT_FORM_ACTION` in `apps/oauth_server/urls.py`.
 4. Run Solution Checker; make at least 10 successful test calls per operation; write `intro.md` (what it does, how to get credentials, known limits).
 5. Export connector and a test flow solution, build the package with Package Deployer, zip with `intro.md`, upload to a blob, generate a SAS URL valid 15+ days, validate with `ConnectorPackageValidator.ps1`, submit in Partner Center. Production host only: no staging URLs.
 

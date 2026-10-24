@@ -24,6 +24,18 @@
         {% elif not error %}
             <h1>{% blocktrans with name=application.name|default:"This application" %}Authorize {{ name }}?{% endblocktrans %}</h1>
             <p>{% blocktrans with name=application.name|default:"This application" product=brand_name %}{{ name }} wants to connect to your {{ product }} workspace with the following permissions:{% endblocktrans %}</p>
+            <p class="bb-dest">
+                {% if client_redirect.loopback %}
+                    {% blocktrans with host=client_redirect.host %}Access goes to an app running on this computer ({{ host }}).{% endblocktrans %}
+                {% else %}
+                    {% blocktrans with host=client_redirect.host %}Access goes to <strong>{{ host }}</strong>.{% endblocktrans %}
+                {% endif %}
+            </p>
+            {% if not client_redirect.verified %}
+            <div class="bb-warn" role="note">
+                {% blocktrans with product=brand_name %}{{ product }} has not verified this app: the name above is the one it gave itself. Continue only if you started this connection from that app just now.{% endblocktrans %}
+            </div>
+            {% endif %}
 
             <form id="authorizationForm" method="post">
                 {% csrf_token %}
