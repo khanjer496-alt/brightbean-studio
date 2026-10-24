@@ -19,35 +19,18 @@
         </svg>
     </div>
 
-    <h1 style="
-        font-family: var(--font-display);
-        font-size: 1.5rem;
-        font-weight: 700;
-        color: var(--text-primary);
-        letter-spacing: -0.015em;
-        margin-bottom: 8px;
-    ">All done!</h1>
+    <h1 class="text-ink" style="font-family: var(--font-display); font-size: 1.5rem; font-weight: 700; letter-spacing: -0.015em; margin-bottom: 8px;">All done!</h1>
 
-    <p style="
-        font-size: 0.9375rem;
-        color: var(--text-secondary);
-        line-height: 1.6;
-        margin-bottom: 8px;
-    ">
+    <p class="text-ink-2" style="font-size: 0.9375rem; line-height: 1.6; margin-bottom: 8px;">
         {% if connected_count %}
-            {{ connected_count }} account{{ connected_count|pluralize }} connected to <strong style="color: var(--text-primary);">{{ workspace.name }}</strong>.
+            {{ connected_count }} account{{ connected_count|pluralize }} connected to <strong class="text-ink">{{ workspace.name }}</strong>.
         {% else %}
-            Your accounts have been connected to <strong style="color: var(--text-primary);">{{ workspace.name }}</strong>.
+            Your accounts have been connected to <strong class="text-ink">{{ workspace.name }}</strong>.
         {% endif %}
     </p>
 
-    <p style="
-        font-size: 0.875rem;
-        color: var(--text-tertiary);
-        line-height: 1.6;
-        margin-bottom: 28px;
-    ">
-        <strong style="color: var(--text-secondary);">{{ org.name }}</strong> has been notified and will take it from here.
+    <p class="text-ink-3" style="font-size: 0.875rem; line-height: 1.6; margin-bottom: 28px;">
+        <strong class="text-ink-2">{{ org.name }}</strong> has been notified and will take it from here.
     </p>
 
     <div style="

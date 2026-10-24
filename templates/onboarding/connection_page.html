@@ -9,30 +9,10 @@
     <!-- Header card -->
     <div style="text-align: center; margin-bottom: 32px;">
         <!-- Org identity -->
-        <div style="
-            width: 56px; height: 56px;
-            background: var(--primary);
-            border-radius: var(--radius-xl);
-            display: inline-flex; align-items: center; justify-content: center;
-            color: white; font-weight: 700; font-size: 1.25rem;
-            box-shadow: var(--shadow-primary);
-            margin-bottom: 20px;
-        ">{{ org.name|make_list|first|upper }}</div>
+        <div class="bg-accent rounded-xl text-white" style="width: 56px; height: 56px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.25rem; box-shadow: var(--shadow-primary); margin-bottom: 20px;">{{ org.name|make_list|first|upper }}</div>
 
-        <h1 style="
-            font-family: var(--font-display);
-            font-size: clamp(1.5rem, 3.5vw, 1.875rem);
-            font-weight: 700;
-            color: var(--text-primary);
-            letter-spacing: -0.02em;
-            line-height: 1.2;
-            margin-bottom: 8px;
-        ">Connect your social accounts</h1>
-        <p style="
-            font-size: 0.9375rem;
-            color: var(--text-secondary);
-            line-height: 1.6;
-        ">to <strong style="color: var(--text-primary); font-weight: 600;">{{ workspace.name }}</strong> on {{ org.name }}</p>
+        <h1 class="text-ink" style="font-family: var(--font-display); font-size: clamp(1.5rem, 3.5vw, 1.875rem); font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; margin-bottom: 8px;">Connect your social accounts</h1>
+        <p class="text-ink-2" style="font-size: 0.9375rem; line-height: 1.6;">to <strong class="text-ink" style="font-weight: 600;">{{ workspace.name }}</strong> on {{ org.name }}</p>
     </div>
 
     <!-- Error message -->
@@ -52,14 +32,7 @@
     {% endif %}
 
     <!-- Platform grid -->
-    <div style="
-        background: var(--surface-0);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-xl);
-        box-shadow: var(--shadow-sm);
-        overflow: hidden;
-        margin-bottom: 24px;
-    ">
+    <div class="bg-surface-0 border border-line rounded-xl overflow-hidden" style="box-shadow: var(--shadow-sm); margin-bottom: 24px;">
         {% for value, label in platform_choices %}
         {% if value in configured_platforms %}
         <div style="
@@ -97,8 +70,8 @@
             {% endif %}
             <!-- Platform info -->
             <div style="flex: 1; min-width: 0;">
-                <div style="font-size: 0.875rem; font-weight: 600; color: var(--text-primary);">{{ label }}</div>
-                <div style="font-size: 0.75rem; color: var(--text-tertiary); margin-top: 1px;">
+                <div class="text-ink" style="font-size: 0.875rem; font-weight: 600;">{{ label }}</div>
+                <div class="text-ink-3" style="font-size: 0.75rem; margin-top: 1px;">
                     {% if value == 'facebook' %}Pages &amp; Groups
                     {% elif value == 'instagram' %}Business &amp; Creator
                     {% elif value == 'linkedin_personal' %}Personal profile
@@ -136,17 +109,7 @@
             <!-- Bluesky: inline form (no OAuth) -->
             <div x-data="{ showForm: false }" style="flex-shrink: 0;">
                 <button @click="showForm = !showForm"
-                        class="btn-primary-hover"
-                        style="
-                    display: inline-flex; align-items: center; gap: 6px;
-                    padding: 7px 16px;
-                    font-size: 0.75rem; font-weight: 600;
-                    color: white; background: var(--primary);
-                    border: none; border-radius: var(--radius-full);
-                    cursor: pointer;
-                    box-shadow: var(--shadow-primary);
-                    transition: all 200ms ease;
-                ">
+                        class="btn-primary-hover text-white bg-accent" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; font-size: 0.75rem; font-weight: 600; border: none; border-radius: var(--radius-full); cursor: pointer; box-shadow: var(--shadow-primary); transition: all 200ms ease;">
                     Connect
                     <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
                 </button>
@@ -155,53 +118,21 @@
                     display: flex; align-items: center; justify-content: center;
                     background: rgba(0,0,0,0.4); padding: 16px;
                 " @click.self="showForm = false">
-                    <form method="post" action="{% url 'onboarding:connection_bluesky' token=link.token %}" style="
-                        background: var(--surface-0);
-                        border-radius: var(--radius-xl);
-                        padding: 24px;
-                        width: 100%; max-width: 380px;
-                        box-shadow: var(--shadow-xl);
-                    ">
+                    <form class="bg-surface-0 rounded-xl" method="post" action="{% url 'onboarding:connection_bluesky' token=link.token %}" style="padding: 24px; width: 100%; max-width: 380px; box-shadow: var(--shadow-xl);">
                         {% csrf_token %}
-                        <h3 style="font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); margin-bottom: 16px;">Connect Bluesky</h3>
+                        <h3 class="text-ink" style="font-size: 0.9375rem; font-weight: 600; margin-bottom: 16px;">Connect Bluesky</h3>
                         <div style="margin-bottom: 12px;">
-                            <label style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 4px;">Handle</label>
-                            <input type="text" name="handle" placeholder="you.bsky.social" required style="
-                                width: 100%; padding: 9px 12px;
-                                font-size: 0.875rem; font-family: var(--font-body);
-                                border: 1.5px solid var(--border);
-                                border-radius: var(--radius-lg);
-                                background: var(--surface-0);
-                                color: var(--text-primary);
-                                outline: none;
-                            ">
+                            <label class="text-ink" style="font-size: 0.8125rem; font-weight: 600; display: block; margin-bottom: 4px;">Handle</label>
+                            <input class="bg-surface-0 text-ink" type="text" name="handle" placeholder="you.bsky.social" required style="width: 100%; padding: 9px 12px; font-size: 0.875rem; font-family: var(--font-body); border: 1.5px solid var(--border); border-radius: var(--radius-lg); outline: none;">
                         </div>
                         <div style="margin-bottom: 16px;">
-                            <label style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 4px;">App Password</label>
-                            <input type="password" name="app_password" required style="
-                                width: 100%; padding: 9px 12px;
-                                font-size: 0.875rem; font-family: var(--font-body);
-                                border: 1.5px solid var(--border);
-                                border-radius: var(--radius-lg);
-                                background: var(--surface-0);
-                                color: var(--text-primary);
-                                outline: none;
-                            ">
-                            <p style="font-size: 0.6875rem; color: var(--text-tertiary); margin-top: 4px;">Generate at Settings &rarr; App Passwords on Bluesky</p>
+                            <label class="text-ink" style="font-size: 0.8125rem; font-weight: 600; display: block; margin-bottom: 4px;">App Password</label>
+                            <input class="bg-surface-0 text-ink" type="password" name="app_password" required style="width: 100%; padding: 9px 12px; font-size: 0.875rem; font-family: var(--font-body); border: 1.5px solid var(--border); border-radius: var(--radius-lg); outline: none;">
+                            <p class="text-ink-3" style="font-size: 0.6875rem; margin-top: 4px;">Generate at Settings &rarr; App Passwords on Bluesky</p>
                         </div>
                         <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                            <button type="button" @click="showForm = false" style="
-                                padding: 8px 16px; font-size: 0.8125rem; font-weight: 600;
-                                background: var(--surface-0); color: var(--text-primary);
-                                border: 1px solid var(--border); border-radius: var(--radius-full);
-                                cursor: pointer;
-                            ">Cancel</button>
-                            <button type="submit" style="
-                                padding: 8px 16px; font-size: 0.8125rem; font-weight: 600;
-                                background: var(--primary); color: white;
-                                border: none; border-radius: var(--radius-full);
-                                cursor: pointer; box-shadow: var(--shadow-primary);
-                            ">Connect</button>
+                            <button class="bg-surface-0 text-ink border border-line" type="button" @click="showForm = false" style="padding: 8px 16px; font-size: 0.8125rem; font-weight: 600; border-radius: var(--radius-full); cursor: pointer;">Cancel</button>
+                            <button class="bg-accent text-white" type="submit" style="padding: 8px 16px; font-size: 0.8125rem; font-weight: 600; border: none; border-radius: var(--radius-full); cursor: pointer; box-shadow: var(--shadow-primary);">Connect</button>
                         </div>
                     </form>
                 </div>
@@ -210,17 +141,7 @@
             <!-- Mastodon: instance URL form -->
             <div x-data="{ showForm: false }" style="flex-shrink: 0;">
                 <button @click="showForm = !showForm"
-                        class="btn-primary-hover"
-                        style="
-                    display: inline-flex; align-items: center; gap: 6px;
-                    padding: 7px 16px;
-                    font-size: 0.75rem; font-weight: 600;
-                    color: white; background: var(--primary);
-                    border: none; border-radius: var(--radius-full);
-                    cursor: pointer;
-                    box-shadow: var(--shadow-primary);
-                    transition: all 200ms ease;
-                ">
+                        class="btn-primary-hover text-white bg-accent" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; font-size: 0.75rem; font-weight: 600; border: none; border-radius: var(--radius-full); cursor: pointer; box-shadow: var(--shadow-primary); transition: all 200ms ease;">
                     Connect
                     <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
                 </button>
@@ -229,40 +150,16 @@
                     display: flex; align-items: center; justify-content: center;
                     background: rgba(0,0,0,0.4); padding: 16px;
                 " @click.self="showForm = false">
-                    <form method="post" action="{% url 'onboarding:connection_mastodon' token=link.token %}" style="
-                        background: var(--surface-0);
-                        border-radius: var(--radius-xl);
-                        padding: 24px;
-                        width: 100%; max-width: 380px;
-                        box-shadow: var(--shadow-xl);
-                    ">
+                    <form class="bg-surface-0 rounded-xl" method="post" action="{% url 'onboarding:connection_mastodon' token=link.token %}" style="padding: 24px; width: 100%; max-width: 380px; box-shadow: var(--shadow-xl);">
                         {% csrf_token %}
-                        <h3 style="font-size: 0.9375rem; font-weight: 600; color: var(--text-primary); margin-bottom: 16px;">Connect Mastodon</h3>
+                        <h3 class="text-ink" style="font-size: 0.9375rem; font-weight: 600; margin-bottom: 16px;">Connect Mastodon</h3>
                         <div style="margin-bottom: 16px;">
-                            <label style="font-size: 0.8125rem; font-weight: 600; color: var(--text-primary); display: block; margin-bottom: 4px;">Instance URL</label>
-                            <input type="text" name="instance_url" placeholder="mastodon.social" required style="
-                                width: 100%; padding: 9px 12px;
-                                font-size: 0.875rem; font-family: var(--font-body);
-                                border: 1.5px solid var(--border);
-                                border-radius: var(--radius-lg);
-                                background: var(--surface-0);
-                                color: var(--text-primary);
-                                outline: none;
-                            ">
+                            <label class="text-ink" style="font-size: 0.8125rem; font-weight: 600; display: block; margin-bottom: 4px;">Instance URL</label>
+                            <input class="bg-surface-0 text-ink" type="text" name="instance_url" placeholder="mastodon.social" required style="width: 100%; padding: 9px 12px; font-size: 0.875rem; font-family: var(--font-body); border: 1.5px solid var(--border); border-radius: var(--radius-lg); outline: none;">
                         </div>
                         <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                            <button type="button" @click="showForm = false" style="
-                                padding: 8px 16px; font-size: 0.8125rem; font-weight: 600;
-                                background: var(--surface-0); color: var(--text-primary);
-                                border: 1px solid var(--border); border-radius: var(--radius-full);
-                                cursor: pointer;
-                            ">Cancel</button>
-                            <button type="submit" style="
-                                padding: 8px 16px; font-size: 0.8125rem; font-weight: 600;
-                                background: var(--primary); color: white;
-                                border: none; border-radius: var(--radius-full);
-                                cursor: pointer; box-shadow: var(--shadow-primary);
-                            ">Connect</button>
+                            <button class="bg-surface-0 text-ink border border-line" type="button" @click="showForm = false" style="padding: 8px 16px; font-size: 0.8125rem; font-weight: 600; border-radius: var(--radius-full); cursor: pointer;">Cancel</button>
+                            <button class="bg-accent text-white" type="submit" style="padding: 8px 16px; font-size: 0.8125rem; font-weight: 600; border: none; border-radius: var(--radius-full); cursor: pointer; box-shadow: var(--shadow-primary);">Connect</button>
                         </div>
                     </form>
                 </div>
@@ -273,17 +170,7 @@
                 {% csrf_token %}
                 <input type="hidden" name="platform" value="{{ value }}">
                 <button type="submit"
-                        class="btn-primary-hover"
-                        style="
-                    display: inline-flex; align-items: center; gap: 6px;
-                    padding: 7px 16px;
-                    font-size: 0.75rem; font-weight: 600;
-                    color: white; background: var(--primary);
-                    border: none; border-radius: var(--radius-full);
-                    cursor: pointer;
-                    box-shadow: var(--shadow-primary);
-                    transition: all 200ms ease;
-                ">
+                        class="btn-primary-hover text-white bg-accent" style="display: inline-flex; align-items: center; gap: 6px; padding: 7px 16px; font-size: 0.75rem; font-weight: 600; border: none; border-radius: var(--radius-full); cursor: pointer; box-shadow: var(--shadow-primary); transition: all 200ms ease;">
                     Connect
                     <svg width="12" height="12" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M14 5l7 7m0 0l-7 7m7-7H3"/></svg>
                 </button>
@@ -314,18 +201,7 @@
     <form method="post" action="{% url 'onboarding:connection_done' token=link.token %}">
         {% csrf_token %}
         <button type="submit"
-                class="btn-primary-lift"
-                style="
-            width: 100%;
-            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
-            padding: 14px 28px;
-            font-size: 0.9375rem; font-weight: 600; font-family: var(--font-body);
-            color: white; background: var(--primary);
-            border: none; border-radius: var(--radius-full);
-            cursor: pointer;
-            box-shadow: var(--shadow-primary);
-            transition: all 200ms ease;
-        ">
+                class="btn-primary-lift text-white bg-accent" style="width: 100%; display: inline-flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 28px; font-size: 0.9375rem; font-weight: 600; font-family: var(--font-body); border: none; border-radius: var(--radius-full); cursor: pointer; box-shadow: var(--shadow-primary); transition: all 200ms ease;">
             Done &mdash; Notify {{ org.name }}
             <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
         </button>
@@ -334,7 +210,7 @@
     <!-- Footer help -->
     <div style="text-align: center; margin-top: 28px;">
         <p style="font-size: 0.75rem; color: var(--text-ghost); line-height: 1.6;">
-            Need help? Contact <strong style="color: var(--text-tertiary);">{{ org.name }}</strong>
+            Need help? Contact <strong class="text-ink-3">{{ org.name }}</strong>
         </p>
         <p style="font-size: 0.6875rem; color: var(--text-ghost); margin-top: 4px;">
             This link expires {{ link.expires_at|date:"M j, Y" }}
