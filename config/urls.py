@@ -12,6 +12,7 @@ from django.views.static import serve
 
 from apps.accounts.views import health_check
 from apps.api.api import api as agent_api
+from apps.connect import views as connect_views
 from apps.oauth_server import views as oauth_views
 
 logger = logging.getLogger(__name__)
@@ -108,6 +109,9 @@ urlpatterns = [
         oauth_views.protected_resource_metadata_view,
         name="oauth-protected-resource-metadata-mcp",
     ),
+    # Domain verification for the ChatGPT app directory: serves the token OpenAI issues, as plain text.
+    path(".well-known/openai-apps-challenge", connect_views.openai_apps_challenge, name="openai-apps-challenge"),
+    path(".well-known/mcp/server-card.json", connect_views.mcp_server_card, name="mcp-server-card"),
     # Approval Workflow (Stream F)
     path("workspace/<uuid:workspace_id>/", include("apps.approvals.urls")),
     # One-tap decisions from approval emails (signed links; confirmation page, POST decides)

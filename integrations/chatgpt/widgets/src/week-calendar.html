@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Week calendar</title>
+<style>
+/*__CSS__*/
+</style>
+</head>
+<body>
+<main id="root" aria-live="polite"></main>
+<script>
+/*__SHARED_JS__*/
+</script>
+<script>
+(function () {
+  var el = Pd.el;
+  var root = document.getElementById("root");
+
+  function render(data) {
+    root.textContent = "";
+    var posts = (data && data.posts) || [];
+    if (!posts.length) {
+      root.appendChild(el("p", { class: "empty", text: "No posts in this range." }));
+      return;
+    }
+    var week = Pd.groupByWeek(posts, Pd.pickWeek(posts));
+    var first = week.days[0].date;
+    var last = week.days[6].date;
+    var range = first.toLocaleDateString(undefined, { month: "short", day: "numeric" }) + " to " +
+      last.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    root.appendChild(el("div", { class: "row mb" }, [
+      el("h1", { text: "Week of " + range }),
+      el("span", { class: "muted", text: posts.length - week.outside + " posts" }),
+    ]));
+    var now = new Date();
+    var todayKey = now.getFullYear() + "-" + (now.getMonth() + 1) + "-" + now.getDate();
+    var grid = el("div", { class: "week", role: "list" }, week.days.map(function (day) {
+      var slots = day.posts.map(function (entry) {
+        var time = entry.when.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+        var text = time + " " + (entry.post.title || entry.post.caption || "Post");
+        return el("div", { class: "slot", tabindex: "0", title: text, text: text });
+      });
+      var heading = day.date.toLocaleDateString(undefined, { weekday: "short", day: "numeric" });
+      return el("section", { class: "day", role: "listitem", "data-today": String(day.key === todayKey) },
+        [el("h2", { text: heading })].concat(slots));
+    }));
+    root.appendChild(grid);
+    if (week.outside) {
+      root.appendChild(el("p", { class: "muted", text: week.outside + " more post(s) fall in other weeks." }));
+    }
+  }
+
+  Pd.start(render);
+})();
+</script>
+</body>
+</html>

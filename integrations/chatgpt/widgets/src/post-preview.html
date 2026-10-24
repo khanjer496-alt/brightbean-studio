@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Post preview</title>
+<style>
+/*__CSS__*/
+</style>
+</head>
+<body>
+<main id="root" aria-live="polite"></main>
+<script>
+/*__SHARED_JS__*/
+</script>
+<script>
+(function () {
+  var el = Pd.el;
+  var root = document.getElementById("root");
+
+  function render(post) {
+    root.textContent = "";
+    if (!post || !post.id) {
+      root.appendChild(el("p", { class: "empty", text: "No post to show yet." }));
+      return;
+    }
+    var targets = (post.platform_posts || []).map(function (target) {
+      return el("div", { class: "row" }, [
+        el("strong", { text: target.platform || "account" }),
+        Pd.chip(target.status),
+        el("span", { class: "muted", text: Pd.formatWhen(target.scheduled_at || target.published_at) }),
+        target.publish_error ? el("span", { class: "chip", "data-tone": "bad", text: target.publish_error }) : null,
+      ]);
+    });
+    var children = [
+      el("div", { class: "row" }, [
+        el("h1", { text: post.title || "Post" }),
+        Pd.chip(post.status),
+      ]),
+      el("p", { class: "caption", text: post.caption || "(no caption)" }),
+    ];
+    if (post.parts && post.parts.length) {
+      children.push(el("p", { class: "muted", text: "Thread of " + (post.parts.length + 1) + " posts" }));
+    }
+    if (post.tags && post.tags.length) {
+      children.push(el("p", { class: "muted", text: post.tags.map(function (t) { return "#" + t; }).join(" ") }));
+    }
+    children.push(el("div", { class: "stack mt" }, targets));
+    if (post.autonomy && post.autonomy.decision && post.autonomy.decision !== "executed") {
+      children.push(el("div", { class: "notice", role: "status" }, [
+        el("strong", { text: post.autonomy.decision === "held" ? "Held for review" : "Not done" }),
+        el("div", { text: post.autonomy.message || "" }),
+      ]));
+    }
+    root.appendChild(el("article", { class: "card", "aria-label": "Post preview" }, children));
+  }
+
+  Pd.start(render);
+})();
+</script>
+</body>
+</html>

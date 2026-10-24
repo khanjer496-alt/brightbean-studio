@@ -810,6 +810,8 @@ MCP_PUBLIC_BASE_URL = env("MCP_PUBLIC_BASE_URL", default=APP_URL).rstrip("/")
 # install command only when this is set. MCP_WIDGET_DOMAIN is the dedicated origin ChatGPT renders the widgets on.
 AI_PLUGIN_MARKETPLACE_REPO = env("AI_PLUGIN_MARKETPLACE_REPO", default="")
 MCP_WIDGET_DOMAIN = env("MCP_WIDGET_DOMAIN", default="").rstrip("/")
+# Token for https://<host>/.well-known/openai-apps-challenge (ChatGPT app directory domain verification).
+OPENAI_APPS_CHALLENGE = env("OPENAI_APPS_CHALLENGE", default="")
 MCP_OAUTH_ISSUER_URL = env("MCP_OAUTH_ISSUER_URL", default=APP_URL).rstrip("/")
 
 # django-oauth-toolkit's default, named so ``apps.api_keys.ConnectedApp`` can point at the (swappable) model.

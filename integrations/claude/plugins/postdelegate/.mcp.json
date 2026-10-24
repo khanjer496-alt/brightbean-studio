@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "postdelegate": {
+      "type": "http",
+      "url": "https://app.postdelegate.com/api/v1/mcp"
+    }
+  }
+}

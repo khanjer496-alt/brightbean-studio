@@ -100,3 +100,23 @@ def test_page_is_linked_from_the_api_keys_page(client, django_user_model):
     response = client.get(reverse("api_keys:list"))
     assert response.status_code == 200
     assert reverse("connect:index") in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_openai_challenge_is_404_until_configured_then_plain_text(client):
+    assert client.get("/.well-known/openai-apps-challenge").status_code == 404
+    with override_settings(OPENAI_APPS_CHALLENGE="abc123\n"):
+        response = client.get("/.well-known/openai-apps-challenge")
+    assert response.status_code == 200
+    assert response["Content-Type"].startswith("text/plain")
+    assert response.content == b"abc123"
+
+
+@pytest.mark.django_db
+def test_server_card_lists_every_tool_with_annotations(client):
+    from apps.mcp.tools import all_tools
+
+    card = client.get("/.well-known/mcp/server-card.json").json()
+    assert card["authentication"] == {"required": True, "schemes": ["oauth2"]}
+    assert [t["name"] for t in card["tools"]] == [t.name for t in all_tools()]
+    assert all("annotations" in t for t in card["tools"])
