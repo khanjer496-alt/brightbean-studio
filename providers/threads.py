@@ -75,6 +75,10 @@ class ThreadsProvider(SocialProvider):
     # official Meta accounts. That is not a typeahead, so "@" stays plain text here.
 
     media_rules = THREADS_MEDIA_RULES
+    # ``alt_text`` (1,000 characters) on an image or video container.
+    # https://developers.facebook.com/docs/threads/reference/publishing
+    supports_alt_text = True
+    fetches_media_by_url = True
     # Each part is a reply to the one before it (``reply_to_id``).
     thread = ThreadCapability(mode=ThreadMode.REPLY_CHAIN, max_parts=25, media_per_part=True)
 
@@ -324,9 +328,11 @@ class ThreadsProvider(SocialProvider):
         if content.post_type == PostType.IMAGE and content.media_urls:
             container_payload["media_type"] = "IMAGE"
             container_payload["image_url"] = content.media_urls[0]
+            self._add_alt_text(container_payload, content, 0)
         elif content.post_type == PostType.VIDEO and content.media_urls:
             container_payload["media_type"] = "VIDEO"
             container_payload["video_url"] = content.media_urls[0]
+            self._add_alt_text(container_payload, content, 0)
         else:
             container_payload["media_type"] = "TEXT"
 
@@ -408,6 +414,12 @@ class ThreadsProvider(SocialProvider):
             on_timeout=lambda: PublishError("Threads container processing timed out", platform=self.platform_name),
         )
 
+    @staticmethod
+    def _add_alt_text(payload: dict, content: PublishContent, index: int) -> None:
+        alt_text = content.alt_text(index)
+        if alt_text:
+            payload["alt_text"] = alt_text[:1000]
+
     def _publish_carousel(
         self,
         access_token: str,
@@ -426,15 +438,17 @@ class ThreadsProvider(SocialProvider):
                 media_type = "IMAGE"
                 key = "image_url"
 
+            item_payload = {
+                "media_type": media_type,
+                key: url,
+                "is_carousel_item": "true",
+            }
+            self._add_alt_text(item_payload, content, index)
             item_resp = self._request(
                 "POST",
                 f"{API_BASE}/{user_id}/threads",
                 access_token=access_token,
-                data={
-                    "media_type": media_type,
-                    key: url,
-                    "is_carousel_item": "true",
-                },
+                data=item_payload,
             )
             item_body = item_resp.json()
             item_id = item_body.get("id")

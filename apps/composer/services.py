@@ -666,6 +666,20 @@ def _chosen_format_issue(social_account, assets, platform_extra: dict) -> MediaI
     )
 
 
+def _has_shape_rules(rules) -> bool:
+    """Whether ``rules`` limit anything that needs a video's measured duration or dimensions."""
+    return bool(
+        rules.min_duration
+        or rules.max_duration is not None
+        or rules.min_aspect_ratio is not None
+        or rules.max_aspect_ratio is not None
+        or rules.min_width
+        or rules.min_height
+        or rules.max_width
+        or rules.max_height
+    )
+
+
 def media_rule_issues(social_account, assets, *, platform_extra: dict | None = None) -> list[MediaIssue]:
     """Where ``assets`` break the media rules ``social_account``'s platform declares.
 
@@ -719,6 +733,15 @@ def media_rule_issues(social_account, assets, *, platform_extra: dict | None = N
             kind = asset.get_media_type_display()
             add("media_types", f"{name} doesn't take {kind} files in {noun} ({label}).")
             continue
+
+        if asset.metadata_unverified and _has_shape_rules(rules):
+            issues.append(
+                MediaIssue(
+                    MEDIA_ISSUE_WARNING,
+                    f"{label} couldn't be measured, so its length and shape weren't checked against {name}'s "
+                    "limits; the file size was. Re-upload it, or check it by hand.",
+                )
+            )
 
         if asset.width and asset.height:
             ratio = asset.width / asset.height
@@ -789,10 +812,20 @@ def media_rule_issues(social_account, assets, *, platform_extra: dict | None = N
         else:
             limit_name, max_bytes = "max_image_bytes", rules.max_image_bytes
         if max_bytes is not None and asset.file_size > max_bytes:
-            add(
-                limit_name,
-                f"{label} is {filesizeformat(asset.file_size)}; {name} takes files up to {filesizeformat(max_bytes)}.",
-            )
+            if limit_name == "max_image_bytes" and rules.compress_images:
+                issues.append(
+                    MediaIssue(
+                        MEDIA_ISSUE_WARNING,
+                        f"{label} is {filesizeformat(asset.file_size)}; {name} takes images up to "
+                        f"{filesizeformat(max_bytes)}, so a smaller copy is sent. Your original is unchanged.",
+                    )
+                )
+            else:
+                add(
+                    limit_name,
+                    f"{label} is {filesizeformat(asset.file_size)}; {name} takes files up to "
+                    f"{filesizeformat(max_bytes)}.",
+                )
 
     return issues
 

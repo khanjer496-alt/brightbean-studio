@@ -24,6 +24,9 @@ EMAIL_DAILY_SEND_LIMIT = -1
 EMAIL_RECIPIENT_HOURLY_LIMIT = -1
 EMAIL_RECIPIENT_DAILY_LIMIT = -1
 
+# The preflight makes real HTTP requests; tests that cover it switch it back on.
+PUBLISH_MEDIA_PREFLIGHT = False
+
 # Disable CSP in tests
 CSP_REPORT_ONLY = True
 

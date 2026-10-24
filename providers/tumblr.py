@@ -76,6 +76,9 @@ class TumblrProvider(SocialProvider):
     profile_url_template = "https://{handle}.tumblr.com"
 
     media_rules = TUMBLR_MEDIA_RULES
+    # ``alt_text`` (4,096 characters) on an NPF image block.
+    # https://www.tumblr.com/docs/npf
+    supports_alt_text = True
     has_destination_picker = True
     no_destinations_hint = "Tumblr returned no blogs for this login."
     revokes_grant_on_disconnect = False
@@ -280,7 +283,7 @@ class TumblrProvider(SocialProvider):
                 blocks.append({"type": "video", "media": {"type": mime, "identifier": identifier}})
             else:
                 block: dict = {"type": "image", "media": [{"type": mime, "identifier": identifier}]}
-                alt = (content.extra.get("alt_text") or "").strip() if index == 0 else ""
+                alt = content.alt_text(index) or ((content.extra.get("alt_text") or "").strip() if index == 0 else "")
                 if alt:
                     block["alt_text"] = alt[:4096]
                 blocks.append(block)

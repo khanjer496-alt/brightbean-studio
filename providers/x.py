@@ -273,6 +273,8 @@ class XProvider(SocialProvider):
         return f"https://x.com/i/web/status/{post_id}" if re.fullmatch(r"[0-9]{1,30}", post_id) else ""
 
     media_rules = {PostType.IMAGE: _IMAGE_RULES, PostType.VIDEO: _VIDEO_RULES}
+    # ``POST /2/media/metadata`` sets alt text on an uploaded image or GIF.
+    supports_alt_text = True
 
     # Reposting is POST /2/users/{id}/retweets with the tweet.write scope; a reply is POST /2/tweets with
     # reply.in_reply_to_tweet_id. Quote posts (quote_tweet_id) need an Enterprise plan, so they are not offered.
@@ -891,11 +893,31 @@ class XProvider(SocialProvider):
                         content.upload_cache.set(key, media_id, UPLOAD_REUSE_TTL)
                     if processing is not None:
                         self._wait_for_media(access_token, media_id, processing, deadline, content)
+                if kind != "video":
+                    self._set_alt_text(access_token, media_id, content.alt_text(position))
                 ids.append(media_id)
         except APIError as exc:
             exc.ambiguous_write = False
             raise
         return ids
+
+    def _set_alt_text(self, access_token: str, media_id: str, alt_text: str) -> None:
+        """Attach alt text (1,000 characters at most) to an uploaded image or GIF.
+
+        Best effort: a post without its description is better than no post, so a refusal is logged only.
+        https://docs.x.com/x-api/media/create-media-metadata
+        """
+        if not alt_text:
+            return
+        try:
+            self._api(
+                "POST",
+                "/2/media/metadata",
+                access_token,
+                json={"id": media_id, "metadata": {"alt_text": {"text": alt_text[:1000]}}},
+            )
+        except PublishError:
+            logger.warning("X refused the alt text for media %s", media_id, exc_info=True)
 
     @staticmethod
     def _file_digest(path: str) -> str:

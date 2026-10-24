@@ -336,6 +336,11 @@ def delete_asset(asset):
     if asset.thumbnail:
         asset.thumbnail.delete(save=False)
 
+    # Copies made for a network that refuses the original's format or size.
+    from .derivatives import delete_derived
+
+    delete_derived(asset)
+
     # Delete version files
     for version in asset.versions.all():
         if version.file:

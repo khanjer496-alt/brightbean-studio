@@ -21,7 +21,12 @@ from urllib.parse import urlencode
 from .base import SocialProvider
 from .exceptions import APIError, OAuthError, ProviderError, PublishError
 from .instagram import INSTAGRAM_MEDIA_RULES
-from .instagram_options import INSTAGRAM_POST_SETTINGS, container_options, validate_instagram_settings
+from .instagram_options import (
+    INSTAGRAM_POST_SETTINGS,
+    container_options,
+    image_alt_option,
+    validate_instagram_settings,
+)
 from .meta_comments import (
     fetch_instagram_comments,
     find_own_instagram_comment,
@@ -107,6 +112,8 @@ class InstagramLoginProvider(SocialProvider):
 
     media_rules = INSTAGRAM_MEDIA_RULES
     post_settings = INSTAGRAM_POST_SETTINGS
+    supports_alt_text = True
+    fetches_media_by_url = True
 
     # Business Discovery is documented only for the Facebook Login API, so an account
     # connected this way cannot read other accounts (see ``providers.instagram_discovery``).
@@ -380,6 +387,7 @@ class InstagramLoginProvider(SocialProvider):
             payload["video_url"] = url
         else:
             payload["image_url"] = url
+            payload.update(image_alt_option(content, 0))
         payload.update(
             container_options(content.extra, content.post_type, is_video=is_video, platform=self.platform_name)
         )
@@ -398,6 +406,7 @@ class InstagramLoginProvider(SocialProvider):
                 child_payload["video_url"] = url
             else:
                 child_payload["image_url"] = url
+                child_payload.update(image_alt_option(content, index))
 
             child_id = self._create_container(access_token, child_payload)
             self._wait_for_container(access_token, child_id)

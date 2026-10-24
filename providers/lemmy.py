@@ -93,6 +93,9 @@ class LemmyProvider(SocialProvider):
     needs_local_media = False
     supports_connection_link = False
     media_rules = LEMMY_MEDIA_RULES
+    # ``alt_text`` on a post whose link is its picture.
+    # https://github.com/LemmyNet/lemmy-js-client/blob/main/src/types/CreatePost.ts
+    supports_alt_text = True
 
     # Later parts are comments on the first post.
     thread = ThreadCapability(
@@ -294,6 +297,8 @@ class LemmyProvider(SocialProvider):
         link = content.link_url or (content.media_urls[0] if content.media_urls else "")
         if link:
             payload["url"] = link
+            if not content.link_url and content.alt_text(0):
+                payload["alt_text"] = content.alt_text(0)
 
         data = self._api("POST", "/post", access_token=access_token, json=payload).json()
         post = (data.get("post_view") or {}).get("post") or {}

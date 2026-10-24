@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import hashlib
 import logging
 import os
 import re
+import time
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlencode, urlsplit
 
@@ -62,6 +64,18 @@ ANALYTICS_BASE = "https://youtubeanalytics.googleapis.com/v2"
 # ``thumbnails.set`` lives under ``/upload/`` too but is charged to the regular
 # pool.
 _VIDEOS_INSERT_PATH = urlsplit(f"{UPLOAD_BASE}/videos").path
+
+# Resumable upload (``videos.insert``). Chunks must be a multiple of 256 KB; 8 MB
+# keeps a worker's memory flat and loses little on a dropped connection. A
+# session URI outlives the retry ladder comfortably, so it is remembered for a day.
+UPLOAD_CHUNK_SIZE = 32 * 256 * 1024
+UPLOAD_SESSION_TTL = 24 * 3600
+UPLOAD_RESUME_ATTEMPTS = 4
+
+
+class _UploadSessionExpiredError(Exception):
+    """YouTube answered 404 for the resumable session: it expired, so a new one is needed."""
+
 
 # YouTube Analytics caps a ``filters=video==<id>,<id>,...`` list at 500 IDs
 # per request. Larger inputs to :meth:`YouTubeProvider.get_post_analytics`
@@ -486,79 +500,184 @@ class YouTubeProvider(SocialProvider):
             },
         }
 
-        # Step 1: Initiate resumable upload
-        init_resp = self._request(
+        if not content.media_files:
+            raise PublishError(
+                "No video file provided (media_files required)",
+                platform=self.platform_name,
+                retryable=False,
+            )
+
+        video_path = content.media_files[0]
+        video_id = self._upload_video(access_token, video_path, metadata, content)
+        if not video_id:
+            # The upload finished but YouTube named no video. It may exist, so
+            # this is not safe to retry.
+            raise APIError(
+                "YouTube accepted the upload but did not return a video id",
+                platform=self.platform_name,
+                ambiguous_write=True,
+            )
+
+        # Step 3 (optional): upload custom thumbnail
+        thumbnail_path = content.extra.get("thumbnail_file")
+        if video_id and thumbnail_path:
+            try:
+                with open(thumbnail_path, "rb") as tf:
+                    thumb_data = tf.read()
+                # Guess content type from extension
+                ext = thumbnail_path.lower().rsplit(".", 1)[-1]
+                thumb_ct = "image/png" if ext == "png" else "image/jpeg"
+                self._request(
+                    "POST",
+                    f"{UPLOAD_BASE}/thumbnails/set",
+                    access_token=access_token,
+                    params={"videoId": video_id, "uploadType": "media"},
+                    headers={
+                        "Content-Type": thumb_ct,
+                        "Content-Length": str(len(thumb_data)),
+                    },
+                    data=thumb_data,
+                    timeout=60.0,
+                )
+            except Exception:
+                logger.exception("Custom thumbnail upload failed for video %s", video_id)
+
+        return PublishResult(
+            platform_post_id=video_id,
+            url=f"https://www.youtube.com/watch?v={video_id}" if video_id else None,
+            # The ID above is sufficient. Persisting the resource here
+            # also copies it into composer settings, clones and history.
+            extra={},
+        )
+
+    # ------------------------------------------------------------------
+    # Resumable upload
+    # ------------------------------------------------------------------
+    # https://developers.google.com/youtube/v3/guides/using_resumable_upload_protocol
+
+    def _upload_video(self, access_token: str, video_path: str, metadata: dict, content: PublishContent) -> str:
+        """Upload ``video_path`` through a resumable session and return the new video id.
+
+        The session URI is remembered in ``content.upload_cache``, so a retry
+        after a dropped connection asks YouTube how much it already holds and
+        sends only the rest, instead of starting the whole file again. A
+        transport error or 5xx on a chunk is recovered from inside this loop
+        (query the received range, resume), so none of these steps is an
+        ambiguous write: YouTube answers the status query with the finished
+        video if the last chunk did land.
+        """
+        size = os.path.getsize(video_path)
+        key = self._upload_session_key(access_token, content.idempotency_key, video_path, size)
+        cache = content.upload_cache
+        session_uri = cache.get(key) if cache is not None and key else None
+
+        failures = 0
+        while True:
+            try:
+                if session_uri is None:
+                    session_uri = self._start_upload_session(access_token, metadata, size)
+                    if cache is not None and key:
+                        cache.set(key, session_uri, UPLOAD_SESSION_TTL)
+                done, offset, body = self._upload_status(session_uri, size)
+                if done:
+                    return body.get("id", "")
+                return self._send_chunks(session_uri, video_path, size, offset)
+            except _UploadSessionExpiredError:
+                # 404: Google no longer knows this session. Start over.
+                session_uri = None
+                if cache is not None and key:
+                    cache.set(key, "", 1)
+            except (APIError, PublishError) as exc:
+                transient = isinstance(exc, APIError) and (exc.status_code is None or exc.status_code >= 500)
+                failures += 1
+                if not transient or failures >= UPLOAD_RESUME_ATTEMPTS:
+                    if isinstance(exc, APIError):
+                        # The session is saved, so the engine's retry resumes it.
+                        exc.ambiguous_write = False
+                    raise
+                if content.should_stop is not None and content.should_stop():
+                    # Shutting down: leave the saved session for the rescheduled attempt.
+                    if isinstance(exc, APIError):
+                        exc.ambiguous_write = False
+                    raise
+                time.sleep(min(2**failures, 30))
+
+    @staticmethod
+    def _upload_session_key(access_token: str, publish_key: str | None, video_path: str, size: int) -> str | None:
+        """Where a session is remembered: scoped to one publish, the account (token hashed) and the file."""
+        if not publish_key:
+            return None
+        account = hashlib.sha256(access_token.encode()).hexdigest()[:32]
+        publish = hashlib.sha256(publish_key.encode()).hexdigest()[:32]
+        with open(video_path, "rb") as f:
+            digest = hashlib.file_digest(f, "sha256").hexdigest()
+        return f"youtube-session:{account}:{publish}:{size}:{digest}"
+
+    def _start_upload_session(self, access_token: str, metadata: dict, size: int) -> str:
+        resp = self._request(
             "POST",
             f"{UPLOAD_BASE}/videos",
             access_token=access_token,
             params={"uploadType": "resumable", "part": "snippet,status"},
+            headers={"X-Upload-Content-Length": str(size), "X-Upload-Content-Type": "video/*"},
             json=metadata,
         )
-        upload_uri = init_resp.headers.get("Location")
-        if not upload_uri:
-            raise PublishError(
-                "YouTube did not return a resumable upload URI",
-                platform=self.platform_name,
+        uri = resp.headers.get("Location")
+        if not uri:
+            raise PublishError("YouTube did not return a resumable upload URI", platform=self.platform_name)
+        return uri
+
+    def _upload_status(self, session_uri: str, size: int) -> tuple[bool, int, dict]:
+        """Ask YouTube what the session holds: ``(finished, next_offset, video_body)``."""
+        try:
+            resp = self._request(
+                "PUT",
+                session_uri,
+                headers={"Content-Range": f"bytes */{size}", "Content-Length": "0"},
+                data=b"",
             )
+        except APIError as exc:
+            if exc.status_code == 404:
+                raise _UploadSessionExpiredError from exc
+            raise
+        if resp.status_code in (200, 201):
+            return True, size, resp.json()
+        return False, self._received_offset(resp), {}
 
-        # Step 2: Upload video binary. Streamed from disk — reading it into a
-        # bytes object first put the entire video in RSS, which on a small
-        # worker dyno is the difference between publishing and an OOM kill.
-        if content.media_files:
-            video_path = content.media_files[0]
-            video_size = os.path.getsize(video_path)
+    @staticmethod
+    def _received_offset(resp) -> int:
+        """The first byte YouTube still needs, from a 308's ``Range: bytes=0-N`` header (absent: nothing yet)."""
+        match = re.fullmatch(r"bytes=0-(\d+)", (resp.headers.get("Range") or "").strip())
+        return int(match.group(1)) + 1 if match else 0
 
-            with open(video_path, "rb") as video:
-                upload_resp = self._request(
-                    "PUT",
-                    upload_uri,
-                    headers={
-                        "Content-Type": "video/*",
-                        "Content-Length": str(video_size),
-                    },
-                    data=video,
-                    timeout=300.0,
-                )
-            upload_body = upload_resp.json()
-            video_id = upload_body.get("id", "")
-
-            # Step 3 (optional): upload custom thumbnail
-            thumbnail_path = content.extra.get("thumbnail_file")
-            if video_id and thumbnail_path:
+    def _send_chunks(self, session_uri: str, video_path: str, size: int, offset: int) -> str:
+        """PUT the file from ``offset`` in 256 KB-multiple chunks; return the video id once complete."""
+        with open(video_path, "rb") as video:
+            while offset < size:
+                video.seek(offset)
+                chunk = video.read(UPLOAD_CHUNK_SIZE)
+                last = offset + len(chunk) - 1
                 try:
-                    with open(thumbnail_path, "rb") as tf:
-                        thumb_data = tf.read()
-                    # Guess content type from extension
-                    ext = thumbnail_path.lower().rsplit(".", 1)[-1]
-                    thumb_ct = "image/png" if ext == "png" else "image/jpeg"
-                    self._request(
-                        "POST",
-                        f"{UPLOAD_BASE}/thumbnails/set",
-                        access_token=access_token,
-                        params={"videoId": video_id, "uploadType": "media"},
+                    resp = self._request(
+                        "PUT",
+                        session_uri,
                         headers={
-                            "Content-Type": thumb_ct,
-                            "Content-Length": str(len(thumb_data)),
+                            "Content-Length": str(len(chunk)),
+                            "Content-Range": f"bytes {offset}-{last}/{size}",
                         },
-                        data=thumb_data,
-                        timeout=60.0,
+                        data=chunk,
+                        timeout=300.0,
                     )
-                except Exception:
-                    logger.exception("Custom thumbnail upload failed for video %s", video_id)
-
-            return PublishResult(
-                platform_post_id=video_id,
-                url=f"https://www.youtube.com/watch?v={video_id}" if video_id else None,
-                # The ID above is sufficient. Persisting the resource here
-                # also copies it into composer settings, clones and history.
-                extra={},
-            )
-
-        raise PublishError(
-            "No video file provided (media_files required)",
-            platform=self.platform_name,
-            retryable=False,
-        )
+                except APIError as exc:
+                    if exc.status_code == 404:
+                        raise _UploadSessionExpiredError from exc
+                    raise
+                if resp.status_code in (200, 201):
+                    return resp.json().get("id", "")
+                offset = self._received_offset(resp)
+        # Everything sent but no completion response: ask for the finished video.
+        done, _, body = self._upload_status(session_uri, size)
+        return body.get("id", "") if done else ""
 
     # ------------------------------------------------------------------
     # Comments

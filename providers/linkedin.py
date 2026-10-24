@@ -147,6 +147,9 @@ class LinkedInProvider(SocialProvider):
     """LinkedIn Marketing API v2 provider."""
 
     media_rules = LINKEDIN_MEDIA_RULES
+    # ``altText`` on the image (and on each image of a multi-image post).
+    # https://learn.microsoft.com/en-us/linkedin/marketing/community-management/shares/multiimage-post-api
+    supports_alt_text = True
     # PDF carousels are a native LinkedIn format, published through the Documents API (see
     # ``_publish_document_post``), so the repurposing pipeline attaches its carousel PDF to the post.
     document_carousel = True
@@ -428,6 +431,9 @@ class LinkedInProvider(SocialProvider):
                 "id": image_urn,
             }
         }
+        if content.alt_text(0):
+            # The Media object's ``altText`` (the multi-image docs recommend under 120 characters, allow 4,086).
+            body["content"]["media"]["altText"] = content.alt_text(0)[:4086]
 
         resp = self._request(
             "POST",

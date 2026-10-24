@@ -16,7 +16,7 @@ from __future__ import annotations
 import re
 
 from .exceptions import PublishError
-from .types import PostSetting, PostType
+from .types import PostSetting, PostType, PublishContent
 
 MAX_COLLABORATORS = 3
 _USERNAME = re.compile(r"^[A-Za-z0-9._]{1,30}$")
@@ -148,3 +148,9 @@ def container_options(extra: dict, post_type: PostType, *, is_video: bool, platf
             retryable=False,
         )
     return params
+
+
+def image_alt_option(content: PublishContent, index: int) -> dict:
+    """The ``alt_text`` container field for image ``index`` (1,000 characters at most), or nothing when it has none."""
+    alt_text = content.alt_text(index)
+    return {"alt_text": alt_text[:1000]} if alt_text else {}
