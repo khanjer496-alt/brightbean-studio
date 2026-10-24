@@ -522,6 +522,13 @@
                 </a>
                 {% endif %}
 
+                {% if onboarding and not onboarding.checklist_dismissed and onboarding.checklist_items and not onboarding.checklist_hidden_on_phone %}
+                <button type="button" class="mb-1 sidebar-nav-item w-full text-start lg:hidden" @click="mobileMenuOpen = false; $nextTick(() => $dispatch('open-checklist'))">
+                    <svg class="flex-shrink-0" width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    <span class="sidebar-nav-label">Get started</span>
+                    <span class="sidebar-badge">{{ onboarding.checklist_completed_count }}/{{ onboarding.checklist_total_count }}</span>
+                </button>
+                {% endif %}
                 <a href="{% url 'notifications:list' %}" class="mb-1 sidebar-nav-item {% if request.resolver_match.url_name == 'list' and request.resolver_match.app_name == 'notifications' %}active{% endif %}">
                     <svg class="flex-shrink-0" width="18" height="18" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
                     <span class="sidebar-nav-label">Notifications</span>
@@ -571,16 +578,7 @@
                 </div>
                 {% for channel in sidebar_channels %}
                 <a href="{% url 'social_accounts:list' workspace_id=request.workspace.id %}" class="sidebar-nav-item sidebar-nav-item--compact" title="{% if channel.platform == 'youtube' %}YouTube · {% endif %}{{ channel.display_name }} · {{ channel.queued_post_count|default:0 }} upcoming post{{ channel.queued_post_count|default:0|pluralize }}">
-                    <div class="relative flex-shrink-0">
-                        {% if channel.display_avatar_url %}
-                        <img src="{{ channel.display_avatar_url }}" alt="" class="w-7 h-7 rounded-full object-cover">
-                        {% else %}
-                        <div class="w-7 h-7 rounded-full bg-stone-200 flex items-center justify-center text-[11px] font-semibold text-stone-500">{{ channel.display_name|make_list|first|upper }}</div>
-                        {% endif %}
-                        {% if channel.platform != "youtube" %}<div class="absolute -bottom-0.5 -end-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center">
-                            {% include "partials/_platform_icon.html" with platform=channel.platform size="sm" %}
-                        </div>{% endif %}
-                    </div>
+                    {% include "partials/_channel_avatar.html" with account=channel px=28 %}
                     {% if channel.platform == "youtube" %}
                     <span class="sidebar-nav-label min-w-0 flex-1 leading-[1.35]">
                         <span class="block text-[11px] font-semibold text-stone-500">YouTube</span>
@@ -594,17 +592,7 @@
 
                 {% for channel in sidebar_unhealthy_channels %}
                 <div class="sidebar-nav-item sidebar-nav-item--compact flex items-center gap-2">
-                    <div class="relative flex-shrink-0 opacity-60">
-                        {% if channel.display_avatar_url %}
-                        <img src="{{ channel.display_avatar_url }}" alt="" class="w-7 h-7 rounded-full object-cover grayscale" x-data @error="$el.classList.add('hidden'); $el.nextElementSibling.classList.remove('hidden'); $el.nextElementSibling.classList.add('flex')">
-                        <div class="hidden w-7 h-7 rounded-full bg-stone-200 items-center justify-center text-[11px] font-semibold text-stone-500">{{ channel.display_name|make_list|first|upper }}</div>
-                        {% else %}
-                        <div class="w-7 h-7 rounded-full bg-stone-200 flex items-center justify-center text-[11px] font-semibold text-stone-500">{{ channel.display_name|make_list|first|upper }}</div>
-                        {% endif %}
-                        {% if channel.platform != "youtube" %}<div class="absolute -bottom-0.5 -end-0.5 w-4 h-4 bg-white rounded-full flex items-center justify-center">
-                            {% include "partials/_platform_icon.html" with platform=channel.platform size="sm" %}
-                        </div>{% endif %}
-                    </div>
+                    <span class="opacity-60 inline-flex">{% include "partials/_channel_avatar.html" with account=channel px=28 dim=True %}</span>
                     {% if channel.platform == "youtube" %}
                     <span class="sidebar-nav-label min-w-0 flex-1 text-stone-400 leading-[1.35]">
                         <span class="block text-[11px] font-semibold">YouTube</span>

@@ -91,3 +91,17 @@ def test_shell_uses_dynamic_viewport_height_not_vh():
 def test_checklist_pill_clears_the_tab_bar():
     source = (Path(settings.BASE_DIR) / "templates" / "onboarding" / "partials" / "_checklist.html").read_text()
     assert "var(--pd-tabbar-h" in source
+
+
+@pytest.mark.django_db
+def test_no_channel_logo_is_shown_twice_and_ai_is_one_phone_pill(workspace_client):
+    client, workspace = workspace_client
+    from apps.analytics.tests.helpers import make_account
+
+    make_account(workspace, "facebook", "Acme Page")
+    html = client.get(reverse("composer:compose", kwargs={"workspace_id": workspace.id})).content.decode()
+    # no profile picture: initial tile plus a single badge, never logo-as-avatar and badge
+    assert 'aria-hidden="true">A</span>' in html
+    assert "connect-ai-pill" in html and ">Connect AI<" in html.replace("\n", "").replace("  ", "")
+    cal = client.get(reverse("calendar:calendar", kwargs={"workspace_id": workspace.id})).content.decode()
+    assert "open-checklist" in cal
