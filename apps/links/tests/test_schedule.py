@@ -371,6 +371,14 @@ class TestPlanLimit:
         assert services.create_short_link(workspace, "https://example.com/more")
 
 
+def test_campaign_from_the_caption_leaves_its_addresses_out(workspace):
+    from types import SimpleNamespace
+
+    link_settings = services.get_settings(workspace)
+    post = SimpleNamespace(title="", caption="Spring sale https://shop.example.com/spring?x=1 ends Friday")
+    assert services.campaign_for(link_settings, post) == "spring-sale-ends-friday"
+
+
 class TestEditsAfterScheduling:
     def test_editing_the_post_caption_is_not_hidden_behind_the_rewritten_copy(self, workspace, linkedin):
         configure(workspace)

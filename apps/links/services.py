@@ -190,7 +190,9 @@ def campaign_for(link_settings: LinkSettings, post) -> str:
     value = ""
     if post is not None:
         if source == LinkSettings.CampaignFrom.POST:
-            value = slugify((post.title or post.caption or "")[:60])
+            # The title, else the caption's first words; an address in the caption is no campaign name.
+            words = _URL_RE.sub(" ", post.title or post.caption or "").split()
+            value = slugify(" ".join(words[:8])[:60])
         elif source == LinkSettings.CampaignFrom.CATEGORY and post.category_id:
             value = slugify(post.category.name)
         elif source == LinkSettings.CampaignFrom.TAG and post.tags:
