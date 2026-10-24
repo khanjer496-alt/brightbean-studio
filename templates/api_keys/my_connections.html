@@ -1,0 +1,33 @@
+{% extends "layouts/settings.html" %}
+{% load static %}
+{% block title %}Connected apps - Settings - {{ brand_short_name }}{% endblock %}
+{% block content %}
+<div>
+    <div class="mb-8">
+        <h2 class="text-xl font-semibold text-[var(--text-primary)]">Connected apps</h2>
+        <p class="text-sm mt-1 max-w-xl text-[var(--text-tertiary)]">
+            Apps you connected to this organization by signing in, such as Claude Desktop. Each acts as you, only in this
+            organization's workspaces, and only with what you approved. Narrow or disconnect any of them here.
+        </p>
+    </div>
+
+    {% if messages %}
+    <div class="mb-6 space-y-2" role="status">
+        {% for message in messages %}
+        <p class="text-sm rounded-lg border px-4 py-3 {% if message.tags == 'error' %}border-red-200 bg-red-50 text-red-800{% else %}border-stone-200 bg-[var(--surface-1)] text-[var(--text-primary)]{% endif %}">{{ message }}</p>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if connection_rows %}
+    <div class="rounded-xl border border-stone-200 bg-[var(--surface-0)] px-5 sm:px-6 divide-y divide-stone-200">
+        {% for row in connection_rows %}
+        {% include "api_keys/_connection_row.html" with row=row %}
+        {% endfor %}
+    </div>
+    {% else %}
+    <p class="px-6 py-8 text-center text-sm rounded-xl border border-stone-200 bg-[var(--surface-0)] text-[var(--text-tertiary)]">You haven't connected any apps to this organization.</p>
+    {% endif %}
+</div>
+<script src="{% static 'js/token-scope.js' %}"></script>
+{% endblock %}

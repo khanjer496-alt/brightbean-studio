@@ -2737,6 +2737,7 @@ def create_repurpose_job(
         read_source = _repurpose_reader(
             actor, source_type, url=url, text=text, post_id=post_id, media_asset_id=media_asset_id
         )
+        _reserve_repurpose_ai_budget(actor, requests)
         job, note = repurpose_services.create_job(
             actor.workspace,
             actor.user,
@@ -2757,6 +2758,27 @@ def create_repurpose_job(
     except ValueError as exc:
         raise OpError(422, str(exc)) from exc
     return _repurpose_job_response(job).with_autonomy(note)
+
+
+def _reserve_repurpose_ai_budget(actor: Actor, requests) -> None:
+    """Spend the AI requests a run may make from the calling token's own daily AI budget, all up front.
+
+    A run that is too big is left for ``create_job`` to refuse with its own message, so nothing is spent on it.
+    """
+    from django.conf import settings
+
+    from apps.api_keys import budgets
+    from apps.repurpose import outputs as repurpose_outputs
+
+    _, max_calls = repurpose_outputs.plan(requests)
+    if max_calls > settings.REPURPOSE_MAX_CALLS_PER_RUN or budgets.reserve_ai_call(actor.api_key, amount=max_calls):
+        return
+    limit = getattr(actor.api_key, "daily_ai_budget", None) or 0
+    raise OpError(
+        429,
+        f"This run needs up to {max_calls} AI requests, more than this token has left of its daily AI budget "
+        f"of {limit}. The budget resets at 00:00 UTC; ask for fewer outputs or accounts.",
+    )
 
 
 def _repurpose_reader(actor: Actor, source_type, *, url, text, post_id, media_asset_id):

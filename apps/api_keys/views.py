@@ -1,13 +1,14 @@
 """Org-level API key management views.
 
-Three responsibilities:
+Responsibilities:
 
-1. **List** every ``ApiKey`` in the org with enough metadata that an
-   admin can decide which to revoke.
+1. **List** every ``ApiKey`` in the org with its capabilities, today's usage
+   against its budgets, last use and expiry.
 2. **Issue** a new key via a two-step HTMX-driven modal: workspace
    dropdown → (cascading) social-account multi-select + permission
-   checkboxes scoped to what the issuer can grant in that workspace.
-3. **Revoke** an existing key.
+   checkboxes scoped to what the issuer can grant in that workspace, plus a
+   preset, capabilities, budgets, IP ranges and expiry.
+3. **Edit**, **rotate** (a new secret for the same token) and **revoke** a key.
 
 Every mutation re-validates inputs server-side against the same
 ``services.issue_api_key`` enforcement layer the Phase 1 service tests
@@ -19,6 +20,7 @@ out-of-org account, or an unbacked permission gets the same
 from __future__ import annotations
 
 import functools
+import re
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -28,13 +30,17 @@ from django.core.exceptions import (
 from django.core.exceptions import (
     ValidationError as DjangoValidationError,
 )
+from django.db.models import Q
 from django.http import Http404, HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 
-from apps.api_keys import services
-from apps.api_keys.models import ApiKey
+from apps.api_keys import budgets, services
+from apps.api_keys import capabilities as caps
+from apps.api_keys.models import ApiKey, ConnectedApp
+from apps.billing.entitlements import get_entitlements
 from apps.members.models import (
     PERMISSION_KEYS,
     WorkspaceMembership,
@@ -108,7 +114,9 @@ def list_keys(request):
     # permissions + connected accounts are computed once per workspace, not
     # once per key.
     memo: dict = {"grantable": {}, "accounts": {}}
-    rows = [_row_context(k, user=request.user, memo=memo) for k in qs]
+    keys = list(qs)
+    usage = budgets.snapshots(k for k in keys if k.revoked_at is None)
+    rows = [_row_context(k, user=request.user, memo=memo, usage=usage.get(k.pk)) for k in keys]
     # Surface a "Show N revoked" toggle only when there's actually something
     # behind it — avoids a noisy control on an org that's never revoked a key.
     revoked_count = ApiKey.objects.filter(workspace__organization=org, revoked_at__isnull=False).count()
@@ -120,18 +128,20 @@ def list_keys(request):
     context = {
         "settings_active": "api_keys",
         "rows": rows,
+        "connection_rows": _connection_rows(_listed_connections(_org_connections(org)), as_admin=True),
         "show_all": show_all,
         "revoked_count": revoked_count,
         # Empty issuance form context — the modal renders inside the
         # same page so we don't need a separate route.
         "issuance": _initial_issuance_context(org, request.user),
+        "scope_form": _scope_form_context(None),
         "reveal_token": reveal_token,
         "reveal_key_name": reveal_key_name,
     }
     return render(request, "api_keys/list.html", context)
 
 
-def _row_context(api_key: ApiKey, *, user, memo: dict) -> dict:
+def _row_context(api_key: ApiKey, *, user, memo: dict, usage: dict | None = None) -> dict:
     """Adapt an ``ApiKey`` row into the dict the list template expects.
 
     ``memo`` is a per-request cache (``{"grantable": {ws_id: ...},
@@ -199,11 +209,215 @@ def _row_context(api_key: ApiKey, *, user, memo: dict) -> dict:
         "created_at": api_key.created_at,
         "expires_at": api_key.expires_at,
         "status": status,
+        "limited": api_key.capabilities is not None,
+        "capability_labels": (
+            [caps.label_for(k) for k in caps.token_capabilities(api_key) or []]
+            if api_key.capabilities is not None
+            else []
+        ),
+        "preset": caps.preset(api_key.preset),
+        "requires_approval": api_key.requires_approval,
+        "ip_ranges": list(api_key.allowed_ip_ranges or []),
+        "budgets": _budget_rows(usage),
+        "activity_url": f"{reverse('autonomy:activity', kwargs={'workspace_id': api_key.workspace_id})}?key={api_key.id}",
+        "scope_form": _scope_form_context(api_key) if status == "active" else None,
         # Edit-modal context (empty for non-active rows).
         "editable_permissions": editable_permissions,  # [(key, label, checked)]
         "locked_permissions": locked_permissions,  # [str]
         "editable_accounts": editable_accounts,  # [(SocialAccount, checked)]
     }
+
+
+def _org_connections(org):
+    """Apps connected to this organization: OAuth clients that act as one of its members, only in its workspaces."""
+    return ConnectedApp.objects.filter(organization=org).select_related("user", "application")
+
+
+def _listed_connections(qs) -> list[ConnectedApp]:
+    """Connected apps worth showing: live ones, and those an admin disconnected (so an admin can allow them again)."""
+    return list(qs.filter(Q(revoked_at__isnull=True) | Q(admin_revoked_at__isnull=False)).order_by("-created_at"))
+
+
+def _connection_rows(connections: list[ConnectedApp], *, as_admin: bool) -> list[dict]:
+    usage = budgets.snapshots(connections)
+    return [_connection_context(c, usage=usage.get(c.pk), as_admin=as_admin) for c in connections]
+
+
+def _connection_context(connection: ConnectedApp, *, usage: dict | None, as_admin: bool) -> dict:
+    """Adapt a ``ConnectedApp`` for the list: the same facts and limits a token row shows.
+
+    ``as_admin`` decides what Edit changes: an admin sets the ceiling, budgets and expiry; the person who connected
+    the app can only narrow their own choice.
+    """
+    if connection.admin_revoked_at is not None:
+        status = "blocked"
+    elif connection.expires_at is not None and connection.expires_at <= timezone.now():
+        status = "expired"
+    else:
+        status = "active"
+    held = connection.effective_capabilities
+    form_source = connection
+    if as_admin and connection.admin_capabilities is not None:
+        # An admin edits the ceiling, so the form starts from it.
+        form_source = ConnectedApp(
+            capabilities=connection.admin_capabilities,
+            requires_approval=connection.admin_requires_approval,
+            daily_request_budget=connection.daily_request_budget,
+            daily_ai_budget=connection.daily_ai_budget,
+            daily_post_budget=connection.daily_post_budget,
+        )
+    elif as_admin:
+        form_source = ConnectedApp(
+            capabilities=connection.capabilities,
+            requires_approval=connection.admin_requires_approval,
+            daily_request_budget=connection.daily_request_budget,
+            daily_ai_budget=connection.daily_ai_budget,
+            daily_post_budget=connection.daily_post_budget,
+        )
+    return {
+        "id": connection.id,
+        "name": connection.application.name or "OAuth app",
+        "user": connection.user,
+        "status": status,
+        "as_admin": as_admin,
+        "created_at": connection.created_at,
+        "last_used_at": connection.last_used_at,
+        "expires_at": connection.expires_at,
+        "limited": held is not None,
+        "capability_labels": [caps.label_for(k) for k in held or []],
+        "limited_by_admin": connection.admin_capabilities is not None,
+        "requires_approval": connection.effective_requires_approval,
+        "approval_forced": connection.admin_requires_approval,
+        "budgets": _budget_rows(usage),
+        "scope_form": _scope_form_context(form_source, oauth=True, member=not as_admin),
+    }
+
+
+_BUDGET_LABELS = (
+    ("requests", "Calls today"),
+    ("ai", "AI calls today"),
+    ("posts", "Posts scheduled today"),
+)
+
+#: Daily budgets: form field, label, and the shorter label the error message uses.
+_BUDGET_FIELDS = (
+    ("daily_request_budget", "Calls a day"),
+    ("daily_ai_budget", "AI calls a day"),
+    ("daily_post_budget", "Scheduled posts a day"),
+)
+_MAX_BUDGET = 1_000_000
+
+
+def _budget_rows(usage: dict | None) -> list[dict]:
+    """Today's spend per budget for the list, with the share used so the bar can warn as a token nears its limit."""
+    rows = []
+    for kind, label in _BUDGET_LABELS:
+        used, limit = (usage or {}).get(kind, (0, None))
+        if limit is None and kind != "requests":
+            continue
+        percent = 100 if limit == 0 else min(100, round(used * 100 / limit)) if limit else 0
+        rows.append(
+            {
+                "label": label,
+                "used": used,
+                "limit": limit,
+                "percent": percent,
+                "state": "over" if limit is not None and used >= limit else "near" if percent >= 80 else "ok",
+            }
+        )
+    return rows
+
+
+def _scope_form_context(api_key: ApiKey | ConnectedApp | None, *, oauth: bool = False, member: bool = False) -> dict:
+    """What the token form shows: presets, capabilities grouped and ticked, budgets, IP ranges, approval mode.
+
+    A new token starts from the Drafting assistant preset, which can only write drafts a person approves.
+    A key from before scoped tokens (no capability limit) shows everything ticked, and saving applies the form.
+    An OAuth connection (``oauth``) has no presets or IP ranges: the person chose its capabilities on the consent
+    screen, and a desktop client moves between networks.
+    """
+    if api_key is None:
+        start = caps.preset("drafting_assistant")
+        held = set(start.capabilities)
+        selected = start.key
+        values = {
+            "daily_request_budget": start.daily_requests,
+            "daily_ai_budget": start.daily_ai_calls,
+            "daily_post_budget": start.daily_posts,
+        }
+        requires_approval, ip_text, legacy = start.requires_approval, "", False
+    else:
+        held = set(caps.CAPABILITY_KEYS if api_key.capabilities is None else caps.clean(api_key.capabilities))
+        values = {name: getattr(api_key, name) for name, _ in _BUDGET_FIELDS}
+        requires_approval, ip_text = (
+            api_key.requires_approval,
+            "\n".join(getattr(api_key, "allowed_ip_ranges", None) or []),
+        )
+        legacy = api_key.capabilities is None and not oauth
+        selected = getattr(api_key, "preset", "")
+    groups: dict[str, list] = {}
+    for cap in caps.CAPABILITIES:
+        if member and cap.key not in held:
+            continue  # The person can only narrow; allowing more goes through the consent screen.
+        groups.setdefault(cap.group, []).append({"cap": cap, "checked": cap.key in held})
+    return {
+        "presets": [
+            {
+                "preset": p,
+                "selected": p.key == selected,
+                "capabilities": ",".join(p.capabilities),
+                "approval": "1" if p.requires_approval else "0",
+            }
+            for p in caps.PRESETS
+        ],
+        "custom_selected": not selected,
+        "groups": list(groups.items()),
+        "budget_fields": [(name, label, values.get(name)) for name, label in _BUDGET_FIELDS],
+        "requires_approval": requires_approval,
+        "ip_ranges_text": ip_text,
+        "legacy": legacy,
+        "oauth": oauth,
+        # The person who connected an app narrows only what it may do; budgets and expiry are the admins'.
+        "member": member,
+    }
+
+
+def _scope_from_post(post) -> tuple[dict, list[str]]:
+    """The tool-level scope posted by the token form, as ``(service kwargs, errors)``.
+
+    A post without the form's ``scoped`` marker is an older client posting only permissions, and gets no scope
+    arguments, so the key stays as it was. The preset is stored only when the capabilities still match it.
+    """
+    if not post.get("scoped"):
+        return {}, []
+    errors: list[str] = []
+    chosen = caps.clean(post.getlist("capabilities"))
+    if not chosen:
+        errors.append("Choose at least one capability.")
+    preset = caps.preset(post.get("preset", ""))
+    kwargs: dict = {
+        "capabilities": chosen,
+        "preset": preset.key if preset and set(preset.capabilities) == set(chosen) else "",
+        "requires_approval": post.get("requires_approval") == "on",
+    }
+    for name, label in _BUDGET_FIELDS:
+        raw = (post.get(name) or "").strip()
+        if not raw:
+            kwargs[name] = None
+        elif not raw.isdigit() or int(raw) > _MAX_BUDGET:
+            errors.append(f"{label} must be a whole number up to {_MAX_BUDGET:,}, or empty for no limit.")
+        else:
+            kwargs[name] = int(raw)
+    kwargs["allowed_ip_ranges"] = [part for part in re.split(r"[\s,]+", post.get("allowed_ip_ranges", "")) if part]
+    return kwargs, errors
+
+
+def _permissions_for_scope(posted: list[str], scope: dict, user, workspace) -> list[str]:
+    """Posted permissions plus what the chosen capabilities need, limited to what the issuer holds."""
+    if "capabilities" not in scope:
+        return posted
+    grantable = {k for k, _ in _grantable_permissions(user, workspace, include_hidden=True)}
+    return sorted(set(posted) | (set(caps.permissions_for(scope["capabilities"])) & grantable))
 
 
 def _initial_issuance_context(org, user) -> dict:
@@ -381,8 +595,9 @@ def issue_key(request):
     account_ids = request.POST.getlist("social_account_ids")
     permission_keys = request.POST.getlist("permissions")
     expires_at_str = (request.POST.get("expires_at") or "").strip()
+    scope, scope_errors = _scope_from_post(request.POST)
 
-    errors: list[str] = []
+    errors: list[str] = list(scope_errors)
     if not name:
         errors.append("Name is required.")
     if not workspace_id:
@@ -415,14 +630,17 @@ def issue_key(request):
             messages.error(request, e)
         return redirect("api_keys:list")
 
+    if "daily_request_budget" in scope:
+        scope["daily_request_budget"] = services.fit_request_budget(workspace, scope["daily_request_budget"])
     try:
         issued = services.issue_api_key(
             workspace=workspace,
             social_accounts=accounts,
             issued_by=request.user,
             name=name,
-            permissions=permission_keys,
+            permissions=_permissions_for_scope(permission_keys, scope, request.user, workspace),
             expires_at=expires_at,
+            **scope,
         )
     except ValueError as exc:
         messages.error(request, str(exc))
@@ -455,10 +673,9 @@ def revoke_key(request, key_id):
     """Soft-revoke a key.
 
     The actual delete is deferred to the background sweep (or a future
-    admin action) — we only set ``revoked_at`` so the verify_token path
-    rejects subsequent uses immediately. The cache is busted inside
-    ``services.revoke_api_key`` via the signal handler, so propagation
-    is immediate even across workers.
+    admin action) — we only set ``revoked_at``. ``verify_token`` reads the
+    row fresh on every request, so every worker rejects the key from its
+    very next call.
     """
     key = get_object_or_404(
         ApiKey.objects.select_related("workspace", "workspace__organization"),
@@ -506,8 +723,9 @@ def edit_key(request, key_id):
     account_ids = request.POST.getlist("social_account_ids")
     permission_keys = request.POST.getlist("permissions")
     expires_at, exp_err = _parse_expires_at((request.POST.get("expires_at") or "").strip())
+    scope, scope_errors = _scope_from_post(request.POST)
 
-    errors: list[str] = []
+    errors: list[str] = list(scope_errors)
     if not account_ids:
         errors.append("Select at least one connected account.")
     accounts, acct_err = _resolve_account_allowlist(account_ids, key.workspace)
@@ -521,17 +739,155 @@ def edit_key(request, key_id):
             messages.error(request, e)
         return redirect("api_keys:list")
 
+    if "daily_request_budget" in scope:
+        scope["daily_request_budget"] = services.fit_request_budget(key.workspace, scope["daily_request_budget"])
     try:
         services.update_api_key(
             key,
             editor=request.user,
-            permissions=permission_keys,
+            permissions=_permissions_for_scope(permission_keys, scope, request.user, key.workspace),
             social_accounts=accounts,
             expires_at=expires_at,
+            **scope,
         )
     except ValueError as exc:
         messages.error(request, str(exc))
         return redirect("api_keys:list")
 
     messages.success(request, f"Updated “{key.name}”.")
+    return redirect("api_keys:list")
+
+
+# ---------------------------------------------------------------------------
+# Rotate
+# ---------------------------------------------------------------------------
+
+
+@_require_manage_api_keys
+@require_http_methods(["POST"])
+def rotate_key(request, key_id):
+    """Give a key a new secret and show it once; the old secret stops working on the next request.
+
+    Scope, budgets and history stay with the key, so an agent only needs its new token pasted in.
+    """
+    key = get_object_or_404(
+        ApiKey.objects.select_related("workspace", "workspace__organization"),
+        id=key_id,
+    )
+    if key.workspace.organization_id != request.org.id:
+        raise Http404()
+    try:
+        issued = services.rotate_api_key(key, editor=request.user)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return redirect("api_keys:list")
+    request.session["reveal_token"] = issued.plaintext_token
+    request.session["reveal_key_name"] = key.name
+    return redirect("api_keys:list")
+
+
+# ---------------------------------------------------------------------------
+# OAuth connections
+# ---------------------------------------------------------------------------
+
+
+def _is_admin(request) -> bool:
+    return has_org_permission(getattr(request, "org_membership", None), "manage_api_keys")
+
+
+def _connection_or_404(request, connection_id) -> ConnectedApp:
+    """A connected app in the current organization that this person may manage: any of them for an admin, their
+    own for everyone else. Anything else, including another organization's, is a 404."""
+    org = getattr(request, "org", None)
+    if org is None:
+        raise Http404()
+    qs = _org_connections(org)
+    if not _is_admin(request):
+        qs = qs.filter(user=request.user)
+    return get_object_or_404(qs, id=connection_id)
+
+
+def _back(request):
+    return redirect("api_keys:list" if _is_admin(request) else "api_keys:my_connections")
+
+
+@login_required
+def my_connections(request):
+    """Every member's own connected apps in the current organization, to see, narrow and disconnect."""
+    org = getattr(request, "org", None)
+    if org is None:
+        raise Http404()
+    rows = _connection_rows(_listed_connections(_org_connections(org).filter(user=request.user)), as_admin=False)
+    return render(
+        request,
+        "api_keys/my_connections.html",
+        {"settings_active": "connected_apps", "connection_rows": rows},
+    )
+
+
+@login_required
+@require_http_methods(["POST"])
+def edit_connection(request, connection_id):
+    """An admin sets a connected app's ceiling, budgets, approval mode and expiry; its owner narrows their choice."""
+    connection = _connection_or_404(request, connection_id)
+    if connection.revoked_at is not None and connection.admin_revoked_at is None:
+        messages.info(request, "That app was disconnected; it can't be edited.")
+        return _back(request)
+    scope, errors = _scope_from_post(request.POST)
+    expires_at, exp_err = _parse_expires_at((request.POST.get("expires_at") or "").strip())
+    if exp_err:
+        errors.append(exp_err)
+    if not scope and not errors:
+        errors.append("Choose at least one capability.")
+    if errors:
+        for e in errors:
+            messages.error(request, e)
+        return _back(request)
+    try:
+        if _is_admin(request):
+            plan_cap = get_entitlements(request.org).max_api_calls_per_day
+            request_budget = scope["daily_request_budget"]
+            if plan_cap is not None and request_budget is not None:
+                request_budget = min(request_budget, plan_cap)
+            services.set_connected_app_limits(
+                connection,
+                capabilities=scope["capabilities"],
+                requires_approval=scope["requires_approval"],
+                expires_at=expires_at,
+                daily_request_budget=request_budget,
+                daily_ai_budget=scope["daily_ai_budget"],
+                daily_post_budget=scope["daily_post_budget"],
+            )
+        else:
+            services.narrow_connected_app(
+                connection, capabilities=scope["capabilities"], requires_approval=scope["requires_approval"]
+            )
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return _back(request)
+    messages.success(request, f"Updated “{connection.application.name}”.")
+    return _back(request)
+
+
+@login_required
+@require_http_methods(["POST"])
+def revoke_connection(request, connection_id):
+    """Disconnect an app: its tokens stop working now and it can't refresh them.
+
+    An admin's disconnect sticks (the person can't approve the app again until an admin allows it); the person's
+    own disconnect can be undone by approving the app again.
+    """
+    connection = _connection_or_404(request, connection_id)
+    services.revoke_connected_app(connection, by_admin=_is_admin(request))
+    messages.success(request, f"Disconnected “{connection.application.name}”.")
+    return _back(request)
+
+
+@_require_manage_api_keys
+@require_http_methods(["POST"])
+def reinstate_connection(request, connection_id):
+    """Lift an admin's disconnect so the person can approve the app again."""
+    connection = _connection_or_404(request, connection_id)
+    services.reinstate_connected_app(connection)
+    messages.success(request, f"“{connection.application.name}” can be connected again.")
     return redirect("api_keys:list")

@@ -20,8 +20,10 @@ from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
 from ninja import Router
 
-from apps.api.limits import enforce_http_rate_limits
+from apps.api.limits import enforce_http_rate_limits, token_budget_error
 from apps.api.middleware import log_audit_entry
+from apps.api_keys import budgets
+from apps.api_keys import capabilities as caps
 from apps.billing.entitlements import PlanLimitError
 from apps.mcp.protocol import (
     INVALID_PARAMS,
@@ -72,7 +74,9 @@ def _ping(params: dict, context: dict[str, Any]) -> dict:
 
 
 def _tools_list(params: dict, context: dict[str, Any]) -> dict:
-    return {"tools": [t.to_mcp_dict() for t in all_tools()]}
+    # A token limited to some capabilities is shown only the tools it can use.
+    held = caps.token_capabilities(context["api_key"])
+    return {"tools": [t.to_mcp_dict() for t in all_tools() if caps.allows_tool(held, t.name)]}
 
 
 def _tools_call(params: dict, context: dict[str, Any]) -> dict:
@@ -85,6 +89,7 @@ def _tools_call(params: dict, context: dict[str, Any]) -> dict:
     arguments = params.get("arguments") or {}
     if not isinstance(arguments, dict):
         raise JsonRpcError(INVALID_PARAMS, "tools/call: 'arguments' must be an object")
+    _authorize_tool(tool.name, context)
     # Validate against the tool's published ``inputSchema``. The schema
     # we advertise via ``tools/list`` is the contract clients see —
     # without this check it was a polite suggestion only, and clients
@@ -101,6 +106,20 @@ def _tools_call(params: dict, context: dict[str, Any]) -> dict:
         # A plan limit is the caller's to resolve (upgrade, or free something
         # up), so it travels as a readable error rather than INTERNAL_ERROR.
         raise JsonRpcError(INVALID_PARAMS, f"{exc.message} Manage your plan: {exc.upgrade_url}") from exc
+
+
+def _authorize_tool(name: str, context: dict[str, Any]) -> None:
+    """Refuse a tool outside the token's capabilities, and spend the AI budget for an AI tool.
+
+    The refusal names the capability, like the REST 403, so the agent can tell its owner what to grant.
+    """
+    api_key = context["api_key"]
+    needed = caps.tool_capability(name)
+    if not caps.allows_tool(caps.token_capabilities(api_key), name):
+        raise JsonRpcError(INVALID_PARAMS, f"Missing capability: {needed or 'unmapped tool'}")
+    if caps.tool_uses_ai(name) and not budgets.reserve_ai_call(api_key):
+        error = token_budget_error("token_daily_ai", api_key.daily_ai_budget or 0)
+        raise JsonRpcError(INVALID_PARAMS, f"Daily AI budget for this token is used up. {error.message}")
 
 
 class _ToolValidationError(ValueError):

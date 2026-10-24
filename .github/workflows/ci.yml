@@ -135,7 +135,7 @@ jobs:
         with:
           node-version: "22"
       - name: Test inline template actions
-        run: node --test tests/frontend/template-actions.test.cjs tests/frontend/composer-inserts.test.cjs tests/frontend/inbox-keyboard.test.cjs
+        run: node --test tests/frontend/template-actions.test.cjs tests/frontend/composer-inserts.test.cjs tests/frontend/inbox-keyboard.test.cjs tests/frontend/token-scope.test.cjs
 
   build:
     name: Docker build

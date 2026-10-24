@@ -1,51 +1,45 @@
 {% extends "layouts/settings.html" %}
+{% load static %}
 {% block title %}API Keys - Settings - {{ brand_short_name }}{% endblock %}
 {% block content %}
 <div x-data="{ showIssueModal: false, showRevealModal: {% if reveal_token %}true{% else %}false{% endif %} }">
-    <div class="flex items-start justify-between mb-8 gap-6">
+    <div class="flex flex-wrap items-start justify-between mb-8 gap-4">
         <div>
-            <h2 class="text-xl font-semibold" style="color: var(--text-primary);">API Keys</h2>
-            <p class="text-sm mt-1 max-w-xl" style="color: var(--text-tertiary);">
-                Used by AI agents and external scripts to act in your workspaces.
-                Each key can be scoped to one workspace and an explicit list of social accounts.
+            <h2 class="text-xl font-semibold text-[var(--text-primary)]">API Keys</h2>
+            <p class="text-sm mt-1 max-w-xl text-[var(--text-tertiary)]">
+                Agent tokens give an outside AI agent exactly the access you intend: which tools it can use, which accounts it can touch,
+                how much it can do in a day, and whether a person must approve its work.
             </p>
         </div>
-        <button type="button"
-                @click="showIssueModal = true"
-                class="inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-semibold text-orange-600 bg-orange-50 border border-orange-200 rounded-full hover:bg-orange-100 hover:border-orange-300 active:bg-orange-100 transition-all duration-150 cursor-pointer whitespace-nowrap">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
-            Issue new key
+        <button type="button" @click="showIssueModal = true" class="btn-brand text-sm py-2 px-4 inline-flex items-center gap-1.5 whitespace-nowrap">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+            Issue new token
         </button>
     </div>
 
-    <section class="mb-8 p-5 rounded-xl" style="background: var(--surface-1); border: 1px solid var(--border);" aria-labelledby="agent-connect-heading">
-        <h3 id="agent-connect-heading" class="text-base font-semibold mb-2">Connect your AI agent</h3>
-        <p class="text-sm mb-4" style="color: var(--text-secondary);">Use an MCP client or the REST API. Your agent acts within its workspace permissions.</p>
+    <section class="mb-8 p-5 rounded-xl border border-stone-200 bg-[var(--surface-1)]" aria-labelledby="agent-connect-heading">
+        <h3 id="agent-connect-heading" class="text-base font-semibold mb-2 text-[var(--text-primary)]">Connect your AI agent</h3>
+        <p class="text-sm mb-4 text-[var(--text-secondary)]">Use an MCP client or the REST API. Your agent acts within its workspace permissions and the capabilities you choose.</p>
         <label for="agent-mcp-url" class="block text-sm font-semibold mb-2">MCP server URL</label>
-        <input id="agent-mcp-url" readonly value="{{ agent_mcp_url }}" class="w-full rounded-lg p-3 text-sm" style="background: var(--surface-page); color: var(--text-primary); border: 1px solid var(--border);" aria-describedby="agent-mcp-help">
-        <p id="agent-mcp-help" class="text-xs mt-2 mb-4" style="color: var(--text-tertiary);">Copy this URL into your client's remote MCP connector. A hosted AI client needs a reachable HTTPS deployment; localhost works only with local clients.</p>
-        <ol class="list-decimal pl-5 space-y-2 text-sm" style="color: var(--text-secondary);">
-            <li>For OAuth-capable clients, sign in and approve access. OAuth uses your own workspace permissions.</li>
-            <li>For API-key clients, issue a key here and add it as a Bearer token in the client's secure settings. Start with draft-only access by leaving <code>publish_directly</code> disabled.</li>
+        <input id="agent-mcp-url" readonly value="{{ agent_mcp_url }}" class="form-input text-sm w-full" aria-describedby="agent-mcp-help">
+        <p id="agent-mcp-help" class="text-xs mt-2 mb-4 text-[var(--text-tertiary)]">Copy this URL into your client's remote MCP connector. A hosted AI client needs a reachable HTTPS deployment; localhost works only with local clients.</p>
+        <ol class="list-decimal pl-5 space-y-2 text-sm text-[var(--text-secondary)]">
+            <li>For OAuth-capable clients, sign in and approve access. The consent screen lists what the app asks for in plain language, and you can untick anything before approving.</li>
+            <li>For token-based clients, issue a token here and add it as a Bearer token in the client's secure settings. The <strong>Drafting assistant</strong> preset is the safe place to start.</li>
             <li>Ask the agent to list available accounts, then create a draft. Review it in the workspace before granting scheduling access.</li>
         </ol>
-        <p class="text-sm mt-4"><a href="{{ agent_api_docs_url }}" class="underline" style="color: var(--brand-700);">REST API reference</a></p>
+        <p class="text-sm mt-4"><a href="{{ agent_api_docs_url }}" class="underline text-[var(--brand-700)]">REST API reference</a></p>
         <details class="mt-4 text-sm">
-            <summary class="cursor-pointer" style="color: var(--brand-700);">Try this first prompt</summary>
-            <p class="mt-3 p-3 rounded-lg" style="background: var(--surface-page); color: var(--text-secondary);">List the accounts I can access and their publishing capabilities. Ask me which account to use, then create a draft from my brief. Do not schedule or publish it.</p>
+            <summary class="cursor-pointer text-[var(--brand-700)]">Try this first prompt</summary>
+            <p class="mt-3 p-3 rounded-lg bg-[var(--surface-page)] text-[var(--text-secondary)]">List the accounts I can access and their publishing capabilities. Ask me which account to use, then create a draft from my brief. Do not schedule or publish it.</p>
         </details>
     </section>
 
-    {# Flash messages — success / error from the issue + revoke flows. #}
+    {# Flash messages — success / error from the issue, edit, rotate and revoke flows. #}
     {% if messages %}
-    <div class="mb-6 space-y-2">
+    <div class="mb-6 space-y-2" role="status">
         {% for message in messages %}
-        <div class="rounded-lg px-4 py-3 text-sm"
-             style="background: var({% if message.tags == 'error' %}--error-soft, #FEE2E2{% else %}--surface-1, #F3F4F6{% endif %});
-                    color: var(--text-primary);
-                    border: 1px solid var({% if message.tags == 'error' %}--error-500, #EF4444{% else %}--border{% endif %});">
-            {{ message }}
-        </div>
+        <p class="text-sm rounded-lg border px-4 py-3 {% if message.tags == 'error' %}border-red-200 bg-red-50 text-red-800{% else %}border-stone-200 bg-[var(--surface-1)] text-[var(--text-primary)]{% endif %}">{{ message }}</p>
         {% endfor %}
     </div>
     {% endif %}
@@ -53,47 +47,61 @@
     {% if revoked_count %}
     <div class="flex justify-end mb-3 text-xs">
         {% if show_all %}
-        <a href="{% url 'api_keys:list' %}" style="color: var(--text-tertiary);">Hide revoked keys</a>
+        <a href="{% url 'api_keys:list' %}" class="text-[var(--text-tertiary)]">Hide revoked tokens</a>
         {% else %}
-        <a href="?show=all" style="color: var(--text-tertiary);">Show {{ revoked_count }} revoked</a>
+        <a href="?show=all" class="text-[var(--text-tertiary)]">Show {{ revoked_count }} revoked</a>
         {% endif %}
     </div>
     {% endif %}
 
     {% if rows %}
-    <div style="background: var(--surface-0); border: 1px solid var(--border); border-radius: var(--radius-xl);">
+    <div class="rounded-xl border border-stone-200 bg-[var(--surface-0)] px-5 sm:px-6 divide-y divide-stone-200">
         {% for row in rows %}
-        <div class="px-6 py-4{% if not forloop.last %} border-b" style="border-bottom: 1px solid var(--border);"{% else %}"{% endif %}>
-            {% include "api_keys/_key_row.html" with row=row %}
-        </div>
+        {% include "api_keys/_key_row.html" with row=row %}
         {% endfor %}
     </div>
     {% else %}
-    <div class="px-6 py-12 text-center rounded-xl" style="background: var(--surface-0); border: 1px solid var(--border);">
+    <div class="px-6 py-12 text-center rounded-xl border border-stone-200 bg-[var(--surface-0)]">
         {% if revoked_count and not show_all %}
-        <p class="text-sm" style="color: var(--text-tertiary);">No active API keys.</p>
-        <p class="text-xs mt-2" style="color: var(--text-tertiary);">
-            <a href="?show=all" style="color: var(--text-secondary); text-decoration: underline;">Show {{ revoked_count }} revoked</a>
-            or click <strong>Issue new key</strong> to mint a new one.
+        <p class="text-sm text-[var(--text-tertiary)]">No active tokens.</p>
+        <p class="text-xs mt-2 text-[var(--text-tertiary)]">
+            <a href="?show=all" class="underline text-[var(--text-secondary)]">Show {{ revoked_count }} revoked</a>
+            or click <strong>Issue new token</strong> to make one.
         </p>
         {% else %}
-        <p class="text-sm" style="color: var(--text-tertiary);">No API keys issued yet.</p>
-        <p class="text-xs mt-2" style="color: var(--text-tertiary);">
-            Click <strong>Issue new key</strong> to mint one for an agent.
-        </p>
+        <p class="text-sm text-[var(--text-tertiary)]">No API keys issued yet.</p>
+        <p class="text-xs mt-2 text-[var(--text-tertiary)]">Click <strong>Issue new token</strong> to make one for an agent.</p>
         {% endif %}
     </div>
     {% endif %}
+
+    <section class="mt-10" aria-labelledby="connected-apps-heading">
+        <h2 id="connected-apps-heading" class="text-base font-semibold text-[var(--text-primary)]">Connected apps</h2>
+        <p class="text-sm mt-1 mb-4 max-w-xl text-[var(--text-tertiary)]">
+            Apps your team connected by signing in (OAuth), such as Claude Desktop. Each acts as the person who approved it,
+            limited to what they ticked on the consent screen and the limits you set here.
+        </p>
+        {% if connection_rows %}
+        <div class="rounded-xl border border-stone-200 bg-[var(--surface-0)] px-5 sm:px-6 divide-y divide-stone-200">
+            {% for row in connection_rows %}
+            {% include "api_keys/_connection_row.html" with row=row %}
+            {% endfor %}
+        </div>
+        {% else %}
+        <p class="px-6 py-8 text-center text-sm rounded-xl border border-stone-200 bg-[var(--surface-0)] text-[var(--text-tertiary)]">No apps connected with OAuth.</p>
+        {% endif %}
+    </section>
 
     {# ---- Issuance modal ---------------------------------------------- #}
     {% include "api_keys/_issue_modal.html" %}
 
     {% comment %}
-    One-time token reveal modal (rendered server-side when a key
-    was just issued; ``showRevealModal`` is initialised above).
+    One-time token reveal modal (rendered server-side when a token was just
+    issued or rotated; ``showRevealModal`` is initialised above).
     {% endcomment %}
     {% if reveal_token %}
         {% include "api_keys/_token_reveal.html" with token=reveal_token key_name=reveal_key_name %}
     {% endif %}
 </div>
+<script src="{% static 'js/token-scope.js' %}"></script>
 {% endblock %}

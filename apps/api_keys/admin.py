@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from apps.api_keys.models import ApiKey, ApiKeyAuditLog, ApiKeyUsageHourly
+from apps.api_keys.models import ApiKey, ApiKeyAuditLog, ApiKeyDailyUsage, ApiKeyUsageHourly, ConnectedApp
 
 
 @admin.register(ApiKey)
@@ -36,3 +36,23 @@ class ApiKeyUsageHourlyAdmin(admin.ModelAdmin):
     search_fields = ("actor", "api_key__name", "api_key__lookup_prefix")
     date_hierarchy = "hour_start"
     readonly_fields = tuple(f.name for f in ApiKeyUsageHourly._meta.fields)
+
+
+@admin.register(ApiKeyDailyUsage)
+class ApiKeyDailyUsageAdmin(admin.ModelAdmin):
+    """What each token spent of its budgets, per UTC day."""
+
+    list_display = ("day", "actor", "requests", "ai_calls", "posts_scheduled")
+    search_fields = ("actor", "api_key__name", "api_key__lookup_prefix")
+    date_hierarchy = "day"
+    readonly_fields = tuple(f.name for f in ApiKeyDailyUsage._meta.fields)
+
+
+@admin.register(ConnectedApp)
+class ConnectedAppAdmin(admin.ModelAdmin):
+    """OAuth clients people connected, with the limits set on them. Revoke from the API keys page, which also
+    revokes the client's tokens."""
+
+    list_display = ("application", "user", "requires_approval", "expires_at", "revoked_at", "last_used_at")
+    search_fields = ("user__email", "application__name")
+    readonly_fields = ("user", "application", "created_at", "updated_at", "last_used_at")

@@ -35,3 +35,34 @@ class S256OnlyOAuth2Validator(OAuth2Validator):
                 request=request,
             )
         return super().is_pkce_required(client_id, request)
+
+    def validate_refresh_token(self, refresh_token, client, request, *args, **kwargs):
+        """Refuse a refresh token whose connected app was disconnected or has expired.
+
+        Disconnecting already revokes the app's refresh tokens; this is the second lock, and the one that makes an
+        expiry set on the API keys page stop the client from minting new access tokens.
+        """
+        if not super().validate_refresh_token(refresh_token, client, request, *args, **kwargs):
+            return False
+        from apps.api_keys import capabilities as caps
+        from apps.api_keys.models import ConnectedApp
+
+        mine = ConnectedApp.objects.filter(user=request.user, application=client)
+        original = self.get_original_scopes(refresh_token, request) or ""
+        org_id = caps.org_from_scope(original if isinstance(original, str) else " ".join(original))
+        if org_id is None:
+            # From before connected apps: fine until the person connects this client through the consent screen.
+            return not mine.exists()
+        connection = mine.filter(organization_id=org_id).first()
+        return connection is not None and connection.is_active
+
+    def validate_scopes(self, client_id, scopes, client, request, *args, **kwargs):
+        """Accept the ``org:`` scope the consent screen adds (and a refresh keeps).
+
+        A client can't use this to pick an organization: the consent screen drops any ``org:`` scope from the
+        request and adds the one for the person's own organization, and a refresh can only keep original scopes.
+        """
+        from apps.api_keys import capabilities as caps
+
+        scopes = [s for s in scopes if not s.startswith(caps.ORG_SCOPE_PREFIX)]
+        return super().validate_scopes(client_id, scopes, client, request, *args, **kwargs)

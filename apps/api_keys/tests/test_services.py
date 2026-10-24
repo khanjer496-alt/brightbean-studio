@@ -219,10 +219,8 @@ class TestVerifyToken:
         # (~2^32 work), the HMAC against the server-side pepper won't match.
         # Simulate that path by mutating the stored hash to a known wrong value
         # and confirming verify_token rejects.
-        from django.core.cache import cache as _cache
 
         ApiKey.objects.filter(pk=issued.api_key.pk).update(token_hash="0" * 64)
-        _cache.delete(services._active_cache_key(issued.api_key.lookup_prefix))
         assert services.verify_token(issued.plaintext_token) is None
 
     def test_revoked_token_returns_none(self, workspace, workspace_owner, social_account):
@@ -245,10 +243,7 @@ class TestVerifyToken:
             permissions=[],
             expires_at=timezone.now() - timedelta(seconds=1),
         )
-        # Bust cache so we see the fresh expiry state.
-        from django.core.cache import cache as _cache
 
-        _cache.delete(services._active_cache_key(issued.api_key.lookup_prefix))
         assert services.verify_token(issued.plaintext_token) is None
 
     def test_issuer_loses_workspace_membership_returns_none(self, workspace, workspace_owner, social_account):
@@ -256,7 +251,6 @@ class TestVerifyToken:
         "if they lose membership the key dies on next use"; verify_token
         must enforce that even on an unrevoked, unexpired key.
         """
-        from django.core.cache import cache as _cache
 
         issued = services.issue_api_key(
             workspace=workspace,
@@ -270,9 +264,6 @@ class TestVerifyToken:
 
         # Offboard the issuer by deleting their workspace membership.
         workspace_owner.delete()
-        # Bust the row cache so we don't ride the 30s TTL — the auth-time
-        # re-check would still catch it, but the test should be deterministic.
-        _cache.delete(services._active_cache_key(issued.api_key.lookup_prefix))
 
         assert services.verify_token(issued.plaintext_token) is None
 
@@ -280,7 +271,6 @@ class TestVerifyToken:
         """If the issuer is hard-deleted, ``issued_by`` is set to NULL by
         ``on_delete=SET_NULL``. verify_token must reject the now-orphaned key.
         """
-        from django.core.cache import cache as _cache
 
         issued = services.issue_api_key(
             workspace=workspace,
@@ -291,7 +281,6 @@ class TestVerifyToken:
         )
         # Delete the issuer user entirely — FK clears to NULL.
         workspace_owner.user.delete()
-        _cache.delete(services._active_cache_key(issued.api_key.lookup_prefix))
 
         issued.api_key.refresh_from_db()
         assert issued.api_key.issued_by_id is None
@@ -615,19 +604,15 @@ class TestUpdateApiKey:
                 expires_at=None,
             )
 
-    def test_update_busts_verify_token_cache(self, workspace, workspace_owner, social_account):
-        from django.core.cache import cache as _cache
-
+    def test_update_applies_on_next_verify(self, workspace, workspace_owner, social_account):
         issued = services.issue_api_key(
             workspace=workspace,
             social_accounts=[social_account],
             issued_by=workspace_owner.user,
-            name="cache-edit",
+            name="fresh-edit",
             permissions=["create_posts"],
         )
-        # Warm the row cache via the auth path.
-        assert services.verify_token(issued.plaintext_token) is not None
-        assert _cache.get(services._active_cache_key(issued.api_key.lookup_prefix)) is not None
+        assert services.verify_token(issued.plaintext_token).permissions == ["create_posts"]
 
         services.update_api_key(
             issued.api_key,
@@ -636,8 +621,7 @@ class TestUpdateApiKey:
             social_accounts=[social_account],
             expires_at=None,
         )
-        # post_save / m2m_changed signals must have busted the cached row.
-        assert _cache.get(services._active_cache_key(issued.api_key.lookup_prefix)) is None
+        assert services.verify_token(issued.plaintext_token).permissions == []
 
 
 # ---------------------------------------------------------------------------
@@ -679,42 +663,28 @@ class TestTouchLastUsed:
         # IP did not change because no UPDATE was issued.
         assert issued.api_key.last_used_ip == "1.1.1.1"
 
-    def test_debounce_holds_when_called_via_cached_verify_token(self, workspace, workspace_owner, social_account):
-        """Regression test for Codex P2 — the previous in-memory debounce
-        gated on ``api_key.last_used_at``, which is frozen at row-cache
-        write time. A second verify_token within the cache TTL would have
-        returned a row with stale ``last_used_at=None`` and re-issued the
-        UPDATE on every subsequent call. The cache-keyed debounce fixes it.
-        """
+    def test_debounce_holds_across_verify_calls(self, workspace, workspace_owner, social_account):
+        """The debounce is keyed in the cache, not on the row in hand, so a second request inside
+        the window does not write again however fresh its row is."""
         issued = services.issue_api_key(
             workspace=workspace,
             social_accounts=[social_account],
             issued_by=workspace_owner.user,
-            name="cached-debounce",
+            name="debounce-verify",
             permissions=[],
         )
 
-        # First request — cache miss path; verify + touch.
         key1 = services.verify_token(issued.plaintext_token)
         assert key1 is not None
         services.touch_last_used(key1, ip="1.1.1.1")
-
-        # Snapshot the DB state after the first touch.
-        ApiKey.objects.get(pk=issued.api_key.pk)  # warm autocommit
         snapshot = ApiKey.objects.values("last_used_at", "last_used_ip").get(pk=issued.api_key.pk)
         assert snapshot["last_used_at"] is not None
         assert snapshot["last_used_ip"] == "1.1.1.1"
 
-        # Second request — cache hit returns a pickled copy whose
-        # last_used_at is whatever was captured at cache-set time (None).
-        # The buggy implementation would issue another UPDATE here.
         key2 = services.verify_token(issued.plaintext_token)
         assert key2 is not None
-        # Reproduce the stale view to make the regression mechanism explicit.
-        assert key2.last_used_at is None  # frozen at cache-set time, by design
         services.touch_last_used(key2, ip="2.2.2.2")
 
         after = ApiKey.objects.values("last_used_at", "last_used_ip").get(pk=issued.api_key.pk)
-        # DB is untouched between the two calls — debounce held.
         assert after["last_used_at"] == snapshot["last_used_at"]
         assert after["last_used_ip"] == "1.1.1.1"

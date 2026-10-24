@@ -1,58 +1,44 @@
 {% comment %}
 One-time plaintext-token reveal modal.
 
-Rendered server-side immediately after issue. Initialised with
+Rendered server-side right after a token is issued or rotated. Initialised with
 ``showRevealModal = true`` in the outer Alpine scope (see ``list.html``).
-Closing the modal — or even reloading the page — will lose the token
-forever; we explicitly do NOT persist plaintext anywhere.
+Closing the modal — or even reloading the page — loses the token for good; we
+explicitly do NOT persist plaintext anywhere.
 {% endcomment %}
 <template x-teleport="body">
-    <div x-show="showRevealModal" x-transition.opacity
-         class="fixed inset-0 z-50 flex items-center justify-center"
-         style="background: rgba(0,0,0,0.55);">
+    <div x-show="showRevealModal" x-cloak x-transition.opacity
+         class="fixed inset-0 z-50 flex items-center justify-center bg-black/55"
+         role="dialog" aria-modal="true" aria-labelledby="reveal-title">
         <div x-show="showRevealModal" x-transition
-             class="w-full max-w-lg mx-4 rounded-xl p-6"
-             style="background: var(--surface-0); border: 1px solid var(--border); box-shadow: 0 10px 40px rgba(0,0,0,0.25);">
+             class="w-full max-w-lg mx-4 rounded-xl p-6 bg-[var(--surface-0)] border border-stone-200 shadow-2xl">
             <div class="flex items-start gap-3 mb-4">
-                <svg class="flex-shrink-0 mt-0.5" width="20" height="20" viewBox="0 0 24 24" fill="none"
-                     stroke="var(--warning-700, #B45309)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <svg class="flex-shrink-0 mt-0.5 text-amber-700" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M12 9v3.75m0-9.75A10 10 0 1 1 2 12 10 10 0 0 1 12 3zm0 13.5h.008v.008H12v-.008z"/>
                 </svg>
                 <div>
-                    <h3 class="text-base font-semibold" style="color: var(--text-primary);">
-                        Save this token now.
-                    </h3>
-                    <p class="text-xs mt-1" style="color: var(--text-secondary);">
-                        {{ brand_short_name }} does not store the plaintext token. Once you close this modal it cannot be retrieved.
+                    <h3 id="reveal-title" class="text-base font-semibold text-[var(--text-primary)]">Save this token now.</h3>
+                    <p class="text-xs mt-1 text-[var(--text-secondary)]">
+                        {{ brand_short_name }} does not store the plaintext token. Once you close this window it cannot be shown again.
                         Paste it into your agent or secret manager before continuing.
                     </p>
                 </div>
             </div>
 
-            <div class="text-xs mb-2" style="color: var(--text-tertiary);">
-                Key name: <strong style="color: var(--text-secondary);">{{ key_name }}</strong>
-            </div>
+            <p class="text-xs mb-2 text-[var(--text-tertiary)]">Token name: <strong class="text-[var(--text-secondary)]">{{ key_name }}</strong></p>
 
-            <div class="flex items-center gap-2 rounded-lg px-3 py-2 mb-4"
-                 style="background: var(--surface-1, #F3F4F6); border: 1px solid var(--border);">
-                <code id="reveal-token" class="text-xs break-all flex-1 font-mono"
-                      style="color: var(--text-primary);">{{ token }}</code>
+            <div class="flex items-center gap-2 rounded-lg px-3 py-2 mb-4 bg-stone-100 border border-stone-200">
+                <code id="reveal-token" class="text-xs break-all flex-1 font-mono text-[var(--text-primary)]">{{ token }}</code>
                 <button type="button"
                         x-data="{ label: 'Copy' }"
                         @click="navigator.clipboard.writeText(document.getElementById('reveal-token').innerText); label = 'Copied'; setTimeout(() => label = 'Copy', 1500)"
                         x-text="label"
-                        class="px-2.5 py-1 text-xs font-medium rounded cursor-pointer whitespace-nowrap"
-                        style="background: var(--neutral-900, #111827); color: white;">
-                    Copy
-                </button>
+                        class="px-3 py-1.5 text-xs font-medium rounded cursor-pointer whitespace-nowrap bg-stone-900 text-white">Copy</button>
             </div>
 
             <div class="flex justify-end">
                 <button type="button" @click="showRevealModal = false"
-                        class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer"
-                        style="background: var(--neutral-100); color: var(--text-primary);">
-                    I've saved it
-                </button>
+                        class="px-5 py-2 text-sm font-medium rounded-full cursor-pointer border border-stone-300 bg-white text-stone-700 hover:bg-stone-50">I've saved it</button>
             </div>
         </div>
     </div>

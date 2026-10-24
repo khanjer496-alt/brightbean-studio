@@ -1,6 +1,6 @@
 # What an agent can do: web app vs REST vs MCP
 
-Every row is a capability of the PostDelegate web app. **Before** is what REST and MCP exposed before the coverage work; **Now** is today. REST paths are under `/api/v1`. Scope is the key's permission set plus its account allowlist; reads and writes tied to an account honour the allowlist, and ids from another workspace answer `404`.
+Every row is a capability of the PostDelegate web app. **Before** is what REST and MCP exposed before the coverage work; **Now** is today. REST paths are under `/api/v1`. Scope is the key's permission set plus its account allowlist (and, optionally, its capabilities: see below); reads and writes tied to an account honour the allowlist, and ids from another workspace answer `404`.
 
 | Capability | Before (REST / MCP) | Now (REST / MCP) | Permission |
 |---|---|---|---|
@@ -39,6 +39,24 @@ Every row is a capability of the PostDelegate web app. **Before** is what REST a
 | Link-in-bio pages: list, read, edit, links, stats | none | `GET /bio/pages`, `GET`/`PATCH /bio/pages/{id}`, `POST /bio/pages/{id}/links`, `PATCH`/`DELETE /bio/pages/{id}/links/{link}`, `GET /bio/pages/{id}/stats` / `list_bio_pages`, `get_bio_page`, `update_bio_page`, `add_bio_link`, `update_bio_link`, `delete_bio_link`, `get_bio_stats`; only http(s) link addresses; icons and the posts grid can only name allowlisted accounts | read: `view_analytics`; edit: `manage_social_accounts` |
 | AI writing assistant | yes / yes | unchanged | `create_posts` |
 | Webhooks | yes / yes | unchanged | `manage_workspace_settings` or `manage_social_accounts` |
+
+## Scoping a token to some of this
+
+Every route and tool above belongs to exactly one **capability**, and a token can be limited to a chosen set of them on top of its permissions. Capabilities, presets, budgets and the Claude Desktop / Claude Code setup are in [scoped-tokens.md](scoped-tokens.md). A `403` that reads `Missing capability: <name>` means the token was not given that group; it is fixed by editing the token, not by retrying.
+
+| Capability | Covers |
+|---|---|
+| Read posts & calendar (`read_calendar`) | Reads of posts, queues, slots, best times, evergreen, ideas, templates, tags, categories, events, hashtag sets, signatures, members, usage, accounts |
+| Draft posts (`draft_posts`) | Create and update posts (drafts), duplicate, ideas, idea groups, templates, tags, categories, events |
+| Schedule & publish (`schedule_posts`) | `schedule`, `cancel`, delete, resume thread, queue entries, slots, apply best times, evergreen writes; `POST /posts` with `action=schedule` |
+| Media upload (`upload_media`) | Media library reads and uploads |
+| AI writing assistant (`use_ai_assistant`) | `POST /ai/caption`, `POST /ai/adapt`, `generate_caption`, `adapt_caption` |
+| Inbox read (`read_inbox`) | List and read inbox messages |
+| Inbox reply (`reply_inbox`) | Create, edit, discard and send replies |
+| Analytics read (`read_analytics`) | Analytics, reports, competitors (read), AI visibility, link-in-bio stats |
+| Approvals (`manage_approvals`) | List, approve, reject, request changes, comments |
+| Settings read (`read_settings`) | Brand voice, brand kit, autonomy policy and actions, webhooks (read), link-in-bio pages (read) |
+| Settings write (`write_settings`) | Change brand voice, brand kit, autonomy policy, webhooks, link-in-bio pages, tracked competitors |
 
 ## Still web-only
 

@@ -11,6 +11,8 @@ Defense-in-depth checks on every request:
 
 * HMAC compare on the secret part (constant-time)
 * Key not revoked, not expired
+* Client IP inside the key's allowed ranges, when it has any
+* The route is inside the key's capabilities (tool-level scope); a miss is a 403 naming the capability
 * Issuer still has a ``WorkspaceMembership`` in the key's workspace
 * Per-request permission intersection of (key.permissions) ∩
   (issuer's current effective workspace permissions) — silently shrinks
@@ -32,11 +34,13 @@ from typing import Any
 from django.conf import settings
 from django.contrib.auth.models import AnonymousUser
 from django.http import HttpRequest
+from ninja.errors import HttpError
 from ninja.security import HttpBearer
 
 from apps.api.limits import is_failed_auth_ip_blocked, record_failed_auth
-from apps.api_keys.models import ApiKey
-from apps.api_keys.services import touch_last_used, verify_token
+from apps.api_keys import capabilities as caps
+from apps.api_keys.models import ApiKey, ConnectedApp
+from apps.api_keys.services import touch_connection_used, touch_last_used, verify_token
 
 LOG = logging.getLogger(__name__)
 
@@ -71,18 +75,23 @@ def _resolve_effective_permissions(api_key: ApiKey) -> dict[str, bool]:
     granted = set(api_key.permissions or [])
     if not granted or api_key.issued_by_id is None:
         return {k: False for k in granted}
-    try:
-        membership = WorkspaceMembership.objects.select_related("custom_role").get(
-            user_id=api_key.issued_by_id, workspace_id=api_key.workspace_id
+    # ``verify_token`` already read the issuer's membership; reuse it rather than query again.
+    membership = getattr(api_key, "issuer_membership", None)
+    if membership is None:
+        membership = (
+            WorkspaceMembership.objects.select_related("custom_role")
+            .filter(user_id=api_key.issued_by_id, workspace_id=api_key.workspace_id)
+            .first()
         )
-    except WorkspaceMembership.DoesNotExist:
+    if membership is None:
         # verify_token already rejects this path, but defend in depth.
         return {k: False for k in granted}
     issuer_perms = {k for k, v in membership.effective_permissions.items() if v}
     effective = granted & issuer_perms
     # Return a complete dict so ``perms.get(key, False)`` works for every
     # originally granted key even when the intersection is empty.
-    return {k: (k in effective) for k in granted}
+    # The token's capabilities then withdraw the permissions only capabilities it lacks would use.
+    return caps.narrow_permissions({k: (k in effective) for k in granted}, caps.token_capabilities(api_key))
 
 
 class ApiKeyAuth(HttpBearer):
@@ -170,12 +179,57 @@ class ApiKeyAuth(HttpBearer):
         # AnonymousUser), but mypy can't narrow that across the ternary.
         request.user = user  # type: ignore[assignment]
 
+        # Scope checks come after the request is tagged with the key, so a refusal is audited against it.
+        ip = _client_ip(request)
+        _enforce_ip_ranges(api_key, ip)
+        _enforce_route_capability(request, api_key)
+
         # Best-effort, debounced, single raw UPDATE; safe to run after
         # the response is built but doing it inline keeps the auth path
         # synchronous and easy to reason about.
-        touch_last_used(api_key, ip=_client_ip(request))
+        touch_last_used(api_key, ip=ip)
 
         return api_key
+
+
+def _enforce_ip_ranges(api_key: ApiKey, ip: str | None) -> None:
+    """403 unless the caller's address is in the key's allowed ranges (no ranges = any address).
+
+    ``ip`` comes from the trusted-proxy-aware helper, so a client cannot talk its way in with
+    a forged ``X-Forwarded-For``.
+    """
+    ranges = api_key.allowed_ip_ranges or []
+    if not ranges:
+        return
+    import ipaddress
+
+    try:
+        address = ipaddress.ip_address(ip or "")
+    except ValueError:
+        address = None
+    if address is None or not any(address in ipaddress.ip_network(r, strict=False) for r in ranges):
+        raise HttpError(403, "This token cannot be used from your IP address.")
+
+
+def require_capability(request: HttpRequest, key: str) -> None:
+    """403 naming ``key`` unless the calling token holds it. For checks that depend on the request body."""
+    held = caps.token_capabilities(getattr(request, "api_key", None))
+    if not caps.allows(held, key):
+        raise HttpError(403, f"Missing capability: {key}")
+
+
+def _enforce_route_capability(request: HttpRequest, api_key: Any) -> None:
+    """403 unless the REST route being called is inside the token's capabilities.
+
+    The MCP endpoint is exempt here: it is judged per tool (``tools/list`` and ``tools/call``).
+    A route nobody mapped is refused for a limited token, so a new route is closed until the registry names it.
+    """
+    held = caps.token_capabilities(api_key)
+    if held is None or caps.is_mcp_route(request.method or "", request.path):
+        return
+    needed = caps.capability_for_request(request.method or "", request.path)
+    if needed is None or needed not in held:
+        raise HttpError(403, f"Missing capability: {needed or 'unmapped route'}")
 
 
 def _client_ip(request: HttpRequest) -> str | None:
@@ -240,8 +294,12 @@ class OAuthMcpActor:
     rate_override_reads = None
     rate_override_hourly = None
     rate_override_daily = None
+    # No IP ranges: an OAuth client is a desktop app that moves between networks.
+    allowed_ip_ranges: list[str] = []
 
-    def __init__(self, *, user: Any, membership: Any) -> None:
+    def __init__(
+        self, *, user: Any, membership: Any, capabilities: list[str] | None = None, connection: Any = None
+    ) -> None:
         self.issued_by = user
         self.issued_by_id = user.id
         self.workspace = membership.workspace
@@ -252,10 +310,19 @@ class OAuthMcpActor:
         self.social_accounts = _AllWorkspaceAccounts(membership.workspace_id)
         # Read by ``McpAuth`` to build the request's ``VirtualMembership`` — the
         # single source of truth for this caller's permissions.
-        self.effective_permissions = membership.effective_permissions
+        self.effective_permissions = caps.narrow_permissions(membership.effective_permissions, capabilities)
+        # What the person narrowed the connection to on the consent screen; None for a grant made before that existed.
+        self.capabilities = capabilities
+        # The limits the person set on this client (``ConnectedApp``): budgets and approval mode. None for a
+        # grant made before connections existed, which carries no budgets.
+        self.connection = connection
+        self.daily_request_budget = getattr(connection, "daily_request_budget", None)
+        self.daily_ai_budget = getattr(connection, "daily_ai_budget", None)
+        self.daily_post_budget = getattr(connection, "daily_post_budget", None)
+        self.requires_approval = bool(getattr(connection, "effective_requires_approval", False))
 
 
-def _resolve_active_membership(user: Any):
+def _resolve_active_membership(user: Any, organization_id: Any = None):
     """Pick the workspace an OAuth caller operates in.
 
     Mirrors the dashboard's "current workspace" notion (see
@@ -271,6 +338,9 @@ def _resolve_active_membership(user: Any):
     base = WorkspaceMembership.objects.select_related("workspace", "custom_role").filter(
         user=user, workspace__is_archived=False, workspace__sample_marker__isnull=True
     )
+    if organization_id is not None:
+        # A grant tied to one organization only ever acts in that organization's workspaces.
+        base = base.filter(workspace__organization_id=organization_id)
     if getattr(user, "last_workspace_id", None):
         current = base.filter(workspace_id=user.last_workspace_id).first()
         if current is not None:
@@ -319,7 +389,23 @@ def _resolve_oauth_actor(token: str) -> OAuthMcpActor | None:
             tok.scope,
         )
         return None
-    membership = _resolve_active_membership(tok.user)
+    # A grant made on the consent screen is tied to one organization by its ``org:`` scope and answers to that
+    # organization's ``ConnectedApp``. A token without the scope is from before connected apps; once the person has
+    # a connected app for this client, such a token (say, refreshed with fewer scopes) is refused.
+    org_id = caps.org_from_scope(tok.scope)
+    connection = None
+    if org_id is not None:
+        connection = ConnectedApp.objects.filter(
+            user_id=tok.user_id, application_id=tok.application_id, organization_id=org_id
+        ).first()
+        if connection is None or not connection.is_active:
+            # INFO: the person or an admin disconnected this app, or its expiry has passed.
+            LOG.info("Bearer auth rejected: the connected app for user %s is disconnected or expired.", tok.user_id)
+            return None
+    elif ConnectedApp.objects.filter(user_id=tok.user_id, application_id=tok.application_id).exists():
+        LOG.info("Bearer auth rejected: OAuth token for user %s lost its organization scope.", tok.user_id)
+        return None
+    membership = _resolve_active_membership(tok.user, organization_id=org_id)
     if membership is None:
         # WARNING: a valid, scoped, unexpired token whose user maps to no
         # workspace is the genuinely anomalous case operators want to see.
@@ -328,7 +414,12 @@ def _resolve_oauth_actor(token: str) -> OAuthMcpActor | None:
             tok.user_id,
         )
         return None
-    return OAuthMcpActor(user=tok.user, membership=membership)
+    # The token's ``cap:`` scopes intersected with the connection's: a refresh that asks for fewer scopes
+    # (dropping every ``cap:`` one) can't turn a narrowed grant into an unlimited one.
+    capabilities = caps.intersect(caps.from_scope(tok.scope), connection.effective_capabilities if connection else None)
+    if connection is not None:
+        touch_connection_used(connection)
+    return OAuthMcpActor(user=tok.user, membership=membership, capabilities=capabilities, connection=connection)
 
 
 class McpAuth(ApiKeyAuth):

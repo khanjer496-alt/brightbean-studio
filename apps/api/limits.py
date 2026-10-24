@@ -38,6 +38,8 @@ from django_ratelimit.core import is_ratelimited
 from ninja.errors import HttpError
 
 from apps.api.usage import actor_for, day_start, hour_start, org_usage_in_day, usage_in_windows
+from apps.api_keys import budgets
+from apps.api_keys import capabilities as caps
 from apps.api_keys.models import ApiKey
 from apps.billing.entitlements import get_entitlements
 from apps.composer.models import PlatformPost
@@ -296,6 +298,7 @@ def enforce_http_rate_limits(request: HttpRequest, *, is_write: bool) -> None:
         )
     enforce_usage_caps(request)
     enforce_plan_daily_cap(request)
+    enforce_token_budgets(request)
     # Global instance cap — optional, env-driven.
     global_cap = getattr(settings, "BB_API_LIMIT", None)
     if global_cap and is_ratelimited(
@@ -365,6 +368,41 @@ def enforce_usage_caps(request: HttpRequest) -> None:
                 retry_after=max(int((next_hour - now).total_seconds()), 1),
             ),
         )
+
+
+def _seconds_to_next_day(now: dt.datetime) -> int:
+    return max(int(((day_start(now) + dt.timedelta(days=1)) - now).total_seconds()), 1)
+
+
+def token_budget_error(tier: str, limit: int) -> HttpError:
+    """The 429 for a spent per-token budget; ``retry_after`` is the time until the UTC day rolls over."""
+    return HttpError(
+        429,
+        _format_quota_message(tier=tier, limit=limit, remaining=0, retry_after=_seconds_to_next_day(timezone.now())),
+    )
+
+
+def enforce_token_budgets(request: HttpRequest) -> None:
+    """Raise 429 once a token has spent its own daily request or AI budget.
+
+    The owner sets these on the token, so they are not switched off with ``RATELIMIT_ENABLE``. They only
+    narrow the caps above: the token is held to the lower of the two. MCP tools that call the AI assistant
+    spend their AI budget in ``apps.mcp.transport``, where the tool is known.
+    """
+    api_key = request.auth  # type: ignore[attr-defined]
+    if api_key is None:
+        return
+    request_budget = getattr(api_key, "daily_request_budget", None)
+    if request_budget is not None:
+        if isinstance(api_key, ApiKey):
+            _, used_day = usage_in_windows(actor_for(api_key), timezone.now())
+            spent = used_day >= request_budget
+        else:
+            spent = not budgets.reserve_request(api_key)
+        if spent:
+            raise token_budget_error("token_daily_requests", request_budget)
+    if caps.route_uses_ai(request.method or "", request.path) and not budgets.reserve_ai_call(api_key):
+        raise token_budget_error("token_daily_ai", api_key.daily_ai_budget or 0)
 
 
 def enforce_plan_daily_cap(request: HttpRequest) -> None:

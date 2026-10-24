@@ -19,6 +19,11 @@ urlpatterns = [
     path("issue/", views.issue_key, name="issue"),
     path("<uuid:key_id>/revoke/", views.revoke_key, name="revoke"),
     path("<uuid:key_id>/edit/", views.edit_key, name="edit"),
+    path("<uuid:key_id>/rotate/", views.rotate_key, name="rotate"),
+    path("connections/<uuid:connection_id>/edit/", views.edit_connection, name="edit_connection"),
+    path("connections/<uuid:connection_id>/revoke/", views.revoke_connection, name="revoke_connection"),
+    path("connections/<uuid:connection_id>/reinstate/", views.reinstate_connection, name="reinstate_connection"),
+    path("connected-apps/", views.my_connections, name="my_connections"),
     # HTMX partial — cascades the workspace dropdown into a list of
     # connected SocialAccounts + the permission catalog grantable to
     # the issuer in that workspace.

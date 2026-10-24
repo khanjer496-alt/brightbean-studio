@@ -13,6 +13,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 
+from apps.api_keys.models import ApiKey
 from apps.approvals.views import _word_diff
 from apps.calendar.views import _get_workspace
 from apps.members.decorators import require_permission
@@ -91,8 +92,13 @@ def _filtered(request, workspace):
         "account": request.GET.get("account", ""),
         "date_from": request.GET.get("date_from", ""),
         "date_to": request.GET.get("date_to", ""),
+        "key": request.GET.get("key", ""),
     }
     qs = AgentAction.objects.filter(workspace=workspace).select_related("social_account")
+    # One agent token's trail, linked from the API keys page.
+    key_id = _uuid_or_none(chosen["key"])
+    if key_id:
+        qs = qs.filter(api_key_id=key_id)
     if chosen["actor"] in ActorType.values:
         qs = qs.filter(actor_type=chosen["actor"])
     if chosen["decision"] in Decision.values:
@@ -141,6 +147,7 @@ def activity(request, workspace_id):
             "decisions": Decision.choices,
             "action_types": ActionType.choices,
             "policy": get_policy(workspace),
+            "key_filter": ApiKey.objects.filter(id=_uuid_or_none(chosen["key"]), workspace=workspace).first(),
             **_tray_context(workspace, request),
         },
     )

@@ -10,7 +10,18 @@
     </div>
 
     <div class="bb-card">
-        {% if not error %}
+        {% if not error and blocked_by_admin %}
+            <h1>{% blocktrans with name=application.name|default:"This app" %}{{ name }} was disconnected by an admin{% endblocktrans %}</h1>
+            <p>{% blocktrans with name=application.name|default:"this app" org=organization.name %}An admin of {{ org }} disconnected {{ name }}, so it can't connect again from here. Ask an owner or admin to allow it again under Settings, API keys, then try again.{% endblocktrans %}</p>
+            <form method="post">
+                {% csrf_token %}
+                {% for field in form %}{% if field.is_hidden %}{{ field }}{% endif %}{% endfor %}
+                <div class="bb-actions">
+                    {# No name="allow": this can only decline, which sends the app back with access_denied. #}
+                    <input type="submit" class="bb-btn bb-btn-ghost" value="{% trans 'Back to the app' %}"/>
+                </div>
+            </form>
+        {% elif not error %}
             <h1>{% blocktrans with name=application.name|default:"This application" %}Authorize {{ name }}?{% endblocktrans %}</h1>
             <p>{% blocktrans with name=application.name|default:"This application" product=brand_name %}{{ name }} wants to connect to your {{ product }} workspace with the following permissions:{% endblocktrans %}</p>
 
@@ -25,11 +36,33 @@
                     {% if field.is_hidden %}{{ field }}{% endif %}
                 {% endfor %}
 
-                <ul class="bb-scopes">
-                    {% for scope in scopes_descriptions %}
-                        <li>{{ scope }}</li>
+                <fieldset class="bb-caps">
+                    <legend class="bb-caps-legend">{% trans "Choose what it may do" %}</legend>
+                    <p class="bb-caps-help">{% trans "Untick anything you do not want to allow. The app can only use what stays ticked, and only inside your own workspace permissions." %}</p>
+                    {% if organization %}<p class="bb-caps-help">{% blocktrans with org=organization.name %}It will act only in {{ org }}.{% endblocktrans %}{% if limited_by_admin %} {% trans "An admin limited what this app may do, so only those items are listed." %}{% endif %}</p>{% endif %}
+                    {% for choice in capability_choices %}
+                    <label class="bb-cap{% if choice.cap.risk == 'high' %} bb-cap-high{% endif %}" for="cap-{{ choice.cap.key }}">
+                        <input type="checkbox" class="bb-cap-box" id="cap-{{ choice.cap.key }}" name="capability" value="{{ choice.cap.key }}"{% if choice.checked %} checked{% endif %}{% if choice.cap.risk == "high" %} aria-describedby="cap-{{ choice.cap.key }}-risk"{% endif %}>
+                        <span class="bb-cap-text">
+                            <span class="bb-cap-name">{{ choice.cap.label }}{% if choice.cap.risk == "high" %} <span class="bb-cap-risk" id="cap-{{ choice.cap.key }}-risk">{% trans "High risk" %}</span>{% endif %}</span>
+                            <span class="bb-cap-desc">{{ choice.cap.summary }}</span>
+                        </span>
+                    </label>
                     {% endfor %}
-                </ul>
+                    {% if capability_choices|length > 1 %}<p class="bb-caps-note">{% trans "High-risk items can publish, send or change settings, so they start unticked." %}</p>{% endif %}
+                </fieldset>
+
+                <fieldset class="bb-caps">
+                    <legend class="bb-caps-legend">{% trans "Safety" %}</legend>
+                    <label class="bb-cap" for="requires-approval">
+                        <input type="checkbox" class="bb-cap-box" id="requires-approval" name="requires_approval" value="1"{% if requires_approval %} checked{% endif %}{% if approval_forced %} disabled aria-describedby="requires-approval-forced"{% endif %}>
+                        <span class="bb-cap-text">
+                            <span class="bb-cap-name">{% trans "Keep everything as drafts until a person approves" %}</span>
+                            <span class="bb-cap-desc">{% trans "Whatever your autonomy settings allow, nothing this app makes is scheduled or sent until someone approves it in Activity." %}</span>
+                            {% if approval_forced %}<span class="bb-cap-desc" id="requires-approval-forced">{% trans "An admin requires this for this app." %}</span>{% endif %}
+                        </span>
+                    </label>
+                </fieldset>
 
                 {% if form.errors %}<div class="bb-error">{{ form.errors }}</div>{% endif %}
                 {% if form.non_field_errors %}<div class="bb-error">{{ form.non_field_errors }}</div>{% endif %}
@@ -42,7 +75,7 @@
                 </div>
             </form>
 
-            <p class="bb-foot">You can revoke this access at any time from {{ brand_name }}.</p>
+            <p class="bb-foot">{% blocktrans with product=brand_name %}Your organization's owners and admins can change or revoke this access at any time in {{ product }} under Settings, API keys.{% endblocktrans %}</p>
         {% else %}
             <h1>{% trans "Something went wrong" %}</h1>
             <p>{{ error.error }}</p>

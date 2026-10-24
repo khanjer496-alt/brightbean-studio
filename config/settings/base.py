@@ -792,9 +792,15 @@ RATELIMIT_USE_CACHE = "default"
 MCP_PUBLIC_BASE_URL = env("MCP_PUBLIC_BASE_URL", default=APP_URL).rstrip("/")
 MCP_OAUTH_ISSUER_URL = env("MCP_OAUTH_ISSUER_URL", default=APP_URL).rstrip("/")
 
+# django-oauth-toolkit's default, named so ``apps.api_keys.ConnectedApp`` can point at the (swappable) model.
+OAUTH2_PROVIDER_APPLICATION_MODEL = "oauth2_provider.Application"
+
 OAUTH2_PROVIDER = {
     "SCOPES": {"mcp": f"Call {BRAND_NAME} MCP tools on your behalf"},
     "DEFAULT_SCOPES": ["mcp"],
+    # Adds one ``cap:<capability>`` scope per tool-level capability, which carries the set the person
+    # narrowed the connection to on the consent screen.
+    "SCOPES_BACKEND_CLASS": "apps.oauth_server.scopes.CapabilityScopes",
     "PKCE_REQUIRED": True,
     # Restrict ``code_challenge_method`` to ``S256``. django-oauth-toolkit
     # (and oauthlib under it) accept ``plain`` by default — RFC 7636 §4.2
@@ -806,7 +812,9 @@ OAUTH2_PROVIDER = {
     "REFRESH_TOKEN_EXPIRE_SECONDS": 30 * 24 * 60 * 60,
     "AUTHORIZATION_CODE_EXPIRE_SECONDS": 600,
     "ROTATE_REFRESH_TOKEN": True,
-    "REQUEST_APPROVAL_PROMPT": "auto",
+    # Always show the consent screen: it is where the person narrows what the client may do, so a returning
+    # client must not be waved through on an earlier grant.
+    "REQUEST_APPROVAL_PROMPT": "force",
     # Claude's OAuth callback is always https; reject non-TLS redirect URIs.
     "ALLOWED_REDIRECT_URI_SCHEMES": ["https"],
 }
