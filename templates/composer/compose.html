@@ -336,6 +336,7 @@
               @htmx:after-request="onFormSaved($event)"
               {# onFormSaved renders every failure inline, JSON or not, so the global toast would duplicate it. Element-scoped: nested controls (Clone, template picker) keep theirs. #}
               data-no-error-toast
+              {% if not post_is_readonly %}data-unsaved-guard{% endif %}
               class="flex flex-col flex-1 min-h-0">
             <input type="hidden" name="selected_accounts" :value="selectedAccounts.join(',')">
             {% if account_scope %}
@@ -2199,6 +2200,7 @@
                                     headers: { 'X-CSRFToken': '{{ csrf_token }}' }
                                 }).then(resp => {
                                     if (resp.ok) {
+                                        window.composerUnsaved && window.composerUnsaved.release();
                                         window.location.href = '{% url "calendar:calendar" workspace_id=workspace.id %}';
                                     } else {
                                         deleteError = 'The post could not be deleted. Refresh to check its status before trying again.';
@@ -2275,6 +2277,7 @@ function providerSettings(accId, workspaceId) {
 {{ media_items|json_script:"composer-media-items" }}
 {{ thread_parts|json_script:"composer-thread-parts" }}
 <script src="{% static 'js/composer-inserts.js' %}"></script>
+<script src="{% static 'js/composer-unsaved.js' %}"></script>
 <script nonce="{{ request.csp_nonce }}">
 function composerApp() {
     return {
