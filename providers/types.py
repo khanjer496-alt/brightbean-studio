@@ -38,6 +38,7 @@ class PostType(enum.Enum):
     POLL = "poll"
     PIN = "pin"
     SHORT = "short"
+    DOCUMENT = "document"
 
 
 class MediaType(enum.Enum):
@@ -227,7 +228,7 @@ class MediaRules:
     only recommends, or whose official value isn't firm enough to refuse a
     post over. The names are ``max_items``, ``media_types``, ``aspect_ratio``
     (both bounds), ``min_resolution``, ``max_resolution``, ``min_duration``,
-    ``max_duration``, ``max_image_bytes`` and ``max_video_bytes``.
+    ``max_duration``, ``max_image_bytes``, ``max_video_bytes`` and ``max_document_bytes``.
     ``recommended_aspect_ratio`` and ``published_items`` only ever warn.
     Ratios are width / height (9:16 is 0.5625).
     """
@@ -253,6 +254,7 @@ class MediaRules:
     max_duration: float | None = None
     max_image_bytes: int | None = None
     max_video_bytes: int | None = None
+    max_document_bytes: int | None = None
     advisory: frozenset[str] = frozenset()
 
 
@@ -400,6 +402,9 @@ class MentionSuggestion:
     handle: str
     name: str = ""
     avatar_url: str = ""
+    # The exact text to put in the caption instead of "@" + handle, for a platform whose mentions are not
+    # written with an @ (Discord's ``<@id>``). Empty means the usual "@handle".
+    insert: str = ""
 
 
 @dataclass(frozen=True)
@@ -411,7 +416,7 @@ class PostSetting:
     knowing the platform. Values live in ``PlatformPost.platform_extra`` under
     ``key`` and reach the provider as ``PublishContent.extra[key]``.
 
-    ``kind`` is ``text``, ``select`` or ``checkbox``. A ``select`` takes either
+    ``kind`` is ``text``, ``select``, ``checkbox``, ``date`` (YYYY-MM-DD) or ``time`` (HH:MM). A ``select`` takes either
     static ``choices`` or, with ``options_from_provider``, options fetched live
     through ``SocialProvider.get_setting_options`` (optionally scoped by another
     setting named in ``depends_on``, like a flair that belongs to a subreddit).
@@ -429,6 +434,10 @@ class PostSetting:
     depends_on: str = ""
     # For a checkbox, the value used when the setting was never saved.
     default: bool = False
+    # Shows the field only while another setting has a value: ``"post_type=reel"``
+    # (one of several values: ``"post_type=reel|story"``). The composer hides it
+    # otherwise; the provider still validates what it receives.
+    show_when: str = ""
 
     def as_dict(self) -> dict:
         return {
@@ -443,6 +452,7 @@ class PostSetting:
             "options_from_provider": self.options_from_provider,
             "depends_on": self.depends_on,
             "default": self.default,
+            "show_when": self.show_when,
         }
 
 

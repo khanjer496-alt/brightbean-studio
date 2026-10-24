@@ -21,6 +21,7 @@ from .types import (
     OAuthTokens,
     PeakWindow,
     PostMetrics,
+    PostSetting,
     PostType,
     PublishContent,
     PublishResult,
@@ -56,6 +57,8 @@ PERMANENT_PUBLISH_ERROR_CODES = frozenset(
         "scope_not_authorized",
         "scope_permission_missed",
         "url_ownership_unverified",
+        "app_version_check_failed",
+        "spam_risk_too_many_pending_share",
     }
 )
 
@@ -99,9 +102,20 @@ PUBLISH_STATE_BY_TIKTOK_STATUS = {
 }
 
 INBOX_HINT = (
-    "TikTok put this video in your TikTok inbox as a draft instead of posting it. "
+    "TikTok put this post in your TikTok inbox as a draft instead of posting it. "
     "Open the TikTok app to finish posting it."
 )
+
+# Photo posts: POST /v2/post/publish/content/init/ (media_type PHOTO). Title up to 90 and description up to 4,000
+# UTF-16 runes, up to 35 images, PULL_FROM_URL only (the URL prefix must be verified in the TikTok developer portal),
+# and post_mode DIRECT_POST (scope video.publish) or MEDIA_UPLOAD (scope video.upload, lands in the user's inbox;
+# needs TikTok app 31.8+). auto_add_music, disable_comment and the brand toggles apply to DIRECT_POST only.
+# https://developers.tiktok.com/doc/content-posting-api-reference-photo-post
+PHOTO_TITLE_MAX = 90
+PHOTO_DESCRIPTION_MAX = 4000
+PHOTO_MAX_IMAGES = 35
+PHOTO_POST_INFO_FIELDS = ("disable_comment", "auto_add_music", "brand_content_toggle", "brand_organic_toggle")
+POST_MODES = ("DIRECT_POST", "MEDIA_UPLOAD")
 
 
 def _pkce_code_challenge(code_verifier: str) -> str:
@@ -120,6 +134,12 @@ def _pkce_code_challenge(code_verifier: str) -> str:
 # checked again at publish time.
 # https://developers.tiktok.com/doc/content-posting-api-media-transfer-guide
 TIKTOK_MEDIA_RULES = {
+    # Photo mode takes up to 35 images pulled from a URL prefix verified with TikTok.
+    PostType.IMAGE: MediaRules(
+        source="https://developers.tiktok.com/doc/content-posting-api-reference-photo-post",
+        max_items=PHOTO_MAX_IMAGES,
+        media_types=frozenset({"image"}),
+    ),
     PostType.VIDEO: MediaRules(
         source="https://developers.tiktok.com/doc/content-posting-api-media-transfer-guide",
         published_items=1,
@@ -137,6 +157,26 @@ TIKTOK_MEDIA_RULES = {
 
 class TikTokProvider(SocialProvider):
     """TikTok Content Posting API provider using OAuth 2.0."""
+
+    post_settings = (
+        PostSetting(
+            key="post_mode",
+            label="Delivery",
+            kind="select",
+            placeholder="Publish now (direct post)",
+            choices=(("MEDIA_UPLOAD", "Send to my TikTok inbox as a draft"),),
+            help=(
+                "A draft waits in the TikTok app for you to edit and post it: privacy, interaction and "
+                "branded-content settings are chosen there. TikTok allows 5 pending drafts a day."
+            ),
+        ),
+        PostSetting(
+            key="auto_add_music",
+            label="Add recommended music (photo posts)",
+            kind="checkbox",
+            help="Photo posts only: lets TikTok pick music for the slideshow. Needs direct posting.",
+        ),
+    )
 
     profile_url_template = "https://www.tiktok.com/@{handle}"
 
@@ -189,7 +229,7 @@ class TikTokProvider(SocialProvider):
 
     @property
     def supported_post_types(self) -> list[PostType]:
-        return [PostType.VIDEO]
+        return [PostType.VIDEO, PostType.IMAGE]
 
     @property
     def supported_media_types(self) -> list[MediaType]:
@@ -340,13 +380,35 @@ class TikTokProvider(SocialProvider):
         )
         return resp.json().get("data", {}) or {}
 
+    @classmethod
+    def validate_post_settings(cls, settings: dict) -> str:
+        settings = settings or {}
+        error = super().validate_post_settings(settings)
+        if error:
+            return error
+        if settings.get("auto_add_music") and settings.get("post_mode") == "MEDIA_UPLOAD":
+            return "TikTok adds music only to directly posted photos; choose to publish now, or clear the music option."
+        return ""
+
     def publish_post(self, access_token: str, content: PublishContent) -> PublishResult:
+        error = self.validate_post_settings(content.extra)
+        if error:
+            raise PublishError(error, platform=self.platform_name, retryable=False)
+        if content.post_type == PostType.IMAGE:
+            return self._publish_photos(access_token, content)
         if content.post_type != PostType.VIDEO:
             raise PublishError(
-                "TikTok only supports VIDEO posts",
+                "TikTok only supports video and photo posts",
                 platform=self.platform_name,
                 retryable=False,
             )
+        if content.extra.get("auto_add_music"):
+            raise PublishError(
+                "Adding music applies to photo posts only; clear it for a video.",
+                platform=self.platform_name,
+                retryable=False,
+            )
+        inbox = content.extra.get("post_mode") == "MEDIA_UPLOAD"
 
         privacy_level_is_explicit = "privacy_level" in content.extra
         privacy_level = content.extra.get("privacy_level", DEFAULT_PRIVACY_LEVEL)
@@ -357,19 +419,20 @@ class TikTokProvider(SocialProvider):
                 retryable=False,
             )
 
-        privacy_level = self._check_creator_constraints(
-            access_token,
-            privacy_level,
-            content,
-            privacy_level_is_explicit=privacy_level_is_explicit,
-        )
+        if not inbox:
+            privacy_level = self._check_creator_constraints(
+                access_token,
+                privacy_level,
+                content,
+                privacy_level_is_explicit=privacy_level_is_explicit,
+            )
 
         # Prefer FILE_UPLOAD: PULL_FROM_URL requires the source domain to be
         # verified with TikTok, which presigned S3/R2 URLs can't satisfy.
         if content.media_files:
-            return self._publish_file_upload(access_token, content, privacy_level)
+            return self._publish_file_upload(access_token, content, privacy_level, inbox=inbox)
         if content.media_urls:
-            return self._publish_pull_from_url(access_token, content, privacy_level)
+            return self._publish_pull_from_url(access_token, content, privacy_level, inbox=inbox)
         raise PublishError(
             "No video source provided (media_files or media_urls required)",
             platform=self.platform_name,
@@ -429,8 +492,10 @@ class TikTokProvider(SocialProvider):
             )
         return privacy_level
 
-    def _init_video_publish(self, access_token: str, payload: dict) -> dict:
-        """POST to /post/publish/video/init/ and return the parsed body.
+    def _init_video_publish(self, access_token: str, payload: dict, *, path: str = "/post/publish/video/init/") -> dict:
+        """POST to ``path`` (the direct-post video init unless told otherwise) and return the parsed body.
+
+        ``/post/publish/inbox/video/init/`` is the MEDIA_UPLOAD variant: it takes ``source_info`` only.
 
         Permanent TikTok error codes are re-raised as non-retryable
         PublishErrors via :meth:`_raise_classified_publish_error`.
@@ -438,7 +503,7 @@ class TikTokProvider(SocialProvider):
         try:
             resp = self._request(
                 "POST",
-                f"{API_BASE}/post/publish/video/init/",
+                f"{API_BASE}{path}",
                 access_token=access_token,
                 json=payload,
             )
@@ -463,12 +528,73 @@ class TikTokProvider(SocialProvider):
                     post_info["video_cover_timestamp_ms"] = cover_ms
         return post_info
 
+    @staticmethod
+    def _video_init_path(inbox: bool) -> str:
+        return "/post/publish/inbox/video/init/" if inbox else "/post/publish/video/init/"
+
+    def _publish_photos(self, access_token: str, content: PublishContent) -> PublishResult:
+        """Publish a photo post (``media_type`` PHOTO), directly or into the user's inbox as a draft."""
+        urls = [url for index, url in enumerate(content.media_urls) if not content.is_video(index)]
+        if not urls or len(urls) != len(content.media_urls):
+            raise PublishError("A TikTok photo post needs images only.", platform=self.platform_name, retryable=False)
+        if len(urls) > PHOTO_MAX_IMAGES:
+            raise PublishError(
+                f"TikTok photo posts take at most {PHOTO_MAX_IMAGES} images.",
+                platform=self.platform_name,
+                retryable=False,
+            )
+        extra = content.extra
+        inbox = extra.get("post_mode") == "MEDIA_UPLOAD"
+        post_info: dict[str, str | bool | int] = {}
+        # The caption goes in the description; a title is sent only when one was written, so it isn't repeated.
+        title = (content.title or "").strip()
+        if title:
+            post_info["title"] = title[:PHOTO_TITLE_MAX]
+        if content.text:
+            post_info["description"] = content.text[:PHOTO_DESCRIPTION_MAX]
+        if not inbox:
+            privacy_explicit = "privacy_level" in extra
+            privacy = extra.get("privacy_level", DEFAULT_PRIVACY_LEVEL)
+            if privacy not in VALID_PRIVACY_LEVELS:
+                raise PublishError(
+                    f"Invalid privacy_level '{privacy}'. Must be one of {sorted(VALID_PRIVACY_LEVELS)}",
+                    platform=self.platform_name,
+                    retryable=False,
+                )
+            post_info["privacy_level"] = self._check_creator_constraints(
+                access_token, privacy, content, privacy_level_is_explicit=privacy_explicit
+            )
+            for field in PHOTO_POST_INFO_FIELDS:
+                if field in extra:
+                    post_info[field] = bool(extra[field])
+        payload: dict = {
+            "media_type": "PHOTO",
+            "post_mode": "MEDIA_UPLOAD" if inbox else "DIRECT_POST",
+            "post_info": post_info,
+            "source_info": {"source": "PULL_FROM_URL", "photo_cover_index": 0, "photo_images": urls},
+        }
+        if extra.get("is_aigc") and not inbox:
+            payload["is_aigc"] = True
+        try:
+            resp = self._request(
+                "POST", f"{API_BASE}/post/publish/content/init/", access_token=access_token, json=payload
+            )
+        except APIError as exc:
+            self._raise_classified_publish_error(exc)
+        body = resp.json()
+        return PublishResult(platform_post_id=body.get("data", {}).get("publish_id", ""), extra=body.get("data", {}))
+
     def _raise_classified_publish_error(self, exc: APIError) -> NoReturn:
         """Re-raise an APIError from video init, marking permanent codes non-retryable."""
         code = ((exc.raw_response or {}).get("error") or {}).get("code", "")
         if code not in PERMANENT_PUBLISH_ERROR_CODES:
             raise exc
         message = f"TikTok rejected the post ({code}): {exc}"
+        if code == "url_ownership_unverified":
+            message = (
+                "TikTok rejected the post: photo posts are pulled from a URL prefix that must be verified in "
+                "the TikTok developer portal (URL properties), and this post's images are served from one that isn't."
+            )
         if code == "unaudited_client_can_only_post_to_private_accounts":
             message = f"TikTok rejected the post: {UNAUDITED_CLIENT_HINT}"
         raise PublishError(
@@ -483,16 +609,19 @@ class TikTokProvider(SocialProvider):
         access_token: str,
         content: PublishContent,
         privacy_level: str,
+        *,
+        inbox: bool = False,
     ) -> PublishResult:
         """Publish using PULL_FROM_URL source."""
         payload = {
-            "post_info": self._build_post_info(content, privacy_level),
             "source_info": {
                 "source": "PULL_FROM_URL",
                 "video_url": content.media_urls[0],
             },
         }
-        body = self._init_video_publish(access_token, payload)
+        if not inbox:
+            payload["post_info"] = self._build_post_info(content, privacy_level)
+        body = self._init_video_publish(access_token, payload, path=self._video_init_path(inbox))
         publish_id = body.get("data", {}).get("publish_id", "")
         return PublishResult(
             platform_post_id=publish_id,
@@ -504,6 +633,8 @@ class TikTokProvider(SocialProvider):
         access_token: str,
         content: PublishContent,
         privacy_level: str,
+        *,
+        inbox: bool = False,
     ) -> PublishResult:
         """Publish using FILE_UPLOAD source (two-step)."""
         video_path = content.media_files[0]
@@ -526,7 +657,6 @@ class TikTokProvider(SocialProvider):
 
         # Step 1: initialize upload with size metadata TikTok requires
         payload = {
-            "post_info": self._build_post_info(content, privacy_level),
             "source_info": {
                 "source": "FILE_UPLOAD",
                 "video_size": video_size,
@@ -534,7 +664,9 @@ class TikTokProvider(SocialProvider):
                 "total_chunk_count": 1,
             },
         }
-        init_body = self._init_video_publish(access_token, payload)
+        if not inbox:
+            payload["post_info"] = self._build_post_info(content, privacy_level)
+        init_body = self._init_video_publish(access_token, payload, path=self._video_init_path(inbox))
         upload_url = init_body.get("data", {}).get("upload_url")
         publish_id = init_body.get("data", {}).get("publish_id", "")
 

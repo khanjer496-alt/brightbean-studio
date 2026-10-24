@@ -8,7 +8,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 from django.db import IntegrityError, transaction
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -395,3 +395,12 @@ class MentionSearchTests(ComposerTestCase):
 
     def test_json_is_valid_for_the_client(self):
         self.assertIsInstance(json.loads(self._search("x", self.bluesky).content), dict)
+
+
+class MentionInsertTextTests(SimpleTestCase):
+    def test_a_suggestion_carries_the_text_a_platform_writes_for_a_mention(self):
+        from apps.composer.services import _mention_item
+        from providers.types import MentionSuggestion
+
+        assert _mention_item(MentionSuggestion(handle="alice", insert="<@42>"))["insert"] == "<@42>"
+        assert "insert" not in _mention_item(MentionSuggestion(handle="alice"))

@@ -391,7 +391,7 @@
                     const typed = MENTION_PATTERN.exec(el.value.slice(0, caret));
                     this.closeMentions();
                     if (!typed) return;
-                    el.setRangeText('@' + item.handle + ' ', caret - typed[2].length - 1, caret, 'end');
+                    el.setRangeText((item.insert || '@' + item.handle) + ' ', caret - typed[2].length - 1, caret, 'end');
                     el.dispatchEvent(new Event('input', { bubbles: true }));
                     el.focus();
                 },

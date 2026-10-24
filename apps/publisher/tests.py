@@ -545,9 +545,9 @@ class NonRetryableFailureTest(TestCase):
         self.platform_post.refresh_from_db()
         self.assertEqual(self.platform_post.status, PlatformPost.Status.FAILED)
         self.assertEqual(self.platform_post.retry_count, 0)
-        self.assertTrue(self.platform_post.publish_error.startswith("TikTok can only publish videos"))
+        self.assertTrue(self.platform_post.publish_error.startswith("TikTok needs an image or a video"))
         self.assertIn(
-            "TikTok can only publish videos",
+            "TikTok needs an image or a video",
             PublishLog.objects.get(platform_post=self.platform_post).error_message,
         )
 

@@ -79,7 +79,7 @@
             <label for="f-account" class="block text-xs font-medium text-stone-600 mb-1">Channel</label>
             <select id="f-account" name="account" class="form-input text-sm w-full">
                 <option value="">All channels</option>
-                {% for account in accounts %}<option value="{{ account.id }}" {% if chosen.account == account.id|stringformat:"s" %}selected{% endif %}>{{ account.account_name|default:account.account_handle }}</option>{% endfor %}
+                {% for account in accounts %}<option value="{{ account.id }}" {% if chosen.account == account.id|stringformat:"s" %}selected{% endif %}>{{ account.display_name }}</option>{% endfor %}
             </select>
         </div>
         <div>

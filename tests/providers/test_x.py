@@ -130,7 +130,14 @@ class TestDeclarations:
         assert {"max_duration", "max_video_bytes"} <= video.advisory
 
     def test_post_settings(self):
-        assert [s.key for s in XProvider.post_settings] == ["reply_settings", "poll_options", "poll_duration"]
+        assert [s.key for s in XProvider.post_settings] == [
+            "reply_settings",
+            "poll_options",
+            "poll_duration",
+            "community_id",
+            "made_with_ai",
+            "paid_partnership",
+        ]
 
     def test_premium_raises_the_limit_through_the_account(self):
         account = MagicMock(platform_data={"premium": True})
@@ -697,3 +704,28 @@ class TestMentions:
         x.on("GET", "/2/users/search", json_response({"detail": "client-not-enrolled"}, 403))
         with pytest.raises(PublishError):
             provider().search_mentions("at", "an")
+
+
+class TestCommunityAndLabels:
+    def test_community_and_labels_are_sent_in_the_post_body(self, x):
+        x.on("POST", "/2/tweets", tweet_created())
+        provider().publish_post(
+            "at",
+            PublishContent(
+                text="a", extra={"community_id": "1493446837214187523", "made_with_ai": True, "paid_partnership": True}
+            ),
+        )
+        body = body_of(x.requests[0])
+        assert body["community_id"] == "1493446837214187523"
+        assert body["made_with_ai"] is True
+        assert body["paid_partnership"] is True
+
+    def test_unset_options_send_nothing(self, x):
+        x.on("POST", "/2/tweets", tweet_created())
+        provider().publish_post("at", PublishContent(text="a", extra={"made_with_ai": False, "community_id": ""}))
+        body = body_of(x.requests[0])
+        assert not {"community_id", "made_with_ai", "paid_partnership"} & set(body)
+
+    @pytest.mark.parametrize("value", ["abc", "12 34", "1" * 20, "-5"])
+    def test_community_id_must_be_a_number(self, value):
+        assert "Community ID" in post_settings_error_for("x", {"community_id": value})

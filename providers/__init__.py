@@ -224,6 +224,16 @@ def accepts_media_for(platform: str) -> bool:
     return provider_cls is None or provider_cls.accepts_media
 
 
+def publishes_documents_for(platform: str) -> bool:
+    """Whether ``platform`` publishes an attached document (``SocialProvider.publishes_documents``).
+
+    Read off the provider class like ``accepts_media_for``. Every provider declares it (False unless its
+    network has a documents API this provider implements); an unknown platform publishes none.
+    """
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    return provider_cls is not None and provider_cls.publishes_documents
+
+
 def post_settings_for(platform: str) -> tuple[PostSetting, ...]:
     """The per-post settings ``platform`` declares (``SocialProvider.post_settings``).
 

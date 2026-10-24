@@ -19,6 +19,9 @@ API reference (Discord API v10, checked against the current docs):
 - Rate limits (429 body ``retry_after``, ``Retry-After``) and the User-Agent
   requirement: https://docs.discord.com/developers/topics/rate-limits
 - Permission bits: https://docs.discord.com/developers/topics/permissions
+- Search Guild Members (``query``, ``limit`` up to 1000) and Get Guild Roles for the mention picker, and the
+  ``<@USER_ID>`` / ``<@&ROLE_ID>`` mention syntax: https://docs.discord.com/developers/resources/guild and
+  https://docs.discord.com/developers/reference#message-formatting
 """
 
 from __future__ import annotations
@@ -33,13 +36,14 @@ from urllib.parse import urlencode
 from django.conf import settings
 
 from .base import SocialProvider
-from .exceptions import APIError, OAuthError, PublishError, RateLimitError
+from .exceptions import APIError, OAuthError, ProviderError, PublishError, RateLimitError
 from .types import (
     AccountProfile,
     AuthType,
     CommentResult,
     MediaRules,
     MediaType,
+    MentionSuggestion,
     OAuthTokens,
     PostSetting,
     PostType,
@@ -104,6 +108,9 @@ class DiscordProvider(SocialProvider):
         PostType.IMAGE: _DISCORD_MEDIA,
         PostType.VIDEO: _DISCORD_MEDIA,
     }
+
+    # Typing "@" suggests the server's members and mentionable roles, written as <@id> / <@&id>.
+    mention_lookup = True
 
     writing_style = (
         "Casual and community-first, like a post to friends in a server. Markdown works: bold, lists, short "
@@ -211,6 +218,52 @@ class DiscordProvider(SocialProvider):
             # A 4xx is the request itself refused; only a server failure is worth another try.
             retryable=not (400 <= status < 500),
         )
+
+    def search_mentions(self, access_token: str, query: str, limit: int = 8) -> list[MentionSuggestion]:
+        """Members of the account's server whose name starts with ``query``, then mentionable roles matching it.
+
+        ``access_token`` is the channel id and unused; the bot looks up the server it was installed in. Each
+        suggestion carries the text Discord reads as a mention in ``insert``.
+        """
+        guild_id = self.credentials.get("guild_id")
+        if not guild_id:
+            return []
+        query = query.strip()
+        suggestions: list[MentionSuggestion] = []
+        try:
+            members = self._bot_request(
+                "GET", f"/guilds/{guild_id}/members/search", params={"query": query, "limit": limit}
+            ).json()
+        except ProviderError:
+            # A bot without the Server Members intent can't search members; its roles are still worth offering.
+            logger.info("Discord member search failed for guild %s", guild_id, exc_info=True)
+            members = []
+        for member in members if isinstance(members, list) else []:
+            user = member.get("user") or {}
+            if not user.get("id") or user.get("bot"):
+                continue
+            shown = member.get("nick") or user.get("global_name") or user.get("username") or ""
+            avatar = f"{CDN_BASE}/avatars/{user['id']}/{user['avatar']}.png" if user.get("avatar") else ""
+            suggestions.append(
+                MentionSuggestion(
+                    handle=user.get("username") or shown,
+                    name=shown,
+                    avatar_url=avatar,
+                    insert=f"<@{user['id']}>",
+                )
+            )
+        roles = self._bot_request("GET", f"/guilds/{guild_id}/roles").json()
+        for role in roles if isinstance(roles, list) else []:
+            # The @everyone role shares the server id; unmentionable and bot-managed roles would not ping anyone.
+            if role.get("id") == str(guild_id) or role.get("managed") or not role.get("mentionable"):
+                continue
+            if query.lower() in str(role.get("name", "")).lower():
+                suggestions.append(
+                    MentionSuggestion(
+                        handle=f"role {role['name']}", name=f"Role: {role['name']}", insert=f"<@&{role['id']}>"
+                    )
+                )
+        return suggestions[:limit]
 
     def _bot_request(self, method: str, path: str, **kwargs):
         return self._request(method, f"{API_BASE}{path}", headers=self._bot_headers(), **kwargs)

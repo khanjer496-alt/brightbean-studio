@@ -21,6 +21,7 @@ from urllib.parse import urlencode
 from .base import SocialProvider
 from .exceptions import APIError, OAuthError, ProviderError, PublishError
 from .instagram import INSTAGRAM_MEDIA_RULES
+from .instagram_options import INSTAGRAM_POST_SETTINGS, container_options, validate_instagram_settings
 from .meta_comments import (
     fetch_instagram_comments,
     find_own_instagram_comment,
@@ -105,6 +106,7 @@ class InstagramLoginProvider(SocialProvider):
     profile_url_template = "https://www.instagram.com/{handle}/"
 
     media_rules = INSTAGRAM_MEDIA_RULES
+    post_settings = INSTAGRAM_POST_SETTINGS
 
     # Business Discovery is documented only for the Facebook Login API, so an account
     # connected this way cannot read other accounts (see ``providers.instagram_discovery``).
@@ -337,6 +339,10 @@ class InstagramLoginProvider(SocialProvider):
     # Publishing
     # ------------------------------------------------------------------
 
+    @classmethod
+    def validate_post_settings(cls, settings: dict) -> str:
+        return super().validate_post_settings(settings) or validate_instagram_settings(settings)
+
     def publish_post(self, access_token: str, content: PublishContent) -> PublishResult:
         if not content.media_urls:
             raise PublishError(
@@ -374,6 +380,9 @@ class InstagramLoginProvider(SocialProvider):
             payload["video_url"] = url
         else:
             payload["image_url"] = url
+        payload.update(
+            container_options(content.extra, content.post_type, is_video=is_video, platform=self.platform_name)
+        )
 
         container_id = self._create_container(access_token, payload)
         self._wait_for_container(access_token, container_id)
@@ -400,6 +409,9 @@ class InstagramLoginProvider(SocialProvider):
         }
         if content.text:
             carousel_payload["caption"] = content.text
+        carousel_payload.update(
+            container_options(content.extra, content.post_type, is_video=False, platform=self.platform_name)
+        )
 
         carousel_id = self._create_container(access_token, carousel_payload)
         self._wait_for_container(access_token, carousel_id)

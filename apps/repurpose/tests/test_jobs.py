@@ -415,17 +415,18 @@ class TestLinkedInCarousel:
         response = owner_client.get(f"/workspace/{workspace.id}/repurpose/{job.id}/outputs/{out.id}/pdf/")
         assert response.status_code == 200 and response["Content-Type"] == "application/pdf"
 
-    def test_linkedin_draft_does_not_attach_a_document_it_cannot_publish(self, workspace, owner, linkedin, fake_claude):
+    def test_a_network_that_cannot_publish_documents_gets_a_note_instead(self, workspace, owner, linkedin, fake_claude):
         job = self._carousel(workspace, owner, linkedin, fake_claude)
-        services.accept_outputs(job, [job.outputs.get().id], owner)
+        with patch("providers.linkedin_personal.LinkedInPersonalProvider.publishes_documents", False):
+            services.accept_outputs(job, [job.outputs.get().id], owner)
         post = Post.objects.get()
         assert post.media_attachments.count() == 0
         assert "can't publish documents" in post.internal_notes and "Slide texts" in post.internal_notes
 
     def test_a_network_that_publishes_documents_gets_the_pdf_attached(self, workspace, owner, linkedin, fake_claude):
         job = self._carousel(workspace, owner, linkedin, fake_claude)
-        with patch("providers.linkedin_personal.LinkedInPersonalProvider.publishes_documents", True):
-            services.accept_outputs(job, [job.outputs.get().id], owner)
+        assert job.outputs.get().publishes_document is True
+        services.accept_outputs(job, [job.outputs.get().id], owner)
         assert Post.objects.get().media_attachments.count() == 1
 
     def test_networks_without_pdf_carousels_get_slide_texts_only(self, workspace, owner, instagram, fake_claude):

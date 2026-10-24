@@ -56,7 +56,7 @@ class TestDeclarations:
 
     def test_post_settings(self):
         keys = [s.key for s in RedditProvider.post_settings]
-        assert keys == ["subreddit", "post_kind", "link_url", "flair_id", "nsfw", "spoiler"]
+        assert keys == ["subreddit", "post_kind", "link_url", "flair_id", "extra_subreddits", "nsfw", "spoiler"]
         flair = next(s for s in RedditProvider.post_settings if s.key == "flair_id")
         assert flair.options_from_provider and flair.depends_on == "subreddit"
 
@@ -401,3 +401,94 @@ class TestErrorClassification:
 
 def test_oauth_tokens_type_is_used():
     assert isinstance(OAuthTokens(access_token="x"), OAuthTokens)
+
+
+class TestMultipleSubreddits:
+    def _provider(self, flairs=None):
+        p = provider()
+        p._pause_between_submissions = MagicMock()
+        calls = []
+
+        def api(method, path, token, **kwargs):
+            calls.append((method, path, kwargs.get("data")))
+            if path.endswith("/api/submit"):
+                sr = kwargs["data"]["sr"]
+                return ok({"json": {"errors": [], "data": {"id": sr, "name": f"t3_{sr}", "url": f"https://r/{sr}"}}})
+            if "link_flair_v2" in path:
+                return ok(flairs or [{"id": "f-q", "text": "Question"}, {"id": "f-d", "text": "Discussion"}])
+            raise AssertionError(path)
+
+        p._api_request = api
+        return p, calls
+
+    def test_fans_out_with_per_subreddit_flair_and_spacing(self):
+        p, calls = self._provider()
+        result = p.publish_post(
+            "at",
+            post_content(
+                flair_id="primary-flair", extra_subreddits="r/learnpython | question | For learners; flask || For flask"
+            ),
+        )
+        submits = [c[2] for c in calls if c[1] == "/api/submit"]
+        assert [s["sr"] for s in submits] == ["python", "learnpython", "flask"]
+        assert [s.get("flair_id") for s in submits] == ["primary-flair", "f-q", None]
+        assert [s["title"] for s in submits][1:] == ["For learners", "For flask"]
+        assert p._pause_between_submissions.call_count == 2
+        assert result.platform_post_id == "t3_python"
+        assert [a["subreddit"] for a in result.extra["also_posted"]] == ["learnpython", "flask"]
+
+    def test_unknown_flair_name_fails_before_anything_is_posted(self):
+        p, calls = self._provider()
+        with pytest.raises(PublishError) as exc:
+            p.publish_post("at", post_content(extra_subreddits="learnpython | Nope | Own title"))
+        assert "no flair called" in str(exc.value)
+        assert not [c for c in calls if c[1] == "/api/submit"]
+
+    def test_a_failure_after_a_success_is_not_retried(self):
+        p, calls = self._provider()
+        original = p._api_request
+
+        def api(method, path, token, **kwargs):
+            if path == "/api/submit" and kwargs["data"]["sr"] == "flask":
+                return ok({"json": {"errors": [["RATELIMIT", "try again in 9 minutes"]], "ratelimit": 540}})
+            return original(method, path, token, **kwargs)
+
+        p._api_request = api
+        with pytest.raises(PublishError) as exc:
+            p.publish_post("at", post_content(extra_subreddits="flask || Own title"))
+        assert exc.value.retryable is False
+        assert "Posted to r/python" in str(exc.value)
+
+    def test_an_extra_subreddit_cannot_reuse_the_post_title(self):
+        p, calls = self._provider()
+        with pytest.raises(PublishError) as exc:
+            p.publish_post("at", post_content(extra_subreddits="flask || " + post_content().title.upper()))
+        assert "repeats another one" in str(exc.value)
+        assert not [c for c in calls if c[1] == "/api/submit"]
+
+    def test_single_subreddit_behaviour_is_unchanged(self):
+        p, calls = self._provider()
+        result = p.publish_post("at", post_content())
+        assert len([c for c in calls if c[1] == "/api/submit"]) == 1
+        assert "also_posted" not in result.extra
+        p._pause_between_submissions.assert_not_called()
+
+    @pytest.mark.parametrize(
+        "extra, fragment",
+        [
+            ("a1||t1; b1||t2; c1||t3; d1||t4; e1||t5", "at most 5"),
+            ("python || t", "only once"),
+            ("bad name! || t", "isn't a subreddit"),
+            ("x || t", "isn't a subreddit"),
+            ("flask", "title of its own"),
+            ("flask || Same; django || same", "repeats another one"),
+        ],
+    )
+    def test_validation(self, extra, fragment):
+        assert fragment in RedditProvider.validate_post_settings({"subreddit": "python", "extra_subreddits": extra})
+
+    def test_the_spacing_stops_when_the_worker_is_stopping(self):
+        p = provider()
+        content = PublishContent(should_stop=lambda: True)
+        with pytest.raises(PublishError):
+            p._pause_between_submissions(content)

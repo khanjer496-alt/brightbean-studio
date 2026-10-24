@@ -703,3 +703,113 @@ class TestFileUploadStreaming:
         assert "90 MB" in str(exc.value)
         assert "64 MB" in str(exc.value)
         mock_request.assert_not_called()
+
+
+class TestPhotoAndInboxModes:
+    def _provider(self):
+        provider = TikTokProvider({"client_key": "k", "client_secret": "s"})
+        provider.query_creator_info = MagicMock(return_value={"privacy_level_options": ["PUBLIC_TO_EVERYONE"]})
+        provider._request = MagicMock(return_value=_make_response({"data": {"publish_id": "p1"}, "error": {}}))
+        return provider
+
+    def _photos(self, **extra):
+        return PublishContent(
+            text="A caption",
+            title="A title",
+            media_urls=["https://verified.example/1.jpg", "https://verified.example/2.jpg"],
+            media_types=["image", "image"],
+            post_type=PostType.IMAGE,
+            extra=extra,
+        )
+
+    def test_declares_delivery_and_music_options(self):
+        from providers import post_settings_for
+
+        keys = [s.key for s in post_settings_for("tiktok")]
+        assert keys == ["post_mode", "auto_add_music"]
+
+    def test_direct_photo_post_sends_music_and_cover(self):
+        provider = self._provider()
+        result = provider.publish_post(
+            "tok", self._photos(auto_add_music=True, disable_comment=True, privacy_level="PUBLIC_TO_EVERYONE")
+        )
+        assert result.platform_post_id == "p1"
+        args, kwargs = provider._request.call_args
+        assert args[1].endswith("/post/publish/content/init/")
+        assert kwargs["json"] == {
+            "media_type": "PHOTO",
+            "post_mode": "DIRECT_POST",
+            "post_info": {
+                "title": "A title",
+                "description": "A caption",
+                "privacy_level": "PUBLIC_TO_EVERYONE",
+                "auto_add_music": True,
+                "disable_comment": True,
+            },
+            "source_info": {
+                "source": "PULL_FROM_URL",
+                "photo_cover_index": 0,
+                "photo_images": ["https://verified.example/1.jpg", "https://verified.example/2.jpg"],
+            },
+        }
+
+    def test_inbox_photo_post_has_no_privacy_or_interaction_fields(self):
+        provider = self._provider()
+        provider.publish_post("tok", self._photos(post_mode="MEDIA_UPLOAD"))
+        body = provider._request.call_args.kwargs["json"]
+        assert body["post_mode"] == "MEDIA_UPLOAD"
+        assert set(body["post_info"]) == {"title", "description"}
+        provider.query_creator_info.assert_not_called()
+
+    def test_music_with_inbox_delivery_is_refused(self):
+        provider = self._provider()
+        with pytest.raises(PublishError):
+            provider.publish_post("tok", self._photos(post_mode="MEDIA_UPLOAD", auto_add_music=True))
+        provider._request.assert_not_called()
+
+    def test_music_on_a_video_is_refused(self):
+        provider = self._provider()
+        content = PublishContent(
+            media_urls=["https://x/v.mp4"],
+            media_types=["video"],
+            post_type=PostType.VIDEO,
+            extra={"auto_add_music": True},
+        )
+        with pytest.raises(PublishError):
+            provider.publish_post("tok", content)
+
+    def test_video_inbox_upload_uses_the_inbox_endpoint_with_source_info_only(self):
+        provider = self._provider()
+        content = PublishContent(
+            media_urls=["https://x/v.mp4"],
+            media_types=["video"],
+            post_type=PostType.VIDEO,
+            extra={"post_mode": "MEDIA_UPLOAD"},
+        )
+        provider.publish_post("tok", content)
+        args, kwargs = provider._request.call_args
+        assert args[1].endswith("/post/publish/inbox/video/init/")
+        assert kwargs["json"] == {"source_info": {"source": "PULL_FROM_URL", "video_url": "https://x/v.mp4"}}
+        provider.query_creator_info.assert_not_called()
+
+    def test_unverified_photo_domain_gets_an_actionable_message(self):
+        provider = self._provider()
+        provider._request = MagicMock(
+            side_effect=APIError("x", platform="TikTok", raw_response={"error": {"code": "url_ownership_unverified"}})
+        )
+        with pytest.raises(PublishError) as exc:
+            provider.publish_post("tok", self._photos())
+        assert "verified in the TikTok developer portal" in str(exc.value)
+        assert exc.value.retryable is False
+
+    def test_photo_posts_are_image_only_and_capped(self):
+        provider = self._provider()
+        mixed = self._photos()
+        mixed.media_types = ["image", "video"]
+        with pytest.raises(PublishError):
+            provider.publish_post("tok", mixed)
+        many = self._photos()
+        many.media_urls = [f"https://v/{i}.jpg" for i in range(36)]
+        many.media_types = ["image"] * 36
+        with pytest.raises(PublishError):
+            provider.publish_post("tok", many)

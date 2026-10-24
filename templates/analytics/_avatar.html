@@ -1,7 +1,7 @@
 {# Account avatar with its platform badge. Needs account and size (sm|md). #}
 <div class="relative shrink-0">
-    {% if account.avatar_url %}
-        <img src="{{ account.avatar_url }}" alt="" class="rounded-full object-cover {% if size == 'md' %}h-8 w-8{% else %}h-[30px] w-[30px]{% endif %}">
+    {% if account.display_avatar_url %}
+        <img src="{{ account.display_avatar_url }}" alt="" class="rounded-full object-cover {% if size == 'md' %}h-8 w-8{% else %}h-[30px] w-[30px]{% endif %}">
     {% else %}
         <div class="flex items-center justify-center rounded-full bg-surface-3 font-bold text-ink-2 {% if size == 'md' %}h-8 w-8{% else %}h-[30px] w-[30px]{% endif %}">{{ account.account_name|make_list|first|upper }}</div>
     {% endif %}

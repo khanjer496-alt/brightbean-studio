@@ -34,7 +34,7 @@ Context: pp, workspace, optional show_slot_check.
     </a>
     {% if pp.is_reschedulable %}
     <button type="button" class="chip-resched" aria-haspopup="dialog"
-            aria-label="Reschedule: {{ pp.post.title|default:pp.post.caption_snippet|truncatewords:8 }} on {{ pp.social_account.account_name|default:pp.social_account.account_handle }}"
+            aria-label="Reschedule: {{ pp.post.title|default:pp.post.caption_snippet|truncatewords:8 }} on {{ pp.social_account.display_name }}"
             hx-get="{% url 'calendar:reschedule_dialog' workspace_id=workspace.id platform_post_id=pp.id %}"
             hx-target="#reschedule-dialog-body" hx-swap="innerHTML">
         <svg class="w-3.5 h-3.5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 7v5l3 2"/></svg>

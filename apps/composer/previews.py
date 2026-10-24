@@ -91,7 +91,8 @@ def settings_summary(account, platform_extra: dict | None) -> list[dict]:
     """
     extra = platform_extra or {}
     rows = []
-    if extra.get("post_type"):
+    declared_keys = {field.key for field in post_settings_for(account.platform)}
+    if extra.get("post_type") and "post_type" not in declared_keys:
         rows.append({"label": POST_TYPE_LABEL, "value": str(extra["post_type"]).replace("_", " ").title()})
     for field in post_settings_for(account.platform):
         value = extra.get(field.key)

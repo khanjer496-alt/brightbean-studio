@@ -134,3 +134,11 @@ class RepurposeOutput(models.Model):
 
     def __str__(self):
         return f"RepurposeOutput({self.kind}, {self.status})"
+
+    @property
+    def publishes_document(self) -> bool:
+        """Whether the target network publishes the carousel PDF itself, so it is attached to the draft."""
+        from providers import PROVIDER_REGISTRY
+
+        provider = PROVIDER_REGISTRY.get(self.social_account.platform) if self.social_account_id else None
+        return bool(provider and provider.publishes_documents)

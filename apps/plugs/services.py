@@ -304,9 +304,13 @@ def _due_runs(now):
         .filter(
             rule__is_active=True,
             rule__social_account__connection_status=SocialAccount.ConnectionStatus.CONNECTED,
+            # A paused account, or a paused account set to act for it, does nothing: its runs wait (their window
+            # still closes on time).
+            rule__social_account__paused_at__isnull=True,
             rule__workspace__is_archived=False,
             platform_post__status=PlatformPost.Status.PUBLISHED,
         )
+        .filter(Q(rule__actor_account__isnull=True) | Q(rule__actor_account__paused_at__isnull=True))
         .select_related("rule__social_account", "rule__actor_account", "rule__workspace", "platform_post")
         .order_by("next_check_at", "created_at")
     )

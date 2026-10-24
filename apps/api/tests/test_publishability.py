@@ -1,6 +1,6 @@
 """REST and MCP refuse to schedule a post that is certain to fail at publish.
 
-An agent scheduling an image to TikTok or YouTube, or any pin to Pinterest
+An agent scheduling an image to YouTube or YouTube, or any pin to Pinterest
 (the API cannot set the board a pin needs), used to get a 201 and a post that
 failed four retries later. Both surfaces schedule through the same composer
 services, so both must now refuse up front, and ``requires_video`` on the
@@ -76,8 +76,8 @@ def _account(workspace, platform):
 
 
 @pytest.fixture
-def tiktok(workspace):
-    return _account(workspace, "tiktok")
+def youtube(workspace):
+    return _account(workspace, "youtube")
 
 
 @pytest.fixture
@@ -91,10 +91,10 @@ def linkedin(workspace):
 
 
 @pytest.fixture
-def client(user, workspace, tiktok, pinterest, linkedin):
+def client(user, workspace, youtube, pinterest, linkedin):
     key = services.issue_api_key(
         workspace=workspace,
-        social_accounts=[tiktok, pinterest, linkedin],
+        social_accounts=[youtube, pinterest, linkedin],
         issued_by=user,
         name="publishability",
         permissions=list(PERMISSION_KEYS),
@@ -136,20 +136,20 @@ def _mcp(client, tool, arguments):
 
 @pytest.mark.django_db
 class TestRest:
-    def test_scheduling_an_image_to_tiktok_is_refused(self, client, workspace, tiktok):
-        response = _create(client, tiktok, media=[_asset(workspace, MediaAsset.MediaType.IMAGE)])
+    def test_scheduling_an_image_to_youtube_is_refused(self, client, workspace, youtube):
+        response = _create(client, youtube, media=[_asset(workspace, MediaAsset.MediaType.IMAGE)])
 
         assert response.status_code == 422, response.content
-        assert "TikTok can only publish videos" in response.json()["detail"]
+        assert "YouTube can only publish videos" in response.json()["detail"]
         assert not Post.objects.exists()
 
-    def test_scheduling_a_video_to_tiktok_is_accepted(self, client, workspace, tiktok):
-        response = _create(client, tiktok, media=[_asset(workspace, MediaAsset.MediaType.VIDEO)])
+    def test_scheduling_a_video_to_youtube_is_accepted(self, client, workspace, youtube):
+        response = _create(client, youtube, media=[_asset(workspace, MediaAsset.MediaType.VIDEO)])
 
         assert response.status_code == 201, response.content
 
-    def test_scheduling_a_draft_without_a_video_is_refused(self, client, tiktok):
-        draft = _create(client, tiktok, action="draft")
+    def test_scheduling_a_draft_without_a_video_is_refused(self, client, youtube):
+        draft = _create(client, youtube, action="draft")
         assert draft.status_code == 201, draft.content
 
         response = client.post(
@@ -159,7 +159,7 @@ class TestRest:
         )
 
         assert response.status_code == 422, response.content
-        assert "TikTok can only publish videos" in response.json()["detail"]
+        assert "YouTube can only publish videos" in response.json()["detail"]
 
     def test_scheduling_a_pinterest_pin_is_refused(self, client, workspace, pinterest):
         response = _create(client, pinterest, media=[_asset(workspace, MediaAsset.MediaType.IMAGE)])
@@ -175,11 +175,11 @@ class TestRest:
     def test_other_platforms_are_unaffected(self, client, linkedin):
         assert _create(client, linkedin).status_code == 201
 
-    def test_accounts_say_which_platforms_need_video(self, client, tiktok, linkedin):
+    def test_accounts_say_which_platforms_need_video(self, client, youtube, linkedin):
         accounts = {a["id"]: a for a in client.get("/api/v1/accounts/").json()["accounts"]}
 
-        assert accounts[str(tiktok.id)]["requires_video"] is True
-        assert accounts[str(tiktok.id)]["requires_media"] is True
+        assert accounts[str(youtube.id)]["requires_video"] is True
+        assert accounts[str(youtube.id)]["requires_media"] is True
         assert accounts[str(linkedin.id)]["requires_video"] is False
         assert accounts[str(linkedin.id)]["requires_media"] is False
 
@@ -190,19 +190,19 @@ class TestRest:
             content_type="application/json",
         )
 
-    def test_swapping_a_scheduled_video_for_an_image_is_refused(self, client, workspace, tiktok):
+    def test_swapping_a_scheduled_video_for_an_image_is_refused(self, client, workspace, youtube):
         """Scheduling checked the post; PATCH must not undo that afterwards."""
         video = _asset(workspace, MediaAsset.MediaType.VIDEO)
-        post_id = _create(client, tiktok, media=[video]).json()["id"]
+        post_id = _create(client, youtube, media=[video]).json()["id"]
 
         response = self._patch_media(client, post_id, [_asset(workspace, MediaAsset.MediaType.IMAGE)])
 
         assert response.status_code == 422, response.content
-        assert "scheduled to TikTok, which needs a video" in response.json()["detail"]
+        assert "scheduled to YouTube, which needs a video" in response.json()["detail"]
         assert list(Post.objects.get(id=post_id).media_attachments.values_list("media_asset", flat=True)) == [video.id]
 
-    def test_swapping_one_video_for_another_is_allowed(self, client, workspace, tiktok):
-        post_id = _create(client, tiktok, media=[_asset(workspace, MediaAsset.MediaType.VIDEO)]).json()["id"]
+    def test_swapping_one_video_for_another_is_allowed(self, client, workspace, youtube):
+        post_id = _create(client, youtube, media=[_asset(workspace, MediaAsset.MediaType.VIDEO)]).json()["id"]
 
         response = self._patch_media(client, post_id, [_asset(workspace, MediaAsset.MediaType.VIDEO)])
 
@@ -225,8 +225,8 @@ class TestRest:
         assert "Instagram needs an image or a video" in response.json()["detail"]
         assert ig_client.get("/api/v1/accounts/").json()["accounts"][0]["requires_media"] is True
 
-    def test_a_draft_may_drop_its_video(self, client, workspace, tiktok):
-        draft = _create(client, tiktok, action="draft", media=[_asset(workspace, MediaAsset.MediaType.VIDEO)])
+    def test_a_draft_may_drop_its_video(self, client, workspace, youtube):
+        draft = _create(client, youtube, action="draft", media=[_asset(workspace, MediaAsset.MediaType.VIDEO)])
 
         response = self._patch_media(client, draft.json()["id"], [_asset(workspace, MediaAsset.MediaType.IMAGE)])
 
@@ -235,28 +235,28 @@ class TestRest:
 
 @pytest.mark.django_db
 class TestMcp:
-    def test_schedule_post_refuses_tiktok_without_a_video(self, client, tiktok):
+    def test_schedule_post_refuses_youtube_without_a_video(self, client, youtube):
         body = _mcp(
             client,
             "schedule_post",
-            {"social_account_id": str(tiktok.id), "caption": "hi", "scheduled_at": _when()},
+            {"social_account_id": str(youtube.id), "caption": "hi", "scheduled_at": _when()},
         )
 
         assert body["error"]["code"] == INVALID_PARAMS
-        assert "TikTok can only publish videos" in body["error"]["message"]
+        assert "YouTube can only publish videos" in body["error"]["message"]
         assert not Post.objects.exists()
 
-    def test_schedule_draft_refuses_tiktok_without_a_video(self, client, tiktok):
-        draft = _mcp(client, "create_draft", {"social_account_id": str(tiktok.id), "caption": "hi"})
+    def test_schedule_draft_refuses_youtube_without_a_video(self, client, youtube):
+        draft = _mcp(client, "create_draft", {"social_account_id": str(youtube.id), "caption": "hi"})
         post_id = json.loads(draft["result"]["content"][0]["text"])["id"]
 
         body = _mcp(client, "schedule_draft", {"post_id": post_id, "scheduled_at": _when()})
 
         assert body["error"]["code"] == INVALID_PARAMS
-        assert "TikTok can only publish videos" in body["error"]["message"]
+        assert "YouTube can only publish videos" in body["error"]["message"]
 
-    def test_list_accounts_reports_requires_video(self, client, tiktok):
+    def test_list_accounts_reports_requires_video(self, client, youtube):
         body = _mcp(client, "list_accounts", {})
         accounts = json.loads(body["result"]["content"][0]["text"])["accounts"]
 
-        assert {a["id"]: a["requires_video"] for a in accounts}[str(tiktok.id)] is True
+        assert {a["id"]: a["requires_video"] for a in accounts}[str(youtube.id)] is True

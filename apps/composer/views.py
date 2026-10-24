@@ -60,7 +60,6 @@ from providers import (
     mention_lookup_for,
     post_settings_error_for,
     post_settings_for,
-    requires_media,
     thread_capability_for,
 )
 from providers.tiktok import VALID_PRIVACY_LEVELS as TIKTOK_PRIVACY_LEVELS
@@ -314,34 +313,7 @@ def _sync_platform_posts(request, post, workspace, initial_status=None):
         pp.platform_specific_first_comment = override_comment if override_comment else None
 
         # Per-platform extras
-        if account.platform == "facebook" and f"facebook_panel_{acc_id}" in request.POST:
-            # Gated on the panel's hidden marker, which the composer renders for
-            # every selected Facebook account regardless of media: that keeps a
-            # non-composer save from wiping extras it never rendered, while
-            # still letting a composer save clear a hint whose video is gone.
-            #
-            # The Reel selector itself is omitted when the attachment set is not
-            # exactly one video. Clearing an earlier choice in that case is what
-            # stops removing or replacing media from leaving a stale Reel hint
-            # that sends a text or image post to Facebook's Reel endpoint.
-            extra = {**(pp.platform_extra or {})}
-            facebook_post_type = request.POST.get(f"facebook_post_type_{acc_id}", "").strip()
-            media_types = list(post.media_attachments.values_list("media_asset__media_type", flat=True)[:2])
-            has_exactly_one_video = media_types == ["video"]
-            if facebook_post_type == "reel" and has_exactly_one_video:
-                extra["post_type"] = "reel"
-            else:
-                # Only the deviation from the default is worth storing. A lone
-                # video already infers PostType.VIDEO at publish time, so a
-                # "video" hint restates what the media says and can only go
-                # wrong: if the attachment is later swapped for an image
-                # through the media endpoints, the hint would still route it to
-                # Facebook's video endpoint. Choosing regular video therefore
-                # clears the hint rather than recording it.
-                extra.pop("post_type", None)
-            pp.platform_extra = extra
-
-        elif account.platform == "youtube":
+        if account.platform == "youtube":
             tags_list = parse_and_truncate_youtube_tag_string(request.POST.get(f"yt_tags_{acc_id}", ""))
             privacy_status = request.POST.get(f"yt_privacy_status_{acc_id}", "public")
             if privacy_status not in ("public", "unlisted", "private"):
@@ -379,7 +351,11 @@ def _sync_platform_posts(request, post, workspace, initial_status=None):
             # Comment / Duet / Stitch are independent interaction settings —
             # TikTok's UX guidelines require a separate toggle per interaction,
             # each greyed out on its own when the creator disabled it.
-            extra = {
+            # Keys the platform declares as post settings (delivery, music) are saved by the generic
+            # block below; keep what is stored so this branch doesn't wipe them.
+            declared = {field.key for field in post_settings_for(account.platform)}
+            extra = {key: value for key, value in (pp.platform_extra or {}).items() if key in declared}
+            extra |= {
                 "disable_comment": request.POST.get(f"tiktok_allow_comment_{acc_id}") != "true",
                 "disable_duet": request.POST.get(f"tiktok_allow_duet_{acc_id}") != "true",
                 "disable_stitch": request.POST.get(f"tiktok_allow_stitch_{acc_id}") != "true",
@@ -404,7 +380,7 @@ def _sync_platform_posts(request, post, workspace, initial_status=None):
                     extra["video_cover_timestamp_ms"] = cover_ms_val
             pp.platform_extra = extra
 
-        elif post_settings_for(account.platform) and f"ps_panel_{acc_id}" in request.POST:
+        if post_settings_for(account.platform) and f"ps_panel_{acc_id}" in request.POST:
             # The platform declares its own per-post fields (a subreddit, a
             # flair); rebuild only those keys so anything else already stored
             # stays, and gate on the panel marker so a save from somewhere that
@@ -556,7 +532,7 @@ def _scheduled_post_allowance_error(request, post, workspace, action, form):
 def _validate_required_media(request, post, workspace, action):
     """Refuse to schedule a post without the media a selected platform needs.
 
-    TikTok and YouTube publish only video; Instagram and Pinterest need an
+    YouTube publishes only video; TikTok, Instagram and Pinterest need an
     image or a video. Their providers refuse anything else, so such a post can
     only fail — usually after its other platforms have gone out, leaving it
     half-published for the user to repair by hand.
@@ -568,13 +544,16 @@ def _validate_required_media(request, post, workspace, action):
         return None
 
     accounts = list(SocialAccount.objects.filter(id__in=selected_ids, workspace=workspace))
-    # Skip the media lookup when no selected platform cares about it.
-    if not any(requires_media(account.platform) or not accepts_media_for(account.platform) for account in accounts):
-        return None
     media_types = _composer_media_types(request, post, workspace)
     blocked = [account for account in accounts if media_blocker(account, media_types=media_types)]
     if not blocked:
         return None
+
+    # A document a network can't publish (or with other media beside it) is never dropped for the caption alone;
+    # media_blocker names the network and the fix.
+    if MediaAsset.MediaType.DOCUMENT in media_types:
+        reasons = dict.fromkeys(media_blocker(account, media_types=media_types) for account in blocked)
+        return JsonResponse({"errors": {"media": " ".join(reasons)}}, status=400)
 
     # A platform that publishes no media at all is a different fix from the rest:
     # the media has to go, not be added.
@@ -709,9 +688,9 @@ def _composer_media_assets(request, post, workspace) -> list:
 def _composer_platform_extras(request, accounts, post=None) -> dict:
     """Each account's platform_extra as this form would leave it, for media checks.
 
-    Starts from the saved rows and applies the form's post-type choice
-    (``<platform>_post_type_<account id>``, e.g. a Facebook Reel), which
-    decides which of the platform's media rules apply. Keyed by account id.
+    Starts from the saved rows and applies the platform's own fields from the
+    form (a declared ``post_type`` such as a Reel or Story decides which of the
+    platform's media rules apply). Keyed by account id.
     """
     saved = {}
     if post is not None and not post._state.adding:
@@ -723,9 +702,11 @@ def _composer_platform_extras(request, accounts, post=None) -> dict:
     extras = {}
     for account in accounts:
         extra = dict(saved.get(account.id) or {})
-        hint = request.POST.get(f"{account.platform}_post_type_{account.id}", "").strip()
-        if hint:
-            extra["post_type"] = hint
+        if post_settings_for(account.platform) and f"ps_panel_{account.id}" in request.POST:
+            # The platform's own fields decide too (a declared ``post_type`` picks Story or Reel).
+            extra = replace_post_settings(
+                account.platform, extra, parse_post_settings(account.platform, request.POST.get, account.id)
+            )
         extras[account.id] = extra
     return extras
 

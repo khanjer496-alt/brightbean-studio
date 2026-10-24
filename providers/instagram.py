@@ -14,6 +14,7 @@ from urllib.parse import urlencode
 from .base import SocialProvider
 from .exceptions import APIError, MessagingError, OAuthError, ProviderError, PublishError, WebhookChannelError
 from .instagram_discovery import business_discovery_metrics
+from .instagram_options import INSTAGRAM_POST_SETTINGS, container_options, validate_instagram_settings
 from .meta_accounts import fetch_me_accounts, page_can_publish
 from .meta_comments import (
     fetch_instagram_comments,
@@ -162,6 +163,7 @@ class InstagramProvider(SocialProvider):
     profile_url_template = "https://www.instagram.com/{handle}/"
 
     media_rules = INSTAGRAM_MEDIA_RULES
+    post_settings = INSTAGRAM_POST_SETTINGS
 
     supports_public_profile_metrics = True
     competitor_handle_hint = "username (business or creator accounts only)"
@@ -405,6 +407,10 @@ class InstagramProvider(SocialProvider):
     # Publishing (two-step container flow)
     # ------------------------------------------------------------------
 
+    @classmethod
+    def validate_post_settings(cls, settings: dict) -> str:
+        return super().validate_post_settings(settings) or validate_instagram_settings(settings)
+
     def publish_post(self, access_token: str, content: PublishContent) -> PublishResult:
         if not content.media_urls:
             raise PublishError(
@@ -448,6 +454,9 @@ class InstagramProvider(SocialProvider):
             payload["video_url"] = url
         else:
             payload["image_url"] = url
+        payload.update(
+            container_options(content.extra, content.post_type, is_video=is_video, platform=self.platform_name)
+        )
 
         # Step 1: create container
         container_id = self._create_container(access_token, ig_user_id, payload)
@@ -483,6 +492,9 @@ class InstagramProvider(SocialProvider):
         }
         if content.text:
             carousel_payload["caption"] = content.text
+        carousel_payload.update(
+            container_options(content.extra, content.post_type, is_video=False, platform=self.platform_name)
+        )
 
         carousel_id = self._create_container(access_token, ig_user_id, carousel_payload)
         self._wait_for_container(access_token, carousel_id)

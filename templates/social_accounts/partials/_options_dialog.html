@@ -1,0 +1,46 @@
+{% comment %}
+Channel options dialog for one account card (display-only overrides). Included inside the card's actions
+element, whose Alpine scope provides ``optionsOpen``. Context: account, workspace_id, options_form (a bound
+ChannelOptionsForm with errors when the last save failed, else empty).
+{% endcomment %}
+{% load common_extras %}
+{% modal open="optionsOpen" title="Channel options" description="These change how this account looks inside the app only. Nothing is sent to the platform." size="sm" return_focus="#options-btn-"|add:account.id|stringformat:"s" %}
+<form method="post" action="{% url 'social_accounts:update_options' workspace_id=workspace_id account_id=account.id %}"
+      hx-post="{% url 'social_accounts:update_options' workspace_id=workspace_id account_id=account.id %}"
+      hx-target="#account-{{ account.id }}" hx-swap="outerHTML" class="space-y-4">
+    {% csrf_token %}
+    {% if options_form and options_form.errors %}
+    <p role="alert" class="text-sm text-bad">Fix the highlighted fields and save again.</p>
+    {% endif %}
+    <div>
+        <label for="nickname-{{ account.id }}" class="mb-1 block text-sm font-semibold text-ink">Nickname</label>
+        <input id="nickname-{{ account.id }}" type="text" name="nickname" maxlength="100" data-autofocus
+               value="{% if options_form %}{{ options_form.nickname.value|default:'' }}{% else %}{{ account.nickname }}{% endif %}"
+               aria-describedby="nickname-help-{{ account.id }}"
+               class="min-h-10 w-full rounded-lg border border-line bg-surface-0 px-3 text-sm text-ink">
+        <p id="nickname-help-{{ account.id }}" class="mt-1 text-xs text-ink-3">Shown instead of &ldquo;{{ account.account_name|default:account.account_handle }}&rdquo; in pickers, the calendar and here. Leave empty to use the real name.</p>
+    </div>
+    <div>
+        <label for="avatar-{{ account.id }}" class="mb-1 block text-sm font-semibold text-ink">Picture address</label>
+        <input id="avatar-{{ account.id }}" type="url" name="custom_avatar_url" inputmode="url" placeholder="https://"
+               value="{% if options_form %}{{ options_form.custom_avatar_url.value|default:'' }}{% else %}{{ account.custom_avatar_url }}{% endif %}"
+               {% if options_form.custom_avatar_url.errors %}aria-invalid="true"{% endif %}
+               aria-describedby="avatar-help-{{ account.id }}"
+               class="min-h-10 w-full rounded-lg border border-line bg-surface-0 px-3 text-sm text-ink">
+        <p id="avatar-help-{{ account.id }}" class="mt-1 text-xs {% if options_form.custom_avatar_url.errors %}text-bad{% else %}text-ink-3{% endif %}">{% if options_form.custom_avatar_url.errors %}{{ options_form.custom_avatar_url.errors.0 }}{% else %}An https image to show in place of the platform picture. Leave empty to use it.{% endif %}</p>
+    </div>
+    <div>
+        <label for="profile-{{ account.id }}" class="mb-1 block text-sm font-semibold text-ink">Profile address</label>
+        <input id="profile-{{ account.id }}" type="url" name="custom_profile_url" inputmode="url" placeholder="https://"
+               value="{% if options_form %}{{ options_form.custom_profile_url.value|default:'' }}{% else %}{{ account.custom_profile_url }}{% endif %}"
+               {% if options_form.custom_profile_url.errors %}aria-invalid="true"{% endif %}
+               aria-describedby="profile-help-{{ account.id }}"
+               class="min-h-10 w-full rounded-lg border border-line bg-surface-0 px-3 text-sm text-ink">
+        <p id="profile-help-{{ account.id }}" class="mt-1 text-xs {% if options_form.custom_profile_url.errors %}text-bad{% else %}text-ink-3{% endif %}">{% if options_form.custom_profile_url.errors %}{{ options_form.custom_profile_url.errors.0 }}{% else %}Where the account&rsquo;s handle links to on this page and in your link-in-bio page. Leave empty for the platform&rsquo;s own profile.{% endif %}</p>
+    </div>
+    <div class="pd-modal-actions">
+        <button type="button" class="btn-outline w-auto" @click="optionsOpen = false">Cancel</button>
+        <button type="submit" class="btn-brand w-auto">Save</button>
+    </div>
+</form>
+{% endmodal %}

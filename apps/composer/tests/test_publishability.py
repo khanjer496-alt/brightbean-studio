@@ -1,7 +1,7 @@
 """The service layer refuses to schedule a post that is certain to fail.
 
 ``create_post`` and ``transition_platform_post`` are what the REST API and the
-MCP tools schedule through, so a TikTok post with no video — or a Pinterest pin
+MCP tools schedule through, so a YouTube post with no video — or a Pinterest pin
 with no board, which the API has no way to set — used to be accepted there and
 fail at publish time, usually after the post's other platforms went out.
 """
@@ -27,7 +27,7 @@ class PublishBlockerTest(TestCase):
         return SocialAccount(platform=platform)
 
     def test_video_only_platforms_need_a_video(self):
-        for platform, name in (("tiktok", "TikTok"), ("youtube", "YouTube")):
+        for platform, name in (("youtube", "YouTube"),):
             with self.subTest(platform=platform):
                 for media in (set(), IMAGE):
                     reason = publish_blocker(self._account(platform), media_types=media)
@@ -56,7 +56,7 @@ class ServiceSchedulingTest(TestCase):
     def setUp(self):
         self.org = Organization.objects.create(name="Org")
         self.workspace = Workspace.objects.create(organization=self.org, name="WS")
-        self.tiktok = self._account("tiktok")
+        self.video_only = self._account("youtube")
         self.when = timezone.now() + timedelta(hours=1)
 
     def _account(self, platform):
@@ -88,19 +88,19 @@ class ServiceSchedulingTest(TestCase):
             status=status,
         )
 
-    def test_scheduling_tiktok_with_only_an_image_is_refused_and_writes_nothing(self):
-        with self.assertRaisesMessage(ValueError, "TikTok can only publish videos"):
-            self._create(self.tiktok, media=[self._asset(MediaAsset.MediaType.IMAGE)])
+    def test_scheduling_youtube_with_only_an_image_is_refused_and_writes_nothing(self):
+        with self.assertRaisesMessage(ValueError, "YouTube can only publish videos"):
+            self._create(self.video_only, media=[self._asset(MediaAsset.MediaType.IMAGE)])
 
         assert not Post.objects.exists()
 
-    def test_scheduling_tiktok_with_a_video_is_allowed(self):
-        post = self._create(self.tiktok, media=[self._asset(MediaAsset.MediaType.VIDEO)])
+    def test_scheduling_youtube_with_a_video_is_allowed(self):
+        post = self._create(self.video_only, media=[self._asset(MediaAsset.MediaType.VIDEO)])
 
         assert post.platform_posts.get().status == PlatformPost.Status.SCHEDULED
 
     def test_a_draft_may_wait_for_its_video(self):
-        post = self._create(self.tiktok, status="draft")
+        post = self._create(self.video_only, status="draft")
 
         assert post.platform_posts.get().status == PlatformPost.Status.DRAFT
 
@@ -115,9 +115,9 @@ class ServiceSchedulingTest(TestCase):
         assert post.platform_posts.get().status == PlatformPost.Status.SCHEDULED
 
     def test_scheduling_a_draft_without_a_video_is_refused(self):
-        pp = self._create(self.tiktok, status="draft").platform_posts.get()
+        pp = self._create(self.video_only, status="draft").platform_posts.get()
 
-        with self.assertRaisesMessage(ValueError, "TikTok can only publish videos"):
+        with self.assertRaisesMessage(ValueError, "YouTube can only publish videos"):
             transition_platform_post(pp, "scheduled", scheduled_at=self.when)
 
         pp.refresh_from_db()
@@ -136,7 +136,7 @@ class ServiceSchedulingTest(TestCase):
         assert pp.status == PlatformPost.Status.SCHEDULED
 
     def test_a_video_attached_after_the_draft_counts(self):
-        pp = self._create(self.tiktok, status="draft").platform_posts.get()
+        pp = self._create(self.video_only, status="draft").platform_posts.get()
         PostMedia.objects.create(post=pp.post, media_asset=self._asset(MediaAsset.MediaType.VIDEO))
 
         transition_platform_post(pp, "scheduled", scheduled_at=self.when)
@@ -150,8 +150,8 @@ class ServiceSchedulingTest(TestCase):
         MediaAsset.objects.filter(pk=video.pk).update(file="")
         video.refresh_from_db()
 
-        with self.assertRaisesMessage(ValueError, "TikTok can only publish videos"):
-            self._create(self.tiktok, media=[video])
+        with self.assertRaisesMessage(ValueError, "YouTube can only publish videos"):
+            self._create(self.video_only, media=[video])
 
     def test_scheduling_an_instagram_post_with_no_media_is_refused(self):
         with self.assertRaisesMessage(ValueError, "Instagram needs an image or a video"):

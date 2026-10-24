@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta
-from urllib.parse import urlencode
+from datetime import date, datetime, time, timedelta
+from urllib.parse import urlencode, urlparse
 
 from .base import SocialProvider
 from .exceptions import OAuthError, PublishError
@@ -15,6 +15,7 @@ from .types import (
     MediaType,
     OAuthTokens,
     PostMetrics,
+    PostSetting,
     PostType,
     PublishContent,
     PublishResult,
@@ -77,6 +78,93 @@ GOOGLE_BUSINESS_MEDIA_RULES = {
 }
 
 
+# LocalPost fields, from
+# https://developers.google.com/my-business/reference/rest/v4/accounts.locations.localPosts (checked 2026-10-24):
+# ``callToAction`` {actionType: BOOK|ORDER|SHOP|LEARN_MORE|SIGN_UP|CALL, url (left unset for CALL); ignored for
+# OFFER}, ``event`` {title, schedule{startDate,startTime,endDate,endTime}} (required for EVENT and OFFER, and the
+# schedule "must contain all fields"), ``offer`` {couponCode, redeemOnlineUrl, termsConditions}. GET_OFFER is
+# deprecated in favour of the OFFER topic type, and ALERT (COVID-19) is not offered.
+CTA_ACTION_TYPES = (
+    ("LEARN_MORE", "Learn more"),
+    ("BOOK", "Book"),
+    ("ORDER", "Order online"),
+    ("SHOP", "Buy"),
+    ("SIGN_UP", "Sign up"),
+    ("CALL", "Call now"),
+)
+GOOGLE_BUSINESS_POST_SETTINGS = (
+    PostSetting(
+        key="topic_type",
+        label="Post type",
+        kind="select",
+        placeholder="Update",
+        choices=(("EVENT", "Event"), ("OFFER", "Offer")),
+        help="An event or offer needs a title and a start and end date and time.",
+    ),
+    PostSetting(
+        key="cta_type",
+        label="Button",
+        kind="select",
+        placeholder="No button",
+        choices=CTA_ACTION_TYPES,
+        show_when="topic_type=|EVENT",
+        help="Adds a call-to-action button. Not available on offers; Google ignores it there.",
+    ),
+    PostSetting(
+        key="cta_url",
+        label="Button link",
+        kind="text",
+        max_length=2048,
+        placeholder="https://example.com/book",
+        show_when="topic_type=|EVENT",
+        help="Where the button leads. Leave empty for Call now, which dials the business phone number.",
+    ),
+    PostSetting(
+        key="event_title", label="Event or offer title", kind="text", max_length=58, show_when="topic_type=EVENT|OFFER"
+    ),
+    PostSetting(key="event_start_date", label="Starts on", kind="date", show_when="topic_type=EVENT|OFFER"),
+    PostSetting(key="event_start_time", label="Starts at", kind="time", show_when="topic_type=EVENT|OFFER"),
+    PostSetting(key="event_end_date", label="Ends on", kind="date", show_when="topic_type=EVENT|OFFER"),
+    PostSetting(key="event_end_time", label="Ends at", kind="time", show_when="topic_type=EVENT|OFFER"),
+    PostSetting(
+        key="offer_coupon_code",
+        label="Coupon code",
+        kind="text",
+        max_length=100,
+        show_when="topic_type=OFFER",
+    ),
+    PostSetting(
+        key="offer_redeem_url",
+        label="Redeem online link",
+        kind="text",
+        max_length=2048,
+        placeholder="https://example.com/offer",
+        show_when="topic_type=OFFER",
+    ),
+    PostSetting(
+        key="offer_terms",
+        label="Terms and conditions",
+        kind="text",
+        max_length=1000,
+        show_when="topic_type=OFFER",
+    ),
+)
+
+
+def _valid_web_url(value: str) -> bool:
+    parsed = urlparse(value)
+    return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+
+
+def _schedule_part(settings: dict, name: str) -> datetime | None:
+    try:
+        day = date.fromisoformat(str(settings.get(f"event_{name}_date") or ""))
+        clock = time.fromisoformat(str(settings.get(f"event_{name}_time") or ""))
+    except ValueError:
+        return None
+    return datetime.combine(day, clock)
+
+
 class GoogleBusinessProvider(SocialProvider):
     """Google Business Profile provider.
 
@@ -91,6 +179,7 @@ class GoogleBusinessProvider(SocialProvider):
     """
 
     media_rules = GOOGLE_BUSINESS_MEDIA_RULES
+    post_settings = GOOGLE_BUSINESS_POST_SETTINGS
     supports_reviews = True
 
     # Publishes from hosted URLs only — the platform fetches the media
@@ -306,8 +395,65 @@ class GoogleBusinessProvider(SocialProvider):
     # Publishing
     # ------------------------------------------------------------------
 
+    @classmethod
+    def validate_post_settings(cls, settings: dict) -> str:
+        settings = settings or {}
+        error = super().validate_post_settings(settings)
+        if error:
+            return error
+        topic = settings.get("topic_type") or "STANDARD"
+        if topic not in ("STANDARD", "EVENT", "OFFER"):
+            return "Post type has an unsupported value."
+        cta = settings.get("cta_type") or ""
+        url = str(settings.get("cta_url") or "").strip()
+        if cta and topic == "OFFER":
+            return "Google ignores the button on offers; remove it or post an update or event."
+        if cta == "CALL" and url:
+            return "A Call now button dials the business phone number; leave its link empty."
+        if cta and cta != "CALL" and not url:
+            return "The button needs a link."
+        if url and not cta:
+            return "Choose a button for the link, or clear the link."
+        if url and not _valid_web_url(url):
+            return "The button link must start with http:// or https://."
+        if topic in ("EVENT", "OFFER"):
+            if not str(settings.get("event_title") or "").strip():
+                return "An event or offer needs a title."
+            start, end = _schedule_part(settings, "start"), _schedule_part(settings, "end")
+            if start is None or end is None:
+                return "An event or offer needs a start and end date and time."
+            if end < start:
+                return "The end must not be before the start."
+        redeem = str(settings.get("offer_redeem_url") or "").strip()
+        if topic == "OFFER" and redeem and not _valid_web_url(redeem):
+            return "The redeem link must start with http:// or https://."
+        return ""
+
+    @staticmethod
+    def _event_body(settings: dict) -> dict:
+        start, end = _schedule_part(settings, "start"), _schedule_part(settings, "end")
+
+        def _date(value: datetime) -> dict:
+            return {"year": value.year, "month": value.month, "day": value.day}
+
+        def _time(value: datetime) -> dict:
+            return {"hours": value.hour, "minutes": value.minute, "seconds": 0, "nanos": 0}
+
+        return {
+            "title": str(settings["event_title"]).strip(),
+            "schedule": {
+                "startDate": _date(start),
+                "startTime": _time(start),
+                "endDate": _date(end),
+                "endTime": _time(end),
+            },
+        }
+
     def publish_post(self, access_token: str, content: PublishContent) -> PublishResult:
         """Publish a local post to Google Business Profile."""
+        error = self.validate_post_settings(content.extra)
+        if error:
+            raise PublishError(error, platform=self.platform_name, retryable=False)
         if content.text and len(content.text) > self.max_caption_length:
             raise PublishError(
                 f"Post text exceeds {self.max_caption_length} characters (got {len(content.text)})",
@@ -331,13 +477,34 @@ class GoogleBusinessProvider(SocialProvider):
         if content.media_urls:
             body["media"] = [{"mediaFormat": "PHOTO", "sourceUrl": url} for url in content.media_urls]
 
-        # EVENT type extras
-        if topic_type == "EVENT" and content.extra.get("event"):
-            body["event"] = content.extra["event"]
+        # EVENT and OFFER posts carry a title and schedule; an OFFER also its coupon details.
+        if topic_type in ("EVENT", "OFFER"):
+            if content.extra.get("event_title"):
+                body["event"] = self._event_body(content.extra)
+            elif content.extra.get("event"):
+                body["event"] = content.extra["event"]
+        if topic_type == "OFFER":
+            offer = {
+                key: str(content.extra[setting]).strip()
+                for key, setting in (
+                    ("couponCode", "offer_coupon_code"),
+                    ("redeemOnlineUrl", "offer_redeem_url"),
+                    ("termsConditions", "offer_terms"),
+                )
+                if str(content.extra.get(setting) or "").strip()
+            }
+            if offer:
+                body["offer"] = offer
+            elif content.extra.get("offer"):
+                body["offer"] = content.extra["offer"]
 
-        # OFFER type extras
-        if topic_type == "OFFER" and content.extra.get("offer"):
-            body["offer"] = content.extra["offer"]
+        # The button; Google ignores it on offers (validate_post_settings refuses the combination).
+        cta = content.extra.get("cta_type")
+        if cta:
+            call_to_action: dict = {"actionType": cta}
+            if cta != "CALL":
+                call_to_action["url"] = str(content.extra["cta_url"]).strip()
+            body["callToAction"] = call_to_action
 
         resp = self._request(
             "POST",

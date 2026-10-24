@@ -166,6 +166,16 @@ class TestThresholdAndWindow:
         assert run.status == PlugRun.Status.DONE and run.reached_value == 10
         assert network.calls[0][0] == "repost"
 
+    def test_a_paused_account_does_nothing_until_resumed(self, published, full_auto, network):
+        rule_for(published, threshold=10)
+        network.counts = {"likes": 10}
+        published.social_account.set_paused(True)
+        result = services.check_rules()
+        assert (result.read, result.fired) == (0, 0)
+        assert network.calls == []
+        published.social_account.set_paused(False)
+        assert services.check_rules().fired == 1
+
     def test_other_counts_do_not_trigger(self, published, full_auto, network):
         rule_for(published, trigger="reposts", threshold=3)
         network.counts = {"likes": 500}

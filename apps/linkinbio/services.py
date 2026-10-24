@@ -355,15 +355,12 @@ def visible_links(page: BioPage, now: dt.datetime | None = None) -> list[BioLink
 
 def social_links(page: BioPage) -> list[dict]:
     """Icons for the page's chosen accounts that are still connected and have a public profile."""
-    from providers import PROVIDER_REGISTRY
-
     rows = []
     for account in page.social_accounts.filter(connection_status=SocialAccount.ConnectionStatus.CONNECTED):
-        provider = PROVIDER_REGISTRY.get(account.platform)
-        url = provider.profile_url(account) if provider else ""
+        url = account.profile_link
         if url:
             label = PlatformCredential.Platform(account.platform).label
-            rows.append({"platform": account.platform, "label": label, "url": url, "name": account.account_name})
+            rows.append({"platform": account.platform, "label": label, "url": url, "name": account.display_name})
     return rows
 
 

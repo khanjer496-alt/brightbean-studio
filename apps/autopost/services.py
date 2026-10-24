@@ -497,6 +497,11 @@ def _process(autopost: FeedAutopost, item: FeedItem, entry: feeds.Entry, now) ->
     if not accounts:
         _settle(item, FeedItem.Status.FAILED, "None of the chosen accounts is connected.", [])
         return 0
+    # A paused account gets nothing new: its posts would only be held and all go out at once on resume.
+    accounts = [account for account in accounts if not account.is_paused]
+    if not accounts:
+        _settle(item, FeedItem.Status.SKIPPED, "Publishing to every chosen account is paused.", [])
+        return 0
     shared = _already_shared(autopost, entry, now)
     if shared:
         accounts = [a for a in accounts if str(a.id) not in shared]

@@ -140,7 +140,7 @@ CAPABILITIES: tuple[Capability, ...] = (
         "Workspace",
         "Settings write",
         "Change the brand voice, brand kit, autonomy policy, webhooks, link-in-bio pages and tracked competitors, "
-        "and run reports (which can email them to their recipients).",
+        "pause or resume publishing to an account, and run reports (which can email them to their recipients).",
         "high",
         ("manage_workspace_settings", "manage_social_accounts", "view_analytics"),
         default_on=False,
@@ -427,6 +427,8 @@ _ROUTES: dict[str, tuple[str, ...]] = {
         "DELETE /sets/{set_id}",
         "POST /competitors/",
         "DELETE /competitors/{competitor_id}",
+        "POST /accounts/{account_id}/pause",
+        "POST /accounts/{account_id}/resume",
         # Running a report can email it to its recipients, so it is not a read.
         "POST /reports/{report_id}/run",
     ),
@@ -575,6 +577,8 @@ _TOOLS: dict[str, tuple[str, ...]] = {
         "create_account_set",
         "update_account_set",
         "delete_account_set",
+        "pause_account",
+        "resume_account",
         "update_bio_page",
         "add_bio_link",
         "update_bio_link",

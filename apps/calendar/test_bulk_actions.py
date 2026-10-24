@@ -603,15 +603,15 @@ class ReschedulePermissionTests(BulkActionBase):
 
 class PublishabilityTests(BulkActionBase):
     """Both endpoints hand rows to the publisher, so neither may hand over one
-    that can only fail there: an image-only TikTok post, a pin with no board."""
+    that can only fail there: an image-only YouTube post, a pin with no board."""
 
     def setUp(self):
         super().setUp()
         self.client.force_login(self.owner)
-        self.tiktok = SocialAccount.objects.create(
+        self.video_only = SocialAccount.objects.create(
             workspace=self.workspace,
-            platform="tiktok",
-            account_platform_id="tt-bulk-1",
+            platform="youtube",
+            account_platform_id="yt-bulk-1",
             account_name="TT",
             connection_status="connected",
         )
@@ -637,20 +637,20 @@ class PublishabilityTests(BulkActionBase):
             data={"platform_post_id": str(pp.id), "new_datetime": when.strftime("%Y-%m-%dT%H:%M:%S")},
         )
 
-    def test_dragging_an_image_only_tiktok_draft_is_refused(self):
-        pp = self._pp("draft", account=self.tiktok)
+    def test_dragging_an_image_only_youtube_draft_is_refused(self):
+        pp = self._pp("draft", account=self.video_only)
         self._attach(pp, "image")
 
         response = self._reschedule(pp)
 
         self.assertEqual(response.status_code, 400)
-        self.assertIn("TikTok can only publish videos", response.json()["error"])
+        self.assertIn("YouTube can only publish videos", response.json()["error"])
         pp.refresh_from_db()
         self.assertEqual(pp.status, "draft")
         self.assertIsNone(pp.scheduled_at)
 
     def test_dragging_a_failed_tiktok_chip_without_a_video_is_refused(self):
-        pp = self._pp("failed", account=self.tiktok)
+        pp = self._pp("failed", account=self.video_only)
 
         response = self._reschedule(pp)
 
@@ -658,8 +658,8 @@ class PublishabilityTests(BulkActionBase):
         pp.refresh_from_db()
         self.assertEqual(pp.status, "failed")
 
-    def test_dragging_a_tiktok_draft_with_a_video_schedules_it(self):
-        pp = self._pp("draft", account=self.tiktok)
+    def test_dragging_a_youtube_draft_with_a_video_schedules_it(self):
+        pp = self._pp("draft", account=self.video_only)
         self._attach(pp, "video")
 
         response = self._reschedule(pp)
@@ -686,7 +686,7 @@ class PublishabilityTests(BulkActionBase):
 
     def test_moving_an_already_scheduled_row_only_retimes_it(self):
         """No promotion, no new commitment — the check is for rows entering the publisher."""
-        pp = self._pp("scheduled", scheduled_at=timezone.now() + timedelta(days=1), account=self.tiktok)
+        pp = self._pp("scheduled", scheduled_at=timezone.now() + timedelta(days=1), account=self.video_only)
 
         response = self._reschedule(pp)
 
@@ -695,7 +695,7 @@ class PublishabilityTests(BulkActionBase):
     def test_bulk_publish_refuses_the_whole_batch(self):
         """A skipped row would drop out of the count with no reason given."""
         fine = self._pp("draft")
-        blocked = self._pp("draft", account=self.tiktok)
+        blocked = self._pp("draft", account=self.video_only)
 
         response = self._bulk("publish", fine, blocked)
 
@@ -703,7 +703,7 @@ class PublishabilityTests(BulkActionBase):
         self.assertEqual(
             response.json()["error"],
             "1 selected post can't publish, so nothing was published. "
-            "TikTok can only publish videos. Add a video to this post before scheduling it.",
+            "YouTube can only publish videos. Add a video to this post before scheduling it.",
         )
         fine.refresh_from_db()
         blocked.refresh_from_db()
@@ -711,7 +711,7 @@ class PublishabilityTests(BulkActionBase):
         self.assertEqual(blocked.status, "draft")
 
     def test_bulk_publish_with_a_video_goes_through(self):
-        pp = self._pp("draft", account=self.tiktok)
+        pp = self._pp("draft", account=self.video_only)
         self._attach(pp, "video")
 
         response = self._bulk("publish", pp)

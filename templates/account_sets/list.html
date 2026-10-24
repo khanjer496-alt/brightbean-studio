@@ -25,7 +25,7 @@
                 </form>
             </div>
             <p class="text-xs mt-1 text-[var(--text-tertiary)]">
-                {% for account in item.accounts.all %}{{ account.account_name|default:account.account_handle }} ({{ account.get_platform_display }}){% if not forloop.last %}, {% endif %}{% endfor %}
+                {% for account in item.accounts.all %}{{ account.display_name }} ({{ account.get_platform_display }}){% if not forloop.last %}, {% endif %}{% endfor %}
             </p>
         </li>
         {% endfor %}

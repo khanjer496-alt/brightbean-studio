@@ -242,7 +242,7 @@ def output_discard(request, workspace_id, job_id, output_id):
 @require_permission("create_posts")
 @require_GET
 def output_pdf(request, workspace_id, job_id, output_id):
-    """Download a carousel's PDF (LinkedIn can't publish documents from here yet)."""
+    """Download a carousel's PDF (for networks that can't publish documents from here)."""
     out = get_object_or_404(RepurposeOutput, id=output_id, job=_job(request, job_id))
     if not out.document_id or not out.document.file:
         raise Http404
