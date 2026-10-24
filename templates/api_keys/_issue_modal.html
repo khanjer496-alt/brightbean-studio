@@ -1,7 +1,8 @@
 {% comment %}
 Issuance modal — Alpine for open/close, HTMX for the cascading workspace
-→ accounts + permissions partial. The actual POST is a normal Django
-form submit (no HTMX); the token is then shown once on the redirected list page.
+→ accounts + permissions partial. The form posts with HTMX so a rejected form (422) keeps the dialog open with
+everything the user entered and shows each error next to its field (_issue_errors.html); success redirects
+(HX-Redirect) to the list page, where the token is shown once. Without JavaScript it is a normal form post.
 {% endcomment %}
 <template x-teleport="body">
     <div x-show="showIssueModal" x-cloak x-transition.opacity
@@ -10,7 +11,10 @@ form submit (no HTMX); the token is then shown once on the redirected list page.
         <div @click.outside="showIssueModal = false"
              x-show="showIssueModal" x-transition
              class="w-full max-w-xl mx-4 max-h-[90vh] rounded-xl flex flex-col bg-[var(--surface-0)] border border-stone-200 shadow-2xl">
-            <form method="POST" action="{% url 'api_keys:issue' %}" data-token-scope class="flex flex-col min-h-0">
+            <form method="POST" action="{% url 'api_keys:issue' %}" data-token-scope class="flex flex-col min-h-0"
+                  hx-post="{% url 'api_keys:issue' %}" hx-target="#issue-errors" hx-swap="innerHTML" hx-disabled-elt="#issue-submit"
+                  @htmx:before-swap="if ($event.detail.xhr.status === 422) { $event.detail.shouldSwap = true; $event.detail.isError = false; }"
+                  @htmx:after-request="if ($event.detail.xhr.status === 422) $nextTick(() => $refs.issueErrors.focus())">
                 {% csrf_token %}
                 <div class="flex items-start justify-between gap-4 px-5 sm:px-6 pt-6 pb-4 flex-shrink-0">
                     <div>
@@ -24,12 +28,13 @@ form submit (no HTMX); the token is then shown once on the redirected list page.
                     <div>
                         <label for="name" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Name</label>
                         <input type="text" id="name" name="name" required data-autofocus maxlength="100" autocomplete="off"
-                               placeholder="e.g. Claude Desktop, content pipeline" class="form-input text-sm w-full">
+                               placeholder="e.g. Claude Desktop, content pipeline" class="form-input text-sm w-full" aria-describedby="issue-error-name">
+                        <div id="issue-error-name" class="pd-error"></div>
                     </div>
 
                     <div>
                         <label for="workspace_id" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Workspace</label>
-                        <select id="workspace_id" name="workspace_id" required
+                        <select id="workspace_id" name="workspace_id" required aria-describedby="issue-error-workspace_id"
                                 hx-get="{% url 'api_keys:workspace_options' %}"
                                 hx-trigger="change"
                                 hx-target="#workspace-options-target"
@@ -40,25 +45,31 @@ form submit (no HTMX); the token is then shown once on the redirected list page.
                             <option value="{{ ws.id }}">{{ ws.name }}</option>
                             {% endfor %}
                         </select>
+                        <div id="issue-error-workspace_id" class="pd-error"></div>
                     </div>
 
                     {# Populated by HTMX once a workspace is picked. #}
                     <div id="workspace-options-target" class="space-y-4"></div>
+                    <div id="issue-error-social_account_ids" class="pd-error"></div>
 
                     {% include "api_keys/_scope_fields.html" with scope_form=scope_form uid="issue" %}
+                    <div id="issue-error-scope" class="pd-error"></div>
 
                     <div>
                         <label for="expires_at" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">
                             Expires on <span class="font-normal text-[var(--text-tertiary)]">(optional)</span>
                         </label>
-                        <input type="date" id="expires_at" name="expires_at" class="form-input text-sm w-full">
+                        <input type="date" id="expires_at" name="expires_at" class="form-input text-sm w-full" aria-describedby="issue-error-expires_at">
+                        <div id="issue-error-expires_at" class="pd-error"></div>
                     </div>
                 </div>
 
+                <div id="issue-errors" x-ref="issueErrors" tabindex="-1" role="alert"
+                     class="pd-error px-5 sm:px-6 pt-3 flex-shrink-0 outline-none"></div>
                 <div class="flex items-center justify-end gap-3 px-5 sm:px-6 pt-5 pb-6 flex-shrink-0">
                     <button type="button" @click="showIssueModal = false"
                             class="px-4 py-2 text-sm font-medium rounded-full cursor-pointer border border-stone-300 bg-white text-stone-700 hover:bg-stone-50">Cancel</button>
-                    <button type="submit" class="btn-brand text-sm py-2 px-5">Create token</button>
+                    <button type="submit" id="issue-submit" class="btn-brand text-sm py-2 px-5">Create token</button>
                 </div>
             </form>
         </div>

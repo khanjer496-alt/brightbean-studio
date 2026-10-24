@@ -345,6 +345,38 @@ class TestIssue:
         assert ApiKey.objects.count() == 0
         assert b"Name is required" in r.content
 
+    def test_htmx_rejection_returns_inline_field_errors_and_creates_nothing(self, admin_client, workspace):
+        """The dialog posts with htmx: a refusal is a 422 carrying one message box per field (swapped out of
+        band), so the open dialog keeps everything the user typed."""
+        r = admin_client.post(
+            reverse("api_keys:issue"),
+            {"name": "", "workspace_id": str(workspace.id), "expires_at": "not-a-date"},
+            HTTP_HX_REQUEST="true",
+        )
+        body = r.content.decode()
+        assert r.status_code == 422
+        assert ApiKey.objects.count() == 0
+        assert re.search(r'id="issue-error-name"[^>]*>\s*<p>Name is required\.</p>', body)
+        assert re.search(r'id="issue-error-social_account_ids"[^>]*>\s*<p>Select at least one connected account\.</p>', body)
+        assert re.search(r'id="issue-error-workspace_id"[^>]*>\s*</div>', body)  # fine fields are cleared
+
+    def test_htmx_success_redirects_to_the_list(self, admin_client, workspace, social_account):
+        r = admin_client.post(
+            reverse("api_keys:issue"),
+            {"name": "bot", "workspace_id": str(workspace.id), "social_account_ids": [str(social_account.id)]},
+            HTTP_HX_REQUEST="true",
+        )
+        assert r.status_code == 204
+        assert r["HX-Redirect"] == reverse("api_keys:list")
+        assert ApiKey.objects.filter(workspace=workspace).count() == 1
+
+    def test_issue_dialog_posts_with_htmx_and_has_a_message_box_per_field(self, admin_client):
+        body = admin_client.get(reverse("api_keys:list")).content.decode()
+        assert 'hx-post="' + reverse("api_keys:issue") + '"' in body
+        for field in ("name", "workspace_id", "social_account_ids", "scope", "expires_at"):
+            assert f'id="issue-error-{field}"' in body
+        assert 'id="issue-errors"' in body
+
     def test_foreign_workspace_is_rejected(self, admin_client, social_account, db):
         """A tampered POST naming a workspace from another org must fail
         defence-in-depth, not just rely on the UI dropdown.

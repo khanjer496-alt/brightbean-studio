@@ -223,6 +223,7 @@ body {
 .pd-switch { margin-top: 24px; text-align: center; color: var(--text-secondary); font-size: 13px; }
 .pd-switch a { color: var(--text-primary); font-weight: 700; }
 .pd-error { font-size: 12px; color: var(--error-700); margin-top: 5px; overflow-wrap: anywhere; }
+.pd-error:empty { display: none; }
 @media (max-width: 900px) {
   .pd-auth { grid-template-columns: 1fr; max-width: 560px; min-height: 0; }
   .pd-story { display: none; }
