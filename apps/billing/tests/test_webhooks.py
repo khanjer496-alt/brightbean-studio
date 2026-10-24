@@ -239,17 +239,41 @@ class TestLifecycle:
 
 @pytest.mark.django_db
 class TestUnpaidAndPaused:
-    def test_unpaid_stays_linked_with_a_grace_period_then_free(self, stripe_sub):
-        post_event(Client(), _event("customer.subscription.updated", _subscription(status="unpaid")))
+    def test_unpaid_keeps_what_is_left_of_the_past_due_grace_then_free(self, stripe_sub):
+        client = Client()
+        post_event(client, _event("customer.subscription.updated", _subscription(status="past_due"), "evt_a", NOW - 10))
+        stripe_sub.refresh_from_db()
+        grace_until = stripe_sub.grace_until
+        assert grace_until is not None
+        post_event(client, _event("customer.subscription.updated", _subscription(status="unpaid"), "evt_b"))
         stripe_sub.refresh_from_db()
         assert stripe_sub.status == Subscription.Status.UNPAID
         assert stripe_sub.stripe_subscription_id == "sub_1"
-        assert stripe_sub.grace_until is not None
+        assert stripe_sub.grace_until == grace_until
         assert stripe_sub.effective_plan().slug == "team"
         stripe_sub.grace_until = timezone.now() - timedelta(minutes=1)
         stripe_sub.save()
         assert stripe_sub.effective_plan().slug == "free"
         assert stripe_sub.has_linked_subscription
+
+    def test_unpaid_never_starts_a_fresh_grace_period(self, stripe_sub):
+        # Stripe only reaches ``unpaid`` after retrying a ``past_due`` one, and
+        # says to revoke access at that point.
+        post_event(Client(), _event("customer.subscription.updated", _subscription(status="unpaid")))
+        stripe_sub.refresh_from_db()
+        assert stripe_sub.status == Subscription.Status.UNPAID and stripe_sub.grace_until is None
+        assert stripe_sub.effective_plan().slug == "free"
+        assert stripe_sub.has_linked_subscription
+
+    @pytest.mark.parametrize("status", ["unpaid", "paused"])
+    def test_a_failed_payment_does_not_hand_the_plan_back(self, stripe_sub, status):
+        client = Client()
+        post_event(client, _event("customer.subscription.updated", _subscription(status=status), "evt_a", NOW - 10))
+        failed = {"id": "in_1", "customer": "cus_1", "subscription": "sub_1"}
+        post_event(client, _event("invoice.payment_failed", failed, "evt_b"))
+        stripe_sub.refresh_from_db()
+        assert stripe_sub.status == status and stripe_sub.grace_until is None
+        assert stripe_sub.effective_plan().slug == "free"
 
     def test_paused_is_free_immediately_and_stays_linked(self, stripe_sub):
         post_event(Client(), _event("customer.subscription.updated", _subscription(status="paused")))
@@ -259,12 +283,35 @@ class TestUnpaidAndPaused:
         assert stripe_sub.effective_plan().slug == "free"
         assert stripe_sub.has_linked_subscription
 
+    def test_paused_collection_keeps_the_paid_plan(self, stripe_sub):
+        # ``pause_collection`` leaves the status ``active``; Stripe's guidance
+        # is that the customer keeps access.
+        obj = _subscription(status="active", pause_collection={"behavior": "void", "resumes_at": None})
+        post_event(Client(), _event("customer.subscription.updated", obj))
+        stripe_sub.refresh_from_db()
+        assert stripe_sub.status == Subscription.Status.ACTIVE
+        assert stripe_sub.effective_plan().slug == "team"
+
     def test_resuming_clears_the_grace_period(self, stripe_sub):
         client = Client()
-        post_event(client, _event("customer.subscription.updated", _subscription(status="unpaid"), "evt_a", NOW - 10))
+        post_event(client, _event("customer.subscription.updated", _subscription(status="past_due"), "evt_a", NOW - 10))
         post_event(client, _event("customer.subscription.updated", _subscription(status="active"), "evt_b"))
         stripe_sub.refresh_from_db()
         assert stripe_sub.status == Subscription.Status.ACTIVE and stripe_sub.grace_until is None
+
+
+def _checkout_completed(org_id, subscription="sub_2", event_id="evt_1") -> dict:
+    return _event(
+        "checkout.session.completed",
+        {
+            "id": "cs_2",
+            "mode": "subscription",
+            "customer": "cus_1",
+            "subscription": subscription,
+            "client_reference_id": str(org_id),
+        },
+        event_id,
+    )
 
 
 @pytest.mark.django_db
@@ -272,33 +319,76 @@ class TestSecondSubscription:
     def test_checkout_does_not_overwrite_a_live_subscription(
         self, stripe_sub, org_owner, django_capture_on_commit_callbacks
     ):
-        event = _event(
-            "checkout.session.completed",
-            {
-                "id": "cs_2",
-                "mode": "subscription",
-                "customer": "cus_1",
-                "subscription": "sub_2",
-                "client_reference_id": str(stripe_sub.organization_id),
-            },
-        )
         with (
             mock.patch("apps.billing.services.stripe") as stripe_mock,
             django_capture_on_commit_callbacks(execute=True),
         ):
-            assert post_event(Client(), event).status_code == 200
-        stripe_mock.Subscription.retrieve.assert_not_called()
+            stripe_mock.Subscription.retrieve.return_value = _subscription(sub_id="sub_1")
+            assert post_event(Client(), _checkout_completed(stripe_sub.organization_id)).status_code == 200
+        stripe_mock.Subscription.retrieve.assert_called_once_with("sub_1", api_key=mock.ANY)
         stripe_sub.refresh_from_db()
         assert stripe_sub.stripe_subscription_id == "sub_1"
-        note = Notification.objects.get(user=org_owner, event_type="billing_payment_failed")
+        note = Notification.objects.get(user=org_owner, event_type="billing_subscription_conflict")
         assert "sub_2" in note.body
+        assert not Notification.objects.filter(event_type="billing_payment_failed").exists()
+
+    def test_the_extra_subscription_alerts_once(self, stripe_sub, org_owner, django_capture_on_commit_callbacks):
+        client = Client()
+        with (
+            mock.patch("apps.billing.services.stripe") as stripe_mock,
+            django_capture_on_commit_callbacks(execute=True),
+        ):
+            stripe_mock.Subscription.retrieve.return_value = _subscription(sub_id="sub_1")
+            post_event(client, _checkout_completed(stripe_sub.organization_id, event_id="evt_a"))
+            post_event(client, _event("customer.subscription.created", _subscription(sub_id="sub_2"), "evt_b"))
+            post_event(client, _event("customer.subscription.updated", _subscription(sub_id="sub_2"), "evt_c"))
+        assert Notification.objects.filter(user=org_owner, event_type="billing_subscription_conflict").count() == 1
 
     def test_a_second_live_subscription_event_does_not_replace_the_first(self, stripe_sub):
-        post_event(
-            Client(), _event("customer.subscription.created", _subscription(sub_id="sub_2", price="price_agency_m"))
-        )
+        with mock.patch("apps.billing.services.stripe") as stripe_mock:
+            stripe_mock.Subscription.retrieve.return_value = _subscription(sub_id="sub_1")
+            post_event(
+                Client(),
+                _event("customer.subscription.created", _subscription(sub_id="sub_2", price="price_agency_m")),
+            )
         stripe_sub.refresh_from_db()
         assert (stripe_sub.stripe_subscription_id, stripe_sub.plan) == ("sub_1", "team")
+
+    def test_an_incomplete_second_subscription_does_not_replace_the_first(self, stripe_sub):
+        with mock.patch("apps.billing.services.stripe") as stripe_mock:
+            stripe_mock.Subscription.retrieve.return_value = _subscription(sub_id="sub_1")
+            post_event(
+                Client(), _event("customer.subscription.created", _subscription(status="incomplete", sub_id="sub_2"))
+            )
+        stripe_sub.refresh_from_db()
+        assert (stripe_sub.stripe_subscription_id, stripe_sub.status) == ("sub_1", Subscription.Status.ACTIVE)
+
+    def test_replaces_a_linked_subscription_that_already_ended_on_stripe(self, stripe_sub):
+        # sub_1 was cancelled and sub_2 started, but sub_2's event arrives
+        # before sub_1's ``deleted`` one; Stripe says sub_1 is gone.
+        client = Client()
+        with mock.patch("apps.billing.services.stripe") as stripe_mock:
+            stripe_mock.Subscription.retrieve.return_value = _subscription(status="canceled", sub_id="sub_1")
+            post_event(
+                client,
+                _event("customer.subscription.created", _subscription(sub_id="sub_2", price="price_agency_m"), "evt_a"),
+            )
+        post_event(client, _event("customer.subscription.deleted", _subscription(status="canceled"), "evt_b", NOW + 5))
+        stripe_sub.refresh_from_db()
+        assert (stripe_sub.stripe_subscription_id, stripe_sub.plan) == ("sub_2", "agency")
+        assert stripe_sub.status == Subscription.Status.ACTIVE
+
+    def test_stripe_unreachable_while_checking_is_retried(self, stripe_sub):
+        import stripe
+
+        with mock.patch(
+            "apps.billing.services.stripe.Subscription.retrieve", side_effect=stripe.APIConnectionError("x")
+        ):
+            with pytest.raises(stripe.APIConnectionError):
+                post_event(Client(), _event("customer.subscription.created", _subscription(sub_id="sub_2")))
+        assert not ProcessedStripeEvent.objects.exists()
+        stripe_sub.refresh_from_db()
+        assert stripe_sub.stripe_subscription_id == "sub_1"
 
     def test_checkout_may_replace_a_cancelled_subscription(self, billing, organization):
         set_plan(
@@ -308,19 +398,9 @@ class TestSecondSubscription:
             stripe_customer_id="cus_1",
             stripe_subscription_id="sub_old",
         )
-        event = _event(
-            "checkout.session.completed",
-            {
-                "id": "cs_3",
-                "mode": "subscription",
-                "customer": "cus_1",
-                "subscription": "sub_new",
-                "client_reference_id": str(organization.id),
-            },
-        )
         with mock.patch("apps.billing.services.stripe") as stripe_mock:
             stripe_mock.Subscription.retrieve.return_value = _subscription(sub_id="sub_new")
-            post_event(Client(), event)
+            post_event(Client(), _checkout_completed(organization.id, subscription="sub_new"))
         assert Subscription.objects.get(organization=organization).stripe_subscription_id == "sub_new"
 
 

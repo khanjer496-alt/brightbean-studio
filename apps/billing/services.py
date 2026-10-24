@@ -31,8 +31,13 @@ _STRIPE_STATUS = {
     "active": Subscription.Status.ACTIVE,
     "past_due": Subscription.Status.PAST_DUE,
     "incomplete": Subscription.Status.INCOMPLETE,
-    # Stripe keeps these subscriptions, so they stay linked: ``unpaid`` gets
-    # the same grace period as ``past_due`` and then Free, ``paused`` is Free.
+    # Stripe keeps these subscriptions, so they stay linked. ``unpaid`` comes
+    # after Stripe has finished retrying a ``past_due`` one, so it only keeps
+    # whatever is left of that grace period, then Free; ``paused`` (a trial
+    # that ended without a payment method) is Free.
+    # https://docs.stripe.com/billing/subscriptions/overview#subscription-statuses
+    # ``pause_collection`` is different: the status stays ``active`` and,
+    # per Stripe, "Your customer retains access", so it keeps the paid plan.
     "unpaid": Subscription.Status.UNPAID,
     "paused": Subscription.Status.PAUSED,
     # Everything else has stopped billing: the organization is on Free.
@@ -245,26 +250,22 @@ def sync_subscription(obj: dict, event_created: dt.datetime | None = None) -> Su
             obj = _current_snapshot(obj)
 
     status = _STRIPE_STATUS.get(obj.get("status", ""), Subscription.Status.CANCELED)
-    if (
-        status in LINKED_STATUSES
-        and sub.stripe_subscription_id
-        and obj.get("id")
-        and obj["id"] != sub.stripe_subscription_id
-        and sub.status in LINKED_STATUSES
-    ):
-        _refuse_second_subscription(sub, obj["id"])
-        return sub
-    # The end of a subscription that is no longer this organization's current
-    # one — e.g. the extra one from a second Checkout tab, cancelled from the
-    # portal — must not downgrade the subscription it is still paying for.
-    if (
-        status == Subscription.Status.CANCELED
-        and sub.stripe_subscription_id
-        and obj.get("id")
-        and obj["id"] != sub.stripe_subscription_id
-    ):
-        logger.info("Ignoring end of superseded Stripe subscription %s", obj.get("id"))
-        return sub
+    other_id = obj.get("id", "")
+    if other_id and sub.stripe_subscription_id and other_id != sub.stripe_subscription_id:
+        # The end of a subscription that is no longer this organization's
+        # current one — e.g. the extra one from a second Checkout tab,
+        # cancelled from the portal — must not downgrade the one it pays for.
+        if status == Subscription.Status.CANCELED:
+            logger.info("Ignoring end of superseded Stripe subscription %s", other_id)
+            return sub
+        # Nor may any snapshot of another subscription replace a linked one
+        # that is still alive on Stripe.
+        if sub.status in LINKED_STATUSES and _still_live(sub.stripe_subscription_id):
+            if status in LINKED_STATUSES:
+                _refuse_second_subscription(sub, other_id)
+            else:
+                logger.info("Ignoring %s snapshot of non-current Stripe subscription %s", status, other_id)
+            return sub
 
     items = (obj.get("items") or {}).get("data") or []
     price_id = (items[0].get("price") or {}).get("id", "") if items else ""
@@ -287,9 +288,11 @@ def sync_subscription(obj: dict, event_created: dt.datetime | None = None) -> Su
         sub.current_period_end = _subscription_period_end(obj)
         if status == Subscription.Status.TRIALING:
             sub.trial_ends_at = _from_timestamp(obj.get("trial_end")) or sub.trial_ends_at
-        if status in (Subscription.Status.PAST_DUE, Subscription.Status.UNPAID):
+        if status == Subscription.Status.PAST_DUE:
             sub.start_grace_period()
-        else:
+        elif status != Subscription.Status.UNPAID:
+            # ``unpaid`` keeps what is left of the ``past_due`` grace period
+            # and never starts a new one: Stripe has already retried payment.
             sub.grace_until = None
 
     sub.status = status
@@ -308,6 +311,18 @@ def _current_snapshot(obj: dict) -> dict:
     except (stripe.StripeError, BillingNotConfiguredError):
         logger.warning("Could not re-read Stripe subscription %s; using the event's snapshot", obj["id"])
         return obj
+
+
+def _still_live(subscription_id: str) -> bool:
+    """Whether Stripe still has ``subscription_id`` as a subscription that can bill.
+
+    Stripe doesn't guarantee delivery order, so the row's subscription may
+    already have ended with its ``deleted`` event still on the way; a new
+    subscription must then replace it rather than be refused. A Stripe error
+    propagates, so the webhook answers 500 and Stripe redelivers the event.
+    """
+    current = _as_dict(stripe.Subscription.retrieve(subscription_id, api_key=_api_key()))
+    return _STRIPE_STATUS.get(current.get("status", "")) in LINKED_STATUSES
 
 
 def _refuse_second_subscription(sub: Subscription, other_id: str) -> None:
@@ -335,6 +350,7 @@ def _on_checkout_completed(session: dict, event_created) -> None:
         sub.stripe_subscription_id
         and sub.stripe_subscription_id != session["subscription"]
         and sub.status in LINKED_STATUSES
+        and _still_live(sub.stripe_subscription_id)
     ):
         _refuse_second_subscription(sub, session["subscription"])
         return
@@ -361,7 +377,14 @@ def _on_payment_failed(invoice: dict, event_created) -> None:
         return
     # A subscription whose first payment never went through has nothing to
     # keep: a grace period would hand out the paid plan without a payment.
-    if sub.status in (Subscription.Status.INCOMPLETE, Subscription.Status.CANCELED):
+    # An ``unpaid`` or ``paused`` one has no grace period to start either: a
+    # failed attempt to pay it from the portal must not hand the plan back.
+    if sub.status in (
+        Subscription.Status.INCOMPLETE,
+        Subscription.Status.CANCELED,
+        Subscription.Status.UNPAID,
+        Subscription.Status.PAUSED,
+    ):
         return
     # A failure delivered after a newer snapshot that has moved on (the retry
     # that then succeeded, or the cancellation) must not put the row back into
@@ -387,19 +410,32 @@ def _billing_admins(org):
 
 def _notify_second_subscription(sub: Subscription, other_id: str) -> None:
     from apps.notifications.engine import notify
-    from apps.notifications.models import EventType
+    from apps.notifications.models import EventType, Notification
 
     org = sub.organization
     for membership in _billing_admins(org):
+        # Every event of the extra subscription (created, updated, invoices)
+        # lands here; one alert per person per subscription is enough.
+        if Notification.objects.filter(
+            user=membership.user,
+            event_type=EventType.BILLING_SUBSCRIPTION_CONFLICT,
+            data__subscription_id=other_id,
+        ).exists():
+            continue
         notify(
             user=membership.user,
-            event_type=EventType.BILLING_PAYMENT_FAILED,
-            title=f"Second subscription found for {org.name}",
+            event_type=EventType.BILLING_SUBSCRIPTION_CONFLICT,
+            title=f"{org.name} has two subscriptions",
             body=(
-                f"{org.name} already has a live subscription, and Stripe now shows another one ({other_id}). "
-                "We kept the first. Cancel the extra subscription from the billing portal so you aren't charged twice."
+                f"{org.name} already had a subscription when Stripe started a second one ({other_id}). "
+                "Your plan still follows the first one. Cancel the second from the billing portal "
+                "so you aren't charged twice."
             ),
-            data={"organization_id": str(org.id), "action_url": billing_url(absolute=True)},
+            data={
+                "organization_id": str(org.id),
+                "subscription_id": other_id,
+                "action_url": billing_url(absolute=True),
+            },
         )
 
 
