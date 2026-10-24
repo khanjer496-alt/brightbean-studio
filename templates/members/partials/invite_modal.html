@@ -1,19 +1,15 @@
 <!-- Invite Team Member Modal -->
-<template x-teleport="body">
-    <div x-show="showInviteModal" x-transition.opacity
-         class="fixed inset-0 z-50 flex items-center justify-center"
-         style="background: rgba(0,0,0,0.4);">
-        <div @click.outside="showInviteModal = false"
-             x-show="showInviteModal"
-             x-transition
-             class="w-full max-w-lg rounded-xl shadow-xl flex flex-col max-h-[90vh]"
-             style="background: var(--surface-0);">
+<dialog x-ref="dlg" aria-labelledby="invite-modal-title"
+        @close="showInviteModal = false" @click.self="$refs.dlg.close()"
+        x-effect="showInviteModal ? (!$refs.dlg.open && $refs.dlg.showModal()) : ($refs.dlg.open && $refs.dlg.close())"
+        class="m-auto w-[calc(100vw-2rem)] max-w-lg rounded-xl border border-line bg-surface-1 p-0 text-ink backdrop:bg-black/60">
+    <div class="flex flex-col max-h-[85vh]">
 
-            <!-- Header -->
-            <div class="flex items-center justify-between px-6 py-4 flex-shrink-0" style="border-bottom: 1px solid var(--border);">
-                <h3 class="text-base font-semibold" style="color: var(--text-primary);">Invite Team Member</h3>
-                <button @click="showInviteModal = false" class="cursor-pointer" style="color: var(--text-tertiary);">
-                    <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+<!-- Header -->
+            <div class="flex items-center justify-between px-6 py-4 flex-shrink-0 border-b border-line">
+                <h3 id="invite-modal-title" class="text-base font-semibold text-ink">Invite Team Member</h3>
+                <button type="button" @click="$refs.dlg.close()" aria-label="Close" class="inline-flex items-center justify-center w-8 h-8 shrink-0 rounded-full cursor-pointer text-ink-3 focus-visible:ring-2 focus-visible:ring-accent">
+                    <svg aria-hidden="true" width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
             </div>
 
@@ -28,23 +24,22 @@
 
                 <!-- Email -->
                 <div class="mb-5">
-                    <label for="invite-email" class="block text-sm font-medium mb-1.5" style="color: var(--text-primary);">Email Address</label>
-                    <input type="email" id="invite-email" name="email" required placeholder="colleague@example.com"
-                           class="input-focus w-full px-4 py-2.5 text-sm rounded-lg outline-none transition-all"
-                           style="border: 1px solid var(--border); color: var(--text-primary); background: var(--surface-1);">
+                    <label for="invite-email" class="block text-sm font-medium mb-1.5 text-ink">Email Address</label>
+                    <input type="email" id="invite-email" name="email" required autofocus placeholder="colleague@example.com"
+                           class="input-focus w-full px-4 py-2.5 text-sm rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent transition-all border border-line text-ink bg-surface-1">
                 </div>
 
                 <!-- Org Role -->
                 <div class="mb-5">
-                    <label class="block text-sm font-medium mb-1.5" style="color: var(--text-primary);">Organization Role</label>
-                    <div class="flex gap-4">
+                    <span id="invite-role-label" class="block text-sm font-medium mb-1.5 text-ink">Organization Role</span>
+                    <div class="flex flex-wrap gap-4" role="radiogroup" aria-labelledby="invite-role-label">
                         {% for value, label in org_role_choices %}
                         <div class="flex items-center">
                             <input type="radio" name="org_role" value="{{ value }}" {% if value == "member" %}checked{% endif %}
                                    id="invite-role-{{ value }}"
-                                   class="w-4 h-4 cursor-pointer"
-                                   style="accent-color: var(--primary);">
-                            <label for="invite-role-{{ value }}" class="select-none ms-2 text-sm font-medium cursor-pointer" style="color: var(--text-primary);">
+                                   class="w-4 h-4 cursor-pointer accent-accent"
+                                   >
+                            <label for="invite-role-{{ value }}" class="select-none ms-2 text-sm font-medium cursor-pointer text-ink">
                                 {{ label }}
                             </label>
                         </div>
@@ -54,50 +49,49 @@
 
                 <!-- Workspace Assignments -->
                 <div class="mb-5">
-                    <label class="block text-sm font-medium mb-1.5" style="color: var(--text-primary);">Assign to Workspaces</label>
-                    <p class="text-xs mb-3" style="color: var(--text-tertiary);">Select workspaces and roles for this team member.</p>
+                    <span id="invite-ws-label" class="block text-sm font-medium mb-1.5 text-ink">Assign to Workspaces</span>
+                    <p class="text-xs mb-3 text-ink-3">Select workspaces and roles for this team member.</p>
 
-                    <div class="space-y-2 max-h-48 overflow-y-auto">
+                    <div class="space-y-2 max-h-48 overflow-y-auto" role="group" aria-labelledby="invite-ws-label">
                         {% for ws in org_workspaces %}
-                        <div class="flex items-center gap-3 py-2 px-3 rounded-lg" style="background: var(--neutral-50);">
+                        <div class="flex flex-wrap items-center gap-3 py-2 px-3 rounded-lg bg-surface-2">
                             <input type="checkbox" name="ws_{{ ws.id }}" value="1" id="invite-ws-{{ ws.id }}"
-                                   class="accent-orange-500 cursor-pointer">
-                            <label for="invite-ws-{{ ws.id }}" class="flex-1 text-sm cursor-pointer" style="color: var(--text-primary);">
+                                   class="w-4 h-4 accent-accent cursor-pointer">
+                            <label for="invite-ws-{{ ws.id }}" class="flex-1 text-sm cursor-pointer text-ink">
                                 {{ ws.name }}
                             </label>
-                            <select name="ws_role_{{ ws.id }}"
-                                    class="input-focus text-xs font-semibold cursor-pointer"
-                                    style="padding: 4px 24px 4px 8px; border-radius: 8px; color: var(--text-secondary); background: var(--surface-0); border: 1px solid var(--border); appearance: none; background-image: url(&quot;data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2378716C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E&quot;); background-repeat: no-repeat; background-position: right 6px center; transition: all 150ms ease; outline: none;">
+                            <span class="relative inline-block">
+                                <select name="ws_role_{{ ws.id }}" aria-label="Role in {{ ws.name }}"
+                                        class="input-focus appearance-none ps-2 pe-6 py-1 rounded-lg text-xs font-semibold cursor-pointer text-ink-2 bg-surface-0 border border-line focus-visible:ring-2 focus-visible:ring-accent">
                                 {% for value, label in workspace_role_choices %}
                                 <option value="{{ value }}" {% if value == "editor" %}selected{% endif %}>{{ label }}</option>
                                 {% endfor %}
-                            </select>
+                                </select>
+                                <svg aria-hidden="true" class="pointer-events-none absolute end-2 top-1/2 -translate-y-1/2 text-ink-3" width="10" height="6" viewBox="0 0 10 6" fill="none"><path d="M1 1L5 5L9 1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            </span>
                         </div>
                         {% endfor %}
                     </div>
 
-                    <p class="text-xs mt-2" style="color: var(--text-tertiary);">
+                    <p class="text-xs mt-2 text-ink-3">
                         Tip: For external clients who only need portal access, use the Client Portal invite from workspace settings instead.
                     </p>
                 </div>
 
                 <!-- Error container (populated by the global htmx:responseError handler in base.html) -->
-                <div id="invite-error" class="mb-3 text-sm text-red-600 empty:hidden"></div>
+                <div id="invite-error" class="mb-3 text-sm text-bad empty:hidden" role="alert"></div>
 
                 <!-- Submit -->
-                <div class="flex justify-end gap-3">
-                    <button type="button" @click="showInviteModal = false"
-                            class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer transition-colors"
-                            style="background: var(--neutral-100); color: var(--text-primary);">
+                <div class="flex flex-wrap justify-end gap-3">
+                    <button type="button" @click="$refs.dlg.close()"
+                            class="btn-neutral px-5 py-2 text-sm font-medium rounded-full cursor-pointer transition-colors bg-surface-2 text-ink focus-visible:ring-2 focus-visible:ring-accent">
                         Cancel
                     </button>
                     <button type="submit"
-                            class="btn-opacity px-5 py-2 text-sm font-medium rounded-full cursor-pointer transition-colors"
-                            style="background: var(--primary); color: white;">
+                            class="btn-opacity px-5 py-2 text-sm font-medium rounded-full cursor-pointer transition-colors bg-accent text-white focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface-1">
                         Send Invitation
                     </button>
                 </div>
             </form>
-        </div>
     </div>
-</template>
+</dialog>

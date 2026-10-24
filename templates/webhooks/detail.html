@@ -52,7 +52,7 @@
             <form x-data method="POST" action="{% url 'webhooks:delete' workspace_id=workspace.id endpoint_id=endpoint.id %}"
                   @submit="if(!confirm('Delete this endpoint and its delivery log?')) $event.preventDefault()">
                 {% csrf_token %}
-                <button type="submit" class="btn-danger-soft min-h-11 px-5 py-2 text-sm font-medium rounded-full cursor-pointer bg-[var(--error-50)] text-[var(--error-700)]">
+                <button type="submit" class="btn-danger-soft min-h-11 px-5 py-2 text-sm font-medium rounded-full cursor-pointer bg-bad-soft text-bad">
                     Delete endpoint
                 </button>
             </form>

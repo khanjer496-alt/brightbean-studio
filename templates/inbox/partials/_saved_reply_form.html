@@ -20,8 +20,7 @@
         </div>
         <div class="flex items-center gap-3 mt-6">
             <button type="submit"
-                    class="inline-flex items-center gap-1.5 px-5 py-2 text-[13px] font-semibold text-white rounded-full transition-all duration-150 cursor-pointer"
-                    style="background: var(--primary); box-shadow: var(--shadow-primary);">
+                    class="inline-flex items-center gap-1.5 px-5 py-2 text-[13px] font-semibold text-white rounded-full transition-all duration-150 cursor-pointer bg-accent shadow-[var(--shadow-primary)]">
                 {% if saved_reply %}Update{% else %}Create{% endif %} Reply
             </button>
             <a href="{% url 'inbox:saved_replies' workspace_id=workspace.id %}"

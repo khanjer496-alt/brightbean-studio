@@ -18,7 +18,7 @@
     .badge-status-unread  { background: var(--info-50); color: var(--info-700); }
     .badge-status-open    { background: var(--warning-50); color: var(--warning-700); }
     .badge-status-resolved { background: var(--success-50); color: var(--success-700); }
-    .badge-status-archived { background: var(--surface-2); color: var(--text-ghost); }
+    .badge-status-archived { background: var(--surface-2); color: var(--text-secondary); }
     .sla-countdown { font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
     .sla-ok { color: var(--text-tertiary); }
     .sla-warn { color: var(--warning-700); }
@@ -54,7 +54,7 @@
             Back to Inbox
         </a>
     </div>
-    <div id="inbox-detail-panel" class="flex-1" style="height: calc(100% - 41px);">
+    <div id="inbox-detail-panel" class="flex-1 h-[calc(100%-41px)]">
         {% include "inbox/partials/_message_panel.html" %}
     </div>
 </div>

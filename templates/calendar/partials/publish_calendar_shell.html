@@ -17,21 +17,23 @@ Toolbar: nav arrows + period + Today + view dropdown | right: filter dropdowns.
         <!-- Left: Navigation arrows + period label + Today + View dropdown -->
         <div class="flex items-center gap-2">
             <a href="{% url 'calendar:calendar' workspace_id=workspace.id %}?mode=calendar&view={{ view_type }}&date={{ prev_date }}"
-               class="w-7 h-7 rounded-md text-stone-400 hover:text-stone-700 hover:bg-stone-100 flex items-center justify-center transition-all duration-150">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+               aria-label="Previous {{ view_type|default:'month' }}"
+               class="size-8 rounded-md text-stone-500 hover:text-stone-700 hover:bg-stone-100 flex items-center justify-center transition-all duration-150">
+                <svg class="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
             </a>
             <a href="{% url 'calendar:calendar' workspace_id=workspace.id %}?mode=calendar&view={{ view_type }}&date={{ next_date }}"
-               class="w-7 h-7 rounded-md text-stone-400 hover:text-stone-700 hover:bg-stone-100 flex items-center justify-center transition-all duration-150">
-                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+               aria-label="Next {{ view_type|default:'month' }}"
+               class="size-8 rounded-md text-stone-500 hover:text-stone-700 hover:bg-stone-100 flex items-center justify-center transition-all duration-150">
+                <svg class="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
             </a>
         </div>
 
-        <h2 class="text-base font-bold text-stone-900 tracking-tight">
+        <h2 class="text-base font-bold text-stone-900 tracking-tight" aria-live="polite">
             {{ period_label }}
         </h2>
 
         {% if is_today_in_view %}
-        <span class="px-3 py-1 text-xs font-semibold text-stone-300 border border-stone-100 rounded-md cursor-default select-none"
+        <span class="px-3 py-1 text-xs font-semibold text-stone-500 border border-stone-200 rounded-md cursor-default select-none"
               aria-disabled="true" title="Already showing today">
             Today
         </span>
@@ -44,33 +46,34 @@ Toolbar: nav arrows + period + Today + view dropdown | right: filter dropdowns.
 
         <!-- View dropdown (Month/Week/Day) -->
         <div class="relative" @click.away="viewOpen = false">
-            <button @click="viewOpen = !viewOpen"
-                    class="flex items-center gap-1.5 px-3 py-1 text-xs font-semibold text-stone-600 border border-stone-200 rounded-md hover:bg-stone-50 transition-all duration-150">
+            <button type="button" @click="viewOpen = !viewOpen" @keydown.escape="viewOpen = false"
+                    aria-haspopup="true" aria-controls="calendar-view-menu" :aria-expanded="viewOpen ? 'true' : 'false'" aria-expanded="false"
+                    class="flex min-h-8 items-center gap-1.5 px-3 py-1 text-xs font-semibold text-stone-600 border border-stone-200 rounded-md hover:bg-stone-50 transition-all duration-150">
                 <span x-text="activeView.charAt(0).toUpperCase() + activeView.slice(1)">{{ view_type|title }}</span>
-                <svg class="w-3 h-3 text-stone-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                <svg class="w-3 h-3 text-stone-500" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
             </button>
-            <div x-show="viewOpen" x-cloak
+            <div id="calendar-view-menu" x-show="viewOpen" x-cloak @keydown.escape="viewOpen = false"
                  x-transition:enter="transition ease-out duration-100"
                  x-transition:enter-start="opacity-0 -translate-y-1"
                  x-transition:enter-end="opacity-100 translate-y-0"
                  class="absolute left-0 top-full mt-1 bg-white rounded-lg shadow-lg ring-1 ring-stone-200 py-1 z-50 min-w-[100px]">
                 <a href="{% url 'calendar:calendar' workspace_id=workspace.id %}?mode=calendar&view=month&date={{ target_date|date:'Y-m-d' }}"
-                   class="block w-full text-left px-3 py-1.5 text-xs font-medium text-stone-600 hover:bg-stone-50 transition-colors no-underline {% if view_type == 'month' %}text-orange-600 bg-orange-50{% endif %}">
+                   class="block w-full min-h-8 text-start px-3 py-1.5 text-xs font-medium text-stone-600 hover:bg-stone-50 transition-colors no-underline {% if view_type == 'month' %}text-orange-600 bg-orange-50{% endif %}"{% if view_type == 'month' %} aria-current="page"{% endif %}>
                     Month
                 </a>
                 <a href="{% url 'calendar:calendar' workspace_id=workspace.id %}?mode=calendar&view=week&date={{ target_date|date:'Y-m-d' }}"
-                   class="block w-full text-left px-3 py-1.5 text-xs font-medium text-stone-600 hover:bg-stone-50 transition-colors no-underline {% if view_type == 'week' %}text-orange-600 bg-orange-50{% endif %}">
+                   class="block w-full min-h-8 text-start px-3 py-1.5 text-xs font-medium text-stone-600 hover:bg-stone-50 transition-colors no-underline {% if view_type == 'week' %}text-orange-600 bg-orange-50{% endif %}"{% if view_type == 'week' %} aria-current="page"{% endif %}>
                     Week
                 </a>
                 <a href="{% url 'calendar:calendar' workspace_id=workspace.id %}?mode=calendar&view=day&date={{ target_date|date:'Y-m-d' }}"
-                   class="block w-full text-left px-3 py-1.5 text-xs font-medium text-stone-600 hover:bg-stone-50 transition-colors no-underline {% if view_type == 'day' %}text-orange-600 bg-orange-50{% endif %}">
+                   class="block w-full min-h-8 text-start px-3 py-1.5 text-xs font-medium text-stone-600 hover:bg-stone-50 transition-colors no-underline {% if view_type == 'day' %}text-orange-600 bg-orange-50{% endif %}"{% if view_type == 'day' %} aria-current="page"{% endif %}>
                     Day
                 </a>
             </div>
         </div>
 
         <!-- Right side: filter dropdowns -->
-        <div class="cal-filters-scroll flex items-center gap-2 ml-auto overflow-x-auto flex-nowrap" style="-webkit-overflow-scrolling: touch; scrollbar-width: none;">
+        <div class="cal-filters-scroll flex items-center gap-2 ms-auto max-w-full overflow-x-auto flex-nowrap [-webkit-overflow-scrolling:touch] [scrollbar-width:none]" role="group" aria-label="Calendar filters">
             <!-- Status filter -->
             {% ui_select model="calendarFilters.status" options=status_choices onchange="reloadCalendar()" placeholder="All Posts" icon="status" %}
 
@@ -111,15 +114,14 @@ Toolbar: nav arrows + period + Today + view dropdown | right: filter dropdowns.
 
     <!-- Status legend -->
     <div class="px-3 sm:px-4 lg:px-6 pt-4 lg:pt-6">
-        <div class="flex flex-wrap items-center justify-end gap-x-1.5 gap-y-2 text-[11px]">
-            <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md"><span class="w-3 h-3 rounded-full" style="background:var(--text-secondary)"></span><span style="color:var(--text-secondary)">Draft</span></span>
-            <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md"><span class="w-3 h-3 rounded-full" style="background:#F97316"></span><span style="color:#C2410C">Pending Review</span></span>
-            <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md"><span class="w-3 h-3 rounded-full" style="background:#14B8A6"></span><span style="color:#0F766E">Approved</span></span>
-            <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md"><span class="w-3 h-3 rounded-full" style="background:#3B82F6"></span><span style="color:#1D4ED8">Scheduled</span></span>
-            <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md"><span class="w-3 h-3 rounded-full" style="background:#6366F1"></span><span style="color:#4338CA">Publishing</span></span>
-            <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md"><span class="w-3 h-3 rounded-full" style="background:#22C55E"></span><span style="color:#15803D">Published</span></span>
-            <!-- <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md"><span class="w-3 h-3 rounded-full" style="background:#EAB308"></span><span style="color:#A16207">Partially Published</span></span> -->
-            <span class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md"><span class="w-3 h-3 rounded-full" style="background:#EF4444"></span><span style="color:#B91C1C">Failed</span></span>
-        </div>
+        <ul class="flex flex-wrap items-center justify-end gap-x-1.5 gap-y-2 text-[11px]" aria-label="Status colours">
+            <li class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-ink-2"><span class="w-3 h-3 rounded-full bg-ink-3" aria-hidden="true"></span>Draft</li>
+            <li class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-warn"><span class="w-3 h-3 rounded-full bg-[var(--warning-500)]" aria-hidden="true"></span>Pending Review</li>
+            <li class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[var(--accent-teal)]"><span class="w-3 h-3 rounded-full bg-[var(--accent-teal)]" aria-hidden="true"></span>Approved</li>
+            <li class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[var(--info-700)]"><span class="w-3 h-3 rounded-full bg-[var(--info-500)]" aria-hidden="true"></span>Scheduled</li>
+            <li class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[var(--accent-indigo)]"><span class="w-3 h-3 rounded-full bg-[var(--accent-indigo)]" aria-hidden="true"></span>Publishing</li>
+            <li class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-good"><span class="w-3 h-3 rounded-full bg-[var(--success-500)]" aria-hidden="true"></span>Published</li>
+            <li class="inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-bad"><span class="w-3 h-3 rounded-full bg-[var(--error-500)]" aria-hidden="true"></span>Failed</li>
+        </ul>
     </div>
 </div>

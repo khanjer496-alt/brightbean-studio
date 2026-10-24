@@ -2,27 +2,27 @@
 {% block title %}Workspaces - Settings - {{ brand_short_name }}{% endblock %}
 {% block content %}
 <div class="">
-    <h2 class="text-xl font-semibold mb-8" style="color: var(--text-primary);">Workspaces</h2>
+    <h2 class="text-xl font-semibold mb-8 text-ink">Workspaces</h2>
 
     {% if workspace_data %}
-    <div style="background: var(--surface-0); border: 1px solid var(--border); border-radius: var(--radius-xl);">
+    <div class="bg-surface-0 border border-line rounded-xl">
         {% for item in workspace_data %}
-        <div class="px-6 py-4{% if not forloop.last %}" style="border-bottom: 1px solid var(--border);"{% else %}"{% endif %}>
+        <div class="px-4 sm:px-6 py-4{% if not forloop.last %} border-b border-line{% endif %}">
             {% include "organizations/partials/workspace_card.html" with item=item %}
         </div>
         {% endfor %}
     </div>
     {% else %}
-    <div class="px-6 py-12 text-center rounded-xl" style="background: var(--surface-0); border: 1px solid var(--border);">
-        <p class="text-sm" style="color: var(--text-tertiary);">No workspaces yet.</p>
+    <div class="px-6 py-12 text-center rounded-xl bg-surface-0 border border-line">
+        <p class="text-sm text-ink-3">No workspaces yet.</p>
     </div>
     {% endif %}
 
     {% if archived_data %}
-    <h3 class="text-sm font-semibold mt-10 mb-3" style="color: var(--text-secondary);">Archived</h3>
-    <div style="background: var(--surface-0); border: 1px solid var(--border); border-radius: var(--radius-xl); opacity: 0.75;">
+    <h3 class="text-sm font-semibold mt-10 mb-3 text-ink-2">Archived</h3>
+    <div class="bg-surface-0 border border-line rounded-xl">
         {% for item in archived_data %}
-        <div class="px-6 py-4{% if not forloop.last %}" style="border-bottom: 1px solid var(--border);"{% else %}"{% endif %}>
+        <div class="px-4 sm:px-6 py-4{% if not forloop.last %} border-b border-line{% endif %}">
             {% include "organizations/partials/workspace_card.html" with item=item %}
         </div>
         {% endfor %}

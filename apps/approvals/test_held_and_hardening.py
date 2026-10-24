@@ -1,11 +1,15 @@
 """Held agent items from email and Slack, exact previews on the existing surfaces, and link hardening."""
 
 import re
+import shutil
+import tempfile
 from datetime import timedelta
 from unittest import mock
 
+from django.conf import settings
 from django.core import mail, signing
 from django.core.cache import cache
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -98,6 +102,19 @@ class LinkHardeningTests(OneTapBase):
 
         from apps.composer.models import PostMedia
         from apps.media_library.models import MediaAsset
+
+        # The picture is really written to storage, so the test gets its own
+        # disk and an explicit local default storage rather than the shared
+        # test_media directory, which every run in this checkout writes into.
+        media_root = tempfile.mkdtemp(prefix="bb-test-media-")
+        self.addCleanup(shutil.rmtree, media_root, ignore_errors=True)
+        storage = override_settings(
+            MEDIA_ROOT=media_root,
+            MEDIA_URL="/media/",
+            STORAGES={**settings.STORAGES, "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"}},
+        )
+        storage.enable()
+        self.addCleanup(storage.disable)
 
         post = self.make_post()
         gif = b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff!\xf9\x04\x00\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02D\x01\x00;"

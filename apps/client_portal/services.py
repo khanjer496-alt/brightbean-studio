@@ -6,8 +6,12 @@ Handles magic link generation, verification, and portal session creation.
 import logging
 from datetime import timedelta
 
+from allauth.account.app_settings import EmailVerificationMethod
+from allauth.account.internal.flows.login import perform_login
+from allauth.account.models import Login
+from allauth.mfa.utils import is_mfa_enabled
 from django.conf import settings
-from django.contrib.auth import login
+from django.contrib.auth import login, logout
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -185,13 +189,40 @@ def revoke_magic_link(token_id, workspace):
     ).update(expires_at=timezone.now())
 
 
-def create_portal_session(request, user, workspace):
-    """Create a portal session for the client user.
+PORTAL_MFA_SESSION_KEY = "portal_mfa_workspace_id"
 
-    Logs in the user and sets portal-specific session variables.
+
+def create_portal_session(request, user, workspace, *, next_url):
+    """Sign a client in from a magic link, scoped to the portal.
+
+    A magic link proves control of the mailbox and nothing more. For a user
+    without two-factor authentication it starts a *portal-scoped* session:
+    ``apps.client_portal.middleware.PortalSessionMiddleware`` keeps it out of
+    everything but the client portal. For a user who has an authenticator the
+    link only gets them as far as allauth's 2FA challenge; completing it
+    produces an ordinary session, marked with the workspace so the portal
+    views still recognise it.
+
+    Whatever session the browser had is ended first, so neither path inherits
+    anything from it: no earlier scope or workspace marker, no half-finished
+    sign-in, and the 2FA stage never runs on top of someone's live session.
+
+    Returns the response to send when allauth takes over (the 2FA challenge),
+    otherwise None.
     """
+    logout(request)
+    if is_mfa_enabled(user):
+        request.session[PORTAL_MFA_SESSION_KEY] = str(workspace.id)
+        request.session.set_expiry(30 * 24 * 60 * 60)
+        # The mailbox is what the link proved, so address verification is not
+        # asked again here; the 2FA stage is.
+        return perform_login(
+            request,
+            Login(user=user, email_verification=EmailVerificationMethod.NONE, redirect_url=next_url),
+        )
     login(request, user, backend="django.contrib.auth.backends.ModelBackend")
     request.session["is_portal_session"] = True
     request.session["portal_workspace_id"] = str(workspace.id)
     # 30-day session
     request.session.set_expiry(30 * 24 * 60 * 60)
+    return None

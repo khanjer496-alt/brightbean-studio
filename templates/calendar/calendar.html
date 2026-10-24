@@ -5,27 +5,29 @@
 
 {% block page_header %}
 <div class="flex flex-wrap items-center justify-between gap-3 mb-4 lg:mb-[25px]">
-    <h1 class="text-xl sm:text-2xl font-semibold text-stone-900" style="letter-spacing: -0.01em;">Publish</h1>
+    <h1 class="text-xl sm:text-2xl font-semibold tracking-tight text-stone-900">Publish</h1>
 
     <div class="flex items-center gap-3">
         <!-- List / Calendar toggle -->
-        <div class="flex items-center bg-stone-50 rounded-full p-0.5" x-data="{ activeMode: '{{ mode|default:'calendar' }}' }">
-            <button class="view-btn{% if mode == 'list' %} active{% endif %}" :class="{ active: activeMode === 'list' }"
+        <div class="flex items-center bg-stone-50 rounded-full p-0.5" role="group" aria-label="Publish view" x-data="{ activeMode: '{{ mode|default:'calendar' }}' }">
+            <button type="button" class="view-btn{% if mode == 'list' %} active{% endif %}" :class="{ active: activeMode === 'list' }"
+                    aria-pressed="{% if mode == 'list' %}true{% else %}false{% endif %}" :aria-pressed="activeMode === 'list' ? 'true' : 'false'"
                     @click="activeMode = 'list'"
                     hx-get="{% url 'calendar:calendar' workspace_id=workspace.id %}?mode=list&tab={{ active_tab|default:'queue' }}&_switch_mode=1"
                     hx-target="#publish-body"
                     hx-swap="innerHTML"
                     hx-push-url="{% url 'calendar:calendar' workspace_id=workspace.id %}?mode=list&tab={{ active_tab|default:'queue' }}">
-                <svg class="w-3.5 h-3.5 inline -mt-px mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
+                <svg class="w-3.5 h-3.5 inline -mt-px me-1" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 10h16M4 14h16M4 18h16"/></svg>
                 List
             </button>
-            <button class="view-btn{% if mode == 'calendar' %} active{% endif %}" :class="{ active: activeMode === 'calendar' }"
+            <button type="button" class="view-btn{% if mode == 'calendar' %} active{% endif %}" :class="{ active: activeMode === 'calendar' }"
+                    aria-pressed="{% if mode == 'calendar' %}true{% else %}false{% endif %}" :aria-pressed="activeMode === 'calendar' ? 'true' : 'false'"
                     @click="activeMode = 'calendar'"
                     hx-get="{% url 'calendar:calendar' workspace_id=workspace.id %}?mode=calendar&view={{ view_type|default:'month' }}&_switch_mode=1"
                     hx-target="#publish-body"
                     hx-swap="innerHTML"
                     hx-push-url="{% url 'calendar:calendar' workspace_id=workspace.id %}?mode=calendar&view={{ view_type|default:'month' }}">
-                <svg class="w-3.5 h-3.5 inline -mt-px mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                <svg class="w-3.5 h-3.5 inline -mt-px me-1" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                 Calendar
             </button>
         </div>
@@ -83,29 +85,25 @@
     .post-chip:hover { transform: translateX(1px); }
     .post-chip .chip-dot { width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0; }
 
-    /* Status colors */
-    .status-draft      { background: #F5F5F4; color: #57534E; border: 1px solid #E7E5E4; }
-    .status-draft .chip-dot { background: #A8A29E; }
-    .status-pending_review, .status-pending_client { background: #FFF7ED; color: #C2410C; border: 1px solid #FED7AA; }
-    .status-pending_review .chip-dot, .status-pending_client .chip-dot { background: #F97316; }
-    .status-scheduled  { background: #EFF6FF; color: #1D4ED8; border: 1px solid #BFDBFE; }
-    .status-scheduled .chip-dot { background: #3B82F6; }
-    .status-published  { background: #F0FDF4; color: #15803D; border: 1px solid #BBF7D0; }
-    .status-published .chip-dot { background: #22C55E; }
-    .status-approved   { background: #F0FDFA; color: #0F766E; border: 1px solid #99F6E4; }
-    .status-approved .chip-dot { background: #14B8A6; }
-    .status-changes_requested { background: #FFF7ED; color: #C2410C; border: 1px solid #FED7AA; }
-    .status-changes_requested .chip-dot { background: #F97316; }
-    .status-rejected   { background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; }
-    .status-rejected .chip-dot { background: #EF4444; }
-    .status-publishing { background: #EEF2FF; color: #4338CA; border: 1px solid #C7D2FE; }
-    .status-publishing .chip-dot { background: #6366F1; }
-    .status-partially_published { background: #FEFCE8; color: #A16207; border: 1px solid #FEF08A; }
-    .status-partially_published .chip-dot { background: #EAB308; }
-    .status-failed     { background: #FEF2F2; color: #B91C1C; border: 1px solid #FECACA; }
-    .status-failed .chip-dot { background: #EF4444; }
-    .status-on_hold    { background: #F5F3FF; color: #6D28D9; border: 1px solid #DDD6FE; }
-    .status-on_hold .chip-dot { background: #7C3AED; }
+    /* Status colours: Orbit tokens, so every chip keeps AA contrast on the dark surface. */
+    .status-draft { background: var(--surface-2); color: var(--text-secondary); border: 1px solid var(--border); }
+    .status-draft .chip-dot { background: var(--text-tertiary); }
+    .status-pending_review, .status-pending_client, .status-changes_requested { background: var(--warning-50); color: var(--warning-700); border: 1px solid color-mix(in srgb, var(--warning-500) 35%, transparent); }
+    .status-pending_review .chip-dot, .status-pending_client .chip-dot, .status-changes_requested .chip-dot { background: var(--warning-500); }
+    .status-scheduled { background: var(--info-50); color: var(--info-700); border: 1px solid color-mix(in srgb, var(--info-500) 35%, transparent); }
+    .status-scheduled .chip-dot { background: var(--info-500); }
+    .status-published { background: var(--success-50); color: var(--success-700); border: 1px solid color-mix(in srgb, var(--success-500) 35%, transparent); }
+    .status-published .chip-dot { background: var(--success-500); }
+    .status-rejected, .status-failed { background: var(--error-50); color: var(--error-700); border: 1px solid color-mix(in srgb, var(--error-500) 35%, transparent); }
+    .status-rejected .chip-dot, .status-failed .chip-dot { background: var(--error-500); }
+    .status-approved { background: var(--accent-teal-soft); color: var(--accent-teal); border: 1px solid color-mix(in srgb, var(--accent-teal) 35%, transparent); }
+    .status-approved .chip-dot { background: var(--accent-teal); }
+    .status-publishing { background: var(--accent-indigo-soft); color: var(--accent-indigo); border: 1px solid color-mix(in srgb, var(--accent-indigo) 35%, transparent); }
+    .status-publishing .chip-dot { background: var(--accent-indigo); }
+    .status-partially_published { background: var(--accent-amber-soft); color: var(--accent-amber); border: 1px solid color-mix(in srgb, var(--accent-amber) 35%, transparent); }
+    .status-partially_published .chip-dot { background: var(--accent-amber); }
+    .status-on_hold { background: var(--primary-soft); color: var(--brand-700); border: 1px solid var(--primary-ring); }
+    .status-on_hold .chip-dot { background: var(--primary); }
 
     /* View switcher */
     .view-btn {
@@ -115,7 +113,7 @@
         cursor: pointer; transition: all 150ms ease;
     }
     .view-btn:hover { color: var(--text-primary); background: var(--surface-2); }
-    .view-btn.active { color: var(--primary); background: var(--surface-2); border: 1px solid var(--primary); box-shadow: 0 1px 2px rgba(194, 65, 12, 0.08); }
+    .view-btn.active { color: var(--primary); background: var(--surface-2); border: 1px solid var(--primary); }
 
     /* Filter chips */
     .filter-chip {
@@ -161,7 +159,7 @@
         appearance: none;
         white-space: nowrap;
         flex-shrink: 0;
-        background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%2378716C' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+        background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%23929bad' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
         background-repeat: no-repeat;
         background-position: right 8px center;
     }
@@ -184,7 +182,7 @@
     .pi-linkedin_personal { background: #0A66C2; }
     .pi-linkedin_company  { background: #0A66C2; }
     .pi-tiktok     { background: #010101; }
-    .pi-youtube { background: transparent !important; width: auto !important; min-width: 45px; color: #57534e; font-size: 10px; }
+    .pi-youtube { background: transparent !important; width: auto !important; min-width: 45px; color: var(--text-secondary); font-size: 10px; }
     .pi-pinterest  { background: #E60023; }
     .pi-threads    { background: #000000; }
     .pi-bluesky    { background: #0085FF; }
@@ -196,21 +194,27 @@
     .pi-discord   { background: #5865F2; }
     .pi-telegram   { background: #26A5E4; }
 
-    /* Add-post button on calendar cells - default (has posts): small top-right */
+    /* Add-post button on calendar cells. Kept in the layout (opacity, not display:none) so it is
+       reachable by keyboard: it shows on cell hover, on focus inside the cell, or when focused itself.
+       Default (has posts): small, top-right. */
     .cal-add-btn {
-        display: none;
+        display: flex;
+        opacity: 0; pointer-events: none;
         position: absolute; top: 6px; right: 6px;
-        width: 22px; height: 22px; border-radius: 50%;
+        width: 24px; height: 24px; border-radius: 50%;
         background: var(--primary); color: white; border: none;
         align-items: center; justify-content: center;
         cursor: pointer; font-size: 14px; line-height: 1;
         box-shadow: 0 2px 6px color-mix(in srgb, var(--primary) 35%, transparent);
-        transition: transform 100ms ease, background 100ms ease;
+        transition: transform 100ms ease, background 100ms ease, opacity 100ms ease;
         z-index: 5;
     }
     .cal-add-btn:hover { background: var(--primary); transform: scale(1.1); }
+    .cal-add-btn.cal-add-btn--inline { position: static; margin: 0 auto; }
     .cal-add-cell { position: relative; }
-    .cal-add-cell.has-posts:hover .cal-add-btn { display: flex; }
+    .cal-add-cell:hover .cal-add-btn,
+    .cal-add-cell:focus-within .cal-add-btn,
+    .cal-add-btn:focus-visible { opacity: 1; pointer-events: auto; }
 
     /* Empty cells: larger centered button */
     .cal-add-cell:not(.has-posts) .cal-add-btn {
@@ -222,18 +226,15 @@
         border: none;
     }
     .cal-add-cell:not(.has-posts) .cal-add-btn svg { width: 16px; height: 16px; }
-    .cal-add-cell:not(.has-posts):hover .cal-add-btn {
-        display: flex;
-    }
     .cal-add-cell:not(.has-posts) .cal-add-btn:hover {
         background: var(--primary);
         transform: translate(-50%, -50%) scale(1.1);
         box-shadow: 0 6px 20px color-mix(in srgb, var(--primary) 35%, transparent);
     }
 
-    /* Day/week grids (non-month cells): hide add button entirely when cell has posts */
-    .cal-add-cell.has-posts:not(.cal-day) .cal-add-btn,
-    .cal-add-cell.has-posts:not(.cal-day):hover .cal-add-btn { display: none; }
+    /* Day/week grids (non-month cells) with posts: the button only appears when it has focus. */
+    .cal-add-cell.has-posts:not(.cal-day) .cal-add-btn { opacity: 0; pointer-events: none; }
+    .cal-add-cell.has-posts:not(.cal-day) .cal-add-btn:focus-visible { opacity: 1; pointer-events: auto; }
 
     /* Inline variant (day/week grid): flow in normal layout, no translate centering */
     .cal-add-cell:not(.has-posts) .cal-add-btn.cal-add-btn--inline,
@@ -244,6 +245,27 @@
     .cal-add-cell:not(.has-posts) .cal-add-btn.cal-add-btn--inline:hover {
         transform: scale(1.1);
     }
+    @media (prefers-reduced-motion: reduce) {
+        .cal-add-btn, .post-chip, .tab-slide-in { transition: none; animation: none; }
+    }
+
+    /* A grid chip: [select box] [link to the post] [Reschedule button]. The row is what gets dragged. */
+    .chip-row { position: relative; display: flex; align-items: center; gap: 4px; margin-bottom: 2px; max-width: 100%; }
+    .chip-row > .post-chip { flex: 1 1 0; min-width: 0; margin-bottom: 0; }
+    .chip-row .post-chip { padding-inline-end: 6px; }
+    /* The select box sits over the chip's platform icon and shows on hover / focus / selection, so
+       every chip in a cell lines up and none loses title width to an invisible box. Touch screens
+       always show it, so there the chip makes room for it instead. */
+    .chip-row > .cal-select-box { position: absolute; inset-inline-start: 6px; top: 50%; transform: translateY(-50%); z-index: 1; }
+    @media (hover: none) { .chip-row--selectable > .post-chip { padding-inline-start: 26px; } }
+    .chip-resched {
+        position: absolute; inset-inline-end: 3px; top: 50%; transform: translateY(-50%);
+        width: 24px; height: 24px; border-radius: 9999px; display: inline-flex; align-items: center; justify-content: center;
+        background: var(--surface-3); color: var(--text-primary); border: 1px solid var(--border-hover);
+        opacity: 0; transition: opacity 120ms ease; cursor: pointer;
+    }
+    .chip-row:hover .chip-resched, .chip-row:focus-within .chip-resched, .chip-resched:focus-visible { opacity: 1; }
+    @media (hover: none) { .chip-resched { opacity: 1; } .chip-row.is-draggable .post-chip { padding-inline-end: 30px; } }
 
     .calendar-channel-slot {
         display: inline-flex;
@@ -302,14 +324,14 @@
         width: 16px;
         height: 16px;
         border-radius: 9999px;
-        background: rgba(255,255,255,0.72);
-        color: #15803D;
+        background: var(--surface-1);
+        color: var(--success-700);
         margin-left: auto;
     }
 
     /* Drag-and-drop (SortableJS) feedback */
-    .post-chip.is-draggable { cursor: grab; }
-    .post-chip.is-draggable:active { cursor: grabbing; }
+    .chip-row.is-draggable, .chip-row.is-draggable .post-chip { cursor: grab; }
+    .chip-row.is-draggable:active, .chip-row.is-draggable:active .post-chip { cursor: grabbing; }
     /* Hide the source-cell placeholder entirely: for a day-granularity calendar
        the only feedback that matters is which day cell is targeted, so we don't
        want a translucent chip trailing into every cell the cursor passes. Only
@@ -325,15 +347,18 @@
        shown once checked or when a selection is active. */
     .cal-select-box {
         width: 15px; height: 15px; flex-shrink: 0; border: 1.5px solid var(--text-secondary);
-        border-radius: 4px; background: #fff; cursor: pointer; color: #fff;
+        border-radius: 4px; background: var(--surface-1); cursor: pointer; color: #fff; position: relative;
         display: inline-flex; align-items: center; justify-content: center;
         opacity: 0; transition: opacity 120ms ease, background 120ms ease;
     }
-    .post-chip:hover .cal-select-box,
+    .chip-row:hover .cal-select-box,
+    .chip-row:focus-within .cal-select-box,
     .cal-select-box.is-checked,
     body.has-selection .cal-select-box { opacity: 1; }
     .cal-select-box.is-checked { background: var(--primary); border-color: var(--primary); }
     .cal-select-box:hover { border-color: var(--primary); }
+    .cal-select-box::after { content: ''; position: absolute; inset: -5px; } /* 25px hit area (WCAG 2.5.8) */
+    @media (hover: none) { .cal-select-box { opacity: 1; } }
     /* In list rows the checkbox is always visible (there's room). */
     .row-select-box { opacity: 1; }
     /* The shared toast host and the selection bar both sit bottom-centre. Lift
@@ -368,47 +393,56 @@ selection survives grid reloads / tab switches. Shown when ≥1 chip/row is
 ticked (see the `sel` Alpine store).{% endcomment %}
 <div x-data="bulkBar()">
     {# Floating action bar #}
-    <div x-cloak x-show="$store.sel.count > 0"
+    <div x-cloak x-show="$store.sel.count > 0" role="region" aria-label="Bulk actions"
          x-effect="document.body.classList.toggle('has-selection', $store.sel.count > 0)"
-         class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-1 bg-stone-900 text-white rounded-full shadow-2xl pl-4 pr-2 py-2">
-        <span class="text-sm font-medium whitespace-nowrap" x-text="$store.sel.count + ' selected'"></span>
-        <span class="w-px h-5 bg-white/20 mx-1.5"></span>
-        <button @click="ask('draft')" :disabled="busy" class="px-3 py-1.5 text-xs font-semibold rounded-full hover:bg-white/10 transition-colors disabled:opacity-50">Draft</button>
-        <button @click="ask('publish')" :disabled="busy" class="px-3 py-1.5 text-xs font-semibold rounded-full bg-emerald-500 hover:bg-emerald-600 transition-colors disabled:opacity-50">Publish</button>
-        <button @click="ask('delete')" :disabled="busy" class="px-3 py-1.5 text-xs font-semibold rounded-full text-red-300 hover:bg-red-500/20 transition-colors disabled:opacity-50">Delete</button>
-        <button @click="$store.sel.clear()" class="w-7 h-7 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors" title="Clear selection">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+         class="fixed bottom-6 start-1/2 -translate-x-1/2 rtl:translate-x-1/2 z-[60] flex max-w-[calc(100vw-1rem)] flex-wrap items-center justify-center gap-1 bg-stone-900 text-white rounded-3xl shadow-2xl ps-4 pe-2 py-2">
+        <span class="text-sm font-medium whitespace-nowrap" role="status" x-text="$store.sel.count + ' selected'"></span>
+        <span class="w-px h-5 bg-white/20 mx-1.5" aria-hidden="true"></span>
+        <button type="button" @click="ask('draft')" :disabled="busy" class="min-h-8 px-3 py-1.5 text-xs font-semibold rounded-full hover:bg-white/10 transition-colors disabled:opacity-50">Draft</button>
+        <button type="button" @click="ask('publish')" :disabled="busy" class="min-h-8 px-3 py-1.5 text-xs font-semibold rounded-full bg-emerald-700 hover:bg-emerald-600 transition-colors disabled:opacity-50">Publish</button>
+        <button type="button" @click="ask('delete')" :disabled="busy" class="min-h-8 px-3 py-1.5 text-xs font-semibold rounded-full text-red-300 hover:bg-red-500/20 transition-colors disabled:opacity-50">Delete</button>
+        <button type="button" @click="$store.sel.clear()" class="size-8 rounded-full hover:bg-white/10 flex items-center justify-center transition-colors" aria-label="Clear selection">
+            <svg class="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
         </button>
     </div>
 
-    {% comment %}Confirmation dialog for impactful actions (publish / delete).
-    Draft is reversible so it runs without a prompt.{% endcomment %}
-    <div x-cloak x-show="confirmAction" @keydown.escape.window="confirmAction = null"
-         class="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 px-4" @click.self="confirmAction = null">
-        <div class="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-xs text-center">
+    {% comment %}Confirmation dialog for impactful actions (publish / delete). Native <dialog>: focus is
+    trapped and returned, Escape closes it. Draft is reversible so it runs without a prompt.{% endcomment %}
+    <dialog x-ref="confirmDialog" aria-labelledby="bulk-confirm-title" aria-describedby="bulk-confirm-body"
+            @close="confirmAction = null" @click.self="$refs.confirmDialog.close()"
+            x-effect="confirmAction ? (!$refs.confirmDialog.open && $refs.confirmDialog.showModal()) : ($refs.confirmDialog.open && $refs.confirmDialog.close())"
+            class="m-auto w-[calc(100vw-2rem)] max-w-xs rounded-2xl border border-line bg-surface-1 p-0 text-ink shadow-2xl backdrop:bg-black/60">
+        <div class="p-6 text-center">
             <div class="w-11 h-11 mx-auto rounded-full flex items-center justify-center mb-3"
-                 :class="confirmAction === 'delete' ? 'bg-red-50 text-red-500' : 'bg-emerald-50 text-emerald-600'">
-                <svg x-show="confirmAction === 'delete'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
-                <svg x-show="confirmAction === 'publish'" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
+                 :class="confirmAction === 'delete' ? 'bg-bad-soft text-bad' : 'bg-good-soft text-good'">
+                <svg x-show="confirmAction === 'delete'" class="w-5 h-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+                <svg x-show="confirmAction === 'publish'" class="w-5 h-5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 10l7-7m0 0l7 7m-7-7v18"/></svg>
             </div>
-            <h3 class="text-base font-bold text-stone-900" x-text="confirmAction === 'delete' ? 'Delete posts?' : 'Publish now?'"></h3>
-            <p class="text-sm text-stone-500 mt-1 leading-relaxed"
+            <h2 id="bulk-confirm-title" class="text-base font-bold text-ink" x-text="confirmAction === 'delete' ? 'Delete posts?' : 'Publish now?'"></h2>
+            <p id="bulk-confirm-body" class="text-sm text-ink-3 mt-1 leading-relaxed"
                x-text="confirmAction === 'delete'
                    ? ('Permanently delete ' + $store.sel.count + ' selected post' + ($store.sel.count === 1 ? '' : 's') + '. This can\'t be undone.')
                    : ('Publish ' + $store.sel.count + ' selected post' + ($store.sel.count === 1 ? '' : 's') + ' now — they go out on their platforms shortly.')"></p>
             <div class="flex gap-2 mt-5">
-                <button @click="confirmAction = null" class="flex-1 px-4 py-2 text-sm font-semibold rounded-full border border-stone-200 text-stone-600 hover:bg-stone-50 transition-colors">Cancel</button>
-                <button @click="exec(confirmAction)" :disabled="busy"
-                        :class="confirmAction === 'delete' ? 'bg-red-500 hover:bg-red-600' : 'bg-emerald-500 hover:bg-emerald-600'"
-                        class="flex-1 px-4 py-2 text-sm font-semibold rounded-full text-white transition-colors disabled:opacity-50"
+                <button type="button" autofocus @click="$refs.confirmDialog.close()" class="flex-1 min-h-9 px-4 py-2 text-sm font-semibold rounded-full border border-line text-ink-2 hover:bg-surface-2 transition-colors">Cancel</button>
+                <button type="button" @click="exec(confirmAction)" :disabled="busy"
+                        :class="confirmAction === 'delete' ? 'bg-red-700 hover:bg-red-600' : 'bg-emerald-700 hover:bg-emerald-600'"
+                        class="flex-1 min-h-9 px-4 py-2 text-sm font-semibold rounded-full text-white transition-colors disabled:opacity-50"
                         x-text="confirmAction === 'delete' ? 'Delete' : 'Publish'"></button>
             </div>
         </div>
-    </div>
+    </dialog>
 </div>
+
+{# "Reschedule…" dialog (keyboard / touch alternative to dragging a chip); its body is fetched per post. #}
+<dialog id="reschedule-dialog" aria-labelledby="reschedule-dialog-title"
+        class="m-auto w-[calc(100vw-2rem)] max-w-md rounded-2xl border border-line bg-surface-1 p-0 text-ink shadow-2xl backdrop:bg-black/60">
+    <div id="reschedule-dialog-body"></div>
+</dialog>
 {% endblock %}
 
 {% block extra_js %}
+<script src="{% static 'js/reschedule-dialog.js' %}"></script>
 <script nonce="{{ request.csp_nonce }}">
 /* Surface a rejected request through the shared toast host
    (approvals/partials/_toasts.html), which listens for a `showToast` event on
@@ -507,6 +541,8 @@ function calendarApp() {
             // SortableJS drag-and-drop. Wire on first load and re-wire after
             // every HTMX swap of the calendar grid (nav, view change, filters).
             this.$nextTick(() => this.initCalendarDnD());
+            // The "Reschedule…" dialog moved a post: redraw the grid with the current filters.
+            window.addEventListener('calendar-reschedule-done', () => this.reloadCalendar());
             document.body.addEventListener('htmx:afterSettle', (e) => {
                 const t = e.detail && e.detail.target;
                 if (t && (t.id === 'calendar-content' || (t.querySelector && t.querySelector('.cal-drop')))) {
@@ -517,7 +553,7 @@ function calendarApp() {
             // navigate to the editor. Swallow that click while a drag is in
             // flight; genuine clicks (no drag) still open the post.
             document.body.addEventListener('click', (e) => {
-                if (this._draggingChip && e.target.closest('.post-chip.is-draggable')) {
+                if (this._draggingChip && e.target.closest('.chip-row.is-draggable')) {
                     e.preventDefault();
                     e.stopPropagation();
                 }
@@ -540,7 +576,7 @@ function calendarApp() {
                 if (Sortable.get(cell)) return; // already wired this cell
                 this._sortables.push(Sortable.create(cell, {
                     group: 'calendar',
-                    draggable: '.post-chip.is-draggable',
+                    draggable: '.chip-row.is-draggable',
                     animation: 150,
                     ghostClass: 'chip-ghost',
                     // Native HTML5 drag: the browser renders a drag image that

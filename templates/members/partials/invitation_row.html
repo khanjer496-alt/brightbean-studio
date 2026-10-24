@@ -1,15 +1,13 @@
-<div class="px-6 py-4 flex items-center gap-4" id="invite-{{ invite.id }}"
-     style="border-bottom: 1px solid var(--border);">
+<div class="px-4 sm:px-6 py-4 flex flex-wrap items-center gap-3 sm:gap-4 border-b border-line" id="invite-{{ invite.id }}">
     <!-- Email icon -->
-    <div class="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-         style="background: var(--neutral-100); color: var(--text-tertiary);">
-        <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+    <div class="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 bg-surface-2 text-ink-3">
+        <svg aria-hidden="true" width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
     </div>
 
     <!-- Email & Info -->
-    <div class="flex-1 min-w-0">
-        <div class="text-sm font-medium truncate" style="color: var(--text-primary);">{{ invite.email }}</div>
-        <div class="text-xs" style="color: var(--text-tertiary);">
+    <div class="flex-1 min-w-[10rem]">
+        <div class="text-sm font-medium truncate text-ink">{{ invite.email }}</div>
+        <div class="text-xs text-ink-3">
             Invited by {{ invite.invited_by.display_name }} · Expires {{ invite.expires_at|timesince }} from now
         </div>
     </div>
@@ -17,16 +15,16 @@
     <!-- Role Badge -->
     <div class="flex-shrink-0">
         {% if invite.org_role == "admin" %}
-        <span class="text-xs font-medium px-2.5 py-1 rounded-full" style="background: #DBEAFE; color: #1E40AF;">Admin</span>
+        <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-accent-soft text-ink">Admin</span>
         {% else %}
-        <span class="text-xs font-medium px-2.5 py-1 rounded-full" style="background: var(--neutral-100); color: var(--text-secondary);">Member</span>
+        <span class="text-xs font-medium px-2.5 py-1 rounded-full bg-surface-2 text-ink-2">Member</span>
         {% endif %}
     </div>
 
     <!-- Workspace assignments preview -->
     <div class="flex-shrink-0 flex items-center gap-1 max-w-[150px] overflow-hidden">
         {% for assignment in invite.workspace_assignments %}
-        <span class="text-xs px-2 py-0.5 rounded-full truncate" style="background: var(--neutral-100); color: var(--text-secondary);">
+        <span class="text-xs px-2 py-0.5 rounded-full truncate bg-surface-2 text-ink-2">
             {{ assignment.role }}
         </span>
         {% endfor %}
@@ -40,8 +38,7 @@
               hx-swap="outerHTML">
             {% csrf_token %}
             <button type="submit"
-                    class="btn-neutral-surface text-xs px-3 py-1.5 rounded-full font-medium cursor-pointer transition-colors"
-                    style="border: 1px solid var(--border); color: var(--text-primary); background: var(--surface-0);">
+                    class="btn-neutral-surface text-xs px-3 py-1.5 rounded-full font-medium cursor-pointer transition-colors border border-line text-ink bg-surface-0 focus-visible:ring-2 focus-visible:ring-accent">
                 Resend
             </button>
         </form>
@@ -51,8 +48,7 @@
               hx-confirm="Revoke invitation to {{ invite.email }}?">
             {% csrf_token %}
             <button type="submit"
-                    class="btn-danger-soft-bg text-xs px-3 py-1.5 rounded-full font-medium cursor-pointer transition-colors"
-                    style="color: #DC2626; background: transparent;">
+                    class="text-xs px-3 py-1.5 rounded-full font-medium cursor-pointer transition-colors text-bad hover:bg-bad-soft focus-visible:ring-2 focus-visible:ring-accent">
                 Revoke
             </button>
         </form>

@@ -451,6 +451,11 @@ def _respond(response_url: str, body: dict) -> None:
         logger.warning("Could not reach Slack's response_url", exc_info=True)
 
 
+@background(schedule=0)
+def respond_task(response_url, text):
+    _respond(response_url, _ephemeral(text))
+
+
 def _split_value(value: str) -> tuple[str, str]:
     post_id, _, fingerprint = (value or "").partition("|")
     return post_id, fingerprint
@@ -509,8 +514,105 @@ def _update_message(connection, channel: str, ts: str, post_id: str, text: str) 
     )
 
 
-def handle_interaction(payload: dict, connection) -> dict | None:
-    """Act on a verified payload; the return value is the JSON body for Slack (or None for an empty 200)."""
+def _tell(connection, payload: dict, text: str) -> None:
+    """A private note to whoever clicked: through ``response_url`` when Slack gave one, else an ephemeral message."""
+    if payload.get("response_url"):
+        _respond(payload["response_url"], _ephemeral(text))
+        return
+    channel = payload.get("_channel", "")
+    user = (payload.get("user") or {}).get("id", "")
+    if channel and user:
+        api_call("chat.postEphemeral", connection.bot_token, {"channel": channel, "user": user, "text": text})
+
+
+def _submission_fields(payload: dict) -> tuple[str, str, str, str, str]:
+    view = payload["view"]
+    post_id, fingerprint, channel, ts = (json.loads(view.get("private_metadata") or "[]") + ["", "", "", ""])[:4]
+    comment = (
+        ((view.get("state") or {}).get("values") or {}).get(COMMENT_BLOCK, {}).get(COMMENT_ACTION, {}).get("value")
+        or ""
+    ).strip()
+    return post_id, fingerprint, channel, ts, comment
+
+
+def acknowledge_interaction(payload: dict, connection) -> dict | None:
+    """The part of an interaction that must happen inside Slack's three-second window.
+
+    Slack wants every interaction answered with a 200 within three seconds and
+    a ``trigger_id`` is only good for three seconds, so opening the dialog is
+    the one Slack call made here. Matching the Slack user to a member, making
+    the decision and updating the message (which each cost a Slack round trip
+    or more) are queued as :func:`process_interaction_task`. The return value
+    is the JSON body for Slack (or None for an empty 200).
+    https://docs.slack.dev/interactivity/handling-user-interaction
+    """
+    kind = payload.get("type")
+    if kind == "block_actions":
+        action = (payload.get("actions") or [{}])[0]
+        action_id = action.get("action_id")
+        if action_id == ACTION_CHANGES:
+            post_id, fingerprint = _split_value(action.get("value", ""))
+            api_call(
+                "views.open",
+                connection.bot_token,
+                {
+                    "trigger_id": payload.get("trigger_id", ""),
+                    "view": _changes_modal(
+                        post_id,
+                        fingerprint,
+                        (payload.get("channel") or {}).get("id", ""),
+                        (payload.get("message") or {}).get("ts", ""),
+                    ),
+                },
+            )
+        elif action_id in (ACTION_APPROVE, ACTION_HELD_APPROVE, ACTION_HELD_DISMISS):
+            process_interaction_task(json.dumps(payload), str(connection.pk))
+        return None
+
+    if kind == "view_submission" and (payload.get("view") or {}).get("callback_id") == MODAL_CALLBACK:
+        # An empty comment is answered in the modal itself, which only the
+        # response to this request can do.
+        if not _submission_fields(payload)[4]:
+            return {"response_action": "errors", "errors": {COMMENT_BLOCK: "Say what should change."}}
+        process_interaction_task(json.dumps(payload), str(connection.pk))
+        return {"response_action": "clear"}
+    return None
+
+
+@background(schedule=0)
+def process_interaction_task(payload_json, connection_id):
+    """Run a queued interaction once; whatever stops it is told to the person who clicked.
+
+    Everything is looked up again here (the connection, the Slack user's
+    member, the post or held item and its state), because minutes may have
+    passed since the click. A failure is not retried by the queue: the person
+    is told and pointed at the app, where the item shows where it stands.
+    """
+    payload = json.loads(payload_json)
+    connection = SlackApprovalConnection.objects.select_related("workspace").filter(pk=connection_id).first()
+    if connection is None:
+        if payload.get("response_url"):
+            _respond(payload["response_url"], _ephemeral("Slack approvals were disconnected from that workspace."))
+        return
+    try:
+        handle_interaction(payload, connection)
+    except Exception:
+        logger.exception("Slack interaction failed")
+        channel = (payload.get("channel") or {}).get("id", "")
+        if not channel and payload.get("view"):
+            try:
+                channel = _submission_fields(payload)[2]
+            except (ValueError, KeyError, TypeError):
+                channel = ""
+        text = f"Something went wrong handling that. Check where it stands here: {_app_link(connection.workspace)}"
+        try:
+            _tell(connection, {**payload, "_channel": channel}, text)
+        except Exception:
+            logger.warning("Could not tell the Slack user about the failure", exc_info=True)
+
+
+def handle_interaction(payload: dict, connection) -> None:
+    """Do the work behind an acknowledged interaction: map the Slack user, decide, update the message."""
     kind = payload.get("type")
     slack_user = (payload.get("user") or {}).get("id", "")
 
@@ -519,11 +621,12 @@ def handle_interaction(payload: dict, connection) -> dict | None:
         post_id, fingerprint = _split_value(action.get("value", ""))
         channel = (payload.get("channel") or {}).get("id", "")
         ts = (payload.get("message") or {}).get("ts", "")
+        payload = {**payload, "_channel": channel}
         if action.get("action_id") in (ACTION_HELD_APPROVE, ACTION_HELD_DISMISS):
             verb = "approve" if action["action_id"] == ACTION_HELD_APPROVE else "dismiss"
             user, held, error = _decide_held(connection, slack_user, action.get("value", ""), verb)
             if error:
-                _respond(payload.get("response_url", ""), _ephemeral(error))
+                _tell(connection, payload, error)
             elif channel and ts:
                 done = f"{'Approved' if verb == 'approve' else 'Dismissed'} by {user.display_name} via Slack."
                 api_call(
@@ -534,36 +637,19 @@ def handle_interaction(payload: dict, connection) -> dict | None:
         elif action.get("action_id") == ACTION_APPROVE:
             user, error = _decide(connection, slack_user, post_id, fingerprint, decisions.APPROVE)
             if error:
-                _respond(payload.get("response_url", ""), _ephemeral(error))
+                _tell(connection, payload, error)
             else:
                 _update_message(connection, channel, ts, post_id, _outcome_text(decisions.APPROVE, user))
-        elif action.get("action_id") == ACTION_CHANGES:
-            if member_for_slack_user(connection, slack_user) is None:
-                _respond(payload.get("response_url", ""), _ephemeral(_link_text(connection)))
-            else:
-                api_call(
-                    "views.open",
-                    connection.bot_token,
-                    {
-                        "trigger_id": payload.get("trigger_id", ""),
-                        "view": _changes_modal(post_id, fingerprint, channel, ts),
-                    },
-                )
-        return None
+        return
 
     if kind == "view_submission" and (payload.get("view") or {}).get("callback_id") == MODAL_CALLBACK:
-        view = payload["view"]
-        post_id, fingerprint, channel, ts = (json.loads(view.get("private_metadata") or "[]") + ["", "", "", ""])[:4]
-        comment = (
-            ((view.get("state") or {}).get("values") or {}).get(COMMENT_BLOCK, {}).get(COMMENT_ACTION, {}).get("value")
-            or ""
-        ).strip()
+        post_id, fingerprint, channel, ts, comment = _submission_fields(payload)
         user, error = _decide(connection, slack_user, post_id, fingerprint, decisions.REQUEST_CHANGES, comment)
         if error:
-            return {"response_action": "errors", "errors": {COMMENT_BLOCK: error}}
+            # The dialog is already closed, so the reason goes to the person privately.
+            _tell(connection, {**payload, "_channel": channel}, error)
+            return
         _update_message(connection, channel, ts, post_id, _outcome_text(decisions.REQUEST_CHANGES, user))
-        return {"response_action": "clear"}
-    return None
 
 
 def _changes_modal(post_id, fingerprint, channel, ts) -> dict:
@@ -585,11 +671,15 @@ def _changes_modal(post_id, fingerprint, channel, ts) -> dict:
     }
 
 
-def process_request(body: bytes, timestamp: str, signature: str):
-    """Verify and act on one request from Slack: ``(http_status, json_body_or_None)``.
+def process_request(body: bytes, timestamp: str, signature: str, retry_num: str = ""):
+    """Verify one request from Slack and acknowledge it: ``(http_status, json_body_or_None)``.
 
     A request that fails the signature or replay check is refused before its
-    contents are used for anything. An identical signed request is accepted once.
+    contents are used for anything. Only the DB lookups and, for the dialog, one
+    Slack call happen here (see :func:`acknowledge_interaction`). Slack resends
+    an interaction it believes was not acknowledged (``X-Slack-Retry-Num``), and
+    a signed request can be replayed: an identical payload is acknowledged with
+    an empty 200 and not acted on a second time.
     """
     try:
         raw = parse_qs(body.decode("utf-8"), strict_parsing=True).get("payload", [""])[0]
@@ -599,8 +689,10 @@ def process_request(body: bytes, timestamp: str, signature: str):
     connections = _verified_connections(payload, timestamp, signature, body)
     if not connections:
         return 401, None
-    if not cache.add(f"slack-approval-sig:{signature}", 1, REPLAY_WINDOW_SECONDS + 60):
-        return 409, None
+    claim = f"slack-approval-int:{hashlib.sha256(raw.encode()).hexdigest()}"
+    if not cache.add(claim, 1, REPLAY_WINDOW_SECONDS + 60):
+        logger.info("Slack interaction already handled (retry %s)", retry_num or "-")
+        return 200, None
     # Several PostDelegate workspaces may share one Slack team: act only through
     # the one that owns the post or held item. Nothing is looked up outside it.
     action = (payload.get("actions") or [{}])[0]
@@ -615,6 +707,15 @@ def process_request(body: bytes, timestamp: str, signature: str):
     owner = next((c for c in connections if subject_id and lookup(c, subject_id) is not None), None)
     if owner is None:
         if payload.get("response_url"):
-            _respond(payload["response_url"], _ephemeral("That item isn't in a workspace connected to this Slack."))
+            respond_task(payload["response_url"], "That item isn't in a workspace connected to this Slack.")
         return 200, None
-    return 200, handle_interaction(payload, owner)
+    try:
+        body = acknowledge_interaction(payload, owner)
+    except Exception:
+        # Not handled after all: let Slack's resend through.
+        cache.delete(claim)
+        raise
+    if body and body.get("response_action") == "errors":
+        # Nothing was done, so the same submission may be sent again.
+        cache.delete(claim)
+    return 200, body

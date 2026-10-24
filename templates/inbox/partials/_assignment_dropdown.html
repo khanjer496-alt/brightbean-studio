@@ -3,7 +3,7 @@
     <button @click="assignOpen = !assignOpen"
             class="inline-flex items-center gap-1 text-[12px] font-medium text-stone-500 hover:text-stone-700 px-2 py-1 rounded-md hover:bg-stone-50 transition-all cursor-pointer">
         {% if message.assigned_to %}
-        <div class="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0" style="background: var(--accent-indigo);">
+        <div class="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-surface-0 flex-shrink-0 bg-[var(--accent-indigo)]">
             {{ message.assigned_to.email|make_list|first|upper }}
         </div>
         <span class="text-stone-700">{{ message.assigned_to.get_short_name|default:message.assigned_to.email|truncatechars:12 }}</span>
@@ -34,7 +34,7 @@
                 hx-swap="innerHTML"
                 @click="assignOpen = false"
                 class="w-full text-left px-3 py-2 text-[12px] text-stone-700 hover:bg-stone-50 transition-colors flex items-center gap-2 {% if message.assigned_to and message.assigned_to.id == membership.user.id %}font-semibold bg-stone-50{% endif %}">
-            <div class="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0" style="background: var(--accent-indigo);">
+            <div class="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold text-surface-0 flex-shrink-0 bg-[var(--accent-indigo)]">
                 {{ membership.user.email|make_list|first|upper }}
             </div>
             {{ membership.user.get_short_name|default:membership.user.email }}

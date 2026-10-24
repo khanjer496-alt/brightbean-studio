@@ -1,0 +1,43 @@
+{% comment %}
+One post chip on the month / week / day grids.
+The row is the draggable unit (SortableJS in calendar.html); inside it the selection checkbox, the
+link that opens the post and the "Reschedule…" button are separate controls, so none is nested in
+another. The button is the keyboard and touch alternative to dragging.
+Context: pp, workspace, optional show_slot_check.
+{% endcomment %}
+<div class="chip-row{% if pp.is_bulk_selectable %} chip-row--selectable{% endif %}{% if pp.is_reschedulable %} is-draggable{% endif %}"{% if pp.is_reschedulable %} data-platform-post-id="{{ pp.id }}"{% endif %}>
+    {% if pp.is_bulk_selectable %}{% include "calendar/partials/_select_checkbox.html" with pp_id=pp.id %}{% endif %}
+    <a href="{% url 'composer:compose_edit' workspace_id=workspace.id post_id=pp.post_id %}?account={{ pp.social_account_id }}"
+       class="post-chip status-{{ pp.display_status }}">
+        <span class="sr-only">{{ pp.display_status_label }}:</span>
+        <span class="w-4 h-4 rounded flex items-center justify-center pi-{{ pp.social_account.platform }} flex-shrink-0 text-white">
+            {% include "social_accounts/partials/_platform_icon.html" with platform=pp.social_account.platform size="3" %}
+        </span>
+        {% with first_media=pp.post.media_attachments.all.0 %}
+        {% if first_media and first_media.media_asset.thumbnail %}
+        <img src="{{ first_media.media_asset.thumbnail.url }}" alt="" class="w-5 h-5 rounded object-cover flex-shrink-0">
+        {% elif first_media and not first_media.media_asset.is_video %}
+        <img src="{{ first_media.media_asset.file.url }}" alt="" class="w-5 h-5 rounded object-cover flex-shrink-0">
+        {% elif first_media and first_media.media_asset.is_video %}
+        <video src="{{ first_media.media_asset.file.url }}#t=0.5" class="w-5 h-5 rounded object-cover flex-shrink-0" muted preload="metadata" aria-hidden="true"></video>
+        {% endif %}
+        {% endwith %}
+        <span class="truncate">{{ pp.post.title|default:pp.post.caption_snippet|truncatechars:28 }}</span>
+        {% include "calendar/partials/_recurrence_badge.html" with post=pp.post %}
+        {% include "calendar/partials/_thread_badge.html" with post=pp.post pp=pp %}
+        {% if show_slot_check and pp.takes_calendar_slot %}
+        <span class="calendar-post-slot-check" title="Scheduled in a channel slot">
+            <svg class="w-3 h-3" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="3"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+            <span class="sr-only">Scheduled in a channel slot</span>
+        </span>
+        {% endif %}
+    </a>
+    {% if pp.is_reschedulable %}
+    <button type="button" class="chip-resched" aria-haspopup="dialog"
+            aria-label="Reschedule: {{ pp.post.title|default:pp.post.caption_snippet|truncatewords:8 }} on {{ pp.social_account.account_name|default:pp.social_account.account_handle }}"
+            hx-get="{% url 'calendar:reschedule_dialog' workspace_id=workspace.id platform_post_id=pp.id %}"
+            hx-target="#reschedule-dialog-body" hx-swap="innerHTML">
+        <svg class="w-3.5 h-3.5" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="9"/><path stroke-linecap="round" stroke-linejoin="round" d="M12 7v5l3 2"/></svg>
+    </button>
+    {% endif %}
+</div>
