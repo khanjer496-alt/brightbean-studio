@@ -1,0 +1,22 @@
+{% comment %}Staff announcements for the signed-in user. Closing one is remembered on the server, per user.{% endcomment %}
+{% load common_extras %}
+{% for announcement in announcements %}
+{% url 'support:dismiss_announcement' announcement.id as dismiss_url %}
+<div x-data="{
+         open: true,
+         dismiss() {
+             this.open = false;
+             var tokenInput = document.querySelector('[name=csrfmiddlewaretoken]');
+             fetch('{{ dismiss_url }}', { method: 'POST', headers: { 'X-CSRFToken': tokenInput ? tokenInput.value : '' }, keepalive: true });
+         },
+     }"
+     x-show="open"
+     class="mb-4 flex items-start gap-3 rounded-md p-4 text-sm border {% if announcement.severity == 'warning' %}bg-warn-soft text-warn border-warn{% else %}bg-accent-soft text-brand border-line{% endif %}"
+     role="status">
+    <p class="flex-1">
+        {{ announcement.message }}
+        {% if announcement.link_url %}<a href="{{ announcement.link_url }}" target="_blank" rel="noopener noreferrer" class="underline font-semibold ms-1">{{ announcement.link_label|default:"Learn more" }}</a>{% endif %}
+    </p>
+    {% icon_button label="Dismiss announcement" icon="close" size="sm" icon_size=16 click="dismiss()" %}
+</div>
+{% endfor %}

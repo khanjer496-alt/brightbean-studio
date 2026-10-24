@@ -108,8 +108,12 @@ class RBACMiddleware:
         request.workspace = ws_membership.workspace
         request.workspace_membership = ws_membership
 
-        # Keep last_workspace_id in sync so global pages show the right workspace
-        if request.user.last_workspace_id != ws_membership.workspace_id:
+        # Keep last_workspace_id in sync so global pages show the right workspace.
+        # Staff viewing as this user must leave their account exactly as they found it.
+        if (
+            getattr(request, "impersonator", None) is None
+            and request.user.last_workspace_id != ws_membership.workspace_id
+        ):
             request.user.last_workspace_id = ws_membership.workspace_id
             request.user.save(update_fields=["last_workspace_id"])
 

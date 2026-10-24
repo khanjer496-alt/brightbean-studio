@@ -916,10 +916,12 @@ class PublishEngine:
                 return result
             duration_ms = int((time.monotonic() - start_time) * 1000)
             error_msg = str(e)
+            http_status = getattr(e, "status_code", None)
 
             PublishLog.objects.create(
                 platform_post=platform_post,
                 attempt_number=platform_post.retry_count + 1,
+                status_code=http_status if isinstance(http_status, int) else None,
                 error_message=error_msg,
                 duration_ms=duration_ms,
             )

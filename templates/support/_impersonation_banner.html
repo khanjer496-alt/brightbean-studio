@@ -1,0 +1,8 @@
+{% comment %}Shown on every page while staff view as a customer; the only write the session allows is Stop.{% endcomment %}
+<div class="pd-impersonation-banner" role="region" aria-label="Support session">
+    <span class="truncate">You are viewing as {{ impersonation.target.email }}</span>
+    <form method="post" action="{% url 'support:impersonation_stop' %}" class="shrink-0">
+        {% csrf_token %}
+        <button type="submit" class="btn-neutral px-4 py-1 text-sm font-semibold rounded-full cursor-pointer bg-surface-0 text-ink focus-visible:ring-2 focus-visible:ring-accent">Stop</button>
+    </form>
+</div>

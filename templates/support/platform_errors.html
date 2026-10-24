@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% block page_title %}Platform errors{% endblock %}
+{% block content %}
+<div class="max-w-5xl">
+    <div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <h2 class="text-xl font-semibold text-ink">Publish failures by platform</h2>
+        <nav class="flex gap-2" aria-label="Time window">
+            {% for key in windows %}
+            <a href="?window={{ key }}" {% if key == window %}aria-current="page"{% endif %}
+               class="px-4 py-1.5 text-sm font-medium rounded-full border border-line {% if key == window %}bg-surface-3 text-ink{% else %}text-ink-2 hover:bg-surface-2{% endif %}">Last {{ key }}</a>
+            {% endfor %}
+        </nav>
+    </div>
+    {% for platform in platforms %}
+    <section class="mb-8" aria-labelledby="platform-{{ platform.platform }}">
+        <h3 id="platform-{{ platform.platform }}" class="text-base font-semibold text-ink mb-2">{{ platform.label }} <span class="text-ink-3 font-normal">{{ platform.failures }} failed attempt{{ platform.failures|pluralize }}</span></h3>
+        <div class="overflow-x-auto rounded-lg border border-line">
+            <table class="w-full text-sm text-start">
+                <thead class="bg-surface-1 text-ink-3">
+                    <tr>
+                        <th scope="col" class="px-3 py-2 text-start font-medium">Status</th>
+                        <th scope="col" class="px-3 py-2 text-start font-medium">Failures</th>
+                        <th scope="col" class="px-3 py-2 text-start font-medium">Accounts</th>
+                        <th scope="col" class="px-3 py-2 text-start font-medium">Last seen</th>
+                        <th scope="col" class="px-3 py-2 text-start font-medium">Latest message</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for code in platform.codes %}
+                    <tr class="border-t border-line text-ink-2">
+                        <td class="px-3 py-2">{{ code.status_code|default:"No response" }}</td>
+                        <td class="px-3 py-2">{{ code.failures }}</td>
+                        <td class="px-3 py-2">{{ code.accounts }}</td>
+                        <td class="px-3 py-2 whitespace-nowrap">{{ code.last_seen|date:"M j, H:i" }}</td>
+                        <td class="px-3 py-2">{{ code.sample }}{% if code.account_handle %} <span class="text-ink-3">({{ code.account_handle }})</span>{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+    {% empty %}
+    <p class="text-sm text-ink-2">No failed publish attempts in the last {{ window }}.</p>
+    {% endfor %}
+</div>
+{% endblock %}

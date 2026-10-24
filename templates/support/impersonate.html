@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block page_title %}View as {{ target.email }}{% endblock %}
+{% block content %}
+<div class="max-w-xl">
+    <h2 class="text-xl font-semibold mb-2 text-ink">View as {{ target.email }}</h2>
+    <p class="text-sm text-ink-2 mb-6">
+        You'll see {{ brand_name }} exactly as this person does, for up to 30 minutes. Anything that changes data or reaches outside the app is turned off.
+        The customer's organization owners can see that support looked, and the session is recorded with your name and address.
+    </p>
+    <form method="post">
+        {% csrf_token %}
+        <label for="{{ form.reason.id_for_label }}" class="block text-sm font-semibold mb-2 text-ink">{{ form.reason.label }}</label>
+        <input type="text" id="{{ form.reason.id_for_label }}" name="reason" value="{{ form.reason.value|default:'' }}" required maxlength="200"
+               class="input-focus w-full px-3 py-2 text-sm rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-accent transition-colors border border-line text-ink bg-surface-0">
+        <p class="text-xs mt-2 text-ink-3">{{ form.reason.help_text }}</p>
+        {% for error in form.reason.errors %}<p class="text-xs mt-1 text-bad" role="alert">{{ error }}</p>{% endfor %}
+        <button type="submit" class="btn-brand mt-6 px-5 py-2 text-sm font-medium rounded-full cursor-pointer">Start viewing</button>
+    </form>
+</div>
+{% endblock %}
