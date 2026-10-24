@@ -2408,10 +2408,18 @@ class RepurposeJobResponse(Schema):
     created_at: dt.datetime
     finished_at: dt.datetime | None
     outputs: list[RepurposeOutputResponse]
+    autonomy: AutonomyNotice | None = Field(
+        None,
+        description="Set on a create or accept by an agent: what the autonomy policy decided for drafting, and why.",
+    )
 
     @field_serializer("created_at", "finished_at")
     def _serialize_dt(self, value: dt.datetime | None) -> str | None:
         return _serialize_utc_z(value)
+
+    def with_autonomy(self, note: dict | None) -> RepurposeJobResponse:
+        self.autonomy = AutonomyNotice(**note) if note else None
+        return self
 
 
 class AcceptRepurposeOutputsRequest(Schema):

@@ -133,8 +133,80 @@ def test_create_run_read_accept(platform_key, client, bluesky, fake_claude, work
     accepted = r.json()["outputs"][0]
     assert accepted["status"] == "accepted" and accepted["post_id"]
     assert Post.objects.get().platform_posts.get().status == "draft"
+    assert r.json()["autonomy"]["decision"] == "executed"
+    # A retry is a no-op, not a second draft.
     again = client.post(f"{BASE}/{job.id}/accept", data={"output_ids": [out["id"]]}, content_type="application/json")
-    assert again.status_code == 409
+    assert again.status_code == 200 and again.json()["outputs"][0]["post_id"] == accepted["post_id"]
+    assert Post.objects.count() == 1
+
+
+class TestAutonomy:
+    """Agent-created runs and accepted outputs go through the policy for drafting, and leave a trail."""
+
+    def _thread_job(self, client, bluesky, fake_claude, text=TEXT):
+        fake_claude.queue({"parts": [text[:200], "Second."]})
+        r = _create(
+            client, source_type="text", text=TEXT, outputs=[{"kind": "thread", "social_account_ids": [str(bluesky.id)]}]
+        )
+        assert r.status_code == 202, r.content
+        job = RepurposeJob.objects.get()
+        services.execute_job(job.id)
+        return job, r.json()
+
+    def test_drafting_off_refuses_the_run_before_any_ai_request(self, platform_key, client, bluesky, workspace):
+        from apps.autonomy.models import AgentAction, AutonomyPolicy
+
+        AutonomyPolicy.objects.update_or_create(workspace=workspace, defaults={"draft_level": "off"})
+        r = _create(
+            client, source_type="text", text=TEXT, outputs=[{"kind": "thread", "social_account_ids": [str(bluesky.id)]}]
+        )
+        assert r.status_code == 403 and "Blocked because" in r.json()["detail"]
+        assert RepurposeJob.objects.count() == 0 and AIRequestLog.objects.count() == 0
+        action = AgentAction.objects.get()
+        assert action.decision == "blocked" and action.operation == "repurpose.create"
+
+    def test_create_and_accept_are_logged_with_the_draft_linked(
+        self, platform_key, client, bluesky, fake_claude, workspace
+    ):
+        from apps.autonomy.models import AgentAction
+
+        job, created = self._thread_job(client, bluesky, fake_claude)
+        assert created["autonomy"]["decision"] == "executed"
+        out_id = str(job.outputs.get().id)
+        r = client.post(f"{BASE}/{job.id}/accept", data={"output_ids": [out_id]}, content_type="application/json")
+        assert r.status_code == 200
+        accept = AgentAction.objects.get(operation="repurpose.accept")
+        assert accept.action_type == "draft_content" and accept.post_id == Post.objects.get().id
+        assert "Hook" not in accept.final_text and TEXT[:40] in accept.final_text
+
+    def test_crisis_pause_blocks_accept_and_the_refusal_survives_the_rollback(
+        self, platform_key, client, bluesky, fake_claude, workspace
+    ):
+        from apps.autonomy.models import AgentAction, AutonomyPolicy
+
+        job, _ = self._thread_job(client, bluesky, fake_claude)
+        AutonomyPolicy.objects.update_or_create(workspace=workspace, defaults={"crisis_paused": True})
+        out_id = str(job.outputs.get().id)
+        r = client.post(f"{BASE}/{job.id}/accept", data={"output_ids": [out_id]}, content_type="application/json")
+        assert r.status_code == 403 and "crisis pause" in r.json()["detail"]
+        assert Post.objects.count() == 0 and job.outputs.get().status == "generated"
+        assert AgentAction.objects.filter(operation="repurpose.accept", decision="blocked").count() == 1
+
+    def test_a_blocked_phrase_is_flagged_for_review_under_draft_only(
+        self, platform_key, client, bluesky, fake_claude, workspace
+    ):
+        from apps.autonomy.models import AutonomyPolicy
+
+        AutonomyPolicy.objects.update_or_create(
+            workspace=workspace, defaults={"draft_level": "draft_only", "blocked_phrases": ["eighteen minutes"]}
+        )
+        job, _ = self._thread_job(client, bluesky, fake_claude)
+        out_id = str(job.outputs.get().id)
+        r = client.post(f"{BASE}/{job.id}/accept", data={"output_ids": [out_id]}, content_type="application/json")
+        assert r.status_code == 200
+        notice = r.json()["autonomy"]
+        assert notice["decision"] == "executed" and any("flagged" in reason for reason in notice["reasons"])
+        assert Post.objects.get().platform_posts.get().status == "draft"
 
 
 def test_cancel(platform_key, client, bluesky, fake_claude):

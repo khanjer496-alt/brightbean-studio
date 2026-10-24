@@ -286,3 +286,32 @@ class TestYouTubeCaptionsApi:
             ]
         )
         assert provider.fetch_owned_video_transcript("tok", video_id="v", channel_id="UC_owner") is None
+
+
+class TestPdfSandbox:
+    def test_a_decompression_bomb_is_refused_without_inflating_it_here(self):
+        import zlib
+
+        bomb = zlib.compress(b"0" * (200 * 1024 * 1024), 9)
+        data = (
+            b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj\n"
+            b"3 0 obj<</Type/Page/Parent 2 0 R/MediaBox[0 0 100 100]/Contents 4 0 R>>endobj\n"
+            b"4 0 obj<</Length "
+            + str(len(bomb)).encode()
+            + b"/Filter/FlateDecode>>stream\n"
+            + bomb
+            + b"\nendstream endobj\n"
+            b"trailer<</Root 1 0 R>>\n%%EOF"
+        )
+        with pytest.raises(ValueError):
+            sources.from_pdf(io.BytesIO(data), "bomb.pdf")
+
+    def test_a_hung_parser_times_out(self, monkeypatch):
+        import subprocess
+
+        def hang(*args, **kwargs):
+            raise subprocess.TimeoutExpired(cmd="python", timeout=1)
+
+        monkeypatch.setattr(sources.subprocess, "run", hang)
+        with pytest.raises(ValueError, match="too long"):
+            sources.pdf_text(b"%PDF-1.4")

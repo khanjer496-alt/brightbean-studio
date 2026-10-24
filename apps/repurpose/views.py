@@ -108,7 +108,7 @@ def _reader(request):
         upload = request.FILES.get("source_pdf")
         if upload is None:
             raise ValueError("Choose a PDF to upload.")
-        return lambda: sources.from_pdf(upload, upload.name)
+        return lambda: sources.pending_pdf(upload, upload.name)
     if kind == "post":
         from apps.composer.models import Post
 
@@ -142,7 +142,7 @@ def job_create(request, workspace_id):
     if not ai_available(workspace.organization):
         raise Http404
     try:
-        job = services.create_job(
+        job, _ = services.create_job(
             workspace, request.user, read_source=_reader(request), requests=_requests_from_form(request)
         )
     except sources.TranscriptNeededError as exc:
@@ -205,11 +205,14 @@ def job_cancel(request, workspace_id, job_id):
 def job_accept(request, workspace_id, job_id):
     job = _job(request, job_id)
     try:
-        accepted = services.accept_outputs(job, request.POST.getlist("output"), request.user)
+        accepted, _ = services.accept_outputs(job, request.POST.getlist("output"), request.user)
     except (services.JobStateError, ValueError) as exc:
         messages.error(request, str(exc))
     else:
-        messages.success(request, f"{len(accepted)} saved as drafts or ideas. Nothing has been published.")
+        if accepted:
+            messages.success(request, f"{len(accepted)} saved as drafts or ideas. Nothing has been published.")
+        else:
+            messages.info(request, "Those were already saved.")
     return redirect("repurpose:detail", workspace_id=request.workspace.id, job_id=job.id)
 
 

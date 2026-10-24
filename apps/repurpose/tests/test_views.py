@@ -5,6 +5,7 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from django.core.files.storage import default_storage
 from django.core.files.uploadedfile import SimpleUploadedFile
 from fpdf import FPDF
 
@@ -90,7 +91,25 @@ def test_pdf_upload(owner_client, workspace, bluesky):
     response = _post_form(owner_client, workspace, bluesky, source_type="pdf", source_pdf=upload)
     assert response.status_code == 302
     job = RepurposeJob.objects.get()
-    assert job.source_type == "pdf" and job.source_label == "guide.pdf" and "sweetness" in job.source_text
+    # The request only checks and stores the file; the background run parses it.
+    assert job.source_type == "pdf" and job.source_label == "guide.pdf" and job.source_text == ""
+    stored = job.source_file.name
+    assert stored
+    services._read_pending_pdf(job, 1)
+    job.refresh_from_db()
+    assert "sweetness" in job.source_text and not job.source_file
+    assert not default_storage.exists(stored)
+
+
+def test_unreadable_pdf_fails_the_run_not_the_request(owner_client, workspace, bluesky):
+    upload = SimpleUploadedFile(
+        "bad.pdf", b"%PDF-1.7\n1 0 obj << /Pages 9 0 R >> endobj", content_type="application/pdf"
+    )
+    assert _post_form(owner_client, workspace, bluesky, source_type="pdf", source_pdf=upload).status_code == 302
+    job = RepurposeJob.objects.get()
+    services.execute_job(job.id)
+    job.refresh_from_db()
+    assert job.status == "failed" and "couldn't be read" in job.error and not job.source_file
 
 
 def test_bad_pdf_shows_the_problem_and_saves_nothing(owner_client, workspace, bluesky):

@@ -8,8 +8,10 @@ inside it; nothing here interprets it.
 * ``from_url``: the composer's SSRF-safe fetch (``ai_writer.services.fetch_link``),
   then a small readability pass: prefer ``<article>`` / ``<main>``, drop
   navigation, forms and scripts. No headless browser.
-* ``from_pdf``: ``pypdf``, after a size check, a ``%PDF-`` check, refusing
-  encrypted files and capping pages and characters. Nothing in the file is run.
+* ``from_pdf``: ``pypdf`` in a child process with memory, CPU and time limits,
+  after a size check and a ``%PDF-`` check; refuses password-protected files and
+  caps pages, stream sizes and characters. Nothing in the file is run. A run
+  takes the bytes with ``pending_pdf`` and reads them in the background task.
 * ``from_post``: a published post of the workspace.
 * ``from_video``: a video link on a platform whose API returns captions for the
   connected account's own videos, otherwise the caller pastes a transcript.
@@ -18,9 +20,11 @@ inside it; nothing here interprets it.
 from __future__ import annotations
 
 import html
-import io
+import json
 import logging
 import re
+import subprocess
+import sys
 from dataclasses import dataclass
 from datetime import timedelta
 from html.parser import HTMLParser
@@ -51,6 +55,8 @@ class Source:
     url: str = ""
     post: object | None = None
     account: object | None = None
+    # A PDF not read yet: its bytes, for the background run (``pending_pdf``).
+    pdf: bytes | None = None
 
 
 def _finish(source_type: str, text: str, **extra) -> Source:
@@ -169,37 +175,110 @@ def from_url(url: str) -> Source:
 # ---------------------------------------------------------------------------
 
 
-def from_pdf(file_obj, name: str = "") -> Source:
-    """Text of an uploaded PDF. Refuses oversized, encrypted, non-PDF and image-only files."""
-    from pypdf import PdfReader
+# The extraction runs in a child process with a memory and CPU ceiling and a
+# wall-clock timeout, so a decompression bomb or a pathological content stream
+# costs that process, never the worker. pypdf never runs a PDF's JavaScript.
+PDF_MEMORY_BYTES = 768 * 1024 * 1024
+PDF_CPU_SECONDS = 30
+PDF_TIMEOUT_SECONDS = 45
+PDF_STREAM_BYTES = 20 * 1024 * 1024
 
+_PDF_WORKER = r"""
+import io, json, sys
+max_pages, max_chars, memory, cpu, stream = (int(v) for v in sys.argv[1:6])
+try:
+    import resource
+    resource.setrlimit(resource.RLIMIT_AS, (memory, memory))
+    resource.setrlimit(resource.RLIMIT_CPU, (cpu, cpu))
+except Exception:
+    pass  # not every OS honours these; the parent's timeout still applies
+data = sys.stdin.buffer.read()
+out = {}
+try:
+    import pypdf.filters as filters
+    for name in ("ZLIB_MAX_OUTPUT_LENGTH", "LZW_MAX_OUTPUT_LENGTH", "RUN_LENGTH_MAX_OUTPUT_LENGTH",
+                 "MAX_ARRAY_BASED_STREAM_OUTPUT_LENGTH", "MAX_DECLARED_STREAM_LENGTH", "JBIG2_MAX_OUTPUT_LENGTH"):
+        if hasattr(filters, name):
+            setattr(filters, name, stream)
+    from pypdf import PdfReader
+    reader = PdfReader(io.BytesIO(data), strict=False)
+    if reader.is_encrypted and not reader.decrypt(""):
+        out = {"error": "encrypted"}
+    elif len(reader.pages) > max_pages:
+        out = {"error": "pages"}
+    else:
+        chunks, size = [], 0
+        for page in reader.pages:
+            text = (page.extract_text() or "")[: max_chars - size]
+            chunks.append(text)
+            size += len(text)
+            if size >= max_chars:
+                break
+        out = {"text": "\n\n".join(chunks)}
+except MemoryError:
+    out = {"error": "too_big"}
+except Exception as exc:
+    out = {"error": "unreadable", "type": type(exc).__name__}
+sys.stdout.write(json.dumps(out))
+"""
+
+
+def read_pdf(file_obj) -> bytes:
+    """The PDF's bytes, after the cheap checks (size, ``%PDF-`` header); nothing is parsed yet."""
     max_bytes = settings.REPURPOSE_MAX_PDF_BYTES
     data = file_obj.read(max_bytes + 1)
     if len(data) > max_bytes:
         raise ValueError(f"That PDF is larger than {max_bytes // (1024 * 1024)} MB.")
     if not data.startswith(b"%PDF-"):
         raise ValueError("That file isn't a PDF.")
+    return data
+
+
+def pdf_text(data: bytes) -> str:
+    """The text of a PDF, read in a sandboxed child process. ``ValueError`` says why it can't be."""
+    pages = settings.REPURPOSE_MAX_PDF_PAGES
+    args = [str(v) for v in (pages, MAX_SOURCE_CHARS, PDF_MEMORY_BYTES, PDF_CPU_SECONDS, PDF_STREAM_BYTES)]
     try:
-        reader = PdfReader(io.BytesIO(data), strict=False)
-        if reader.is_encrypted:
-            raise ValueError("That PDF is password protected.")
-        if len(reader.pages) > settings.REPURPOSE_MAX_PDF_PAGES:
-            raise ValueError(f"That PDF has more than {settings.REPURPOSE_MAX_PDF_PAGES} pages.")
-        chunks, size = [], 0
-        for page in reader.pages:
-            chunks.append(page.extract_text() or "")
-            size += len(chunks[-1])
-            if size >= MAX_SOURCE_CHARS:
-                break
+        done = subprocess.run(  # noqa: S603 - our own interpreter and fixed code; the PDF is only stdin
+            [sys.executable, "-I", "-c", _PDF_WORKER, *args],
+            input=data,
+            capture_output=True,
+            timeout=PDF_TIMEOUT_SECONDS,
+            check=False,
+        )
+        result = json.loads(done.stdout or b"{}")
+    except subprocess.TimeoutExpired as exc:
+        raise ValueError("That PDF took too long to read. Paste its text instead.") from exc
     except ValueError:
-        raise
-    except Exception as exc:  # noqa: BLE001 - pypdf raises many types on malformed files
-        logger.info("PDF could not be read: %s", type(exc).__name__)
-        raise ValueError("That PDF couldn't be read. It may be damaged.") from exc
+        result = {}
+    error = result.get("error")
+    if error == "encrypted":
+        raise ValueError("That PDF is password protected.")
+    if error == "pages":
+        raise ValueError(f"That PDF has more than {pages} pages.")
+    if error == "too_big" or (not result and done.returncode < 0):
+        raise ValueError("That PDF is too complex to read. Paste its text instead.")
+    if "text" not in result:
+        logger.info("PDF could not be read: %s (exit %s)", result.get("type", "no result"), done.returncode)
+        raise ValueError("That PDF couldn't be read. It may be damaged.")
+    return result["text"]
+
+
+def pdf_source(text: str, name: str = "") -> Source:
     try:
-        return _finish("pdf", "\n\n".join(chunks), label=name or "PDF")
+        return _finish("pdf", text, label=name or "PDF")
     except ValueError as exc:
         raise ValueError("No text could be read from that PDF (scanned pages need OCR first).") from exc
+
+
+def pending_pdf(file_obj, name: str = "") -> Source:
+    """A PDF checked and held for the background run to read (parsing never happens in a request)."""
+    return Source(type="pdf", text="", label=(name or "PDF")[:MAX_LABEL_CHARS], pdf=read_pdf(file_obj))
+
+
+def from_pdf(file_obj, name: str = "") -> Source:
+    """Text of an uploaded PDF. Refuses oversized, encrypted, non-PDF and image-only files."""
+    return pdf_source(pdf_text(read_pdf(file_obj)), name)
 
 
 # ---------------------------------------------------------------------------

@@ -96,7 +96,7 @@ from apps.autonomy import configure as autonomy_configure
 from apps.autonomy import policy as autonomy_policy
 from apps.autonomy import service as autonomy_service
 from apps.autonomy.actors import agent as agent_actor
-from apps.autonomy.gate import content_text, gate_post, publish_text, record_all, refusal_for
+from apps.autonomy.gate import AutonomyRefusalError, content_text, gate_post, publish_text, record_all, refusal_for
 from apps.autonomy.models import (
     AccountAutonomyOverride,
     ActionType,
@@ -2532,9 +2532,16 @@ def create_repurpose_job(
         read_source = _repurpose_reader(
             actor, source_type, url=url, text=text, post_id=post_id, media_asset_id=media_asset_id
         )
-        job = repurpose_services.create_job(
-            actor.workspace, actor.user, read_source=read_source, requests=requests, origin=origin
+        job, note = repurpose_services.create_job(
+            actor.workspace,
+            actor.user,
+            read_source=read_source,
+            requests=requests,
+            origin=origin,
+            actor=agent_actor(actor.api_key, actor.user),
         )
+    except AutonomyRefusalError as exc:
+        raise OpError(403, exc.message, refusal=exc) from exc
     except PlanLimitError as exc:
         raise OpError(402, str(exc)) from exc
     except AIError as exc:
@@ -2544,7 +2551,7 @@ def create_repurpose_job(
         raise OpError(422, f"transcript_needed: {exc}") from exc
     except ValueError as exc:
         raise OpError(422, str(exc)) from exc
-    return _repurpose_job_response(job)
+    return _repurpose_job_response(job).with_autonomy(note)
 
 
 def _repurpose_reader(actor: Actor, source_type, *, url, text, post_id, media_asset_id):
@@ -2573,7 +2580,7 @@ def _repurpose_reader(actor: Actor, source_type, *, url, text, post_id, media_as
 
         def read():
             with asset.file.open("rb") as handle:
-                return sources.from_pdf(handle, asset.filename)
+                return sources.pending_pdf(handle, asset.filename)
 
         return read
     raise OpError(422, "Unknown source_type")
@@ -2601,9 +2608,13 @@ def accept_repurpose_outputs(actor: Actor, job_id: uuid.UUID, *, output_ids: lis
 
     job = _get_repurpose_job(actor, job_id)
     try:
-        repurpose_services.accept_outputs(job, output_ids, actor.user)
+        _, note = repurpose_services.accept_outputs(
+            job, output_ids, actor.user, actor=agent_actor(actor.api_key, actor.user)
+        )
+    except AutonomyRefusalError as exc:
+        raise OpError(403, exc.message, refusal=exc) from exc
     except repurpose_services.JobStateError as exc:
         raise OpError(409, str(exc)) from exc
     except ValueError as exc:
         raise OpError(422, str(exc)) from exc
-    return _repurpose_job_response(_get_repurpose_job(actor, job_id))
+    return _repurpose_job_response(_get_repurpose_job(actor, job_id)).with_autonomy(note)

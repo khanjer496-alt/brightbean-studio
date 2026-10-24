@@ -43,6 +43,8 @@ class RepurposeJob(models.Model):
     source_label = models.CharField(max_length=255, blank=True, default="")
     source_text = models.TextField(blank=True, default="")
     source_post = models.ForeignKey("composer.Post", on_delete=models.SET_NULL, null=True, blank=True, related_name="+")
+    # An uploaded PDF waiting for the background run to read it; deleted once read.
+    source_file = models.FileField(upload_to="repurpose/sources/", blank=True, default="")
 
     # What was asked for: ``[{"kind", "account_ids", "count"}]``, and every account involved.
     outputs_requested = models.JSONField(default=list)

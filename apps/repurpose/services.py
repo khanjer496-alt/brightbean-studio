@@ -19,6 +19,7 @@ from collections.abc import Callable
 
 from django.conf import settings
 from django.core.exceptions import PermissionDenied
+from django.core.files.base import ContentFile
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import transaction
 from django.utils import timezone
@@ -55,12 +56,16 @@ def create_job(
     read_source: Callable[[], sources.Source],
     requests: list[outputs.Request],
     origin: str = "web",
-) -> RepurposeJob:
+    actor=None,
+) -> tuple[RepurposeJob, dict | None]:
     """Reserve the run's AI calls, read the source, and queue the job.
 
     ``read_source`` runs only after the reservation succeeds, so a run the plan
-    can't afford never fetches a page. Raises ``ValueError`` (fix the request),
-    ``PlanLimitError`` / ``AIError`` (allowance, no AI configured).
+    can't afford never fetches a page. An agent ``actor`` goes through the
+    autonomy policy for drafting first (see :mod:`.hooks`); the second value is
+    the notice it gets back (None for a person). Raises ``ValueError`` (fix the
+    request), ``PlanLimitError`` / ``AIError`` (allowance, no AI configured) and
+    ``AutonomyRefusalError`` (the policy refuses; already logged).
     """
     from .tasks import execute_repurpose_job
 
@@ -78,15 +83,16 @@ def create_job(
     ):
         raise ValueError("Several repurposing runs are still going. Wait for one to finish, or cancel one.")
 
+    accounts = list({a.id: a for r in requests for a in r.accounts}.values())
+    gates = hooks.before_create(workspace, actor, accounts, origin=origin)
+
     ctx = AIContext(workspace=workspace, user=user, source=origin)
     run = ai._start(ctx, reserve=max_calls)  # the up-front reservation
     source = read_source()
+    if source.pdf is None:
+        _check_estimate(len(units), source.text)
 
-    estimate = len(units) * (len(source.text) // CHARS_PER_TOKEN + PROMPT_OVERHEAD_TOKENS)
-    if estimate > settings.REPURPOSE_MAX_TOKENS_PER_RUN:
-        raise ValueError("That source is too long for that many outputs. Choose fewer outputs, or a shorter source.")
-
-    job = RepurposeJob.objects.create(
+    job = RepurposeJob(
         workspace=workspace,
         created_by=user if getattr(user, "is_authenticated", False) else None,
         source_type=source.type,
@@ -102,8 +108,19 @@ def create_job(
         calls_reserved=max_calls,
         token_cap=settings.REPURPOSE_MAX_TOKENS_PER_RUN,
     )
+    if source.pdf is not None:
+        # Parsed by the background run, never in the request.
+        job.source_file.save(f"{job.id}.pdf", ContentFile(source.pdf), save=False)
+    job.save()
+    note = hooks.record_decisions(gates, source_text=job.source_name)
     transaction.on_commit(lambda: execute_repurpose_job(str(job.id)))
-    return job
+    return job, note
+
+
+def _check_estimate(unit_count: int, text: str) -> None:
+    estimate = unit_count * (len(text) // CHARS_PER_TOKEN + PROMPT_OVERHEAD_TOKENS)
+    if estimate > settings.REPURPOSE_MAX_TOKENS_PER_RUN:
+        raise ValueError("That source is too long for that many outputs. Choose fewer outputs, or a shorter source.")
 
 
 # ---------------------------------------------------------------------------
@@ -138,6 +155,11 @@ def _execute(job: RepurposeJob) -> None:
     except ValueError as exc:
         return _finish(job, RepurposeJob.Status.FAILED, f"An account for this run is no longer available. {exc}")
     units, _max = outputs.plan(requests)
+    if job.source_file:
+        try:
+            _read_pending_pdf(job, len(units))
+        except ValueError as exc:
+            return _finish(job, RepurposeJob.Status.FAILED, str(exc))
     ctx = AIContext(workspace=workspace, user=job.created_by, source=job.origin)
     try:
         run = ai._start(ctx, reserve=job.calls_reserved)
@@ -166,9 +188,22 @@ def _execute(job: RepurposeJob) -> None:
     _finish(job, RepurposeJob.Status.SUCCEEDED if made else RepurposeJob.Status.FAILED, note)
 
 
+def _read_pending_pdf(job: RepurposeJob, unit_count: int) -> None:
+    """Read the uploaded PDF the job holds (in a sandboxed process), then delete the upload."""
+    try:
+        with job.source_file.open("rb") as handle:
+            data = sources.read_pdf(handle)
+        source = sources.pdf_source(sources.pdf_text(data), job.source_label)
+    finally:
+        job.source_file.delete(save=False)
+        job.save(update_fields=["source_file"])
+    _check_estimate(unit_count, source.text)
+    job.source_text = source.text
+    job.save(update_fields=["source_text"])
+
+
 def _save_usage(job: RepurposeJob, run: ai.AIRun) -> None:
-    job.input_tokens, job.output_tokens = run.input_tokens, run.output_tokens
-    job.calls_made = job.calls_reserved - (run.remaining if run.remaining is not None else job.calls_reserved)
+    job.input_tokens, job.output_tokens, job.calls_made = run.input_tokens, run.output_tokens, run.calls
     job.save(update_fields=["input_tokens", "output_tokens", "calls_made"])
 
 
@@ -265,21 +300,30 @@ def attribution(job: RepurposeJob) -> str:
     )
 
 
-def accept_outputs(job: RepurposeJob, output_ids, user) -> list[RepurposeOutput]:
-    """Make drafts (outputs with an account) and ideas (the rest) from the chosen outputs. Never publishes."""
+def accept_outputs(job: RepurposeJob, output_ids, user, *, actor=None) -> tuple[list[RepurposeOutput], dict | None]:
+    """Make drafts (outputs with an account) and ideas (the rest) from the chosen outputs. Never publishes.
+
+    Safe to repeat: the job's outputs are locked while they're turned into
+    drafts, so two clicks (or an agent's retry) can't make two copies; outputs
+    already accepted are left as they are. An agent ``actor`` goes through the
+    autonomy policy for drafting (:mod:`.hooks`); the second value is the
+    notice it gets back.
+    """
     wanted = {str(i) for i in output_ids}
-    chosen = [
-        o
-        for o in job.outputs.select_related("social_account", "document").filter(
-            status=RepurposeOutput.Status.GENERATED
-        )
-        if str(o.id) in wanted
-    ]
-    if not chosen:
-        raise JobStateError("There is nothing to accept: choose outputs that haven't been accepted yet.")
-    hooks.before_accept(job, chosen, user)
     posts = []
     with transaction.atomic():
+        rows = list(
+            job.outputs.select_for_update(of=("self",))
+            .select_related("social_account", "document")
+            .filter(status__in=(RepurposeOutput.Status.GENERATED, RepurposeOutput.Status.ACCEPTED))
+        )
+        rows = [o for o in rows if str(o.id) in wanted]
+        chosen = [o for o in rows if o.status == RepurposeOutput.Status.GENERATED]
+        if not chosen:
+            if rows:  # all of them were accepted already: a repeat, nothing to do
+                return [], None
+            raise JobStateError("There is nothing to accept: choose outputs that haven't been accepted or discarded.")
+        gates = hooks.before_accept(job, chosen, actor)
         for out in chosen:
             if out.social_account_id:
                 out.post = _make_draft(job, out, user)
@@ -290,8 +334,9 @@ def accept_outputs(job: RepurposeJob, output_ids, user) -> list[RepurposeOutput]
                 out.idea = _make_idea(job, out, user)
             out.status = RepurposeOutput.Status.ACCEPTED
             out.save(update_fields=["post", "idea", "status"])
+        note = hooks.record_decisions(gates, source_text=job.source_name)
     _submit_for_review(job.workspace, posts, user)
-    return chosen
+    return chosen, note
 
 
 def _make_draft(job: RepurposeJob, out: RepurposeOutput, user):

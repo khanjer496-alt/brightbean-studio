@@ -208,6 +208,7 @@ class AIRun:
     # (``apps.repurpose``) can stop before the next call.
     input_tokens: int = 0
     output_tokens: int = 0
+    calls: int = 0  # provider calls sent, answered or not
 
     def can_call(self) -> bool:
         return self.remaining is None or self.remaining > 0
@@ -228,6 +229,7 @@ def _run(
     provider = config.provider
     if run.remaining is not None:
         run.remaining -= 1
+    run.calls += 1
     started = time.monotonic()
     log = AIRequestLog(
         organization=ctx.organization,
