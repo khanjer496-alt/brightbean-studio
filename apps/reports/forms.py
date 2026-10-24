@@ -53,6 +53,8 @@ class ReportDefinitionForm(forms.ModelForm):
             "send_time",
             "is_active",
         ]
+        # The model's clean() words the same check; matching it keeps the preview's list to one line.
+        error_messages = {"name": {"required": "Give the report a name."}}
         widgets = {
             "name": forms.TextInput(attrs={"class": INPUT, "maxlength": 120, "autocomplete": "off", "dir": "auto"}),
             "range_type": forms.Select(attrs={"class": INPUT}),

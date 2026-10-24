@@ -10,9 +10,10 @@
     {% if blockers %}
     <div class="rounded-lg border border-red-300 bg-red-50 p-4 mb-6 text-red-900" role="alert">
         <p class="text-sm font-semibold mb-2">You cannot delete this account yet</p>
-        <ul class="list-disc pl-5 text-sm space-y-1">
+        <ul class="list-disc ps-5 text-sm space-y-1">
             {% for reason in blockers %}<li>{{ reason }}</li>{% endfor %}
         </ul>
+        <a href="{% url 'members:list' %}" class="mt-3 inline-block text-sm font-semibold underline">Go to Team Members</a>
     </div>
     {% else %}
     <ul class="list-disc pl-5 text-sm mb-6 space-y-1 text-(--text-secondary)">

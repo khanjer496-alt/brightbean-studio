@@ -311,6 +311,13 @@ class TestSearch:
         assert len(out) < 400
         assert highlight("plain", "") == "plain"
 
+    def test_timesince_short_keeps_the_largest_unit(self):
+        from apps.inbox.templatetags.inbox_extras import timesince_short
+
+        received = timezone.now() - timedelta(hours=1, minutes=23)
+        assert timesince_short(received) == "1\xa0hour"
+        assert timesince_short(None) == ""
+
 
 @pytest.mark.django_db
 class TestQueryBudget:

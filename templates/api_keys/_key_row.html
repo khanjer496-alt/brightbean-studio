@@ -88,7 +88,8 @@
                                             {% for sa, checked in row.editable_accounts %}
                                             <label class="flex items-center gap-2 text-sm px-3 py-2 rounded-lg border border-stone-200 cursor-pointer has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-[var(--primary)]">
                                                 <input type="checkbox" name="social_account_ids" value="{{ sa.id }}" class="h-4 w-4" {% if checked %}checked{% endif %}>
-                                                <span class="font-mono text-xs text-[var(--text-tertiary)]">{{ sa.platform }}</span>
+                                                <span class="w-4 h-4 rounded flex items-center justify-center pi-{{ sa.platform }} flex-shrink-0 text-white" aria-hidden="true">{% include "social_accounts/partials/_platform_icon.html" with platform=sa.platform size="3" %}</span>
+                                                <span class="sr-only">{{ sa.get_platform_display }}:</span>
                                                 <span class="text-[var(--text-primary)]">{{ sa.account_name }}</span>
                                             </label>
                                             {% endfor %}

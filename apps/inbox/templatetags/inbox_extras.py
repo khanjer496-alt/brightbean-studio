@@ -5,6 +5,7 @@ import re
 from django import template
 from django.utils.html import escape, format_html
 from django.utils.safestring import mark_safe
+from django.utils.timesince import timesince
 
 from apps.inbox.feed import SEARCH_SNIPPET_CHARS, search_terms
 
@@ -37,3 +38,11 @@ def highlight(text, query):
         position = match.end()
     parts.append(escape(text[position:]))
     return mark_safe("".join(parts))
+
+
+@register.filter
+def timesince_short(value):
+    """``timesince`` to its largest unit ("1 hour", not "1 hour, 23 minutes"), for tight rows."""
+    if not value:
+        return ""
+    return timesince(value, depth=1)

@@ -138,7 +138,10 @@ class TestEditor:
 
     def test_preview_reports_form_errors(self, client, workspace, owner):
         client.force_login(owner)
-        assert b"needs a few fixes" in client.post(url("preview", workspace), form_data(name="")).content
+        body = client.post(url("preview", workspace), form_data(name="")).content.decode()
+        assert "needs a few fixes" in body
+        # one plain line per problem, not Django's generic message next to ours
+        assert body.count("Give the report a name.") == 1 and "This field is required." not in body
 
     def test_form_page_has_no_inline_styles(self, client, workspace, owner, definition):
         client.force_login(owner)
