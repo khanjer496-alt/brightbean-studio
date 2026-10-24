@@ -26,7 +26,7 @@ def media_item(asset) -> dict:
     }
 
 
-def thread_preview(account, parts, first_comment: str = "") -> dict | None:
+def thread_preview(account, parts, first_comment: str = "", counting=None) -> dict | None:
     """The thread under one account's card, or None for a single post.
 
     ``parts`` is ``(caption, assets)`` per part after the first post, already
@@ -36,16 +36,17 @@ def thread_preview(account, parts, first_comment: str = "") -> dict | None:
         return None
     capability = thread_capability_for(account.platform)
     limit = capability.part_max_length or account.char_limit
+    measure = _measure(account, counting)
     return {
         "mode": capability.mode.value,
-        "blocker": thread_blocker(account, parts, first_comment=first_comment),
+        "blocker": thread_blocker(account, parts, first_comment=first_comment, counting=counting),
         "parts": [
             {
                 "number": number,
                 "caption": caption,
-                "char_count": account.caption_wire_length(caption),
+                "char_count": measure(caption),
                 "char_limit": limit,
-                "is_over_limit": account.caption_wire_length(caption) > limit,
+                "is_over_limit": measure(caption) > limit,
                 "media": [media_item(a) for a in assets],
             }
             for number, (caption, assets) in enumerate(parts, start=2)
@@ -53,11 +54,21 @@ def thread_preview(account, parts, first_comment: str = "") -> dict | None:
     }
 
 
-def account_preview(account, *, title: str, caption: str, first_comment: str = "", thread=None) -> dict:
-    """The card context for one account: its effective text and how it measures up."""
+def _measure(account, counting=None):
+    """How ``account`` counts a text: after escaping, and, when links will be shortened, with their short length."""
+    if counting is None:
+        return account.caption_wire_length
+    return lambda text: account.caption_wire_length(counting(text))
+
+
+def account_preview(account, *, title: str, caption: str, first_comment: str = "", thread=None, counting=None) -> dict:
+    """The card context for one account: its effective text and how it measures up.
+
+    ``counting`` rewrites a text before it is counted (links swapped for their short length).
+    """
     char_limit = account.char_limit
     # Counted after escaping, so the badge matches what gets published.
-    char_count = account.caption_wire_length(caption)
+    char_count = _measure(account, counting)(caption)
     return {
         "account": account,
         "title": title,

@@ -1,0 +1,59 @@
+{% extends "layouts/workspace_settings.html" %}
+{% block page_title %}{% if obj %}Edit set{% else %}New set{% endif %}{% endblock %}
+{% block content %}
+<div class="max-w-3xl">
+    <a href="{% url 'account_sets:list' workspace_id=workspace.id %}" class="inline-flex items-center min-h-11 text-sm underline text-[var(--text-secondary)]">&larr; Account sets</a>
+    <h2 class="text-xl font-semibold mb-6 text-[var(--text-primary)]">{% if obj %}Edit set{% else %}New set{% endif %}</h2>
+    <form method="POST" class="flex flex-col gap-6">
+        {% csrf_token %}
+        <div>
+            <label for="set-name" class="block text-sm font-semibold mb-1 text-[var(--text-primary)]">Name</label>
+            <input type="text" id="set-name" name="name" required maxlength="80" autocomplete="off" value="{{ name }}"
+                   placeholder="Client A: all channels" class="form-input-styled text-sm">
+        </div>
+        <fieldset class="flex flex-col gap-3">
+            <legend class="text-sm font-semibold mb-1 text-[var(--text-primary)]">Accounts</legend>
+            {% for row in rows %}
+            <div class="p-3 rounded-lg border border-[var(--border)] bg-[var(--surface-0)]">
+                <label class="flex items-center gap-3 min-h-11 cursor-pointer">
+                    <input type="checkbox" name="accounts" value="{{ row.account.id }}" class="w-4 h-4"{% if row.selected %} checked{% endif %}>
+                    <span class="text-sm text-[var(--text-primary)]">{{ row.account.account_name|default:row.account.account_handle }} <span class="text-xs text-[var(--text-tertiary)]">{{ row.account.get_platform_display }}</span></span>
+                </label>
+                {% if row.fields %}
+                <details class="mt-1"{% for f in row.fields %}{% if f.value %} open{% endif %}{% endfor %}>
+                    <summary class="min-h-11 flex items-center text-xs cursor-pointer text-[var(--text-secondary)]">Default settings for this account</summary>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pb-2">
+                        {% for f in row.fields %}
+                        <div>
+                            <label for="d-{{ f.key }}-{{ row.account.id }}" class="block text-xs mb-1 text-[var(--text-secondary)]">{{ f.label }}</label>
+                            {% if f.kind == "select" and f.choices %}
+                            <select id="d-{{ f.key }}-{{ row.account.id }}" name="d_{{ f.key }}_{{ row.account.id }}" class="form-input-styled text-sm">
+                                <option value="">No default</option>
+                                {% for choice in f.choices %}<option value="{{ choice.value }}"{% if f.value == choice.value %} selected{% endif %}>{{ choice.label }}</option>{% endfor %}
+                            </select>
+                            {% elif f.kind == "checkbox" %}
+                            <select id="d-{{ f.key }}-{{ row.account.id }}" name="d_{{ f.key }}_{{ row.account.id }}" class="form-input-styled text-sm">
+                                <option value="">No default</option>
+                                <option value="true"{% if f.value == "true" %} selected{% endif %}>On</option>
+                                <option value="false"{% if f.value == "false" %} selected{% endif %}>Off</option>
+                            </select>
+                            {% else %}
+                            <input type="text" id="d-{{ f.key }}-{{ row.account.id }}" name="d_{{ f.key }}_{{ row.account.id }}" maxlength="200" autocomplete="off"
+                                   value="{{ f.value }}" class="form-input-styled text-sm">
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </details>
+                {% endif %}
+            </div>
+            {% empty %}
+            <p class="text-sm text-[var(--text-secondary)]">Connect an account first.</p>
+            {% endfor %}
+        </fieldset>
+        <div>
+            <button type="submit" class="btn-primary-hover min-h-11 px-5 py-2 text-sm font-medium text-white rounded-full cursor-pointer bg-[var(--primary)]">Save set</button>
+        </div>
+    </form>
+</div>
+{% endblock %}

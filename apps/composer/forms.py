@@ -47,9 +47,12 @@ class PostForm(forms.ModelForm):
     # as a comma-separated string, not JSON.  clean_tags() converts to a list.
     tags = forms.CharField(required=False, widget=forms.HiddenInput())
 
+    # "1" shorten, "0" keep as typed, "" follow the workspace's preference (apps.links).
+    shorten_links = forms.NullBooleanField(required=False, widget=forms.HiddenInput())
+
     class Meta:
         model = Post
-        fields = ["title", "caption", "first_comment", "internal_notes", "tags", "category"]
+        fields = ["title", "caption", "first_comment", "internal_notes", "tags", "category", "shorten_links"]
         widgets = {
             "caption": forms.Textarea(
                 attrs={

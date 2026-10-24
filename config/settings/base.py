@@ -119,6 +119,8 @@ LOCAL_APPS = [
     "apps.ai_visibility",
     "apps.reports",
     "apps.linkinbio",
+    "apps.links",
+    "apps.account_sets",
     "apps.billing",
     "apps.ai_writer",
     "apps.repurpose",
@@ -133,6 +135,7 @@ INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "apps.linkinbio.middleware.CustomDomainMiddleware",
+    "apps.links.middleware.ShortDomainMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -999,3 +1002,8 @@ AUTONOMY_AUDIT_RETENTION_DAYS = env.int("AUTONOMY_AUDIT_RETENTION_DAYS", default
 # to point their CNAME at; blank shows this site's own host.
 LINKINBIO_CUSTOM_DOMAINS_ENABLED = env.bool("LINKINBIO_CUSTOM_DOMAINS_ENABLED", default=False)
 LINKINBIO_CNAME_TARGET = env("LINKINBIO_CNAME_TARGET", default="")
+
+# Built-in short links (apps.links) are served at APP_URL/s/<code>. A workspace may also name its own short
+# domain; requests for that host are only routed to its links when this is on (the operator must also allow
+# the host in ALLOWED_HOSTS and point TLS at the app). Off by default.
+LINKS_CUSTOM_DOMAINS_ENABLED = env.bool("LINKS_CUSTOM_DOMAINS_ENABLED", default=False)

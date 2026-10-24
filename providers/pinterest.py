@@ -53,6 +53,7 @@ class PinterestProvider(SocialProvider):
     profile_url_template = "https://www.pinterest.com/{handle}/"
 
     media_rules = PINTEREST_MEDIA_RULES
+    account_default_keys = ("board_id",)
 
     @classmethod
     def permalink_for(cls, platform_post_id: str, account) -> str:

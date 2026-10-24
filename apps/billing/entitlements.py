@@ -62,6 +62,8 @@ class Entitlements:
     # Per network; 0 = benchmarking is off for the plan.
     max_competitors_per_network: int | None = 0
     max_visibility_prompts: int = 0
+    max_short_links_per_month: int | None = None
+    max_account_sets: int | None = None
     unlimited: bool = False
 
     def has(self, feature: Feature | str) -> bool:
@@ -120,6 +122,8 @@ def get_entitlements(org) -> Entitlements:
         shows_bio_badge=plan.bio_badge,
         max_competitors_per_network=plan.max_competitors_per_network,
         max_visibility_prompts=plan.max_visibility_prompts,
+        max_short_links_per_month=plan.max_short_links_per_month,
+        max_account_sets=plan.max_account_sets,
     )
 
 
@@ -259,6 +263,47 @@ def check_can_add_channel(org) -> None:
         f"Your {ent.plan.name} plan includes {ent.max_channels} channels and this organization has {used}. "
         f"{_remove_hint(used, ent.max_channels, 'channel', 'Disconnect')} or upgrade your plan to connect more.",
         code="channel_limit",
+    )
+
+
+def short_links_this_month(org) -> int:
+    from apps.links.models import ShortLink
+
+    start = timezone.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    return ShortLink.objects.filter(workspace__organization=org, created_at__gte=start).count()
+
+
+def check_can_create_short_link(org) -> None:
+    ent = get_entitlements(org)
+    if ent.max_short_links_per_month is None:
+        return
+    used = short_links_this_month(org)
+    if used < ent.max_short_links_per_month:
+        return
+    raise PlanLimitError(
+        f"Your {ent.plan.name} plan includes {ent.max_short_links_per_month} short links a month and this "
+        f"organization has made {used}. Upgrade your plan to make more.",
+        code="short_link_limit",
+    )
+
+
+def account_set_count(org) -> int:
+    from apps.account_sets.models import AccountSet
+
+    return AccountSet.objects.filter(workspace__organization=org).count()
+
+
+def check_can_add_account_set(org) -> None:
+    ent = get_entitlements(org)
+    if ent.max_account_sets is None:
+        return
+    used = account_set_count(org)
+    if used < ent.max_account_sets:
+        return
+    raise PlanLimitError(
+        f"Your {ent.plan.name} plan includes {ent.max_account_sets} saved account sets and this organization "
+        f"has {used}. {_remove_hint(used, ent.max_account_sets, 'set', 'Delete')} or upgrade your plan to add more.",
+        code="account_set_limit",
     )
 
 

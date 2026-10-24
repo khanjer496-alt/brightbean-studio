@@ -1,0 +1,38 @@
+{# Link clicks over the page's date range. ``clicks`` comes from apps.links.services.overview_section; blank when no link was ever made. #}
+{% if clicks %}
+<section class="rounded-xl border border-line bg-surface-1" aria-labelledby="link-clicks-heading">
+    <h2 id="link-clicks-heading" class="m-0 border-b border-line px-5 py-4 text-[15px] font-semibold text-ink">Link clicks</h2>
+    <div class="grid grid-cols-2 gap-3 p-5 md:grid-cols-3">
+        <div><div class="text-[11px] font-semibold text-ink-2">Clicks</div><div class="text-[1.4rem] font-bold tracking-tight text-ink">{{ clicks.totals.clicks }}</div></div>
+        <div><div class="text-[11px] font-semibold text-ink-2">People (estimate)</div><div class="text-[1.4rem] font-bold tracking-tight text-ink">{{ clicks.totals.unique_visitors }}</div></div>
+        <div><div class="text-[11px] font-semibold text-ink-2">Link-preview fetches</div><div class="text-[1.4rem] font-bold tracking-tight text-ink">{{ clicks.totals.previews }}</div></div>
+    </div>
+    {% if clicks.accounts %}
+    <div class="overflow-x-auto">
+        <table class="w-full border-collapse text-[13px]">
+            <caption class="sr-only">Link clicks by account</caption>
+            <thead><tr class="border-y border-line text-left text-xs text-ink-3"><th scope="col" class="px-5 py-2 font-semibold">Account</th><th scope="col" class="px-4 py-2 text-right font-semibold">Clicks</th></tr></thead>
+            <tbody>
+                {% for row in clicks.accounts %}
+                <tr class="border-b border-line"><th scope="row" class="px-5 py-2.5 text-left font-medium text-ink">{{ row.name }} <span class="text-xs font-normal text-ink-3">{{ row.platform }}</span></th><td class="px-4 py-2.5 text-right font-mono text-ink-2">{{ row.clicks }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+    {% if clicks.top_links %}
+    <div class="overflow-x-auto">
+        <table class="w-full border-collapse text-[13px]">
+            <caption class="sr-only">Most clicked links</caption>
+            <thead><tr class="border-y border-line text-left text-xs text-ink-3"><th scope="col" class="px-5 py-2 font-semibold">Link</th><th scope="col" class="px-4 py-2 text-right font-semibold">Clicks</th></tr></thead>
+            <tbody>
+                {% for row in clicks.top_links %}
+                <tr class="border-b border-line"><th scope="row" class="px-5 py-2.5 text-left font-normal break-all text-ink"><span class="font-mono text-xs">{{ row.short_url }}</span><span class="block text-xs text-ink-3">{{ row.destination_url|truncatechars:70 }}</span></th><td class="px-4 py-2.5 text-right font-mono text-ink-2">{{ row.clicks }}</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+    <p class="m-0 px-5 py-3 text-xs text-ink-3">Counted without cookies or stored addresses, per UTC day; people is a daily estimate. Crawlers are left out and platform link-preview fetches are kept apart.</p>
+</section>
+{% endif %}

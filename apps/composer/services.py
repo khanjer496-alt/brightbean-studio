@@ -96,6 +96,7 @@ def create_post(
     platform_overrides: dict[Any, dict[str, str | None]] | None = None,
     parts: list[ThreadPartSpec] | None = None,
     post_settings: dict[str, Any] | None = None,
+    shorten_links: bool | None = None,
 ):
     """Create a ``Post`` + one ``PlatformPost`` for ``social_account``.
 
@@ -127,6 +128,8 @@ def create_post(
     * ``post_settings`` are the per-post settings the platform declares
       (``SocialProvider.post_settings``, listed on the account); a key the
       platform doesn't declare is refused.
+    * ``shorten_links`` is the author's choice about shortening the post's links when it is scheduled
+      (``apps.links``); ``None`` follows the workspace's preference.
     * ``parts`` are the thread's later parts (``ThreadPartSpec``); the
       caption and media above are its first. Their media must live in the
       workspace's library too, and a scheduled thread must be one the
@@ -231,6 +234,7 @@ def create_post(
             caption=caption,
             first_comment=first_comment,
             internal_notes=internal_notes,
+            shorten_links=shorten_links,
             scheduled_at=scheduled_at if status == "scheduled" else None,
             # A proposal is plain draft metadata — keep it independent of
             # ``status`` (unlike ``scheduled_at``, which only exists once the
@@ -1035,6 +1039,10 @@ def set_post_parts(post, specs, *, asset_map=None) -> None:
                 child = children.get(str(acc_id))
                 if child is not None and text is not None:
                     PlatformPostPart.objects.create(platform_post=child, part=part, platform_specific_caption=text)
+    # Parts saved after their account was scheduled still get their links tagged and shortened.
+    from apps.links.services import prepare_post
+
+    prepare_post(post)
 
 
 def post_thread_parts(post) -> list:
@@ -1065,7 +1073,7 @@ def thread_parts_for(platform_post, parts=None) -> list[tuple]:
     return result
 
 
-def thread_blocker(social_account, parts, *, first_comment: str = "") -> str:
+def thread_blocker(social_account, parts, *, first_comment: str = "", counting=None) -> str:
     """Why ``social_account`` can't publish these later thread parts, or "".
 
     ``parts`` is ``(caption, assets)`` per part after the first post. The
@@ -1106,7 +1114,7 @@ def thread_blocker(social_account, parts, *, first_comment: str = "") -> str:
     for number, (caption, assets) in enumerate(parts, start=2):
         if not (caption or "").strip() and not assets:
             return f"Part {number} of the thread is empty. Write something in it or remove it."
-        length = social_account.caption_wire_length(caption or "")
+        length = social_account.caption_wire_length(counting(caption or "") if counting else caption or "")
         if length > limit:
             return f"Part {number} is {length} characters; {name} takes at most {limit} per {noun}."
         if assets and not capability.media_per_part:
@@ -1120,10 +1128,14 @@ def thread_blocker(social_account, parts, *, first_comment: str = "") -> str:
 
 def platform_post_thread_blocker(platform_post, parts=None) -> str:
     """``thread_blocker`` for the thread ``platform_post`` would publish."""
+    from apps.links.services import link_counting
+
     return thread_blocker(
         platform_post.social_account,
         [(caption, assets) for _part, caption, assets in thread_parts_for(platform_post, parts)],
         first_comment=_account_first_comment(platform_post, platform_post.effective_first_comment),
+        # Links still to be shortened count at their short length.
+        counting=link_counting(platform_post.post.workspace, post=platform_post.post),
     )
 
 

@@ -1,0 +1,12 @@
+{% if error %}
+<p class="text-xs text-[var(--danger)]" role="alert">{{ error }}</p>
+{% else %}
+<ul class="flex flex-col gap-2">
+    {% for row in rows %}
+    <li class="text-xs break-all text-[var(--text-secondary)]">
+        <span class="font-semibold text-[var(--text-primary)]">{{ row.platform }}</span>
+        <span class="font-mono">{{ row.url }}</span>
+    </li>
+    {% endfor %}
+</ul>
+{% endif %}

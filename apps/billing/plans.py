@@ -78,6 +78,10 @@ class Plan:
     # Category prompts a workspace may have the AI visibility report ask about
     # (apps.ai_visibility); only meaningful on a plan with Feature.AI_VISIBILITY.
     max_visibility_prompts: int = 0
+    # Built-in or external short links created per calendar month, and saved account sets
+    # (apps.links, apps.account_sets). None = unlimited.
+    max_short_links_per_month: int | None = None
+    max_account_sets: int | None = None
 
     @property
     def is_free(self) -> bool:
@@ -114,6 +118,8 @@ PLANS: dict[str, Plan] = {
         max_bio_pages=1,
         bio_badge=True,
         max_competitors_per_network=0,
+        max_short_links_per_month=100,
+        max_account_sets=2,
     ),
     CREATOR: Plan(
         slug=CREATOR,
@@ -127,6 +133,8 @@ PLANS: dict[str, Plan] = {
         max_ai_requests_per_day=200,
         max_bio_pages=3,
         max_competitors_per_network=3,
+        max_short_links_per_month=2_000,
+        max_account_sets=10,
     ),
     TEAM: Plan(
         slug=TEAM,
@@ -142,6 +150,7 @@ PLANS: dict[str, Plan] = {
         max_bio_pages=10,
         max_competitors_per_network=10,
         max_visibility_prompts=5,
+        max_account_sets=50,
     ),
     AGENCY: Plan(
         slug=AGENCY,

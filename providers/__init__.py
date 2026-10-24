@@ -223,6 +223,14 @@ def post_settings_for(platform: str) -> tuple[PostSetting, ...]:
     return provider_cls.post_settings
 
 
+def account_default_keys_for(platform: str) -> tuple[str, ...]:
+    """The ``platform_extra`` keys an account set may hold as ``platform``'s per-account defaults."""
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    if provider_cls is None:
+        return ()
+    return (*(field.key for field in provider_cls.post_settings), *provider_cls.account_default_keys)
+
+
 def post_settings_error_for(platform: str, settings: dict | None) -> str:
     """Why ``settings`` can't publish to ``platform`` (a sentence), or "".
 

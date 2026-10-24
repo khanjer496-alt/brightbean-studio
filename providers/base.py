@@ -247,6 +247,10 @@ class SocialProvider(ABC):
     # platforms that need nothing more.
     post_settings: ClassVar[tuple[PostSetting, ...]] = ()
 
+    # ``platform_extra`` keys besides ``post_settings`` that an account set may save as that account's defaults
+    # (a Pinterest board, a TikTok privacy level). The set editor offers only these and the declared settings.
+    account_default_keys: ClassVar[tuple[str, ...]] = ()
+
     # Named URL (in ``social_accounts``) of a connect form that replaces the
     # OAuth redirect: set by platforms whose connection is not an authorization
     # code flow (Telegram asks for the channel). Empty means standard OAuth.

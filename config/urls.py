@@ -58,6 +58,8 @@ urlpatterns = [
     path("workspace/<uuid:workspace_id>/analytics/ai-visibility/", include("apps.ai_visibility.urls")),
     path("workspace/<uuid:workspace_id>/analytics/", include("apps.analytics.urls")),
     path("workspace/<uuid:workspace_id>/bio/", include("apps.linkinbio.urls")),
+    path("workspace/<uuid:workspace_id>/links/", include("apps.links.urls")),
+    path("workspace/<uuid:workspace_id>/sets/", include("apps.account_sets.urls")),
     # AI writing assistant: composer actions, and the org's own provider key.
     path("workspace/<uuid:workspace_id>/ai/", include("apps.ai_writer.urls")),
     # Repurposing: one source into threads, posts, carousels, scripts…
@@ -70,6 +72,8 @@ urlpatterns = [
     path("reports/share/", include("apps.reports.public_urls")),
     # Public link-in-bio pages: no login, nothing stored about the visitor.
     path("l/", include("apps.linkinbio.public_urls")),
+    # Built-in short links: no login, nothing stored about the visitor.
+    path("s/", include("apps.links.public_urls")),
     path("webhooks/", include("apps.inbox.webhook_urls")),
     path("webhooks/", include("apps.common.webhook_urls")),
     path("webhooks/", include("apps.billing.webhook_urls")),

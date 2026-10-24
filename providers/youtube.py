@@ -176,6 +176,7 @@ class YouTubeProvider(SocialProvider):
     profile_url_template = "https://www.youtube.com/@{handle}"
 
     media_rules = YOUTUBE_MEDIA_RULES
+    account_default_keys = ("privacy_status", "self_declared_made_for_kids")
 
     supports_public_profile_metrics = True
     competitor_handle_hint = "@channelhandle"

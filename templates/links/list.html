@@ -1,0 +1,62 @@
+{% extends "layouts/workspace_settings.html" %}
+{% block page_title %}Short links{% endblock %}
+{% block content %}
+<div class="max-w-4xl">
+    <div class="flex flex-wrap items-start justify-between gap-4 mb-2">
+        <h2 class="text-xl font-semibold text-[var(--text-primary)]">Short links</h2>
+        {% if can_manage %}
+        <a href="{% url 'links:settings' workspace_id=workspace.id %}"
+           class="inline-flex items-center min-h-11 px-5 py-2 text-sm font-medium rounded-full bg-[var(--neutral-100)] text-[var(--text-primary)]">
+            Links &amp; UTM settings
+        </a>
+        {% endif %}
+    </div>
+    <p class="text-sm mb-6 text-[var(--text-secondary)]">
+        {{ summary.totals.clicks }} click{{ summary.totals.clicks|pluralize }} in the last {{ summary.days }} days, about {{ summary.totals.unique_visitors }} people.
+        Clicks are counted without cookies or stored addresses, so people are a daily estimate. Link-preview fetches ({{ summary.totals.previews }}) are kept apart.
+    </p>
+
+    {% if can_create %}
+    <form method="POST" action="{% url 'links:create' workspace_id=workspace.id %}" class="flex flex-col gap-3 mb-8 sm:flex-row sm:items-end">
+        {% csrf_token %}
+        <div class="flex-1">
+            <label for="new-link-url" class="block text-sm mb-1 text-[var(--text-primary)]">Make a short link</label>
+            <input type="url" id="new-link-url" name="url" required maxlength="2000" inputmode="url" autocomplete="off"
+                   placeholder="https://example.com/a-long-address" class="form-input-styled text-sm">
+        </div>
+        <button type="submit" class="btn-primary-hover min-h-11 px-5 py-2 text-sm font-medium text-white rounded-full cursor-pointer bg-[var(--primary)]">Shorten</button>
+    </form>
+    {% endif %}
+
+    {% if links %}
+    <ul class="flex flex-col gap-3">
+        {% for link in links %}
+        <li class="p-4 rounded-lg border border-[var(--border)] bg-[var(--surface-0)]">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <span class="text-sm font-semibold break-all text-[var(--text-primary)]">{{ link.short_url }}</span>
+                <span class="flex items-center gap-2">
+                    {% if not link.is_active %}<span class="px-2 py-0.5 text-xs rounded-full bg-[var(--warning-50)] text-[var(--warning-700)]">Off</span>{% endif %}
+                    {% if can_manage %}
+                    <form method="POST" action="{% url 'links:toggle' workspace_id=workspace.id link_id=link.id %}">
+                        {% csrf_token %}
+                        <button type="submit" class="min-h-11 px-4 text-xs font-medium rounded-full bg-[var(--neutral-100)] text-[var(--text-primary)]">{% if link.is_active %}Turn off{% else %}Turn on{% endif %}</button>
+                    </form>
+                    {% endif %}
+                </span>
+            </div>
+            <p class="text-xs break-all text-[var(--text-secondary)]">&rarr; {{ link.destination_url }}</p>
+            <p class="text-xs mt-1 text-[var(--text-tertiary)]">
+                {{ link.stat.clicks }} click{{ link.stat.clicks|pluralize }} &middot; {{ link.stat.unique_clicks }} unique
+                {% if link.social_account %}&middot; {{ link.social_account.get_platform_display }}{% endif %}
+                {% if link.provider != "builtin" %}&middot; {{ link.provider }}{% endif %}
+            </p>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="p-6 text-sm text-center rounded-lg border border-dashed border-[var(--border)] text-[var(--text-secondary)]">
+        No short links yet. They appear here when a scheduled post&rsquo;s links are shortened.
+    </p>
+    {% endif %}
+</div>
+{% endblock %}
