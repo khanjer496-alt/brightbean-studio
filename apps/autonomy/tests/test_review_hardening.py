@@ -378,6 +378,47 @@ class TestThreadsPauseBetweenParts:
         pp.refresh_from_db()
         assert pp.thread_status == PlatformPost.ThreadStatus.PENDING
 
+    def test_resuming_from_the_composer_resolves_the_paused_entry(self, world):
+        from django.test import Client
+        from django.urls import reverse
+
+        pp, parts = self.thread(world)
+        set_policy(world.workspace, crisis_paused=True)
+        self.run_part(pp, parts[0])
+        paused = the_action(workspace=world.workspace, operation="thread.paused")
+        assert paused.decision == "held" and paused.review_outcome == ""
+
+        set_policy(world.workspace, crisis_paused=False)
+        client = Client()
+        client.force_login(world.owner)
+        url = reverse(
+            "composer:resume_thread",
+            kwargs={"workspace_id": world.workspace.id, "post_id": pp.post_id, "platform_post_id": pp.id},
+        )
+        with patch("apps.publisher.engine._publish_thread_part_task"):
+            assert client.post(url, HTTP_HX_REQUEST="true").status_code == 204
+        paused.refresh_from_db()
+        assert paused.review_outcome == "approved" and paused.reviewed_by == world.owner and paused.reviewed_at
+
+    def test_a_refused_composer_resume_leaves_the_paused_entry_waiting(self, world):
+        from django.test import Client
+        from django.urls import reverse
+
+        pp, parts = self.thread(world)
+        set_policy(world.workspace, crisis_paused=True)
+        self.run_part(pp, parts[0])
+        paused = the_action(workspace=world.workspace, operation="thread.paused")
+        PlatformPost.objects.filter(pk=pp.pk).update(thread_status=PlatformPost.ThreadStatus.COMPLETE)
+        client = Client()
+        client.force_login(world.owner)
+        url = reverse(
+            "composer:resume_thread",
+            kwargs={"workspace_id": world.workspace.id, "post_id": pp.post_id, "platform_post_id": pp.id},
+        )
+        assert client.post(url, HTTP_HX_REQUEST="true").status_code == 400
+        paused.refresh_from_db()
+        assert paused.review_outcome == ""
+
     def test_a_level_lowered_mid_thread_pauses_it(self, world):
         pp, parts = self.thread(world)
         set_policy(world.workspace, publish_level="draft_only")

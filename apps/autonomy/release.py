@@ -351,6 +351,18 @@ def _start_series(post) -> None:
         refresh_series(post)
 
 
+def resolve_paused_thread(platform_post, user) -> int:
+    """Mark a paused thread's pending "thread paused" entries as approved by ``user``.
+
+    For a person who resumes the thread somewhere other than Activity (the
+    composer), so the entry doesn't keep waiting for a review that already
+    happened. Returns how many entries were resolved.
+    """
+    return AgentAction.objects.filter(
+        platform_post=platform_post, operation="thread.paused", decision=Decision.HELD, review_outcome=""
+    ).update(review_outcome="approved", reviewed_by=user, reviewed_at=timezone.now())
+
+
 def dismiss_held(action: AgentAction, user) -> AgentAction:
     """Dismiss a held item: the draft stays a draft, the reply draft is discarded."""
     from apps.inbox.models import InboxReply
