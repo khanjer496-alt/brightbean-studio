@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Repurpose — {{ job.source_name }} — {{ brand_short_name }}{% endblock %}
+
+{% block content %}
+<div class="mx-auto flex w-full max-w-3xl flex-1 flex-col">
+    <a href="{% url 'repurpose:home' workspace_id=workspace.id %}" class="inline-flex min-h-11 items-center text-[13px] font-semibold text-ink-2 no-underline hover:text-ink">&larr; Repurpose</a>
+    {% include "repurpose/_job.html" %}
+</div>
+{% endblock %}

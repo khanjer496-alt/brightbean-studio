@@ -121,6 +121,7 @@ LOCAL_APPS = [
     "apps.linkinbio",
     "apps.billing",
     "apps.ai_writer",
+    "apps.repurpose",
     "apps.webhooks",
     "apps.autonomy",
     "apps.legal",
@@ -863,6 +864,22 @@ AI_VISIBILITY_ENGINES = env.list("AI_VISIBILITY_ENGINES", default=["anthropic"])
 # allowance, but this many a UTC day (answered or not) is a hard safety stop
 # for a runaway script or loop.
 AI_ORGANIZATION_KEY_DAILY_CAP = env.int("AI_ORGANIZATION_KEY_DAILY_CAP", default=10_000)
+
+# Content repurposing (apps.repurpose): one run turns one source into several
+# outputs, so it is capped separately from the per-action composer calls.
+# Most provider calls one run may reserve, and most tokens (in + out) it may
+# spend; a run that would exceed either is refused up front, and one that
+# reaches the token cap stops and keeps what it has.
+REPURPOSE_MAX_CALLS_PER_RUN = env.int("REPURPOSE_MAX_CALLS_PER_RUN", default=30)
+REPURPOSE_MAX_TOKENS_PER_RUN = env.int("REPURPOSE_MAX_TOKENS_PER_RUN", default=250_000)
+# Uploaded PDFs: bytes and pages read before extraction is refused.
+REPURPOSE_MAX_PDF_BYTES = env.int("REPURPOSE_MAX_PDF_BYTES", default=10 * 1024 * 1024)
+REPURPOSE_MAX_PDF_PAGES = env.int("REPURPOSE_MAX_PDF_PAGES", default=60)
+# Video transcripts read through a platform's API, per deployment per day. A
+# YouTube read costs ~251 units (videos.list 1 + captions.list 50 +
+# captions.download 200) of the project-wide 10,000 the inbox and analytics
+# also live on, so the default keeps it to about a third of the pool.
+REPURPOSE_TRANSCRIPT_READS_PER_DAY = env.int("REPURPOSE_TRANSCRIPT_READS_PER_DAY", default=12)
 
 # ---------------------------------------------------------------------------
 # Intelligence integration (optional hosted SaaS)
