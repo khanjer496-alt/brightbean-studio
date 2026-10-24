@@ -23,6 +23,7 @@ from django.views.decorators.http import require_GET
 from apps.competitors import services as competitor_services
 from apps.composer.models import PlatformPost
 from apps.inbox.review_stats import review_overview
+from apps.links import services as link_services
 from apps.members.models import WorkspaceMembership
 from apps.social_accounts.models import AnalyticsPlatformConfig, SocialAccount
 from apps.workspaces.models import Workspace
@@ -231,6 +232,7 @@ def analytics_index(request: HttpRequest, workspace_id) -> HttpResponse:
             for key, label in (("exposure", "Most seen"), ("engagements", "Most engaged"))
         ],
         "trend_summary": summarize_trend(data["trend"]),
+        "link_clicks": link_services.overview_section(workspace, rng),
         "excluded": _excluded_by_reason(data["accounts"]),
         "competitors": competitor_services.overview_section(workspace, rng, accounts),
         "competitors_url": reverse("competitors:index", kwargs={"workspace_id": workspace.id}) + rng.querystring(),
@@ -517,5 +519,5 @@ def post_detail(request: HttpRequest, workspace_id, post_id) -> HttpResponse:
         social_account__workspace=workspace,
     )
     context = services.post_detail(post)
-    context.update({"workspace": workspace})
+    context.update({"workspace": workspace, "link_clicks": link_services.platform_post_clicks(post)})
     return render(request, "analytics/_post_detail.html", context)

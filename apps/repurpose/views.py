@@ -15,6 +15,7 @@ from django.http import FileResponse, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_POST
 
+from apps.account_sets import services as set_services
 from apps.ai_writer.client import AIError, ai_available
 from apps.billing.entitlements import PlanLimitError
 from apps.members.decorators import require_permission
@@ -68,6 +69,7 @@ def _form_context(request, **extra):
         "kinds": [
             {"spec": spec, "accounts": [a for a in accounts if not spec.refusal(a)]} for spec in outputs.KINDS.values()
         ],
+        "account_sets": set_services.sets_for(workspace),
         "source_choices": SOURCE_CHOICES,
         "remix_posts": _posts_for_remix(workspace),
         "jobs": RepurposeJob.objects.filter(workspace=workspace)[:RECENT_JOBS],
@@ -87,10 +89,17 @@ def _requests_from_form(request):
     raw = []
     for kind in outputs.KINDS:
         if request.POST.get(f"kind_{kind}"):
+            account_ids = request.POST.getlist(f"accounts_{kind}")
+            # A saved set adds its connected accounts that can take this output.
+            chosen = set_services.get_set(request.workspace, request.POST.get(f"set_{kind}", ""))
+            if chosen is not None:
+                account_ids += [
+                    str(a.id) for a in set_services.usable_accounts(chosen) if not outputs.KINDS[kind].refusal(a)
+                ]
             raw.append(
                 {
                     "kind": kind,
-                    "account_ids": request.POST.getlist(f"accounts_{kind}"),
+                    "account_ids": list(dict.fromkeys(account_ids)),
                     "count": request.POST.get(f"count_{kind}") or 0,
                 }
             )

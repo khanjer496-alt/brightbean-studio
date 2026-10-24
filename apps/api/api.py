@@ -36,6 +36,7 @@ from apps.api.routers.hashtag_sets import router as hashtag_sets_router
 from apps.api.routers.ideas import groups_router as idea_groups_router
 from apps.api.routers.ideas import router as ideas_router
 from apps.api.routers.inbox import router as inbox_router
+from apps.api.routers.links import router as links_router
 from apps.api.routers.me import router as me_router
 from apps.api.routers.media import router as media_router
 from apps.api.routers.members import router as members_router
@@ -43,6 +44,7 @@ from apps.api.routers.posts import router as posts_router
 from apps.api.routers.queues import router as queues_router
 from apps.api.routers.reports import router as reports_router
 from apps.api.routers.repurpose import router as repurpose_router
+from apps.api.routers.sets import router as sets_router
 from apps.api.routers.signatures import router as signatures_router
 from apps.api.routers.slots import router as slots_router
 from apps.api.routers.tags import router as tags_router
@@ -171,6 +173,8 @@ api.add_router("/reports", reports_router)
 api.add_router("/competitors", competitors_router)
 api.add_router("/ai-visibility", ai_visibility_router)
 api.add_router("/bio", bio_router)
+api.add_router("/links", links_router)
+api.add_router("/sets", sets_router)
 api.add_router("/inbox", inbox_router)
 api.add_router("/ai", ai_router)
 api.add_router("/repurpose", repurpose_router)
@@ -358,6 +362,10 @@ def _action_for_path(method: str, path: str, *, status_code: int) -> str:
         return f"analytics.read.post.{status_code}"
     if "/bio/" in path:
         return f"bio.{status_code}"
+    if "/links" in path:
+        return f"link.{status_code}"
+    if "/sets" in path:
+        return f"set.{status_code}"
     if "/reports" in path:
         return f"reports.{status_code}"
     if "/competitors" in path:

@@ -26,6 +26,7 @@ SECTION_NETWORKS = "networks"
 SECTION_TOP_POSTS = "top_posts"
 SECTION_ACTIVITY = "activity"
 SECTION_INBOX = "inbox"
+SECTION_LINK_CLICKS = "link_clicks"
 SECTION_AI_SUMMARY = "ai_summary"
 
 # (key, label) in the order sections appear in a report.
@@ -37,6 +38,7 @@ SECTIONS: tuple[tuple[str, str], ...] = (
     (SECTION_TOP_POSTS, "Top posts"),
     (SECTION_ACTIVITY, "Posting activity"),
     (SECTION_INBOX, "Inbox response times"),
+    (SECTION_LINK_CLICKS, "Link clicks"),
 )
 SECTION_KEYS = tuple(key for key, _ in SECTIONS)
 DEFAULT_SECTIONS = [SECTION_AI_SUMMARY, SECTION_SUMMARY, SECTION_TRENDS, SECTION_NETWORKS, SECTION_TOP_POSTS]

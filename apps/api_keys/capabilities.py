@@ -298,6 +298,8 @@ _ROUTES: dict[str, tuple[str, ...]] = {
         "GET /signatures/",
         "GET /members/",
         "GET /usage/",
+        "GET /sets/",
+        "GET /sets/{set_id}",
     ),
     "draft_posts": (
         "POST /posts/",
@@ -320,6 +322,8 @@ _ROUTES: dict[str, tuple[str, ...]] = {
         "POST /events/",
         "DELETE /events/{event_id}",
         "POST /repurpose/jobs/{job_id}/accept",
+        "POST /links/",
+        "POST /sets/{set_id}/drafts",
     ),
     "schedule_posts": (
         "POST /posts/{post_id}/schedule",
@@ -368,6 +372,8 @@ _ROUTES: dict[str, tuple[str, ...]] = {
         "GET /competitors/comparison",
         "GET /ai-visibility/",
         "GET /bio/pages/{page_id}/stats",
+        "GET /links/",
+        "GET /links/stats",
     ),
     "manage_approvals": (
         "GET /approvals/",
@@ -402,6 +408,9 @@ _ROUTES: dict[str, tuple[str, ...]] = {
         "POST /bio/pages/{page_id}/links",
         "PATCH /bio/pages/{page_id}/links/{link_id}",
         "DELETE /bio/pages/{page_id}/links/{link_id}",
+        "POST /sets/",
+        "PATCH /sets/{set_id}",
+        "DELETE /sets/{set_id}",
         "POST /competitors/",
         "DELETE /competitors/{competitor_id}",
         # Running a report can email it to its recipients, so it is not a read.
@@ -412,6 +421,8 @@ _ROUTES: dict[str, tuple[str, ...]] = {
 _TOOLS: dict[str, tuple[str, ...]] = {
     "read_calendar": (
         "list_accounts",
+        "list_account_sets",
+        "get_account_set",
         "list_posts",
         "get_post",
         "list_queues",
@@ -454,6 +465,8 @@ _TOOLS: dict[str, tuple[str, ...]] = {
         "create_calendar_event",
         "delete_calendar_event",
         "accept_repurpose_outputs",
+        "create_short_link",
+        "create_set_draft",
     ),
     "schedule_posts": (
         "schedule_post",
@@ -505,6 +518,8 @@ _TOOLS: dict[str, tuple[str, ...]] = {
         "get_competitor_comparison",
         "get_ai_visibility_report",
         "get_bio_stats",
+        "list_short_links",
+        "get_link_stats",
     ),
     "manage_approvals": (
         "list_approvals",
@@ -532,6 +547,9 @@ _TOOLS: dict[str, tuple[str, ...]] = {
         "rotate_webhook_secret",
         "send_webhook_test",
         "resend_webhook_delivery",
+        "create_account_set",
+        "update_account_set",
+        "delete_account_set",
         "update_bio_page",
         "add_bio_link",
         "update_bio_link",

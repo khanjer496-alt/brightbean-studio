@@ -1,0 +1,39 @@
+{% extends "layouts/workspace_settings.html" %}
+{% block page_title %}Account sets{% endblock %}
+{% block content %}
+<div class="max-w-3xl">
+    <div class="flex flex-wrap items-start justify-between gap-4 mb-2">
+        <h2 class="text-xl font-semibold text-[var(--text-primary)]">Account sets</h2>
+        <a href="{% url 'account_sets:create' workspace_id=workspace.id %}"
+           class="btn-primary-hover inline-flex items-center min-h-11 px-5 py-2 text-sm font-medium text-white rounded-full bg-[var(--primary)]">
+            New set
+        </a>
+    </div>
+    <p class="text-sm mb-8 text-[var(--text-secondary)]">
+        Save a group of accounts, such as &ldquo;Client A: all channels&rdquo;, and pick it in one click in the composer, the CSV import, repurposing and the API. A set can also remember settings per account, like a Pinterest board or a TikTok privacy level.
+    </p>
+    {% if sets %}
+    <ul class="flex flex-col gap-3">
+        {% for item in sets %}
+        <li class="p-4 rounded-lg border border-[var(--border)] bg-[var(--surface-0)]">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <a href="{% url 'account_sets:edit' workspace_id=workspace.id set_id=item.id %}" class="text-sm font-semibold focus-ring text-[var(--text-primary)]">{{ item.name }}</a>
+                <form method="POST" action="{% url 'account_sets:delete' workspace_id=workspace.id set_id=item.id %}"
+                      data-confirm="Delete the set {{ item.name }}? Its accounts stay connected." data-confirm-title="Delete set" data-confirm-label="Delete" data-confirm-variant="danger">
+                    {% csrf_token %}
+                    <button type="submit" class="min-h-11 px-4 text-xs font-medium rounded-full bg-bad-soft text-bad">Delete</button>
+                </form>
+            </div>
+            <p class="text-xs mt-1 text-[var(--text-tertiary)]">
+                {% for account in item.accounts.all %}{{ account.account_name|default:account.account_handle }} ({{ account.get_platform_display }}){% if not forloop.last %}, {% endif %}{% endfor %}
+            </p>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="p-6 text-sm text-center rounded-lg border border-dashed border-[var(--border)] text-[var(--text-secondary)]">
+        No sets yet. Create one to schedule to a whole group of accounts at once.
+    </p>
+    {% endif %}
+</div>
+{% endblock %}

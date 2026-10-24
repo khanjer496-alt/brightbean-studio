@@ -250,6 +250,9 @@ class Post(models.Model):
     caption = models.TextField(blank=True, default="")
     first_comment = models.TextField(blank=True, default="")
     internal_notes = models.TextField(blank=True, default="")
+    # Whether links in this post are shortened when it is scheduled (apps.links): True/False is the author's
+    # choice for this post, None follows the workspace's preference.
+    shorten_links = models.BooleanField(null=True, blank=True, default=None)
     tags = models.JSONField(default=list, blank=True)
     category = models.ForeignKey(
         ContentCategory,

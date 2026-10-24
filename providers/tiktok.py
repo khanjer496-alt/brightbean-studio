@@ -141,6 +141,13 @@ class TikTokProvider(SocialProvider):
     profile_url_template = "https://www.tiktok.com/@{handle}"
 
     media_rules = TIKTOK_MEDIA_RULES
+    account_default_keys = ("privacy_level", "disable_comment", "disable_duet", "disable_stitch")
+    account_default_choices = {
+        "privacy_level": tuple(sorted(VALID_PRIVACY_LEVELS)),
+        "disable_comment": (True, False),
+        "disable_duet": (True, False),
+        "disable_stitch": (True, False),
+    }
 
     # Source: https://sproutsocial.com/insights/best-times-to-post-on-social-media/ (published 2026-03-31; checked 2026-10-24):
     # Mon 3-5pm; Tue 2-6pm; Wed 1-8pm; Thu 1-5pm; Fri 3-5pm. Hours are the audience's local time; industry averages, not your audience.

@@ -26,6 +26,10 @@ from django.utils.text import get_text_list
 from django.views.decorators.http import require_GET, require_POST
 from django_ratelimit.decorators import ratelimit
 
+from apps.account_sets.services import composer_payload, set_by_name, sets_for
+from apps.account_sets.services import defaults_for as set_defaults_for
+from apps.account_sets.services import get_set as set_by_id
+from apps.account_sets.services import usable_accounts as usable_set_accounts
 from apps.ai_writer.views import composer_context as ai_composer_context
 from apps.autonomy.actors import human as human_actor
 from apps.autonomy.release import resume_stopped_thread
@@ -42,6 +46,8 @@ from apps.common.validators import (
     parse_and_truncate_youtube_tag_string,
     safe_xml_fromstring,
 )
+from apps.links.services import composer_prefs as link_prefs
+from apps.links.services import link_counting
 from apps.media_library.models import MediaAsset
 from apps.members.decorators import require_permission
 from apps.members.models import WorkspaceMembership
@@ -793,6 +799,7 @@ def _validate_thread_parts(request, workspace, action, specs, asset_map):
                 account,
                 spec_thread_parts(account, specs, asset_map),
                 first_comment=_composer_first_comment(request, account),
+                counting=link_counting(workspace, request.POST.get("shorten_links", "")),
             )
         )
     ]
@@ -1326,6 +1333,8 @@ def compose(request, workspace_id, post_id=None):
         "media_attachments": media_attachments,
         "media_items": media_items,
         "char_limits": char_limits,
+        "link_prefs": link_prefs(workspace, post),
+        "account_sets": [composer_payload(item) for item in sets_for(workspace)],
         "default_first_comment": default_first_comment,
         "default_hashtags": json.dumps(default_hashtags),
         "signature_body": signature.body if signature else "",
@@ -2019,6 +2028,7 @@ def autosave(request, workspace_id, post_id=None):
     post.caption = request.POST.get("caption", "")
     post.first_comment = request.POST.get("first_comment", "")
     post.internal_notes = request.POST.get("internal_notes", "")
+    post.shorten_links = {"1": True, "0": False}.get(request.POST.get("shorten_links", ""))
 
     post.tags = parse_and_truncate_tag_string(request.POST.get("tags", ""))
 
@@ -2099,6 +2109,7 @@ def preview(request, workspace_id):
     caption = request.POST.get("caption", "")
     first_comment = request.POST.get("first_comment", "")
     selected_ids = _parse_selected_account_ids(request.POST.get("selected_accounts", ""))
+    counting = link_counting(workspace, request.POST.get("shorten_links", ""))
 
     # Build preview data per platform
     previews = []
@@ -2118,6 +2129,7 @@ def preview(request, workspace_id):
                     title=effective_title,
                     caption=effective_caption,
                     first_comment=first_comment,
+                    counting=counting,
                 )
             )
 
@@ -2168,7 +2180,7 @@ def preview(request, workspace_id):
         thread_specs, thread_assets = None, {}
     for p in previews:
         p["thread"] = _thread_preview(
-            p["account"], thread_specs or [], thread_assets, _composer_first_comment(request, p["account"])
+            p["account"], thread_specs or [], thread_assets, _composer_first_comment(request, p["account"]), counting
         )
 
     # Each selected platform's media rules, re-checked on every round-trip so
@@ -2195,11 +2207,11 @@ def preview(request, workspace_id):
     )
 
 
-def _thread_preview(account, specs, asset_map, first_comment="") -> dict | None:
+def _thread_preview(account, specs, asset_map, first_comment="", counting=None) -> dict | None:
     """What the preview panel shows of the thread for one account, or None for a single post."""
     if not specs:
         return None
-    return thread_preview(account, spec_thread_parts(account, specs, asset_map), first_comment)
+    return thread_preview(account, spec_thread_parts(account, specs, asset_map), first_comment, counting)
 
 
 @login_required
@@ -4346,6 +4358,7 @@ def csv_upload(request, workspace_id):
             "category": ["category", "content_category", "type"],
             "tags": ["tags", "labels", "tag"],
             "first_comment": ["first_comment", "comment"],
+            "set": ["set", "account_set", "account_group"],
         }
 
         auto_mapping = {}
@@ -4372,6 +4385,7 @@ def csv_upload(request, workspace_id):
                 "preview_rows": preview_rows,
                 "auto_mapping": auto_mapping,
                 "field_choices": list(field_map.keys()),
+                "account_sets": sets_for(workspace),
             },
         )
 
@@ -4409,7 +4423,7 @@ def csv_preview(request, workspace_id):
 
     # Parse supported column mapping from POST.
     mapping = {}
-    for field in ["date", "time", "platforms", "caption", "category", "tags", "first_comment"]:
+    for field in ["date", "time", "platforms", "caption", "category", "tags", "first_comment", "set"]:
         col_idx = request.POST.get(f"map_{field}", "")
         if col_idx != "":
             import contextlib
@@ -4420,6 +4434,10 @@ def csv_preview(request, workspace_id):
     rows = csv_data["rows"]
     errors = []
     valid_count = 0
+
+    # A set chosen here covers every row that names no set of its own.
+    default_set = set_by_id(workspace, request.POST.get("default_set", ""))
+    request.session[f"csv_default_set_{workspace.id}"] = str(default_set.id) if default_set else ""
 
     from apps.social_accounts.models import SocialAccount
 
@@ -4457,6 +4475,12 @@ def csv_preview(request, workspace_id):
                     elif p and p not in connected_accounts:
                         row_errors.append(f"Platform '{p}' is not connected")
 
+        # Validate the saved account set the row names
+        if "set" in mapping:
+            set_val = row[mapping["set"]].strip() if mapping["set"] < len(row) else ""
+            if set_val and set_by_name(workspace, set_val) is None:
+                row_errors.append(f"Unknown account set '{set_val}'")
+
         # Validate caption
         if "caption" in mapping:
             caption_val = row[mapping["caption"]].strip() if mapping["caption"] < len(row) else ""
@@ -4484,7 +4508,17 @@ def csv_preview(request, workspace_id):
     )
 
 
-def _csv_scheduled_by_month(workspace, rows, mapping):
+def _csv_row_set(workspace, row, mapping, default_set, cache):
+    """The saved account set a CSV row targets: the one it names, else the import's default (or None)."""
+    name = row[mapping["set"]].strip() if "set" in mapping and mapping["set"] < len(row) else ""
+    if not name:
+        return default_set
+    if name.lower() not in cache:
+        cache[name.lower()] = set_by_name(workspace, name)
+    return cache[name.lower()]
+
+
+def _csv_scheduled_by_month(workspace, rows, mapping, default_set=None):
     """Count the posts a CSV import would schedule, per month: ``{month's first scheduled_at: count}``.
 
     Mirrors the import loop: a dated row schedules one post per connected
@@ -4496,13 +4530,14 @@ def _csv_scheduled_by_month(workspace, rows, mapping):
 
     from apps.social_accounts.models import SocialAccount
 
-    if "date" not in mapping or "platforms" not in mapping:
+    if "date" not in mapping or not ("platforms" in mapping or "set" in mapping or default_set is not None):
         return {}
     tz = zoneinfo.ZoneInfo(workspace.effective_timezone or "UTC")
     accounts_by_platform: dict[str, int] = {}
     counts: dict[tuple[int, int], list] = {}
+    set_cache: dict = {}
     for row in rows:
-        if mapping["date"] >= len(row) or mapping["platforms"] >= len(row) or not row[mapping["date"]].strip():
+        if mapping["date"] >= len(row) or not row[mapping["date"]].strip():
             continue
         try:
             day = datetime.strptime(row[mapping["date"]].strip(), "%Y-%m-%d").date()
@@ -4511,7 +4546,18 @@ def _csv_scheduled_by_month(workspace, rows, mapping):
         except ValueError:
             continue  # The import loop reports a row with a bad date.
         at = at.replace(tzinfo=tz)
-        platforms = {p.strip().lower() for p in row[mapping["platforms"]].split(",") if p.strip()}
+        platforms = (
+            {p.strip().lower() for p in row[mapping["platforms"]].split(",") if p.strip()}
+            if "platforms" in mapping and mapping["platforms"] < len(row)
+            else set()
+        )
+        row_set = _csv_row_set(workspace, row, mapping, default_set, set_cache)
+        if row_set is not None:
+            set_accounts = [a for a in usable_set_accounts(row_set) if a.platform not in platforms]
+            ready = sum(1 for a in set_accounts if not publish_blocker(a, media_types=set()))
+            if ready:
+                bucket = counts.setdefault((at.astimezone(UTC).year, at.astimezone(UTC).month), [at, 0])
+                bucket[1] += ready
         for platform in platforms:
             if platform not in accounts_by_platform:
                 accounts_by_platform[platform] = sum(
@@ -4528,7 +4574,7 @@ def _csv_scheduled_by_month(workspace, rows, mapping):
     return {at: count for at, count in counts.values() if count}
 
 
-def _reject_csv_over_plan_limit(request, workspace, csv_data, mapping):
+def _reject_csv_over_plan_limit(request, workspace, csv_data, mapping, default_set=None):
     """Refuse the whole import when its scheduled posts would pass the monthly allowance.
 
     Checked before anything is written, so the import never stops partway
@@ -4539,7 +4585,7 @@ def _reject_csv_over_plan_limit(request, workspace, csv_data, mapping):
     if not billing_enabled():
         return None
     try:
-        for at, count in _csv_scheduled_by_month(workspace, csv_data["rows"], mapping).items():
+        for at, count in _csv_scheduled_by_month(workspace, csv_data["rows"], mapping, default_set).items():
             check_can_schedule_posts(workspace.organization, count=count, when=at)
     except PlanLimitError as exc:
         request.session.pop(f"csv_import_{workspace.id}", None)
@@ -4574,7 +4620,8 @@ def csv_confirm_import(request, workspace_id):
     if media_error is not None:
         return media_error
 
-    limit_error = _reject_csv_over_plan_limit(request, workspace, csv_data, mapping)
+    default_set = set_by_id(workspace, request.session.get(f"csv_default_set_{workspace.id}", ""))
+    limit_error = _reject_csv_over_plan_limit(request, workspace, csv_data, mapping, default_set)
     if limit_error is not None:
         return limit_error
 
@@ -4588,6 +4635,7 @@ def csv_confirm_import(request, workspace_id):
     # rather than scheduled to fail, and the result screen says so.
     drafted_count = 0
     drafted_platforms: set[str] = set()
+    set_cache: dict = {}
 
     for row in rows:
         try:
@@ -4676,11 +4724,32 @@ def csv_confirm_import(request, workspace_id):
                                     drafted_count += 1
                                     drafted_platforms.add(acc.get_platform_display())
 
+                # A saved account set: its connected accounts, each with its saved default settings
+                row_set = _csv_row_set(workspace, row, mapping, default_set, set_cache)
+                if row_set is not None:
+                    for acc in usable_set_accounts(row_set):
+                        status = initial_pp_status
+                        if status == "scheduled" and publish_blocker(acc, media_types=set()):
+                            status = "draft"
+                        _pp, created = PlatformPost.objects.get_or_create(
+                            post=post,
+                            social_account=acc,
+                            defaults={
+                                "status": status,
+                                "scheduled_at": post.scheduled_at,
+                                "platform_extra": set_defaults_for(row_set, acc),
+                            },
+                        )
+                        if created and status != initial_pp_status:
+                            drafted_count += 1
+                            drafted_platforms.add(acc.get_platform_display())
+
             created_count += 1
         except Exception:
             error_count += 1
 
     # Clean up session data
+    request.session.pop(f"csv_default_set_{workspace.id}", None)
     request.session.pop(f"csv_import_{workspace.id}", None)
     request.session.pop(f"csv_mapping_{workspace.id}", None)
 

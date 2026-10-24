@@ -1468,6 +1468,188 @@ _tool(
 
 
 # ---------------------------------------------------------------------------
+# Short links and click counts
+# ---------------------------------------------------------------------------
+
+_tool(
+    "create_short_link",
+    (
+        "Make a short link to an http(s) address with the workspace's link service (built in by default; the "
+        "workspace may have set up its own Dub, Short.io or Kutt account). Optionally tie it to a social_account_id "
+        "or post_id so its clicks count under them. Needs create_posts. Returns the short_url."
+    ),
+    ops.create_short_link,
+    lambda a: {
+        "url": a.get("url"),
+        "social_account_id": _uuid_arg(a, "social_account_id"),
+        "post_id": _uuid_arg(a, "post_id"),
+    },
+    properties={
+        "url": _text_prop("An absolute http(s) address; anything else is refused.", max_length=2000),
+        "social_account_id": _uuid_prop("An account on this key's allowlist."),
+        "post_id": _uuid_prop("A post from list_posts."),
+    },
+    required=["url"],
+    idempotent=True,
+)
+
+_tool(
+    "list_short_links",
+    (
+        "List short links, newest first, with their clicks over the last 30 days. Filter by post_id or "
+        "social_account_id. Needs view_analytics."
+    ),
+    ops.list_short_links,
+    lambda a: {
+        **_page(a),
+        "post_id": _uuid_arg(a, "post_id"),
+        "social_account_id": _uuid_arg(a, "social_account_id"),
+    },
+    properties={**_list_props(), "post_id": _uuid_prop(), "social_account_id": _uuid_prop()},
+    read_only=True,
+)
+
+_tool(
+    "get_link_stats",
+    (
+        "Link clicks over the last `days` UTC days (default 30, at most 90): totals, a per-day series and clicks per "
+        "link, post and account. Counted without cookies or stored addresses, so people are a daily estimate; "
+        "link-preview bots and crawlers are not clicks (previews are reported apart). Filter by post_id, "
+        "social_account_id or link_id. Needs view_analytics."
+    ),
+    ops.get_link_stats,
+    lambda a: {
+        "days": 30 if a.get("days") is None else a["days"],
+        "post_id": _uuid_arg(a, "post_id"),
+        "social_account_id": _uuid_arg(a, "social_account_id"),
+        "link_id": _uuid_arg(a, "link_id"),
+    },
+    properties={
+        "days": {"type": "integer", "minimum": 1, "maximum": 90, "default": 30},
+        "post_id": _uuid_prop(),
+        "social_account_id": _uuid_prop(),
+        "link_id": _uuid_prop(),
+    },
+    read_only=True,
+)
+
+# ---------------------------------------------------------------------------
+# Saved account sets
+# ---------------------------------------------------------------------------
+
+_SET_DEFAULTS_PROPERTY = {
+    "type": "object",
+    "description": (
+        'Optional per-account default settings keyed by account id, such as {"<account id>": {"board_id": '
+        '"123"}}. Each platform accepts only the keys it declares.'
+    ),
+}
+
+_tool(
+    "list_account_sets",
+    "List the workspace's saved account sets (groups such as 'Client A: all channels') with the members this key can use. Needs create_posts.",
+    ops.list_account_sets,
+    _page,
+    properties=_list_props(),
+    read_only=True,
+)
+
+_tool(
+    "get_account_set",
+    "Read one saved account set: its accounts and their default settings. Needs create_posts.",
+    ops.get_account_set,
+    lambda a: {"_args": (_uuid_arg(a, "set_id", required=True),)},
+    properties={"set_id": _uuid_prop("ID from list_account_sets.")},
+    required=["set_id"],
+    read_only=True,
+)
+
+_tool(
+    "create_account_set",
+    (
+        "Save a group of accounts under a name so later requests can name them with one set_id. Accounts must be on "
+        "this key's allowlist. Needs manage_social_accounts."
+    ),
+    ops.create_account_set,
+    lambda a: {
+        "name": a.get("name"),
+        "social_account_ids": _uuid_list_arg(a, "social_account_ids") or [],
+        "defaults": a.get("defaults") or {},
+    },
+    properties={
+        "name": _text_prop(max_length=80, min_length=1),
+        "social_account_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}, "minItems": 1},
+        "defaults": _SET_DEFAULTS_PROPERTY,
+    },
+    required=["name", "social_account_ids"],
+)
+
+_tool(
+    "update_account_set",
+    "Rename a set, replace its accounts or its default settings; omitted fields are unchanged. Needs manage_social_accounts.",
+    ops.update_account_set,
+    lambda a: {
+        "_args": (_uuid_arg(a, "set_id", required=True),),
+        **{
+            k: (_uuid_list_arg(a, k) if k == "social_account_ids" else a[k])
+            for k in ("name", "social_account_ids", "defaults")
+            if k in a
+        },
+    },
+    properties={
+        "set_id": _uuid_prop(),
+        "name": _text_prop(max_length=80, min_length=1),
+        "social_account_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}, "minItems": 1},
+        "defaults": _SET_DEFAULTS_PROPERTY,
+    },
+    required=["set_id"],
+)
+
+_tool(
+    "delete_account_set",
+    "Delete a saved account set; its accounts stay connected. Needs manage_social_accounts.",
+    ops.delete_account_set,
+    lambda a: {"_args": (_uuid_arg(a, "set_id", required=True),)},
+    properties={"set_id": _uuid_prop()},
+    required=["set_id"],
+)
+
+_tool(
+    "create_set_draft",
+    (
+        "Write one draft post on every connected account of a saved set, applying each account's saved default "
+        "settings (a Pinterest board, a TikTok privacy level). Then edit, schedule or approve it like any draft. "
+        "Needs create_posts."
+    ),
+    ops.create_set_draft,
+    lambda a: {
+        "_args": (_uuid_arg(a, "set_id", required=True),),
+        "caption": a.get("caption", ""),
+        "title": a.get("title", ""),
+        "first_comment": a.get("first_comment", ""),
+        "internal_notes": a.get("internal_notes", ""),
+        "media_asset_ids": _uuid_list_arg(a, "media_asset_ids") or [],
+        "tags": a.get("tags"),
+        "category_id": _uuid_arg(a, "category_id"),
+        "shorten_links": a.get("shorten_links"),
+    },
+    properties={
+        "set_id": _uuid_prop("ID from list_account_sets."),
+        "caption": _text_prop(max_length=10_000),
+        "title": _text_prop(max_length=255),
+        "first_comment": _text_prop(max_length=10_000),
+        "internal_notes": _text_prop(max_length=10_000),
+        "media_asset_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}},
+        "tags": {"type": "array", "items": {"type": "string", "maxLength": 100}, "maxItems": 25},
+        "category_id": _uuid_prop(),
+        "shorten_links": {"type": "boolean", "description": "As on create_draft."},
+    },
+    required=["set_id", "caption"],
+    idempotent=True,
+)
+
+
+# ---------------------------------------------------------------------------
 # Repurposing: one source into several outputs
 # ---------------------------------------------------------------------------
 
@@ -1486,6 +1668,7 @@ def _create_repurpose_job_args(a: dict) -> dict[str, Any]:
             {
                 "kind": item["kind"],
                 "social_account_ids": _uuid_list_arg(item, "social_account_ids") or [],
+                "set_id": _uuid_arg(item, "set_id"),
                 "count": item.get("count"),
             }
         )
@@ -1529,6 +1712,9 @@ _tool(
                 "properties": {
                     "kind": {"type": "string", "enum": _REPURPOSE_KINDS},
                     "social_account_ids": {"type": "array", "items": {"type": "string", "format": "uuid"}},
+                    "set_id": _uuid_prop(
+                        "A saved account set (list_account_sets), used in addition to social_account_ids."
+                    ),
                     "count": {"type": "integer", "minimum": 1, "maximum": 10, "description": "Slides or posts."},
                 },
                 "required": ["kind"],

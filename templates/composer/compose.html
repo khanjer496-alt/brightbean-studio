@@ -334,11 +334,13 @@
               hx-post="{% if post %}{% url 'composer:save_post_edit' workspace_id=workspace.id post_id=post.id %}{% else %}{% url 'composer:save_post' workspace_id=workspace.id %}{% endif %}"
               hx-swap="none"
               @htmx:after-request="onFormSaved($event)"
+              @htmx:confirm="onLinkConfirm($event)"
               {# onFormSaved renders every failure inline, JSON or not, so the global toast would duplicate it. Element-scoped: nested controls (Clone, template picker) keep theirs. #}
               data-no-error-toast
               {% if not post_is_readonly %}data-unsaved-guard{% endif %}
               class="flex flex-col flex-1 min-h-0">
             <input type="hidden" name="selected_accounts" :value="selectedAccounts.join(',')">
+            <input type="hidden" name="shorten_links" :value="shortenLinks">
             {% if account_scope %}
             <!-- Composer opened scoped to one account (?account=) — save endpoints
                  must not delete/transition platform posts outside this scope. -->
@@ -346,6 +348,20 @@
             {% endif %}
 
             <div class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-5 panel-scroll relative z-0 max-sm:has-[[data-insert-open]]:z-[60]">
+
+                <!-- Saved account sets: one click selects the group (and fills its saved per-account settings) -->
+                <div x-show="accountSets.length" x-cloak class="flex items-center gap-2 flex-wrap" role="group" aria-label="Account sets">
+                    <span class="text-xs font-semibold text-stone-500">Sets</span>
+                    <template x-for="set in accountSets" :key="set.id">
+                        <button type="button" @click="applySet(set)" :aria-pressed="setIsActive(set).toString()"
+                                :title="set.skipped.length ? 'Not connected, left out: ' + set.skipped.join(', ') : ''"
+                                :class="setIsActive(set) ? 'border-orange-300 bg-orange-50 text-orange-700' : 'border-stone-200 text-stone-600 hover:border-stone-300 hover:bg-stone-50'"
+                                class="inline-flex items-center min-h-11 sm:min-h-9 px-3 rounded-full border text-xs font-semibold transition-colors cursor-pointer">
+                            <span x-text="set.name"></span>
+                            <span class="ms-1.5 tabular-nums text-stone-400" x-text="set.account_ids.length"></span>
+                        </button>
+                    </template>
+                </div>
 
                 <!-- Platform account pills -->
                 <div class="flex items-center gap-2 flex-wrap">
@@ -629,6 +645,12 @@
                                     <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
                                     Media Library
                                 </button>
+                                <label x-show="linkPrefs.mode !== 'never'" x-cloak
+                                       class="flex items-center gap-1.5 min-h-11 sm:min-h-0 text-xs font-medium text-stone-500 cursor-pointer">
+                                    <input type="checkbox" class="w-4 h-4" :checked="shortenOn()"
+                                           @change="shortenLinks = $event.target.checked ? '1' : '0'; triggerPreviewUpdate()">
+                                    Shorten links
+                                </label>
                             </div>
                             <span class="text-xs tabular-nums font-medium"
                                   :class="captionOverLimit() ? 'text-red-500' : 'text-stone-400'"
@@ -677,7 +699,7 @@
                 <!-- Settings a platform declares for itself (Reddit subreddit and flair, ...) -->
                 <template x-for="accId in selectedAccounts" :key="'provider-settings-' + accId">
                     <div x-show="(charLimits[accId]?.post_settings || []).length"
-                         x-data="providerSettings(accId, '{{ workspace.id }}')"
+                         x-data="providerSettings(accId, '{{ workspace.id }}', platformExtras)"
                          class="border border-stone-200 rounded-xl bg-white p-4 space-y-3">
                         <input type="hidden" :name="'ps_panel_' + accId" value="1"
                                :disabled="!(charLimits[accId]?.post_settings || []).length">
@@ -2235,9 +2257,10 @@
 // Fields come from the account's entry in the char-limits blob; options for
 // select fields that need the platform are fetched live, and re-fetched when
 // the field they depend on changes.
-function providerSettings(accId, workspaceId) {
+function providerSettings(accId, workspaceId, liveExtras) {
     const limits = JSON.parse(document.getElementById('composer-char-limits').textContent) || {};
-    const extras = JSON.parse(document.getElementById('composer-platform-extras').textContent) || {};
+    // The composer's live extras, so a set applied in the page fills these fields like a saved post would.
+    const extras = liveExtras || JSON.parse(document.getElementById('composer-platform-extras').textContent) || {};
     const fields = (limits[accId] && limits[accId].post_settings) || [];
     const vals = {};
     fields.forEach(f => {
@@ -2273,6 +2296,9 @@ function providerSettings(accId, workspaceId) {
 </script>
 {{ selected_account_ids|json_script:"composer-selected-accounts" }}
 {{ char_limits|json_script:"composer-char-limits" }}
+{{ link_prefs|json_script:"composer-link-prefs" }}
+{{ account_sets|json_script:"composer-account-sets" }}
+<script src="{% static 'js/composer-links.js' %}"></script>
 {{ platform_extras|json_script:"composer-platform-extras" }}
 {{ media_items|json_script:"composer-media-items" }}
 {{ thread_parts|json_script:"composer-thread-parts" }}
@@ -2287,6 +2313,10 @@ function composerApp() {
         signatureBody: '{{ signature_body|escapejs }}',
         selectedAccounts: JSON.parse(document.getElementById('composer-selected-accounts').textContent),
         charLimits: JSON.parse(document.getElementById('composer-char-limits').textContent),
+        // Short links: the workspace mode, short-link length and this post's choice ('1', '0' or '' for the default).
+        linkPrefs: JSON.parse(document.getElementById('composer-link-prefs').textContent),
+        shortenLinks: JSON.parse(document.getElementById('composer-link-prefs').textContent).choice,
+        accountSets: JSON.parse(document.getElementById('composer-account-sets').textContent),
         overrides: {},
         // Per-account custom captions, bound to the override textareas so the
         // AI assistant's "Adapt for each network" can fill them.
@@ -2352,10 +2382,57 @@ function composerApp() {
         // component instead of the iteration scope.
         _filmstripRun: 0,
 
+        shortenOn() {
+            return window.composerLinks.shortenActive(this.linkPrefs.mode, this.shortenLinks);
+        },
+        // Links count at their short length when they will be shortened at scheduling.
+        countedText(text) {
+            if (!this.shortenOn()) return text || '';
+            return window.composerLinks.countingText(text, this.linkPrefs.short_length, this.linkPrefs.short_prefix);
+        },
+        linkTexts() {
+            const texts = [this.caption, ...Object.values(this.overrideCaptions || {})];
+            (this.threadParts || []).forEach(p => texts.push(p.caption, ...Object.values(p.caption_overrides || {})));
+            return texts.filter(Boolean);
+        },
+        // "Ask" preference (Postiz's prompt): scheduling a post with a link asks once whether to shorten it.
+        onLinkConfirm(evt) {
+            const submitter = evt.detail.triggeringEvent && evt.detail.triggeringEvent.submitter;
+            const action = submitter ? submitter.value : '';
+            if (!window.composerLinks.needsPrompt({
+                mode: this.linkPrefs.mode, choice: this.shortenLinks, texts: this.linkTexts(),
+                action, shortPrefix: this.linkPrefs.short_prefix,
+            })) return;
+            evt.preventDefault();
+            window.pdConfirm.ask({
+                title: 'Shorten links?',
+                message: 'This post has links. Shorten them for each account so clicks are counted? Closing this keeps them as typed.',
+                label: 'Shorten links', cancel: 'Keep as typed', variant: 'brand',
+            }).then((yes) => {
+                this.shortenLinks = yes ? '1' : '0';
+                this.$nextTick(() => { this.triggerPreviewUpdate(); evt.detail.issueRequest(true); });
+            });
+        },
+        setIsActive(set) {
+            const ids = set.account_ids;
+            return ids.length > 0 && ids.length === this.selectedAccounts.length && ids.every(id => this.selectedAccounts.includes(id));
+        },
+        // One click: select exactly the set's accounts and fill their saved settings where nothing is set yet.
+        applySet(set) {
+            const ids = set.account_ids.filter(id => this.charLimits[id]);
+            [...this.selectedAccounts].filter(id => !ids.includes(id)).forEach(id => this.toggleAccount(id));
+            ids.forEach(id => {
+                const defaults = set.defaults[id];
+                if (defaults) this.platformExtras[id] = { ...defaults, ...(this.platformExtras[id] || {}) };
+                if (!this.selectedAccounts.includes(id)) this.toggleAccount(id);
+            });
+        },
+
         // Caption length as a platform counts it. LinkedIn escapes reserved
         // characters in what it publishes, so each one costs two against the
         // limit — mirrors providers.caption_wire_length on the server.
         wireLength(text, accId) {
+            text = this.countedText(text);
             if (this.charLimits[accId]?.caption_counting === 'weighted') return this.weightedLength(text);
             const escaped = this.charLimits[accId]?.escaped_chars || '';
             if (!escaped) return text.length;

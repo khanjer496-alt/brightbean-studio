@@ -223,6 +223,32 @@ def post_settings_for(platform: str) -> tuple[PostSetting, ...]:
     return provider_cls.post_settings
 
 
+def account_default_keys_for(platform: str) -> tuple[str, ...]:
+    """The ``platform_extra`` keys an account set may hold as ``platform``'s per-account defaults."""
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    if provider_cls is None:
+        return ()
+    return (*(field.key for field in provider_cls.post_settings), *provider_cls.account_default_keys)
+
+
+def account_default_choices_for(platform: str) -> dict[str, tuple]:
+    """The values each of ``platform``'s account-set defaults may hold, for the keys that aren't free text.
+
+    A declared checkbox takes ``(True, False)``, a declared select with fixed choices takes those, and the
+    provider's ``account_default_choices`` cover its other default keys.
+    """
+    provider_cls = PROVIDER_REGISTRY.get(platform)
+    if provider_cls is None:
+        return {}
+    choices: dict[str, tuple] = {}
+    for field in provider_cls.post_settings:
+        if field.kind == "checkbox":
+            choices[field.key] = (True, False)
+        elif field.kind == "select" and field.choices and not field.options_from_provider:
+            choices[field.key] = tuple(value for value, _label in field.choices)
+    return {**choices, **provider_cls.account_default_choices}
+
+
 def post_settings_error_for(platform: str, settings: dict | None) -> str:
     """Why ``settings`` can't publish to ``platform`` (a sentence), or "".
 

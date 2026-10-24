@@ -335,6 +335,7 @@ def create(request, payload: CreatePostRequest):
                 platform_overrides=platform_overrides,
                 parts=[part.to_spec() for part in payload.parts],
                 post_settings=payload.post_settings,
+                shorten_links=payload.shorten_links,
             )
             _apply_taxonomy(request, post, tags=payload.tags, category_id=payload.category_id)
             if repeat is not None:
