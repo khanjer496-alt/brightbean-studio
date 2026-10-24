@@ -125,6 +125,7 @@ LOCAL_APPS = [
     "apps.webhooks",
     "apps.autonomy",
     "apps.plugs",
+    "apps.autopost",
     "apps.legal",
     "theme",
 ]

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block page_title %}Feeds{% endblock %}
+
+{% block content %}
+<div class="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6">
+    <div>
+        <h1 class="m-0 text-xl font-semibold text-ink">Feeds</h1>
+        <p class="m-0 mt-1 max-w-2xl text-[13px] text-ink-3">Follow a blog or news feed and have its new items posted for you: as the link, as a post written in your brand voice, or with the article's image. Only items published after you switch a feed on are used.</p>
+    </div>
+
+    {% if error %}<p role="alert" class="m-0 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{{ error }}</p>{% endif %}
+
+    {% if can_manage %}
+    <form method="post" action="{% url 'autopost:add' workspace_id=workspace.id %}" class="grid gap-3 rounded-xl border border-line bg-surface-1 p-4 sm:grid-cols-[1fr_auto] sm:items-end">
+        {% csrf_token %}
+        <div>
+            <label for="feed-url" class="block text-xs font-semibold text-ink-3">Feed address</label>
+            <input id="feed-url" type="url" name="url" inputmode="url" required placeholder="https://example.com/feed.xml" value="{{ form.url|default:'' }}"
+                   class="mt-1 min-h-11 w-full rounded-lg border border-line bg-white px-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100">
+            <p class="m-0 mt-1 text-xs text-ink-3">A public RSS or Atom address. It is checked before it is added.</p>
+        </div>
+        <button type="submit" class="btn-brand w-auto">Follow feed</button>
+    </form>
+    {% endif %}
+
+    {% if feeds %}
+    <ul class="m-0 flex list-none flex-col gap-2 p-0">
+        {% for feed in feeds %}
+        <li class="rounded-xl border border-line bg-white p-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+                <div class="min-w-0 flex-1">
+                    <a href="{% url 'autopost:detail' workspace_id=workspace.id feed_id=feed.id %}" class="text-sm font-semibold text-ink break-words underline-offset-2 hover:underline">{{ feed.name }}</a>
+                    <p class="m-0 mt-0.5 text-xs text-ink-3 break-all">{{ feed.url }}</p>
+                </div>
+                {% if feed.autopost %}
+                    {% if not feed.autopost.is_active %}<span class="inline-flex items-center rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-700">Paused</span>
+                    {% elif feed.autopost.last_error %}<span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">Needs attention</span>
+                    {% else %}<span class="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">Posting</span>{% endif %}
+                {% else %}<span class="inline-flex items-center rounded-full bg-stone-100 px-2 py-0.5 text-xs font-medium text-stone-700">Not posting</span>{% endif %}
+            </div>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <p class="m-0 rounded-xl border border-line bg-surface-1 p-4 text-sm text-ink-2">No feeds yet. Feeds you follow in the composer's Feeds tab show up here too.</p>
+    {% endif %}
+</div>
+{% endblock %}
