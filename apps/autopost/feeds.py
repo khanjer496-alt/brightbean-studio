@@ -23,6 +23,8 @@ FEED_MAX_BYTES = 5 * 1024 * 1024
 ARTICLE_MAX_BYTES = 1024 * 1024
 IMAGE_MAX_BYTES = 5 * 1024 * 1024
 MAX_ENTRIES = 50
+# FeedItem.link's column size; a longer link is not kept (or posted).
+LINK_MAX_LENGTH = 1000
 IMAGE_TYPES = frozenset({"image/jpeg", "image/png", "image/webp", "image/gif"})
 _HTML_TYPES = frozenset({"text/html", "application/xhtml+xml"})
 _META = re.compile(r"<meta\b[^>]*>", re.IGNORECASE)
@@ -61,8 +63,9 @@ class FetchResult:
 
 
 def item_key(guid: str, link: str, title: str) -> str:
-    """The identity of an item: its GUID, else its link, else its title."""
-    return hashlib.sha256((guid or link or title).strip().encode()).hexdigest()
+    """The identity of an item: its GUID, else its link and title together (a feed may reuse one of them)."""
+    identity = guid.strip() if guid and guid.strip() else f"{link.strip()}\n{title.strip()}"
+    return hashlib.sha256(identity.encode()).hexdigest()
 
 
 def fetch(feed_url: str, *, etag: str = "", last_modified: str = "") -> FetchResult:
@@ -89,7 +92,7 @@ def fetch(feed_url: str, *, etag: str = "", last_modified: str = "") -> FetchRes
     for raw in document["entries"][:MAX_ENTRIES]:
         event = feed_reader._build_event_from_entry(_Named(document["title"]), document, raw)
         guid = _first_child_text(raw, "guid", "id")
-        link = event["link"] if _is_web(event["link"]) else ""
+        link = event["link"] if _is_web(event["link"]) and len(event["link"]) <= LINK_MAX_LENGTH else ""
         entries.append(
             Entry(
                 key=item_key(guid, link, event["title"]),

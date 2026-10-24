@@ -81,7 +81,7 @@ class FeedItem(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     autopost = models.ForeignKey(FeedAutopost, on_delete=models.CASCADE, related_name="items")
-    # SHA-256 of the item's GUID (else its link), so the same item is recognised again however the feed re-orders it.
+    # SHA-256 of the item's GUID (else its link and title), so the same item is recognised again however the feed re-orders it.
     key = models.CharField(max_length=64)
     title = models.CharField(max_length=300, blank=True, default="")
     link = models.URLField(max_length=1000, blank=True, default="")

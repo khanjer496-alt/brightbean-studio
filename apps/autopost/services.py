@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import datetime as dt
 import logging
+import re
 from dataclasses import dataclass
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -56,6 +57,11 @@ MAX_DAILY = 50
 MIN_DELAY_MINUTES = 1
 MAX_DELAY_MINUTES = 7 * 24 * 60
 WHO = "RSS autopost"
+
+# An article already shared to an account from another of the workspace's feeds this recently is not shared again.
+DUPLICATE_WINDOW = dt.timedelta(days=7)
+_MADE = ("scheduled", "draft", "held")
+_URL = re.compile(r"https?://[^\s<>\"')\]]+", re.IGNORECASE)
 
 IMAGE_EXTENSIONS = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"}
 
@@ -411,6 +417,9 @@ def _write(autopost, entry, account) -> tuple[str | None, bool, str]:
     ctx = AIContext(workspace=autopost.workspace, user=None, source=AIRequestLog.Source.SYSTEM)
     try:
         text = write_feed_post(ctx, title=entry.title, summary=entry.summary, url=entry.link, account=account)
+        if _foreign_links(text, entry.link):
+            # The article text is data, never instructions: a post pointing anywhere but the article is not used.
+            raise ValueError("the AI's post linked somewhere other than the article")
         if entry.link and entry.link not in text:
             with_link = f"{text}\n\n{entry.link}"
             text = with_link if account.caption_wire_length(with_link) <= account.char_limit else plain or text
@@ -424,6 +433,29 @@ def _write(autopost, entry, account) -> tuple[str | None, bool, str]:
     except Exception:
         logger.exception("Feed autopost %s: the AI request failed unexpectedly", autopost.pk)
         return plain, False, "The AI writer failed, so the link was posted as is."
+
+
+def _foreign_links(text: str, link: str) -> list[str]:
+    """Web addresses in ``text`` other than the article's own ``link``."""
+    allowed = link.rstrip("/.,").lower()
+    return [u for u in _URL.findall(text or "") if u.rstrip("/.,").lower() != allowed]
+
+
+def _already_shared(autopost: FeedAutopost, entry: feeds.Entry, now) -> set:
+    """Ids of accounts that got this article from another of the workspace's feeds in the last week."""
+    if not entry.link:
+        return set()
+    others = FeedItem.objects.filter(
+        autopost__workspace=autopost.workspace,
+        link=entry.link,
+        created_at__gte=now - DUPLICATE_WINDOW,
+    ).exclude(autopost=autopost)
+    return {
+        o.get("account_id")
+        for outcomes in others.values_list("outcomes", flat=True)
+        for o in outcomes or []
+        if o.get("status") in _MADE and o.get("account_id")
+    }
 
 
 def _image_asset(autopost: FeedAutopost, entry: feeds.Entry, key: str):
@@ -465,6 +497,12 @@ def _process(autopost: FeedAutopost, item: FeedItem, entry: feeds.Entry, now) ->
     if not accounts:
         _settle(item, FeedItem.Status.FAILED, "None of the chosen accounts is connected.", [])
         return 0
+    shared = _already_shared(autopost, entry, now)
+    if shared:
+        accounts = [a for a in accounts if str(a.id) not in shared]
+        if not accounts:
+            _settle(item, FeedItem.Status.SKIPPED, "Already shared to these accounts from another feed this week.", [])
+            return 0
     asset = None
     notes: list[str] = []
     if autopost.mode == FeedAutopost.Mode.AI_IMAGE:
@@ -526,6 +564,7 @@ def _post_to(autopost, item, entry, account, asset, now) -> dict:
 
     outcome = {
         "account": account.account_name or account.account_handle,
+        "account_id": str(account.id),
         "status": "failed",
         "reason": "",
         "post_id": "",
