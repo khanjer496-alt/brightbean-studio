@@ -1,0 +1,10 @@
+---
+// Our own hand-drawn accents. kind: underline | circle | star | squiggle | swirl
+interface Props { kind: 'underline' | 'circle' | 'star' | 'squiggle' | 'swirl'; class?: string; color?: string }
+const { kind, class: cls = '', color = 'currentColor' } = Astro.props;
+---
+{kind === 'underline' && (<svg class:list={['doodle-draw pointer-events-none absolute left-0 w-full', cls]} viewBox="0 0 300 20" fill="none" preserveAspectRatio="none" aria-hidden="true"><path d="M4 12c50-9 120-11 292-5" stroke={color} stroke-width="4" stroke-linecap="round"/><path d="M30 18c60-6 130-7 230-3" stroke={color} stroke-width="3" stroke-linecap="round" opacity=".7"/></svg>)}
+{kind === 'circle' && (<svg class:list={['doodle-draw pointer-events-none absolute', cls]} viewBox="0 0 220 90" fill="none" preserveAspectRatio="none" aria-hidden="true"><path d="M30 14C80-2 190 4 208 38c14 30-70 50-140 46C14 80-6 54 14 32 32 14 120 8 190 24" stroke={color} stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>)}
+{kind === 'star' && (<svg class:list={['floaty pointer-events-none absolute', cls]} viewBox="0 0 64 64" fill="none" aria-hidden="true"><path d="M32 4c2 18 10 26 28 28-18 2-26 10-28 28-2-18-10-26-28-28 18-2 26-10 28-28Z" stroke={color} stroke-width="2.5" stroke-linejoin="round"/></svg>)}
+{kind === 'squiggle' && (<svg class:list={['pointer-events-none absolute', cls]} viewBox="0 0 140 90" fill="none" aria-hidden="true"><path d="M6 60c24 6 34-30 56-26s-6 44 24 44c24 0 20-34 46-52" stroke={color} stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>)}
+{kind === 'swirl' && (<svg class:list={['pointer-events-none absolute', cls]} viewBox="0 0 120 120" fill="none" aria-hidden="true"><path d="M60 62c-6-8 4-18 12-14 12 6 6 26-8 28-18 3-30-16-22-32 10-20 42-22 56-2" stroke={color} stroke-width="3" stroke-linecap="round"/></svg>)}

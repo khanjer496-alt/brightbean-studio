@@ -11,15 +11,15 @@ const path = Astro.url.pathname;
 ---
 <header class="sticky top-0 z-50 border-b border-white/5 bg-page/80 backdrop-blur-xl">
   <div class="container-x flex h-16 items-center justify-between gap-4">
-    <a href="/" aria-label="PostDelegate home" class="shrink-0"><Logo /></a>
+    <a href="/" aria-label="PostDelegate home" class="flex min-h-11 shrink-0 items-center"><Logo /></a>
     <nav aria-label="Main" class="hidden items-center gap-1 md:flex">
       {links.map((l) => (
-        <a href={l.href} aria-current={path === l.href ? 'page' : undefined} class="rounded-full px-3.5 py-2 text-sm font-semibold text-ink-2 transition hover:bg-white/5 hover:text-white aria-[current=page]:text-white">{l.label}</a>
+        <a href={l.href} aria-current={path === l.href ? 'page' : undefined} class="rounded-full px-3.5 py-2.5 text-sm font-semibold text-ink-2 transition hover:bg-white/5 hover:text-white aria-[current=page]:text-white">{l.label}</a>
       ))}
     </nav>
     <div class="hidden items-center gap-2 md:flex">
-      <a href={SITE.login} class="rounded-full px-3.5 py-2 text-sm font-semibold text-ink-2 transition hover:text-white">Sign in</a>
-      <a href={SITE.signup} class="btn btn-primary">Start free</a>
+      <a href={SITE.login} class="btn btn-outline">Sign in</a>
+      <a href={SITE.signup} class="btn btn-white">Start free</a>
     </div>
     <button id="nav-toggle" type="button" class="inline-flex size-11 items-center justify-center rounded-full border border-line md:hidden" aria-expanded="false" aria-controls="nav-sheet" aria-label="Open menu">
       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
@@ -27,12 +27,12 @@ const path = Astro.url.pathname;
   </div>
   <div id="nav-sheet" hidden class="fixed inset-x-0 top-16 bottom-0 overflow-y-auto border-t border-line bg-page p-4 md:hidden">
     <nav aria-label="Mobile" class="flex flex-col">
-      {links.map((l) => (<a href={l.href} class="border-b border-line py-4 text-lg font-bold">{l.label}</a>))}
-      <a href="/tools" class="border-b border-line py-4 text-lg font-bold">Free tools</a>
-      <a href="/platforms" class="border-b border-line py-4 text-lg font-bold">Platforms</a>
-      <a href={SITE.login} class="border-b border-line py-4 text-lg font-bold">Sign in</a>
+      {links.map((l) => (<a href={l.href} class="flex min-h-14 items-center border-b border-line text-lg font-bold">{l.label}</a>))}
+      <a href="/tools" class="flex min-h-14 items-center border-b border-line text-lg font-bold">Free tools</a>
+      <a href="/platforms" class="flex min-h-14 items-center border-b border-line text-lg font-bold">Platforms</a>
+      <a href={SITE.login} class="flex min-h-14 items-center border-b border-line text-lg font-bold">Sign in</a>
     </nav>
-    <a href={SITE.signup} class="btn btn-primary btn-lg mt-6 w-full">{CTA_LABEL}</a>
+    <a href={SITE.signup} class="btn btn-white btn-lg mt-6 w-full">{CTA_LABEL}</a>
   </div>
 </header>
 <script>

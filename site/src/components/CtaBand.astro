@@ -1,17 +1,19 @@
 ---
-import { SITE, CTA_LABEL } from '../data/site';
+import { SITE } from '../data/site';
+import Doodles from './Doodles.astro';
 interface Props { title?: string; text?: string }
-const { title = 'Hand your socials to AI — and keep the keys.', text = 'Free plan forever on 3 channels. Every new workspace gets a 14-day Ultimate trial, no card required.' } = Astro.props;
+const { title = 'Hand your socials to AI, and keep the keys.', text = 'Free on 3 channels, forever. Every new workspace gets a 14-day Ultimate trial, no card required.' } = Astro.props;
 ---
-<section class="section">
+<section class="py-16 sm:py-24">
   <div class="container-x">
-    <div class="reveal relative overflow-hidden rounded-3xl border border-brand/30 bg-gradient-to-br from-brand-600/30 via-surface-1 to-surface-1 px-6 py-14 text-center sm:px-12 sm:py-20">
-      <div class="pointer-events-none absolute -top-24 left-1/2 size-[28rem] -translate-x-1/2 rounded-full bg-brand/30 blur-3xl" aria-hidden="true"></div>
-      <h2 class="h2 relative mx-auto max-w-2xl">{title}</h2>
-      <p class="lead relative mx-auto mt-4 max-w-xl">{text}</p>
-      <div class="relative mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
-        <a href={SITE.signup} class="btn btn-primary btn-lg w-full sm:w-auto">{CTA_LABEL}</a>
-        <a href={SITE.login} class="btn btn-ghost btn-lg w-full sm:w-auto">Sign in</a>
+    <div class="bento g-purple glow-purple px-6 py-16 text-center sm:px-12 sm:py-24">
+      <Doodles kind="star" class="left-[8%] top-10 hidden size-12 text-white/70 sm:block" />
+      <Doodles kind="squiggle" class="bottom-8 right-[7%] hidden h-20 text-white/50 sm:block" />
+      <h2 class="display mx-auto max-w-3xl text-4xl text-white sm:text-6xl">{title}</h2>
+      <p class="mx-auto mt-5 max-w-xl text-lg text-white/85">{text}</p>
+      <div class="mt-9 flex flex-col items-center justify-center gap-3 sm:flex-row">
+        <a href={SITE.signup} class="btn btn-white btn-lg w-full sm:w-auto">Start free — 14-day trial</a>
+        <a href={SITE.login} class="btn btn-outline btn-lg w-full sm:w-auto">Sign in</a>
       </div>
     </div>
   </div>

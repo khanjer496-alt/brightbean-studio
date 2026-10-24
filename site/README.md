@@ -30,12 +30,14 @@ Facts live in `src/data/` (plans from `apps/billing/plans.py`, networks from `pr
 node scripts/serve.mjs 4321      # serves dist with clean URLs and _redirects semantics
 node scripts/check-urls.mjs      # every old URL and internal link must be 200 or 301 to 200
 node scripts/og.mjs              # regenerates public/og.png
+node scripts/gen-icons.mjs       # rebuilds public/icons.svg sprite from Simple Icons (CC0, devDependency)
 ```
 
 `screens/` holds review screenshots and `reference/` the inventory of the previous site. Neither is deployed (they are outside `public/`).
 
 ## Notes
 
-- Network badges use brand colours with initials (as the app does) rather than third-party logos.
+- Network tiles use Simple Icons glyphs (CC0) in an external SVG sprite; networks Simple Icons no longer carries (LinkedIn, Slack, Nostr, Google Business) use initials tiles.
+- Home-page bento mockups are our own simplified illustrations; only the calendar, week and composer images are real app screenshots (`docs/design/screens/wave2`). No page content is hidden behind scroll animations.
 - Product screenshots are from `docs/design/screens/wave2/` in the app repo.
 - Competitor statements are hedged and must be re-verified before launch; see the compare pages.
