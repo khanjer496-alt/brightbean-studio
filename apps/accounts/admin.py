@@ -1,5 +1,6 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 from django.contrib.auth.admin import UserAdmin as BaseUserAdmin
+from django.shortcuts import redirect
 
 from .models import OAuthConnection, Session, User
 
@@ -17,6 +18,17 @@ class UserAdmin(BaseUserAdmin):
         ("2FA", {"fields": ("totp_enabled",)}),
     )
     add_fieldsets = ((None, {"classes": ("wide",), "fields": ("email", "password1", "password2")}),)
+    actions = ["view_as_user"]
+
+    @admin.action(description="View as this user (support)", permissions=["impersonate"])
+    def view_as_user(self, request, queryset):
+        if queryset.count() != 1:
+            self.message_user(request, "Pick exactly one user to view as.", messages.ERROR)
+            return None
+        return redirect("support:impersonate", user_id=queryset.get().pk)
+
+    def has_impersonate_permission(self, request):
+        return request.user.is_superuser
 
 
 @admin.register(OAuthConnection)

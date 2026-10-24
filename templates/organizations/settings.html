@@ -50,6 +50,18 @@
         </div>
     </form>
 
+    {% if support_sessions %}
+    <section class="mb-10" aria-labelledby="support-access-title">
+        <h3 id="support-access-title" class="text-sm font-semibold mb-2 text-ink">Support access</h3>
+        <p class="text-xs mb-3 text-ink-3">Times our support team viewed a member's account to help with a problem. They can't change anything while viewing.</p>
+        <ul class="text-sm text-ink-2 space-y-1">
+            {% for session in support_sessions %}
+            <li>{{ brand_name }} support viewed your account on {{ session.started_at|date:"F j, Y" }}</li>
+            {% endfor %}
+        </ul>
+    </section>
+    {% endif %}
+
     {% if is_owner %}
     <hr class="my-10 border-line">
 

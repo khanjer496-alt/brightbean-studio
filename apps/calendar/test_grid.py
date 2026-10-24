@@ -359,5 +359,6 @@ class TestViews:
         for h in range(1, 13):
             make_pp(workspace, ig, when=hours(h), picture=picture, author=owner)
         client.force_login(owner)
-        with django_assert_max_num_queries(40):
+        # 41: one is the announcements-pending check, which a warm cache skips.
+        with django_assert_max_num_queries(41):
             assert client.get(grid_url(workspace, ig)).status_code == 200

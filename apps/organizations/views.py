@@ -19,6 +19,7 @@ from apps.composer.models import PlatformPost, Post, Tag
 from apps.members.decorators import require_org_role
 from apps.members.models import OrgMembership, WorkspaceMembership
 from apps.social_accounts.models import SocialAccount
+from apps.support.services import org_support_access
 from apps.workspaces import brand_kit, brand_kit_forms
 from apps.workspaces.models import BrandKit, Workspace
 
@@ -106,6 +107,7 @@ def settings_view(request):
         "organization": org,
         "settings_active": "general",
         "is_owner": is_owner,
+        "support_sessions": org_support_access(org) if is_owner else [],
         "common_timezones": COMMON_TIMEZONES,
         "all_timezones": sorted(available_timezones()),
     }

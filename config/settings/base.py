@@ -130,6 +130,7 @@ LOCAL_APPS = [
     "apps.autopost",
     "apps.legal",
     "apps.connect",
+    "apps.support",
     "theme",
 ]
 
@@ -145,6 +146,7 @@ MIDDLEWARE = [
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "allauth.account.middleware.AccountMiddleware",
+    "apps.support.middleware.ImpersonationMiddleware",
     "apps.client_portal.middleware.PortalSessionMiddleware",
     "apps.accounts.middleware.AuthRateLimitMiddleware",
     "apps.accounts.middleware.TosAcceptanceMiddleware",
@@ -177,6 +179,7 @@ TEMPLATES = [
                 "apps.onboarding.context_processors.onboarding_checklist",
                 "apps.intelligence.context_processors.intelligence_flag",
                 "apps.billing.context_processors.billing_flag",
+                "apps.support.context_processors.support_context",
             ],
         },
     },

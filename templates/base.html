@@ -32,8 +32,9 @@
     <link rel="stylesheet" href="{% static 'css/postdelegate.css' %}">
     <link rel="stylesheet" href="{% static 'css/platforms.css' %}">
 </head>
-<body class="min-h-screen">
+<body class="min-h-screen{% if impersonation %} pd-impersonating{% endif %}">
     <a href="#main-content" class="pd-skip-link">Skip to main content</a>
+    {% if impersonation %}{% include "support/_impersonation_banner.html" %}{% endif %}
     {% csrf_token %}
     <script nonce="{{ request.csp_nonce }}">
         document.body.addEventListener('htmx:configRequest', function(event) {
@@ -771,6 +772,7 @@
                     {% endfor %}
                 </div>
                 {% endif %}
+                {% if announcements %}{% include "support/_announcements.html" %}{% endif %}
                 {% if onboarding.is_sample_workspace %}{% include "onboarding/partials/_sample_banner.html" %}{% endif %}
                 <div class="flex-1 min-h-0 flex flex-col overflow-y-auto overflow-x-hidden">
                 {% block content %}{% endblock %}
