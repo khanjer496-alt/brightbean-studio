@@ -7,7 +7,6 @@
 {% comment %}Header is rendered inside the content block to avoid overlap with the -m-6 layout{% endcomment %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{% static 'css/platforms.css' %}">
 <style>
     /* ── Composer-specific overrides ──────────────────────────── */
     /* Remove parent padding/overflow so the composer can fill the full area */
@@ -82,7 +81,7 @@
         font-size: 11px; font-weight: 700; color: white; flex-shrink: 0;
         letter-spacing: -0.02em;
     }
-    /* .pi-<platform> fills live in static/css/platforms.css */
+    /* .pi-<platform> fills live in static/css/platforms.css (loaded by base.html) */
 
     /* Character counter bar */
     .char-bar {
