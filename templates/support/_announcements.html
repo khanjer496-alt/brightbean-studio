@@ -10,7 +10,7 @@
              fetch('{{ dismiss_url }}', { method: 'POST', headers: { 'X-CSRFToken': tokenInput ? tokenInput.value : '' }, keepalive: true });
          },
      }"
-     x-show="open"
+     x-show="open" x-cloak
      class="mb-4 flex items-start gap-3 rounded-md p-4 text-sm border {% if announcement.severity == 'warning' %}bg-warn-soft text-warn border-warn{% else %}bg-accent-soft text-brand border-line{% endif %}"
      role="status">
     <p class="flex-1">

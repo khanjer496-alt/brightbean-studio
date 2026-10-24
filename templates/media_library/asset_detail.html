@@ -23,7 +23,7 @@
   <div class="lg:col-span-2">
     <div class="rounded-xl overflow-hidden border border-[color:var(--border)] bg-[color:var(--surface-1)]">
       {% if asset.file_type == 'image' or asset.file_type == 'gif' %}
-        <img src="{{ asset.file.url }}" alt="{{ asset.original_filename }}" class="w-full max-h-[600px] object-contain">
+        <img src="{{ asset.file.url }}" alt="{{ asset.original_filename }}" width="{{ asset.width|default:640 }}" height="{{ asset.height|default:360 }}" class="w-full max-h-[600px] object-contain">
       {% elif asset.file_type == 'video' %}
         <video controls class="w-full max-h-[600px]" preload="metadata">
           <source src="{{ asset.file.url }}" type="{{ asset.mime_type }}">

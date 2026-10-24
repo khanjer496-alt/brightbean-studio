@@ -15,7 +15,7 @@
   <div class="px-5 py-4">
     <div class="rounded-xl overflow-hidden border border-[color:var(--border)] bg-[color:var(--surface-1)]">
       {% if asset.file_type == 'image' or asset.file_type == 'gif' %}
-        <img src="{{ asset.file.url }}" alt="{{ asset.original_filename }}"
+        <img src="{{ asset.file.url }}" alt="{{ asset.original_filename }}" width="{{ asset.width|default:640 }}" height="{{ asset.height|default:360 }}"
              class="w-full max-h-80 object-contain">
       {% elif asset.file_type == 'video' %}
         <video controls class="w-full max-h-80" preload="metadata">

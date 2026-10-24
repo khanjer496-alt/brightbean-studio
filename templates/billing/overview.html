@@ -121,7 +121,7 @@
                     <span class="pd-billing-price">$0</span>
                     <span class="text-sm pd-billing-faint">forever</span>
                     {% else %}
-                    <span x-show="interval === 'month'">
+                    <span x-show="interval === 'month'" x-cloak>
                         <span class="pd-billing-price">${{ entry.monthly_price }}</span>
                         <span class="text-sm pd-billing-faint">/ month</span>
                     </span>
@@ -173,7 +173,7 @@
                         <input type="hidden" name="interval" :value="interval" value="{{ current_interval }}">
                         <button type="submit" class="btn-outline" {% if not stripe_configured %}disabled{% endif %}>Switch billing period</button>
                     </form>
-                    <p class="text-xs text-center pd-billing-faint" x-show="interval === '{{ subscription.interval }}'">Your current plan.</p>
+                    <p class="text-xs text-center pd-billing-faint" x-show="interval === '{{ subscription.interval }}'" x-cloak>Your current plan.</p>
                 {% else %}
                     <form method="POST" action="{% url 'billing:checkout' %}">
                         {% csrf_token %}

@@ -17,7 +17,7 @@
     <div class="flex flex-col sm:flex-row gap-2">
         <button type="button" class="btn-brand text-xs py-1.5 px-3"
                 :disabled="aiBusy"
-                hx-post="{% url 'ai_writer:link_save' workspace_id=workspace.id %}"
+                hx-post="{% url 'ai_writer:link_save' workspace_id=workspace.id %}" hx-sync="#ai-panel:drop"
                 hx-vals='{"ai_save_as": "ideas"}'
                 hx-swap="none">
             Save as ideas
@@ -25,7 +25,7 @@
         <button type="button"
                 class="text-xs font-semibold py-1.5 px-3 rounded-full border border-stone-200 text-stone-500 hover:border-stone-300 hover:text-stone-700 transition-colors"
                 :disabled="aiBusy || selectedAccounts.length === 0"
-                hx-post="{% url 'ai_writer:link_save' workspace_id=workspace.id %}"
+                hx-post="{% url 'ai_writer:link_save' workspace_id=workspace.id %}" hx-sync="#ai-panel:drop"
                 hx-vals='{"ai_save_as": "drafts"}'
                 hx-swap="none">
             Save as drafts

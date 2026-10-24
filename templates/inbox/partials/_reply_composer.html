@@ -56,7 +56,7 @@
     </div>
 
     <!-- Reply form -->
-    <div x-show="mode === 'reply'" x-transition>
+    <div x-show="mode === 'reply'" x-cloak x-transition>
         {% if not reply_eligibility.can_send %}
         <p class="mb-2 text-xs text-amber-800">{{ reply_eligibility.reason }} You can still save a draft.</p>
         {% elif reply_eligibility.human_agent %}
@@ -128,7 +128,7 @@
     </div>
 
     <!-- Note form -->
-    <div x-show="mode === 'note'" x-transition>
+    <div x-show="mode === 'note'" x-cloak x-transition>
         <form hx-post="{% url 'inbox:add_note' workspace_id=workspace.id message_id=message.id %}"
               hx-target="#inbox-thread"
               hx-swap="beforeend"

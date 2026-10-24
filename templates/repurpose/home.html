@@ -29,7 +29,7 @@
                 {% endfor %}
             </div>
 
-            <div x-show="source === 'url'" class="mt-4">
+            <div x-show="source === 'url'" x-cloak class="mt-4">
                 <label for="source-url" class="block text-xs font-semibold text-ink-3">Link to the page</label>
                 <input id="source-url" type="url" name="source_url" inputmode="url" placeholder="https://" value="{{ form.source_url|default:'' }}"
                        class="mt-1 min-h-11 w-full rounded-lg border border-line bg-white px-3 text-sm outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100">

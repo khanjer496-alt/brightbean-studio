@@ -42,7 +42,7 @@
 
             <!-- Dropdown (teleported to body so it escapes the card's overflow:hidden) -->
             <template x-teleport="body">
-            <div x-show="showActions" @click.outside="showActions = false"
+            <div x-show="showActions" x-cloak @click.outside="showActions = false"
                  @keydown.escape.window="showActions = false"
                  @scroll.window="showActions = false"
                  x-transition

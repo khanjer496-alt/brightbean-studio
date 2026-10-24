@@ -315,7 +315,7 @@
                 class="lg:hidden ms-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-200 text-stone-600 text-xs font-semibold hover:border-stone-300 hover:bg-stone-50 transition-all duration-150 cursor-pointer">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
             <span>Preview</span>
-            <span x-show="selectedAccounts.length > 0"
+            <span x-show="selectedAccounts.length > 0" x-cloak
                   x-text="selectedAccounts.length"
                   class="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-orange-100 text-orange-700 text-[10px] font-bold tabular-nums"></span>
         </button>
@@ -667,7 +667,7 @@
 
                 <!-- Settings a platform declares for itself (Reddit subreddit and flair, ...) -->
                 <template x-for="accId in selectedAccounts" :key="'provider-settings-' + accId">
-                    <div x-show="(charLimits[accId]?.post_settings || []).length"
+                    <div x-show="(charLimits[accId]?.post_settings || []).length" x-cloak
                          x-data="providerSettings(accId, '{{ workspace.id }}', platformExtras)"
                          class="border border-stone-200 rounded-xl bg-white p-4 space-y-3">
                         <input type="hidden" :name="'ps_panel_' + accId" value="1"
@@ -679,7 +679,7 @@
                             <span class="text-xs font-semibold text-stone-600" x-text="charLimits[accId]?.name + ' - Post Settings'"></span>
                         </div>
                         <template x-for="f in fields" :key="f.key">
-                            <div x-show="visible(f)">
+                            <div x-show="visible(f)" x-cloak>
                                 <template x-if="f.kind === 'checkbox'">
                                     <label class="flex items-start gap-2 cursor-pointer">
                                         <input type="checkbox" value="true"
@@ -693,7 +693,7 @@
                                 <template x-if="f.kind !== 'checkbox'">
                                     <div>
                                         <label class="block text-[11px] font-semibold text-stone-400 uppercase tracking-wider mb-1">
-                                            <span x-text="f.label"></span> <span x-show="f.required" class="text-red-400">*</span>
+                                            <span x-text="f.label"></span> <span x-show="f.required" x-cloak class="text-red-400">*</span>
                                         </label>
                                         <template x-if="f.kind === 'select'">
                                             <select :aria-label="f.label" :name="'ps_' + f.key + '_' + accId"
@@ -716,7 +716,7 @@
                                                    :maxlength="f.max_length || null"
                                                    class="w-full text-sm px-3 py-2 rounded-lg border border-stone-200 bg-white outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-100 transition-all">
                                         </template>
-                                        <p x-show="f.help" class="text-[11px] text-stone-400 mt-1" x-text="f.help"></p>
+                                        <p x-show="f.help" x-cloak class="text-[11px] text-stone-400 mt-1" x-text="f.help"></p>
                                     </div>
                                 </template>
                             </div>
@@ -726,7 +726,7 @@
 
                 <!-- Pinterest settings (auto-visible when any Pinterest account is selected) -->
                 <template x-for="accId in selectedAccounts" :key="'pin-settings-' + accId">
-                    <div x-show="charLimits[accId]?.platform === 'pinterest'"
+                    <div x-show="charLimits[accId]?.platform === 'pinterest'" x-cloak
                          x-data="{ boards: [], boardsLoading: false, boardsLoaded: false }"
                          x-effect="if (charLimits[accId]?.platform === 'pinterest' && !boardsLoaded) {
                              boardsLoading = true;
@@ -762,8 +762,8 @@
                                             x-text="board.name"></option>
                                 </template>
                             </select>
-                            <p x-show="boardsLoading" class="text-[11px] text-stone-400 mt-1">Loading boards…</p>
-                            <p x-show="boardsLoaded && boards.length === 0" class="text-[11px] text-red-400 mt-1">No boards found. Create a board on Pinterest first.</p>
+                            <p x-show="boardsLoading" x-cloak class="text-[11px] text-stone-400 mt-1">Loading boards…</p>
+                            <p x-show="boardsLoaded && boards.length === 0" x-cloak class="text-[11px] text-red-400 mt-1">No boards found. Create a board on Pinterest first.</p>
                         </div>
                         <!-- Destination Link -->
                         <div>
@@ -798,7 +798,7 @@
                                 </svg>
                                 Advanced
                             </button>
-                            <div x-show="advancedOpen[accId]" x-transition class="mt-3 space-y-3">
+                            <div x-show="advancedOpen[accId]" x-cloak x-transition class="mt-3 space-y-3">
                                 <!-- Allow Comments -->
                                 <label class="flex items-start gap-2 cursor-pointer">
                                     <input type="checkbox"
@@ -856,7 +856,7 @@
                                                    class="hidden thumb-upload-input"
                                                    @change="uploadThumbnail(accId, $event)">
                                             <button type="button"
-                                                    x-show="platformExtras[accId]?.cover_image_asset_id"
+                                                    x-show="platformExtras[accId]?.cover_image_asset_id" x-cloak
                                                     @click="clearThumbnail(accId)"
                                                     class="text-xs text-stone-400 hover:text-red-500 cursor-pointer">Remove</button>
                                         </div>
@@ -870,7 +870,7 @@
 
                 <!-- YouTube settings (auto-visible when any YouTube account is selected) -->
                 <template x-for="accId in selectedAccounts" :key="'yt-settings-' + accId">
-                    <div x-show="charLimits[accId]?.platform === 'youtube'"
+                    <div x-show="charLimits[accId]?.platform === 'youtube'" x-cloak
                          class="border border-stone-200 rounded-xl bg-white p-4 space-y-3">
                         <div class="flex items-center gap-2">
                             <a :href="charLimits[accId]?.youtube_url || 'https://www.youtube.com/'" target="_blank" rel="noopener noreferrer" class="text-xs font-semibold text-stone-600 underline underline-offset-2">YouTube</a>
@@ -943,7 +943,7 @@
                                 </svg>
                                 Advanced
                             </button>
-                            <div x-show="advancedOpen[accId]" x-transition class="mt-3 space-y-3">
+                            <div x-show="advancedOpen[accId]" x-cloak x-transition class="mt-3 space-y-3">
                                 <!-- Made for Kids -->
                                 <label class="flex items-start gap-2 cursor-pointer">
                                     <input type="checkbox"
@@ -973,7 +973,7 @@
 
                 <!-- TikTok settings (auto-visible when any TikTok account is selected) -->
                 <template x-for="accId in selectedAccounts" :key="'tt-settings-' + accId">
-                    <div x-show="charLimits[accId]?.platform === 'tiktok'"
+                    <div x-show="charLimits[accId]?.platform === 'tiktok'" x-cloak
                          x-data="{
                              tt: null,
                              ttLoading: false,
@@ -1044,7 +1044,7 @@
                                   :class="'pi-' + (charLimits[accId]?.platform || '')"
                                   x-html="platformIconSvg(charLimits[accId]?.platform || '')"></span>
                             <span class="text-xs font-semibold text-stone-600" x-text="charLimits[accId]?.name + ' - Post Settings'"></span>
-                            <span class="ms-auto text-[11px] text-stone-400" x-show="tt?.creator_nickname" x-text="'Posting to @' + (tt?.creator_nickname || '')"></span>
+                            <span class="ms-auto text-[11px] text-stone-400" x-show="tt?.creator_nickname" x-cloak x-text="'Posting to @' + (tt?.creator_nickname || '')"></span>
                         </div>
                         <p x-show="!hasMediaAttached" class="px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800">
                             <span class="font-semibold">TikTok needs a video or photos.</span>
@@ -1112,11 +1112,11 @@
                                                     class="w-full text-start text-sm px-3 py-2 flex items-center justify-between gap-2 transition-colors"
                                                     :class="(ttBrandContent && lvl === 'SELF_ONLY') ? 'opacity-40 cursor-not-allowed' : 'hover:bg-stone-50 cursor-pointer'">
                                                 <span x-text="ttLabel(lvl)"></span>
-                                                <svg x-show="ttPrivacy === lvl" class="w-4 h-4 text-orange-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+                                                <svg x-show="ttPrivacy === lvl" x-cloak class="w-4 h-4 text-orange-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
                                             </button>
                                             <!-- Required hover prompt for the disabled private option (mouse); the
                                                  always-visible note below the dropdown covers keyboard/SR users. -->
-                                            <span x-show="ttBrandContent && lvl === 'SELF_ONLY'"
+                                            <span x-show="ttBrandContent && lvl === 'SELF_ONLY'" x-cloak
                                                   class="pointer-events-none absolute start-3 -top-6 opacity-0 group-hover:opacity-100 transition-opacity bg-stone-800 text-white text-[11px] rounded px-2 py-1 whitespace-nowrap z-50 shadow">
                                                 Branded content visibility cannot be set to private.
                                             </span>
@@ -1130,11 +1130,11 @@
                                        :required="charLimits[accId]?.platform === 'tiktok' && selectedAccounts.includes(accId)"
                                        tabindex="-1" aria-hidden="true" class="sr-only">
                             </div>
-                            <p x-show="ttLoading" class="text-[11px] text-stone-400 mt-1">Loading account settings…</p>
-                            <p x-show="ttSelfOnlyLocked" class="text-[11px] text-amber-600 mt-1">
+                            <p x-show="ttLoading" x-cloak class="text-[11px] text-stone-400 mt-1">Loading account settings…</p>
+                            <p x-show="ttSelfOnlyLocked" x-cloak class="text-[11px] text-amber-600 mt-1">
                                 This TikTok app hasn't passed TikTok's content audit yet — only private posting ("Only you") is available until the audit is approved.
                             </p>
-                            <p x-show="ttBrandContent" class="text-[11px] text-stone-400 mt-1">Branded content visibility cannot be set to private.</p>
+                            <p x-show="ttBrandContent" x-cloak class="text-[11px] text-stone-400 mt-1">Branded content visibility cannot be set to private.</p>
                         </div>
                         <!-- Cover: TikTok takes a frame timestamp, not an uploaded image -->
                         <div>
@@ -1207,7 +1207,7 @@
                                     <span class="bb-toggle-track"></span>
                                 </label>
                             </div>
-                            <div x-show="ttDisclose" x-transition class="mt-2 space-y-2">
+                            <div x-show="ttDisclose" x-cloak x-transition class="mt-2 space-y-2">
                                 <label class="flex items-start gap-2 cursor-pointer">
                                     <input type="checkbox" :name="'tiktok_brand_organic_' + accId" value="true"
                                            x-model="ttBrandOrganic"
@@ -1230,10 +1230,10 @@
                                 </label>
                                 <!-- Branded content can't be posted privately, so the option is
                                      locked while visibility is "Only you"; explain why. -->
-                                <p x-show="ttSelfOnlyLocked" class="text-[11px] text-amber-600 -mt-1">
+                                <p x-show="ttSelfOnlyLocked" x-cloak class="text-[11px] text-amber-600 -mt-1">
                                     Branded content isn't available until your TikTok app passes TikTok's content audit, because branded content can't be posted privately.
                                 </p>
-                                <p x-show="ttPrivacy === 'SELF_ONLY' && !ttSelfOnlyLocked" class="text-[11px] text-stone-500 -mt-1">
+                                <p x-show="ttPrivacy === 'SELF_ONLY' && !ttSelfOnlyLocked" x-cloak class="text-[11px] text-stone-500 -mt-1">
                                     Set visibility to public, friends, or followers to enable branded content.
                                 </p>
                                 <!-- Exact TikTok content label prompt, shown once a disclosure option is selected -->
@@ -1279,7 +1279,7 @@
                 </template>
 
                 <!-- Override toggle buttons -->
-                <div class="flex flex-wrap gap-1.5" x-show="selectedAccounts.length > 0">
+                <div class="flex flex-wrap gap-1.5" x-show="selectedAccounts.length > 0" x-cloak>
                     <template x-for="accId in selectedAccounts" :key="'toggle-' + accId">
                         <button type="button"
                                 class="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium rounded-full border transition-all duration-150 cursor-pointer"
@@ -1295,7 +1295,7 @@
                 <!-- Platform-specific overrides -->
                 <template x-for="accId in selectedAccounts" :key="'override-' + accId">
                     <div class="border border-stone-200 rounded-xl bg-white p-4"
-                         x-show="overrides[accId]" x-transition>
+                         x-show="overrides[accId]" x-cloak x-transition>
                         <div class="flex items-center gap-2 mb-3">
                             <span class="platform-icon w-5 h-5 rounded-[5px] flex items-center justify-center"
                                   :class="'pi-' + (charLimits[accId]?.platform || '')"
@@ -1822,6 +1822,7 @@
         <div id="autosave-trigger"
              hx-post="{% if post %}{% url 'composer:autosave_edit' workspace_id=workspace.id post_id=post.id %}{% else %}{% url 'composer:autosave' workspace_id=workspace.id %}{% endif %}"
              hx-trigger="every 30s"
+             hx-sync="this:drop"
              hx-include="#composer-form"
              hx-swap="none"
              style="display:none;"></div>
@@ -1849,7 +1850,7 @@
             <h3 class="text-xs font-semibold text-stone-500 uppercase tracking-wider">Preview</h3>
             <div class="flex items-center gap-2">
                 <span class="text-xs text-stone-400 tabular-nums"
-                      x-show="selectedAccounts.length > 0"
+                      x-show="selectedAccounts.length > 0" x-cloak
                       x-text="selectedAccounts.length + (selectedAccounts.length === 1 ? ' platform' : ' platforms')">
                 </span>
                 <button id="preview-close-btn" aria-label="Close preview" type="button" @click="showPreviewPanel = false"
@@ -1862,6 +1863,7 @@
         <div id="preview-panel" class="flex-1 overflow-y-auto p-4 space-y-4 panel-scroll"
              hx-post="{% url 'composer:preview' workspace_id=workspace.id %}"
              hx-trigger="previewUpdate from:body"
+             hx-sync="this:replace"
              hx-include="#composer-form"
              hx-vals='js:{"title": document.querySelector("input[name=title]")?.value || "", "caption": document.querySelector("[name=caption]")?.value || "", "selected_accounts": document.querySelector("[name=selected_accounts]")?.value || "", "_autosave_post_id": document.querySelector("[name=_autosave_post_id]")?.value || ""}'>
             {% include "composer/partials/preview_panel.html" %}
@@ -2000,7 +2002,7 @@
                     <input aria-label="Search free photos" data-autofocus type="text" x-model="unsplashQuery"
                            @keydown.enter.prevent="unsplashActiveChip = ''; searchUnsplash()"
                            placeholder="Search free high-resolution photos…"
-                           class="flex-1 text-sm bg-transparent outline-none border-none placeholder-stone-400 text-stone-900">
+                           class="flex-1 text-sm bg-transparent outline-none focus-visible:ring-2 focus-visible:ring-accent border-none placeholder-stone-400 text-stone-900">
                     <button type="button" @click="unsplashActiveChip = ''; searchUnsplash()"
                             class="px-4 py-2 rounded-lg bg-orange-500 hover:bg-orange-600 text-white text-sm font-semibold transition-colors cursor-pointer flex-shrink-0">Search</button>
                 </div>
@@ -2014,7 +2016,7 @@
                 </div>
             </div>
             <div class="flex-1 overflow-y-auto px-4 sm:px-6 pb-4 mt-3 min-h-0">
-                <div x-show="unsplashLoading" class="flex items-center justify-center py-12 text-stone-400">
+                <div x-show="unsplashLoading" x-cloak class="flex items-center justify-center py-12 text-stone-400">
                     <svg class="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
                 </div>
                 <div x-show="!unsplashLoading && unsplashError" class="py-12 text-center text-sm text-stone-500" x-text="unsplashError"></div>
@@ -2026,11 +2028,11 @@
                         <div role="button" tabindex="0" @keydown.enter.self.prevent="$el.click()" @keydown.space.self.prevent="$el.click()" :aria-pressed="!!unsplashSelected[photo.id]" :aria-label="(photo.alt || 'Photo') + ' by ' + photo.photographer" class="mb-3 break-inside-avoid relative rounded-lg overflow-hidden cursor-pointer group"
                              :class="unsplashSelected[photo.id] ? 'ring-2 ring-inset ring-orange-500' : ''"
                              @click="toggleUnsplashSelect(photo)">
-                            <img :src="photo.thumb" :alt="photo.alt" loading="lazy"
+                            <img :src="photo.thumb" :alt="photo.alt" loading="lazy" width="300" height="200"
                                  class="w-full block" :style="photo.color ? `background:${photo.color}` : ''">
                             <span class="absolute top-2 end-2 w-6 h-6 rounded-full border-2 flex items-center justify-center transition-all"
                                   :class="unsplashSelected[photo.id] ? 'bg-orange-500 border-orange-500' : 'bg-black/25 border-white/90'">
-                                <svg x-show="unsplashSelected[photo.id]" class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
+                                <svg x-show="unsplashSelected[photo.id]" x-cloak class="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"/></svg>
                             </span>
                             <span class="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent px-2 pt-4 pb-1.5 text-[10px] text-white truncate opacity-0 group-hover:opacity-100 transition-opacity"
                                   x-text="photo.photographer + ' / Unsplash'"></span>
@@ -2096,11 +2098,11 @@
                        :value="frameCurrentTime"
                        @input="frameCurrentTime = parseFloat($event.target.value); if ($refs.frameVideo) $refs.frameVideo.currentTime = frameCurrentTime"
                        class="w-full accent-orange-500 cursor-pointer">
-                <div x-show="filmstripLoading" class="flex items-center justify-center py-3 text-stone-400">
+                <div x-show="filmstripLoading" x-cloak class="flex items-center justify-center py-3 text-stone-400">
                     <svg class="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path></svg>
                 </div>
                 <p x-show="!filmstripLoading && filmstripError" class="text-[11px] text-stone-400 text-center" x-text="filmstripError"></p>
-                <div x-show="filmstrip.length" class="flex gap-1.5 overflow-x-auto pb-1">
+                <div x-show="filmstrip.length" x-cloak class="flex gap-1.5 overflow-x-auto pb-1">
                     <template x-for="(frame, idx) in filmstrip" :key="idx">
                         <button type="button"
                                 class="flex-shrink-0 rounded-md overflow-hidden border-2 transition-colors cursor-pointer"
@@ -2112,7 +2114,7 @@
                 </div>
             </div>
             <div class="px-4 sm:px-6 py-4 border-t border-stone-100 flex items-center gap-3 flex-shrink-0">
-                <p x-show="frameError" class="text-xs text-red-500 flex-1" x-text="frameError"></p>
+                <p x-show="frameError" x-cloak class="text-xs text-red-500 flex-1" x-text="frameError"></p>
                 <span x-show="!frameError" class="text-sm text-stone-400">
                     Frame at <span class="font-mono font-semibold text-stone-700 tabular-nums" x-text="formatTimecode(frameCurrentTime)"></span>
                 </span>
@@ -2167,7 +2169,7 @@
          @open-delete-modal.window="showDeleteModal = true; deleteError = ''">
         <div x-show="showDeleteModal" x-cloak class="fixed inset-0 z-[60] flex items-center justify-center" role="dialog" aria-modal="true" aria-label="Delete post" x-pd-dialog="showDeleteModal">
             <div class="fixed inset-0 bg-black/30 backdrop-blur-sm" @click="showDeleteModal = false"
-                 x-show="showDeleteModal"
+                 x-show="showDeleteModal" x-cloak
                  x-transition:enter="transition ease-out duration-150"
                  x-transition:enter-start="opacity-0"
                  x-transition:enter-end="opacity-100"
@@ -2175,7 +2177,7 @@
                  x-transition:leave-start="opacity-100"
                  x-transition:leave-end="opacity-0"></div>
             <div class="relative bg-white rounded-2xl shadow-xl border border-stone-200 p-6 w-full max-w-sm mx-4"
-                 x-show="showDeleteModal"
+                 x-show="showDeleteModal" x-cloak
                  x-transition:enter="transition ease-out duration-150"
                  x-transition:enter-start="opacity-0 scale-95"
                  x-transition:enter-end="opacity-100 scale-100"
@@ -2187,7 +2189,7 @@
                         <svg class="w-6 h-6 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
                     </div>
                     <h3 class="text-base font-semibold text-stone-900 mb-1">Delete post?</h3>
-                    <p x-show="deleteError" x-text="deleteError" role="alert" class="text-sm text-red-700 mb-3"></p>
+                    <p x-show="deleteError" x-cloak x-text="deleteError" role="alert" class="text-sm text-red-700 mb-3"></p>
                     <p class="text-sm text-stone-500 mb-6">This action cannot be undone. The post and all associated data will be permanently removed.</p>
                 </div>
                 <div class="flex gap-3">

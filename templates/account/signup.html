@@ -4,7 +4,7 @@
 {% block auth_content %}
 <div class="pd-auth pd-auth--signup">
   <section class="pd-story">
-    <div class="pd-brand"><img src="{% if brand_name == 'PostDelegate' %}{% static 'img/postdelegate-mark.svg' %}{% else %}{% static brand_logo_static %}{% endif %}" alt="" class="pd-logo"><span class="pd-word">{{ brand_name }}</span></div>
+    <div class="pd-brand"><img src="{% if brand_name == 'PostDelegate' %}{% static 'img/postdelegate-mark.svg' %}{% else %}{% static brand_logo_static %}{% endif %}" alt="" width="38" height="38" class="pd-logo"><span class="pd-word">{{ brand_name }}</span></div>
     <div class="pd-copy">
       <div class="pd-kicker"><span class="pd-dot"></span>Social publishing, without the chaos</div>
       <h2>Plan once.<br>Publish everywhere.</h2>
@@ -18,7 +18,7 @@
   </section>
   <section class="pd-form">
     <div class="pd-form-inner">
-      <div class="pd-mobile-brand"><img src="{% if brand_name == 'PostDelegate' %}{% static 'img/postdelegate-mark.svg' %}{% else %}{% static brand_logo_static %}{% endif %}" alt=""><strong>{{ brand_name }}</strong></div>
+      <div class="pd-mobile-brand"><img src="{% if brand_name == 'PostDelegate' %}{% static 'img/postdelegate-mark.svg' %}{% else %}{% static brand_logo_static %}{% endif %}" alt="" width="34" height="34"><strong>{{ brand_name }}</strong></div>
       <h1>Create your account</h1>
       <p class="pd-sub">Set up your PostDelegate workspace in a minute.</p>
       {% if messages %}<div class="mb-5 space-y-2">{% for message in messages %}<div class="{% if message.tags == 'error' %}alert-error{% elif message.tags == 'success' %}alert-success{% else %}alert-info{% endif %}">{{ message }}</div>{% endfor %}</div>{% endif %}

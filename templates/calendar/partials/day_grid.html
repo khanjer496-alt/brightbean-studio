@@ -3,7 +3,7 @@ Day view - single-day timeline with hourly divisions.
 Context: day_slots, target_date, workspace.
 {% endcomment %}
 
-<div class="bg-white mx-auto tab-slide-in max-h-[calc(100vh-200px)] overflow-y-auto" tabindex="0" role="region" aria-label="Day timeline">
+<div class="bg-white mx-auto tab-slide-in max-h-[calc(100dvh-200px)] overflow-y-auto" tabindex="0" role="region" aria-label="Day timeline">
 {% for cell in day_slots %}
     <div class="flex border-b border-stone-100 min-h-[64px] cal-add-cell {% if cell.posts or cell.slots %}has-posts{% else %}max-sm:min-h-[44px]{% endif %} {% if is_today and cell.hour == current_hour %}bg-orange-50/50{% endif %}">
         <!-- Time label -->

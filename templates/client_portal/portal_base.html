@@ -16,7 +16,7 @@
     {# Same dark-theme mapping as the app, so the portal's cards are not light boxes on a dark page. #}
     <link rel="stylesheet" href="{% static 'css/postdelegate.css' %}">
 </head>
-<body class="min-h-screen" style="background: var(--surface-1); font-family: var(--font-body); color: var(--text-primary);">
+<body class="min-h-dvh" style="background: var(--surface-1); font-family: var(--font-body); color: var(--text-primary);">
     {% csrf_token %}
     <script nonce="{{ request.csp_nonce }}">
         document.body.addEventListener('htmx:configRequest', function(event) {

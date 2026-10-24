@@ -63,9 +63,9 @@
                 {% for tile in tiles %}
                 <li>
                     {% if tile.url %}
-                    <a class="bio-tile" href="{{ tile.url }}" rel="noopener nofollow ugc" target="_blank"{% if tile.id %} data-bio-id="{{ tile.id }}"{% endif %}><img src="{{ tile.image }}" alt="{{ tile.alt }}" loading="lazy"><span class="bio-sr">(opens in a new tab)</span></a>
+                    <a class="bio-tile" href="{{ tile.url }}" rel="noopener nofollow ugc" target="_blank"{% if tile.id %} data-bio-id="{{ tile.id }}"{% endif %}><img src="{{ tile.image }}" alt="{{ tile.alt }}" width="360" height="360" loading="lazy" decoding="async"><span class="bio-sr">(opens in a new tab)</span></a>
                     {% else %}
-                    <span class="bio-tile"><img src="{{ tile.image }}" alt="{{ tile.alt }}" loading="lazy"></span>
+                    <span class="bio-tile"><img src="{{ tile.image }}" alt="{{ tile.alt }}" width="360" height="360" loading="lazy" decoding="async"></span>
                     {% endif %}
                 </li>
                 {% endfor %}

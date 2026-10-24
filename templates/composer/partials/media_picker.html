@@ -7,6 +7,7 @@ Context: assets, workspace, post (optional).
 <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
     {% for asset in assets %}
     <div role="button" tabindex="0" @keydown.enter.self.prevent="$el.click()" @keydown.space.self.prevent="$el.click()" aria-label="Attach {{ asset.filename|escape }}" class="group relative rounded-xl overflow-hidden border border-stone-200 aspect-square cursor-pointer hover:border-orange-400 hover:shadow-md transition-all duration-150"
+         hx-sync="this:drop"
          {% if post %}
          hx-post="{% url 'composer:attach_media' workspace_id=workspace.id post_id=post.id %}"
          {% else %}

@@ -31,7 +31,7 @@
 
   <!-- Subfolders (level 2) -->
   {% if folder.subfolders.all %}
-  <div x-show="expanded" class="ps-5 mt-0.5">
+  <div x-show="expanded" x-cloak class="ps-5 mt-0.5">
     {% for subfolder in folder.subfolders.all %}
     <a href="{% url 'media_library:index' workspace_id=workspace.id %}?folder={{ subfolder.id }}"
        class="ml-folder-item flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm cursor-pointer group {% if current_folder == subfolder.id|slugify %}active{% endif %}">

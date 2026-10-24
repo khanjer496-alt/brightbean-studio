@@ -67,7 +67,7 @@ Uses Alpine.js for client-side category filtering.
     <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {% for tpl in builtin_templates %}
         <button type="button"
-                x-show="activeCategory === 'all' || activeCategory === '{{ tpl.category }}'"
+                x-show="activeCategory === 'all' || activeCategory === '{{ tpl.category }}'" x-cloak
                 x-transition:enter="transition ease-out duration-150"
                 x-transition:enter-start="opacity-0 scale-95"
                 x-transition:enter-end="opacity-100 scale-100"
