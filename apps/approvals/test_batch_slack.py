@@ -226,14 +226,27 @@ class SlackTests(OneTapBase):
             "HTTP_X_SLACK_SIGNATURE": slack.compute_signature(secret, ts, body),
         }
 
-    def post(self, payload, **kw):
+    def post(self, payload, drain=True, **kw):
+        """Send a signed interaction; ``drain`` then runs what it queued, as the worker would."""
         body, headers = self.signed(payload, **kw)
-        return self.client.post(
+        response = self.client.post(
             reverse("approval_slack:interactions"),
             data=body,
             content_type="application/x-www-form-urlencoded",
             **headers,
         )
+        if drain:
+            self.drain()
+        return response
+
+    def drain(self):
+        from background_task.models import Task
+        from background_task.tasks import tasks as registry
+
+        for task in Task.objects.filter(task_name__startswith="apps.approvals.slack.").order_by("id"):
+            args, kwargs = task.params()
+            registry.run_task(task.task_name, args, kwargs)
+            task.delete()
 
     def button(self, post, action_id=slack.ACTION_APPROVE, user="U1"):
         from apps.approvals import decisions
@@ -284,17 +297,89 @@ class SlackTests(OneTapBase):
             self.assertEqual(bare.status_code, 401)
         self.assertEqual(self.status_of(post), {"pending_review"})
 
-    def test_identical_signed_request_is_accepted_once(self):
+    def test_identical_signed_request_is_acted_on_once(self):
+        from background_task.models import Task
+
         post = self.make_post()
-        body, headers = self.signed(self.button(post, user="U9"))
+        body, headers = self.signed(self.button(post))
         url = reverse("approval_slack:interactions")
-        with (
-            mock.patch("apps.approvals.slack._get", return_value=self.slack_user("nobody@example.com")),
-            mock.patch("apps.approvals.slack._respond"),
-        ):
+        with mock.patch("apps.approvals.slack._get") as get, mock.patch("apps.approvals.slack.api_call") as call:
             first = self.client.post(url, data=body, content_type="application/x-www-form-urlencoded", **headers)
-            second = self.client.post(url, data=body, content_type="application/x-www-form-urlencoded", **headers)
-        self.assertEqual((first.status_code, second.status_code), (200, 409))
+            # Slack resends what it thinks went unanswered, with a fresh signature timestamp.
+            resent = self.client.post(
+                url,
+                data=body,
+                content_type="application/x-www-form-urlencoded",
+                HTTP_X_SLACK_RETRY_NUM="1",
+                HTTP_X_SLACK_RETRY_REASON="http_timeout",
+                **headers,
+            )
+        self.assertEqual((first.status_code, resent.status_code), (200, 200))
+        self.assertEqual(Task.objects.filter(task_name="apps.approvals.slack.process_interaction_task").count(), 1)
+        get.assert_not_called()
+        call.assert_not_called()
+
+    def test_button_is_acknowledged_without_calling_slack(self):
+        from background_task.models import Task
+
+        for action_id in (slack.ACTION_APPROVE,):
+            post = self.make_post()
+            with (
+                mock.patch("apps.approvals.slack._get") as get,
+                mock.patch("apps.approvals.slack.api_call") as call,
+                mock.patch("apps.approvals.slack._respond") as respond,
+            ):
+                resp = self.post(self.button(post, action_id), drain=False)
+            self.assertEqual((resp.status_code, resp.content), (200, b""))
+            for mocked in (get, call, respond):
+                mocked.assert_not_called()
+            self.assertEqual(self.status_of(post), {"pending_review"})
+            self.assertTrue(Task.objects.filter(task_name="apps.approvals.slack.process_interaction_task").exists())
+
+    def test_deferred_approval_goes_through_the_decision_service(self):
+        post = self.make_post()
+        with (
+            mock.patch("apps.approvals.slack._get", return_value=self.slack_user()),
+            mock.patch("apps.approvals.slack.api_call"),
+            mock.patch("apps.approvals.slack.decisions.decide") as decide,
+        ):
+            self.post(self.button(post))
+        self.assertEqual(decide.call_args.args[:3], (post, self.reviewer, self.ws))
+        self.assertEqual(decide.call_args.kwargs["channel"], "slack")
+
+    def test_held_buttons_are_deferred_and_release_through_the_autonomy_service(self):
+        from background_task.models import Task
+
+        payload = {
+            "type": "block_actions",
+            "team": {"id": "T1"},
+            "user": {"id": "U1"},
+            "channel": {"id": "C1"},
+            "message": {"ts": "1.1"},
+            "trigger_id": "trig-held",
+            "response_url": "https://hooks.slack.com/actions/x",
+            "actions": [{"action_id": slack.ACTION_HELD_APPROVE, "value": "00000000-0000-0000-0000-000000000001"}],
+        }
+        action = mock.Mock(id="00000000-0000-0000-0000-000000000001")
+        with (
+            mock.patch("apps.approvals.slack._held_for", return_value=action),
+            mock.patch("apps.approvals.slack._get") as get,
+            mock.patch("apps.approvals.slack.api_call") as call,
+        ):
+            resp = self.post(payload, drain=False)
+        self.assertEqual(resp.status_code, 200)
+        get.assert_not_called()
+        call.assert_not_called()
+        self.assertEqual(Task.objects.filter(task_name="apps.approvals.slack.process_interaction_task").count(), 1)
+        with (
+            mock.patch("apps.approvals.slack._held_for", return_value=action),
+            mock.patch("apps.approvals.slack._get", return_value=self.slack_user()),
+            mock.patch("apps.approvals.slack.api_call"),
+            mock.patch("apps.approvals.slack.held_blocks", return_value=[]),
+            mock.patch("apps.approvals.slack.decisions.decide_held") as decide_held,
+        ):
+            self.drain()
+        decide_held.assert_called_once_with(action, self.reviewer, "approve", channel="slack")
 
     def test_approve_button_maps_verified_email_and_audits(self):
         post = self.make_post()
@@ -362,11 +447,13 @@ class SlackTests(OneTapBase):
     def test_request_changes_opens_modal_then_submission_decides(self):
         post = self.make_post()
         with (
-            mock.patch("apps.approvals.slack._get", return_value=self.slack_user()),
+            mock.patch("apps.approvals.slack._get") as get,
             mock.patch("apps.approvals.slack.api_call") as call,
         ):
             self.post(self.button(post, slack.ACTION_CHANGES))
-        self.assertEqual(call.call_args.args[0], "views.open")
+        # Only the dialog is opened inside the three seconds; the sender is not looked up yet.
+        get.assert_not_called()
+        self.assertEqual([c.args[0] for c in call.call_args_list], ["views.open"])
         meta = json.loads(call.call_args.args[2]["view"]["private_metadata"])
         submission = {
             "type": "view_submission",

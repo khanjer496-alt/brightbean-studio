@@ -37,6 +37,7 @@ def interactions(request):
         request.body,
         request.headers.get("X-Slack-Request-Timestamp", ""),
         request.headers.get("X-Slack-Signature", ""),
+        request.headers.get("X-Slack-Retry-Num", ""),
     )
     if status != 200:
         return HttpResponse(status=status)
