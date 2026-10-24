@@ -1,0 +1,62 @@
+{% extends "legal/base.html" %}
+{% block page_title %}Data Processing Addendum{% endblock %}
+{% block description %}The data processing terms for business customers of {{ brand_name }}.{% endblock %}
+{% block content %}
+{# DRAFT FOR THE OWNER'S LEGAL REVIEW: not reviewed by a lawyer; do not treat as final legal text. #}
+<h1>Data Processing Addendum</h1>
+<p class="legal-meta">Effective {{ legal_effective_date }}</p>
+
+<p class="legal-note">This addendum is part of the <a href="{% url 'legal:terms' %}">Terms of Service</a> for business customers. It applies when we process personal data on your behalf and the GDPR or a similar law applies. If the two conflict on the handling of personal data, this addendum wins.</p>
+
+<h2>1. Parties</h2>
+<p>The customer is the business or organization that has an account with {{ brand_name }} ("Controller", "you"). The provider is {{ legal_name }}, {{ legal_jurisdiction }}, {{ legal_address }} ("Processor", "we"). Contact: <a href="mailto:{{ brand_support_email }}">{{ brand_support_email }}</a>.</p>
+
+<h2>2. Subject matter and duration</h2>
+<p>We process personal data to provide {{ brand_name }} to you, as described in the Terms. This addendum lasts as long as you have an account, and for any period after that in which we still hold your data (see section 9).</p>
+
+<h2>3. Nature and purpose of processing</h2>
+<p>We store, transmit and display personal data so you can connect social accounts, draft, schedule and publish posts, read and reply to comments and messages, collaborate with your team and clients, and view analytics and reports. If you use AI features, we send the text you provide to the AI provider you or we use for that feature. We process data only to deliver the service and on your documented instructions: your use of the service, its settings and your written requests.</p>
+
+<h2>4. Categories of data and data subjects</h2>
+<ul>
+    <li>Data subjects: your team members, your clients and their portal users, and people who comment on, message or are mentioned in your connected social accounts.</li>
+    <li>Data categories: names, email addresses and account identifiers; profile data and tokens for connected social accounts; post content and media; comments and direct messages; analytics data; usage and log data such as IP address.</li>
+    <li>We do not ask you to send special categories of data. Your content may contain them. You are responsible for having a lawful basis for that.</li>
+</ul>
+
+<h2>5. Our obligations</h2>
+<p>We will:</p>
+<ul>
+    <li>process personal data only on your documented instructions, unless law requires otherwise (we will tell you first, where allowed);</li>
+    <li>make sure everyone who can access the data is bound by confidentiality;</li>
+    <li>apply the security measures in section 8;</li>
+    <li>help you respond to requests from data subjects, and tell you if one reaches us directly;</li>
+    <li>help you with security, breach notification, impact assessments and consultation with authorities, taking into account the information we have;</li>
+    <li>tell you if we think an instruction breaks data protection law.</li>
+</ul>
+<p>You are responsible for the lawfulness of your instructions and content, and for the permissions you have from the people whose data you load into the service.</p>
+
+<h2>6. Subprocessors</h2>
+<p>You agree that we may use the providers on our <a href="{% url 'legal:subprocessors' %}">Subprocessors</a> page. We will update that page before adding or replacing one. If you object on reasonable data protection grounds, email us within 30 days of the update and we will work with you on an alternative. If we cannot find one, you may end the affected service and we will refund the unused part of any prepaid fees. We stay responsible for our subprocessors and bind them to terms no less protective than these.</p>
+
+<h2>7. International transfers</h2>
+<p>We may transfer personal data to countries outside the European Economic Area, the United Kingdom or Switzerland, including the United States. Where we do, and no adequacy decision applies, the Standard Contractual Clauses approved by the European Commission (Module Two, controller to processor) are incorporated by reference, and so is the UK Addendum where the UK GDPR applies. The details they require are as follows: the parties are those in section 1; the data, subjects and purposes are in sections 3 and 4; the competent supervisory authority is the one for your establishment; the governing law is that of Ireland; and the security measures are in section 8. Our own subprocessors are bound by equivalent terms.</p>
+
+<h2>8. Security measures</h2>
+<p>We keep appropriate technical and organizational measures, described in plain terms on our <a href="{% url 'legal:security' %}">Security</a> page. They include encryption in transit, encryption of connected-account tokens at rest, hashed passwords, optional two-factor authentication, scoped access tokens, rate limits, and an activity trail for AI agents. We may improve them, but will not materially reduce them.</p>
+
+<h2>9. Personal data breaches</h2>
+<p>We will tell you without undue delay after we become aware of a personal data breach affecting your data. Our target is within 72 hours. The notice will say what we know about the nature of the breach, the data and people affected, likely consequences and what we are doing about it. We will add detail as we learn it.</p>
+
+<h2>10. Deletion and return</h2>
+<p>You can export and delete your data in the service at any time, and delete your account as described on the <a href="{% url 'legal:data_deletion' %}">Data deletion</a> page. When your account ends we delete your personal data as described there, unless law requires us to keep it. Backups roll off on their normal cycle. Ask us by email if you need a copy of your data in another form before it is deleted.</p>
+
+<h2>11. Audits</h2>
+<p>We will give you the information needed to show we follow this addendum. You may audit us, or have a mutually agreed independent auditor do so, once a year, or after a breach, with 30 days' notice, during business hours, and without access to other customers' data. You pay the costs of the audit. We may meet the request first with written answers and relevant documentation.</p>
+
+<h2>12. Liability</h2>
+<p>Each party's liability under this addendum is subject to the limits in the Terms of Service. Nothing here limits liability that cannot be limited by law, or the rights of data subjects under the Standard Contractual Clauses.</p>
+
+<h2>13. Changes and contact</h2>
+<p>We may update this addendum, with notice, to follow changes in law or the service. Questions about it: <a href="mailto:{{ brand_support_email }}">{{ brand_support_email }}</a>.</p>
+{% endblock %}

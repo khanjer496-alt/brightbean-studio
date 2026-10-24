@@ -14,6 +14,8 @@ from django.shortcuts import redirect
 PORTAL_SESSION_PATH_PREFIXES = (
     "/portal/",
     "/legal/",
+    "/roadmap/",
+    "/.well-known/security.txt",
     "/health/",
     "/accounts/logout/",
     "/accounts/accept-terms/",

@@ -27,7 +27,10 @@
             <li><a href="{% url 'legal:privacy' %}"{% if legal_page == "privacy" %} aria-current="page"{% endif %}>Privacy</a></li>
             <li><a href="{% url 'legal:data_deletion' %}"{% if legal_page == "data_deletion" %} aria-current="page"{% endif %}>Data deletion</a></li>
             <li><a href="{% url 'legal:subprocessors' %}"{% if legal_page == "subprocessors" %} aria-current="page"{% endif %}>Subprocessors</a></li>
+            <li><a href="{% url 'legal:security' %}"{% if legal_page == "security" %} aria-current="page"{% endif %}>Security</a></li>
+            <li><a href="{% url 'legal:dpa' %}"{% if legal_page == "dpa" %} aria-current="page"{% endif %}>DPA</a></li>
             <li><a href="{% url 'legal:licenses' %}"{% if legal_page == "licenses" %} aria-current="page"{% endif %}>Licenses</a></li>
+            <li><a href="{% url 'roadmap:index' %}"{% if legal_page == "roadmap" %} aria-current="page"{% endif %}>Roadmap</a></li>
         </ul>
     </nav>
 </header>
@@ -35,7 +38,7 @@
     {% block content %}{% endblock %}
 </main>
 <footer class="legal-footer">
-    <p>&copy; {{ legal_name }}. Questions: <a href="mailto:{{ brand_support_email }}">{{ brand_support_email }}</a></p>
+    <p>&copy; {{ legal_name }}. Questions: <a href="mailto:{{ brand_support_email }}">{{ brand_support_email }}</a>{% if status_page_url %} · <a href="{{ status_page_url }}" rel="noopener noreferrer">Status</a>{% endif %}</p>
     {% include "partials/_source_credit.html" %}
 </footer>
 </body>

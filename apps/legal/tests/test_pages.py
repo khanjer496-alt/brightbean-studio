@@ -2,7 +2,15 @@ import pytest
 from django.test import override_settings
 from django.urls import reverse
 
-PAGES = ["legal:terms", "legal:privacy", "legal:data_deletion", "legal:licenses", "legal:subprocessors"]
+PAGES = [
+    "legal:terms",
+    "legal:privacy",
+    "legal:data_deletion",
+    "legal:licenses",
+    "legal:subprocessors",
+    "legal:security",
+    "legal:dpa",
+]
 
 
 @pytest.mark.django_db
@@ -95,6 +103,7 @@ def test_licenses_show_source_links_and_assets(client):
         html = client.get(reverse("legal:licenses")).content.decode()
     assert "https://example.test/our/source" in html
     assert "brightbeanxyz/brightbean-studio" in html
+    assert "gitroomhq/postiz-app" in html and "Gitroom/Postiz contributors" in html
     for asset in ("Chart.js", "flatpickr", "SortableJS", "htmx", "Alpine.js", "Cropper.js", "Manrope"):
         assert asset in html
     assert "Emojibase" in html and "18.0.0" in html

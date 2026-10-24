@@ -1,9 +1,12 @@
 """Public legal pages. No login: they must be readable before signing up and by platform reviewers."""
 
+from datetime import timedelta
+
 from django.conf import settings
-from django.http import Http404, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 from django_ratelimit.decorators import ratelimit
@@ -155,6 +158,37 @@ def data_deletion_status(request, code):
         "legal/data_deletion_status.html",
         _context("data_deletion", deletion_request=deletion_request),
     )
+
+
+@require_GET
+def security(request):
+    return render(
+        request,
+        "legal/security.html",
+        _context(
+            "security", security_email=settings.SECURITY_CONTACT_EMAIL, hosting_region=settings.LEGAL_HOSTING_REGION
+        ),
+    )
+
+
+@require_GET
+def dpa(request):
+    return render(request, "legal/dpa.html", _context("dpa"))
+
+
+@require_GET
+def security_txt(request):
+    """RFC 9116 security contact file. Expires rolls forward with each request so it never goes stale."""
+    base = settings.APP_URL.rstrip("/")
+    expires = (timezone.now() + timedelta(days=180)).replace(microsecond=0).strftime("%Y-%m-%dT%H:%M:%SZ")
+    body = (
+        f"Contact: mailto:{settings.SECURITY_CONTACT_EMAIL}\n"
+        f"Expires: {expires}\n"
+        "Preferred-Languages: en, ar\n"
+        f"Policy: {base}{reverse('legal:security')}\n"
+        f"Canonical: {base}/.well-known/security.txt\n"
+    )
+    return HttpResponse(body, content_type="text/plain; charset=utf-8")
 
 
 @require_GET

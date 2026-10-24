@@ -45,6 +45,12 @@ LEGAL_ADDRESS = env("LEGAL_ADDRESS", default="[Registered business address to be
 LEGAL_EFFECTIVE_DATE = env("LEGAL_EFFECTIVE_DATE", default="[Effective date to be completed]")
 LEGAL_GOVERNING_LAW = env("LEGAL_GOVERNING_LAW", default="the State of Wyoming, USA")
 LEGAL_EMAIL_PROVIDER = env("LEGAL_EMAIL_PROVIDER", default="Resend")
+# Where vulnerability reports go (Security page, /.well-known/security.txt).
+SECURITY_CONTACT_EMAIL = env("SECURITY_CONTACT_EMAIL", default="security@postdelegate.com")
+# Hosting region printed on the Security page. Left as a placeholder until the owner confirms the region.
+LEGAL_HOSTING_REGION = env("LEGAL_HOSTING_REGION", default="[Hosting region to be confirmed]")
+# Public status page (hosted on Cloudflare later). The footer shows a "Status" link only when this is set.
+STATUS_PAGE_URL = env("STATUS_PAGE_URL", default="")
 # Sidebar "leave a review" card. Off unless a review page is configured.
 REVIEW_BANNER_URL = env("REVIEW_BANNER_URL", default="")
 # AGPL-3.0 §13: users interacting over the network are offered the source of
@@ -105,6 +111,7 @@ LOCAL_APPS = [
     "apps.approvals",
     "apps.client_portal",
     "apps.onboarding",
+    "apps.roadmap",
     # Always installed (migrations consistent across deployments). URLs +
     # templates short-circuit when ``settings.INTELLIGENCE_ENABLED`` is False,
     # so self-hosters who don't set the Intelligence env vars get no
