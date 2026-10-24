@@ -25,6 +25,7 @@ from __future__ import annotations
 import base64
 import logging
 import re
+import time
 from urllib.parse import urlencode, urlparse
 
 from django.conf import settings
@@ -62,6 +63,13 @@ MAX_COMMENT_LENGTH = 10000
 
 SUBREDDIT_PATTERN = re.compile(r"[A-Za-z0-9_]{2,21}")
 
+# One post can go to several subreddits (the first plus ``extra_subreddits``), submitted one after another. The cap
+# and the pause between submissions are ours, not Reddit's: reddit.com rate-limits submissions per account and per
+# subreddit ("RATELIMIT") and treats the same post pushed to many communities as spam, so a handful, spaced out,
+# is the most we will send in one go.
+MAX_SUBREDDITS_PER_POST = 5
+SUBREDDIT_SPACING_SECONDS = 15
+
 # Reddit's ``json.errors`` codes that no retry can fix, mapped to what to tell the user.
 _PERMANENT_ERRORS = {
     "SUBREDDIT_NOEXIST": "That subreddit doesn't exist. Check the name.",
@@ -89,6 +97,19 @@ def normalize_subreddit(value: str | None) -> str:
     name = (value or "").strip()
     name = re.sub(r"^/?r/", "", name, flags=re.IGNORECASE).strip("/")
     return name if SUBREDDIT_PATTERN.fullmatch(name) else ""
+
+
+def parse_extra_subreddits(raw) -> list[tuple[str, str]]:
+    """``(subreddit, flair name)`` pairs from "a | Flair, b": names normalized, order kept, blanks skipped.
+
+    An unreadable name stays as typed (with its flair) so validation can name it.
+    """
+    pairs: list[tuple[str, str]] = []
+    for entry in str(raw or "").split(","):
+        name, _bar, flair = entry.partition("|")
+        if name.strip():
+            pairs.append((normalize_subreddit(name) or name.strip(), flair.strip()))
+    return pairs
 
 
 def default_user_agent() -> str:
@@ -134,7 +155,10 @@ class RedditProvider(SocialProvider):
             label="Post type",
             kind="select",
             choices=(("self", "Text post"), ("link", "Link post")),
-            help="A text post uses the caption as its body; a link post shares the link below.",
+            help=(
+                "A text post uses the caption as its body; a link post shares the link below. Image and video posts "
+                "aren't offered: Reddit doesn't document a media upload for apps."
+            ),
         ),
         PostSetting(
             key="link_url",
@@ -151,6 +175,18 @@ class RedditProvider(SocialProvider):
             options_from_provider=True,
             depends_on="subreddit",
             help="Some subreddits require one.",
+        ),
+        PostSetting(
+            key="extra_subreddits",
+            label="Also post to",
+            kind="text",
+            max_length=300,
+            placeholder="learnpython | Question, flask",
+            help=(
+                f"Up to {MAX_SUBREDDITS_PER_POST - 1} more subreddits, separated by commas, each posted "
+                f"{SUBREDDIT_SPACING_SECONDS} seconds apart. Add | and a flair name to set that subreddit's flair. "
+                "Posting the same thing to many communities can be treated as spam; keep it relevant to each."
+            ),
         ),
         PostSetting(key="nsfw", label="Mark as NSFW", kind="checkbox"),
         PostSetting(key="spoiler", label="Mark as spoiler", kind="checkbox"),
@@ -359,6 +395,15 @@ class RedditProvider(SocialProvider):
             return error
         if not normalize_subreddit(settings.get("subreddit")):
             return "Subreddit must be a name like python (letters, numbers and underscores, 2-21 characters)."
+        extras = parse_extra_subreddits(settings.get("extra_subreddits"))
+        names = [normalize_subreddit(settings.get("subreddit")).lower(), *(name.lower() for name, _flair in extras)]
+        bad = next((name for name, _flair in extras if not normalize_subreddit(name)), None)
+        if bad:
+            return f"{bad!r} isn't a subreddit name (letters, numbers and underscores, 2-21 characters)."
+        if len(names) > MAX_SUBREDDITS_PER_POST:
+            return f"Post to at most {MAX_SUBREDDITS_PER_POST} subreddits at a time."
+        if len(set(names)) != len(names):
+            return "Each subreddit can be listed only once."
         if settings.get("post_kind") == "link":
             url = str(settings.get("link_url") or "").strip()
             parsed = urlparse(url)
@@ -420,6 +465,68 @@ class RedditProvider(SocialProvider):
             raise PublishError(error, platform=self.platform_name, retryable=False)
 
         is_link = extra.get("post_kind") == "link"
+        targets = [(subreddit, str(extra.get("flair_id") or ""))]
+        for name, flair_name in parse_extra_subreddits(extra.get("extra_subreddits")):
+            targets.append((name, self._flair_id_by_name(access_token, name, flair_name) if flair_name else ""))
+        link = content.link_url or extra.get("link_url")
+        if extra.get("post_kind") != "link" and len(content.text or "") > MAX_TEXT_LENGTH:
+            raise PublishError(
+                f"Reddit text posts are limited to {MAX_TEXT_LENGTH} characters.",
+                platform=self.platform_name,
+                retryable=False,
+            )
+
+        done: list[dict] = []
+        for index, (name, flair_id) in enumerate(targets):
+            if index:
+                self._pause_between_submissions(content)
+            try:
+                done.append(self._submit(access_token, content, name, flair_id, link))
+            except Exception as exc:
+                if not done:
+                    raise
+                # Earlier subreddits already have the post; a retry would repeat it there.
+                raise PublishError(
+                    f"Posted to {', '.join('r/' + d['subreddit'] for d in done)}, but not to r/{name}: {exc}",
+                    platform=self.platform_name,
+                    retryable=False,
+                ) from exc
+        first = done[0]
+        extra_out = {"subreddit": first["subreddit"], "fullname": first["fullname"]}
+        if len(done) > 1:
+            extra_out["also_posted"] = [
+                {"subreddit": d["subreddit"], "fullname": d["fullname"], "url": d["url"]} for d in done[1:]
+            ]
+        return PublishResult(platform_post_id=first["fullname"], url=first["url"], extra=extra_out)
+
+    def _pause_between_submissions(self, content: PublishContent) -> None:
+        """Wait out the spacing between two subreddits, giving up early when the worker is stopping."""
+        deadline = time.monotonic() + SUBREDDIT_SPACING_SECONDS
+        while time.monotonic() < deadline:
+            if content.should_stop is not None and content.should_stop():
+                raise PublishError(
+                    "Publishing was interrupted between subreddits.", platform=self.platform_name, retryable=False
+                )
+            time.sleep(min(1.0, max(0.0, deadline - time.monotonic())))
+
+    def _flair_id_by_name(self, access_token: str, subreddit: str, flair_name: str) -> str:
+        """The id of the flair called ``flair_name`` in ``subreddit``, or a permanent error naming the choices."""
+        options = self.get_setting_options(access_token, "flair_id", subreddit)
+        for option in options:
+            if option["name"].strip().lower() == flair_name.strip().lower():
+                return option["id"]
+        known = ", ".join(option["name"] for option in options[:8]) or "none"
+        raise PublishError(
+            f"r/{subreddit} has no flair called {flair_name!r} (available: {known}).",
+            platform=self.platform_name,
+            retryable=False,
+        )
+
+    def _submit(self, access_token: str, content: PublishContent, subreddit: str, flair_id: str, link) -> dict:
+        """One ``/api/submit`` to ``subreddit``: ``{"subreddit", "fullname", "url"}``."""
+        extra = content.extra
+        title = (content.title or "").strip()
+        is_link = extra.get("post_kind") == "link"
         form = {
             "api_type": "json",
             "kind": "link" if is_link else "self",
@@ -430,17 +537,11 @@ class RedditProvider(SocialProvider):
             "sendreplies": "true",
         }
         if is_link:
-            form["url"] = content.link_url or extra.get("link_url")
+            form["url"] = link
         else:
-            if len(content.text or "") > MAX_TEXT_LENGTH:
-                raise PublishError(
-                    f"Reddit text posts are limited to {MAX_TEXT_LENGTH} characters.",
-                    platform=self.platform_name,
-                    retryable=False,
-                )
             form["text"] = content.text or ""
-        if extra.get("flair_id"):
-            form["flair_id"] = str(extra["flair_id"])
+        if flair_id:
+            form["flair_id"] = flair_id
 
         data = self._api_request("POST", "/api/submit", access_token, data=form).json()
         self._raise_for_json_errors(data, subreddit=subreddit)
@@ -454,11 +555,7 @@ class RedditProvider(SocialProvider):
                 raw_response=data,
                 ambiguous_write=True,
             )
-        return PublishResult(
-            platform_post_id=fullname,
-            url=result.get("url") or None,
-            extra={"subreddit": subreddit, "fullname": fullname},
-        )
+        return {"subreddit": subreddit, "fullname": fullname, "url": result.get("url") or None}
 
     def publish_comment(self, access_token: str, post_id: str, text: str) -> CommentResult:
         """Comment on a post the account made (also how later thread parts are posted)."""
