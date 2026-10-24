@@ -1,0 +1,117 @@
+{% comment %}
+x-pd-dialog - Alpine directive that makes an element behave as a modal dialog while its expression is truthy.
+Included once by base.html; see components/modal.html for the markup and the {% modal %} tag.
+
+    <div x-show="open" x-pd-dialog="open" role="dialog" aria-modal="true" aria-labelledby="t" data-return-focus="#opener">
+
+While open: focus moves inside (first [data-autofocus], else first focusable, else the element), Tab wraps,
+Escape assigns `false` to the expression, every other part of the page is inert (live regions stay announced)
+and the page scroll is locked. On close focus returns to the element that opened it, or to the
+data-return-focus selector (comma list allowed; first visible match wins) when that element is gone or hidden.
+data-dialog-close="expr" overrides the close expression when the open expression is not assignable.
+Elements with role=alert/status, aria-live or data-pd-backdrop are not made inert.
+{% endcomment %}
+<script nonce="{{ request.csp_nonce }}">
+document.addEventListener('alpine:init', function () {
+    var FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled]),summary,[tabindex]:not([tabindex="-1"]),[contenteditable="true"]';
+    var scrollLocks = 0;   // dialogs currently open (also drives the page scroll lock)
+
+    function focusables(root) {
+        return Array.prototype.filter.call(root.querySelectorAll(FOCUSABLE), function (node) {
+            return node.getClientRects().length > 0 && getComputedStyle(node).visibility !== 'hidden';
+        });
+    }
+
+    // Make every node outside `el`'s ancestor chain inert, except live regions. Returns an undo function.
+    function isolate(el) {
+        var marked = [];
+        for (var node = el; node && node !== document.body; node = node.parentElement) {
+            var parent = node.parentElement;
+            if (!parent) break;
+            Array.prototype.forEach.call(parent.children, function (sibling) {
+                if (sibling === node || sibling.inert || /^(SCRIPT|STYLE|TEMPLATE|LINK)$/.test(sibling.tagName)) return;
+                if (sibling.matches('[role="alert"],[role="status"],[aria-live],[data-pd-backdrop]')) return;
+                // A closed sibling dialog stays usable for later; an open one is stacked under this dialog.
+                if (sibling.hasAttribute('x-pd-dialog') && sibling.getClientRects().length === 0) return;
+                sibling.inert = true;
+                marked.push(sibling);
+            });
+        }
+        return function () { marked.forEach(function (n) { n.inert = false; }); };
+    }
+
+    Alpine.directive('pd-dialog', function (el, directive, utils) {
+        var evaluate = utils.evaluateLater(directive.expression);
+        var close = utils.evaluateLater(el.getAttribute('data-dialog-close') || (directive.expression + ' = false'));
+        var opener = null, undo = null, active = false;
+
+        function onKeydown(event) {
+            if (event.key === 'Escape') {
+                event.stopPropagation();
+                close();
+                return;
+            }
+            if (event.key !== 'Tab') return;
+            var items = focusables(el);
+            if (!items.length) { event.preventDefault(); return; }
+            var first = items[0], last = items[items.length - 1];
+            if (event.shiftKey && (document.activeElement === first || !el.contains(document.activeElement))) {
+                event.preventDefault(); last.focus();
+            } else if (!event.shiftKey && (document.activeElement === last || !el.contains(document.activeElement))) {
+                event.preventDefault(); first.focus();
+            }
+        }
+
+        function open() {
+            active = true;
+            opener = document.activeElement;
+            el.inert = false;   // an earlier dialog may have made this (then hidden) sibling inert
+            undo = isolate(el);
+            if (scrollLocks++ === 0) document.documentElement.classList.add('pd-scroll-locked');
+            el.addEventListener('keydown', onKeydown);
+            // Other effects (x-show, :inert) settle in the same tick; retry briefly until focus can land.
+            var tries = 0;
+            (function focusInside() {
+                if (!active) return;
+                var target = el.querySelector('[data-autofocus]') || focusables(el)[0] || el.querySelector('[tabindex="-1"]') || el;
+                if (!target.hasAttribute('tabindex') && target === el) target.setAttribute('tabindex', '-1');
+                target.focus({ preventScroll: true });
+                if (!el.contains(document.activeElement) && ++tries < 12) setTimeout(focusInside, 30);
+            })();
+        }
+
+        function shut() {
+            active = false;
+            el.removeEventListener('keydown', onKeydown);
+            if (undo) { undo(); undo = null; }
+            if (--scrollLocks <= 0) { scrollLocks = 0; document.documentElement.classList.remove('pd-scroll-locked'); }
+            // Another dialog took over (e.g. the drawer closing as a modal opens): leave focus to it.
+            if (scrollLocks > 0) { opener = null; return; }
+            var fallback = el.getAttribute('data-return-focus');
+            var back = opener && document.contains(opener) && opener.getClientRects().length && !opener.closest('[inert]') ? opener : null;
+            if (!back && fallback) {
+                back = Array.prototype.find.call(document.querySelectorAll(fallback), function (n) {
+                    return n.getClientRects().length > 0 && !n.closest('[inert]');
+                });
+            }
+            opener = null;
+            if (back) {
+                var returned = 0;
+                (function giveBack() {
+                    if (scrollLocks > 0) return;
+                    back.focus({ preventScroll: true });
+                    if (document.activeElement !== back && ++returned < 12) setTimeout(giveBack, 30);
+                })();
+            }
+        }
+
+        utils.effect(function () {
+            evaluate(function (value) {
+                if (value && !active) open();
+                else if (!value && active) shut();
+            });
+        });
+        utils.cleanup(function () { if (active) shut(); });
+    });
+});
+</script>

@@ -1,13 +1,14 @@
-{% load static %}<!DOCTYPE html>
-<html lang="en" data-theme="postdelegate">
+{% load static i18n %}{% get_current_language as LANGUAGE_CODE %}{% get_current_language_bidi as LANGUAGE_BIDI %}<!DOCTYPE html>
+<html lang="{{ LANGUAGE_CODE }}" dir="{% if LANGUAGE_BIDI %}rtl{% else %}ltr{% endif %}" data-theme="postdelegate">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Legal{% endblock %} - {{ brand_name }}</title>
+    <title>{% block title %}Legal{% endblock %} · {{ brand_name }}</title>
     <meta name="description" content="{% block description %}{{ brand_name }} legal information.{% endblock %}">
     <link rel="icon" href="{% static brand_favicon_ico_static %}" sizes="any">
     <link rel="icon" type="image/svg+xml" href="{% static brand_favicon_static %}">
     <link rel="apple-touch-icon" sizes="180x180" href="{% static brand_apple_touch_icon_static %}">
+    <link rel="preload" href="{% static 'fonts/manrope-latin.woff2' %}" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{% static 'css/dist/styles.css' %}">
     <link rel="stylesheet" href="{% static 'css/postdelegate.css' %}">
     <link rel="stylesheet" href="{% static 'css/legal.css' %}">

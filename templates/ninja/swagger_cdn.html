@@ -1,16 +1,22 @@
-<!DOCTYPE html>
-<html>
+{% load static %}<!DOCTYPE html>
+{% comment %}
+  API reference page. Swagger UI 5.21.0 (Apache-2.0) is self-hosted from
+  static/vendor/swagger-ui-5.21.0, so the CSP allows no third-party script host.
+  The file keeps the name Ninja looks up (swagger_cdn.html); see apps/api/api.py.
+{% endcomment %}
+<html lang="en">
 <head>
-    <link type="text/css" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css">
-    <link rel="icon" href="https://django-ninja.dev/img/favicon.svg" type="image/svg+xml">
-    <link rel="icon" href="https://django-ninja.dev/img/favicon.png" type="image/png">
-    <title>{{ api.title }}</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light">
+    <link type="text/css" rel="stylesheet" href="{% static 'vendor/swagger-ui-5.21.0/swagger-ui.css' %}">
+    <link rel="icon" href="{% static brand_favicon_ico_static|default:'favicon/favicon.ico' %}" sizes="any">
+    <title>{{ api.title }} reference</title>
 </head>
 <body>
-    <div id="swagger-ui">
-    </div>
+    <main id="swagger-ui" aria-label="{{ api.title }} reference"></main>
 
-    <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+    <script src="{% static 'vendor/swagger-ui-5.21.0/swagger-ui-bundle.js' %}"></script>
     <script type="application/json" id="swagger-settings" nonce="{{ request.csp_nonce }}">
         {{ swagger_settings | safe }}
     </script>

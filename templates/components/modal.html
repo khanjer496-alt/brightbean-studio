@@ -1,0 +1,46 @@
+{% comment %}
+ACCESSIBLE MODAL DIALOG - focus trap, Escape, aria-modal, scroll lock, focus return.
+
+    {% load common_extras %}
+    <div x-data="{ confirmOpen: false }">
+      <button type="button" @click="confirmOpen = true" id="delete-btn">Delete post</button>
+      {% modal open="confirmOpen" title="Delete this post?" description="This cannot be undone." size="sm" %}
+        <form method="post" action="...">{% csrf_token %}
+          <div class="pd-modal-actions">
+            <button type="button" class="btn-outline w-auto" @click="confirmOpen = false">Cancel</button>
+            <button type="submit" class="btn-brand w-auto" data-autofocus>Delete</button>
+          </div>
+        </form>
+      {% endmodal %}
+    </div>
+
+Arguments:
+  open         REQUIRED. Alpine expression that is true while open and ASSIGNABLE (a data property),
+               e.g. "confirmOpen". The dialog sets it to false on Escape, backdrop click and the X button.
+  title        REQUIRED. Visible heading; labels the dialog (aria-labelledby).
+  description  optional text; wired to aria-describedby.
+  size         "sm" (24rem), "md" (32rem, default), "lg" (48rem). Full screen below 640px.
+  teleport     True (default) moves the dialog to <body> so no ancestor can clip or transform it.
+  return_focus optional CSS selector to focus on close when the opener is hidden or gone
+               (e.g. the opener lived in a menu that closed). Defaults to the previously focused element.
+Behaviour (implemented by the x-pd-dialog directive in components/_dialog_js.html, loaded by base.html):
+  - On open the first [data-autofocus] element, else the first focusable, else the panel gets focus.
+  - Tab / Shift+Tab wrap inside the dialog; everything outside is inert; the page does not scroll.
+  - Escape closes it; closing returns focus to the opener.
+For a hand-written dialog (custom layout) put x-pd-dialog="openExpr", role="dialog" aria-modal="true" and
+aria-labelledby on your own markup; the directive supplies the behaviour.
+{% endcomment %}{% load common_extras %}{% if teleport %}<template x-teleport="body">{% endif %}
+<div x-show="{{ open }}" x-cloak x-pd-dialog="{{ open }}"{% if return_focus %} data-return-focus="{{ return_focus }}"{% endif %}
+     x-transition:enter="transition ease-out duration-150" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100"
+     x-transition:leave="transition ease-in duration-100" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"
+     class="pd-modal-root" @click.self="{{ open }} = false">
+    <div class="pd-modal pd-modal--{{ size }}" role="dialog" aria-modal="true" aria-labelledby="{{ uid }}-title"{% if description %} aria-describedby="{{ uid }}-desc"{% endif %} tabindex="-1">
+        <div class="pd-modal-head">
+            <h2 id="{{ uid }}-title" class="pd-modal-title">{{ title }}</h2>
+            {% icon_button label="Close dialog" icon="close" click=close_expr size="sm" %}
+        </div>
+        {% if description %}<p id="{{ uid }}-desc" class="pd-modal-desc">{{ description }}</p>{% endif %}
+        <div class="pd-modal-body">{{ content }}</div>
+    </div>
+</div>
+{% if teleport %}</template>{% endif %}

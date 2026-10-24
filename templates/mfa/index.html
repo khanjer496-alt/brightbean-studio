@@ -21,12 +21,12 @@
             </p>
         </div>
         {% if authenticators.totp %}
-        <a href="{% url 'mfa_deactivate_totp' %}"
+        <a href="{% url 'mfa_deactivate_totp' %}" aria-label="{% trans 'Turn off authenticator app' %}"
            class="btn-danger-soft px-5 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap shrink-0 bg-[var(--error-50)] text-[var(--error-500)]">
             {% trans "Turn off" %}
         </a>
         {% else %}
-        <a href="{% url 'mfa_activate_totp' %}"
+        <a href="{% url 'mfa_activate_totp' %}" aria-label="{% trans 'Set up authenticator app' %}"
            class="btn-neutral px-5 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap shrink-0 bg-[var(--neutral-100)] text-[var(--text-primary)]">
             {% trans "Set up" %}
         </a>
@@ -50,12 +50,12 @@
         </div>
         <div class="flex gap-2 shrink-0">
             {% if authenticators.recovery_codes and unused_count > 0 %}
-            <a href="{% url 'mfa_view_recovery_codes' %}"
+            <a href="{% url 'mfa_view_recovery_codes' %}" aria-label="{% trans 'View recovery codes' %}"
                class="btn-neutral px-5 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap bg-[var(--neutral-100)] text-[var(--text-primary)]">
                 {% trans "View" %}
             </a>
             {% endif %}
-            <a href="{% url 'mfa_generate_recovery_codes' %}"
+            <a href="{% url 'mfa_generate_recovery_codes' %}" aria-label="{% trans 'Generate new recovery codes' %}"
                class="btn-neutral px-5 py-2 text-sm font-medium rounded-full transition-colors whitespace-nowrap bg-[var(--neutral-100)] text-[var(--text-primary)]">
                 {% trans "Generate new" %}
             </a>

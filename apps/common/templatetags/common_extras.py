@@ -1,6 +1,8 @@
 import json
+import secrets
 
 from django import template
+from django.template.loader import render_to_string
 from django.utils.html import escape
 from django.utils.safestring import mark_safe
 
@@ -102,3 +104,69 @@ def ui_select(
         "placeholder": placeholder,
         "icon": icon,
     }
+
+
+@register.inclusion_tag("components/icon_button.html")
+def icon_button(
+    *,
+    label,
+    icon,
+    click="",
+    expanded="",
+    controls="",
+    href="",
+    size="md",
+    variant="ghost",
+    extra_class="",
+    type="button",
+    icon_size=20,
+    id="",
+):
+    """An icon-only button or link with a required accessible name.
+
+    Usage and arguments are documented at the top of components/icon_button.html.
+    An empty ``label`` is a template error: icon-only controls must be named.
+    """
+    if not str(label).strip():
+        raise template.TemplateSyntaxError(
+            "icon_button requires a non-empty label (it is the control's accessible name)"
+        )
+    return {
+        "label": label,
+        "icon": icon,
+        "click": click,
+        "expanded": expanded,
+        "controls": controls,
+        "href": href,
+        "size": size,
+        "variant": variant,
+        "extra_class": extra_class,
+        "type": type,
+        "icon_size": icon_size,
+        "id": id,
+    }
+
+
+@register.simple_block_tag
+def modal(content, *, open, title, description="", size="md", teleport=True, return_focus=""):
+    """An accessible modal dialog wrapping the block content.
+
+    Usage and arguments are documented at the top of components/modal.html.
+    ``open`` is an assignable Alpine expression naming the boolean that shows the dialog.
+    """
+    if not str(title).strip():
+        raise template.TemplateSyntaxError("modal requires a non-empty title (it labels the dialog)")
+    return render_to_string(
+        "components/modal.html",
+        {
+            "open": open,
+            "close_expr": f"{open} = false",
+            "title": title,
+            "description": description,
+            "size": size,
+            "teleport": teleport,
+            "return_focus": return_focus,
+            "uid": f"pd-modal-{secrets.token_hex(4)}",
+            "content": content,
+        },
+    )

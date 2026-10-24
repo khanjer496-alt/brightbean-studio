@@ -1,8 +1,7 @@
 {% extends "base.html" %}
 {% block html_style %}{% endblock %}
-{% block title %}{% block head_title %}{% endblock %} - {{ brand_short_name }}{% endblock %}
+{% block title %}{% block head_title %}{% endblock %} · {{ brand_name }}{% endblock %}
 {% block auth_content %}
-{% include "account/partials/_auth_theme.html" %}
 <div class="auth-card">
     {% if messages %}
     <div class="mb-6 space-y-2">

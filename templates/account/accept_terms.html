@@ -1,30 +1,32 @@
-{% load static %}
-<!DOCTYPE html>
-<html lang="en">
+{% load static i18n %}{% get_current_language as LANGUAGE_CODE %}{% get_current_language_bidi as LANGUAGE_BIDI %}<!DOCTYPE html>
+<html lang="{{ LANGUAGE_CODE }}" dir="{% if LANGUAGE_BIDI %}rtl{% else %}ltr{% endif %}" data-theme="postdelegate">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Accept Terms - {{ brand_name }}</title>
+    <title>Accept terms · {{ brand_name }}</title>
     <link rel="icon" href="{% static brand_favicon_ico_static %}" sizes="any">
     <link rel="icon" type="image/svg+xml" href="{% static brand_favicon_static %}">
     <link rel="icon" type="image/png" sizes="96x96" href="{% static 'favicon/favicon-96x96.png' %}">
     <link rel="apple-touch-icon" sizes="180x180" href="{% static brand_apple_touch_icon_static %}">
     <link rel="manifest" href="{% static brand_manifest_static %}">
+    <link rel="preload" href="{% static 'fonts/manrope-latin.woff2' %}" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="{% static 'css/dist/styles.css' %}">
-{% include "account/partials/_auth_theme.html" %}
+    <link rel="stylesheet" href="{% static 'css/postdelegate.css' %}">
 </head>
 <body>
-<main class="auth-bg relative min-h-screen flex items-center justify-center py-12 px-4" style="font-family: var(--font-body);">
+<a href="#main-content" class="pd-skip-link">Skip to main content</a>
+<div class="auth-bg relative min-h-screen flex flex-col">
+<main id="main-content" tabindex="-1" class="flex-1 flex items-center justify-center py-12 px-4">
     <div class="w-full max-w-md px-4">
         <!-- Logo & Header -->
         <div class="text-center mb-8">
             <div class="inline-flex items-center justify-center w-12 h-12 mb-4">
                 <img src="{% if brand_name == 'PostDelegate' %}{% static 'img/postdelegate-mark.svg' %}{% else %}{% static brand_logo_static %}{% endif %}" alt="{{ brand_name }} logo" class="w-12 h-12 object-contain">
             </div>
-            <h1 class="text-2xl font-bold tracking-tight" style="color: var(--text-primary);">
+            <h1 class="text-2xl font-bold tracking-tight text-ink">
                 Almost there
             </h1>
-            <p class="text-sm mt-1" style="color: var(--text-secondary);">
+            <p class="text-sm mt-1 text-ink-2">
                 Please review and accept our terms to continue
             </p>
         </div>
@@ -41,24 +43,23 @@
             </div>
             {% endif %}
 
-            <p class="text-sm mb-6" style="color: var(--text-secondary); line-height: 1.6;">
+            <p class="text-sm mb-6 text-ink-2 leading-relaxed">
                 One quick step before you get started.
             </p>
 
             <form method="post">
                 {% csrf_token %}
 
-                <label for="id_agree" class="btn-surface-1 flex items-start gap-3 cursor-pointer mb-6 p-3 rounded-lg transition-colors" style="border: 1.5px solid var(--border);">
+                <label for="id_agree" class="btn-surface-1 flex items-start gap-3 cursor-pointer mb-6 p-3 rounded-lg transition-colors border-[1.5px] border-[var(--border-input)]">
                     <input type="checkbox"
                            name="agree"
                            id="id_agree"
-                           class="w-4 h-4 rounded mt-0.5 flex-shrink-0 cursor-pointer accent-[var(--primary)]"
-                           style="border-color: var(--border);">
-                    <span class="text-sm" style="color: var(--text-primary); line-height: 1.5;">
+                           class="w-4 h-4 rounded mt-0.5 flex-shrink-0 cursor-pointer accent-[var(--primary)]">
+                    <span class="text-sm text-ink leading-normal">
                         I agree to the
-                        <a href="{{ brand_terms_url }}" target="_blank" rel="noopener" class="font-semibold underline hover:no-underline" style="color: var(--primary);">Terms of Service</a>
+                        <a href="{{ brand_terms_url }}" target="_blank" rel="noopener" class="font-semibold underline hover:no-underline text-brand">Terms of Service</a>
                         and
-                        <a href="{{ brand_privacy_url }}" target="_blank" rel="noopener" class="font-semibold underline hover:no-underline" style="color: var(--primary);">Privacy Policy</a>
+                        <a href="{{ brand_privacy_url }}" target="_blank" rel="noopener" class="font-semibold underline hover:no-underline text-brand">Privacy Policy</a>
                     </span>
                 </label>
 
@@ -69,14 +70,15 @@
         </div>
 
         <!-- Sign out link -->
-        <p class="text-center text-sm mt-6" style="color: var(--text-secondary);">
-            <a href="{% url 'accounts:logout' %}" class="font-semibold hover:underline" style="color: var(--primary);">Sign out</a>
+        <p class="text-center text-sm mt-6 text-ink-2">
+            <a href="{% url 'accounts:logout' %}" class="font-semibold hover:underline text-brand">Sign out</a>
         </p>
     </div>
-    <footer class="absolute bottom-3 inset-x-0 px-4 text-center">
-        {% include "partials/_legal_links.html" %}
-        {% include "partials/_source_credit.html" %}
-    </footer>
 </main>
+<footer class="px-4 py-3 text-center">
+    {% include "partials/_legal_links.html" %}
+    {% include "partials/_source_credit.html" %}
+</footer>
+</div>
 </body>
 </html>

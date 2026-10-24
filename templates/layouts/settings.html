@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 
+{% comment %}Settings shell. Extending pages set {% block page_title %}Profile{% endblock %}; the title reads "Profile · Settings · Brand".{% endcomment %}
+{% block title %}{% block page_title %}Settings{% endblock %} · Settings · {{ brand_name }}{% endblock %}
+{% block nav_label %}Settings{% endblock %}
+
 {% block page_header %}{% endblock %}
 
 {% block sidebar_nav %}

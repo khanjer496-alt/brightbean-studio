@@ -1,0 +1,23 @@
+{% comment %}
+ICON BUTTON - a button (or link) that shows only an icon, with a REQUIRED accessible name.
+
+    {% load common_extras %}
+    {% icon_button label="Close dialog" icon="close" click="open = false" %}
+    {% icon_button label="Open menu" icon="menu" click="menuOpen = !menuOpen" expanded="menuOpen" controls="main-menu" %}
+    {% icon_button label="Settings" icon="panel-left" href=settings_url size="sm" %}
+
+Arguments (all quoted values are HTML-escaped, so Alpine expressions can contain quotes):
+  label     REQUIRED. Becomes aria-label and the tooltip (title). An empty label raises
+            TemplateSyntaxError - an unlabelled icon button must not ship.
+  icon      REQUIRED. A name from components/_icon.html.
+  click     optional Alpine expression for @click.
+  expanded  optional Alpine expression for :aria-expanded (disclosure buttons).
+  controls  optional id of the element it opens (aria-controls).
+  href      optional URL; renders <a> instead of <button>.
+  size      "sm" (28px), "md" (36px, default), "lg" (44px). Every size is >= 24px (WCAG 2.5.8).
+  variant   "ghost" (default) or "solid".
+  id        optional element id (also usable as a focus-return target).
+  extra_class  extra classes, e.g. "lg:hidden".
+  type      button (default) or submit.
+Focus ring, hover and RTL mirroring come from .pd-icon-btn in theme/static_src/src/styles.css.
+{% endcomment %}{% if href %}<a href="{{ href }}"{% if id %} id="{{ id }}"{% endif %}{% else %}<button type="{{ type }}"{% endif %}{% if id %} id="{{ id }}"{% endif %} class="pd-icon-btn pd-icon-btn--{{ size }} pd-icon-btn--{{ variant }}{% if extra_class %} {{ extra_class }}{% endif %}" aria-label="{{ label }}" title="{{ label }}"{% if click %} @click="{{ click }}"{% endif %}{% if expanded %} :aria-expanded="{{ expanded }}"{% endif %}{% if controls %} aria-controls="{{ controls }}"{% endif %}>{% include "components/_icon.html" with name=icon size=icon_size %}{% if href %}</a>{% else %}</button>{% endif %}

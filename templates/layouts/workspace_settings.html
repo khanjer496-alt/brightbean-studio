@@ -1,5 +1,9 @@
 {% extends "base.html" %}
 
+{% comment %}Workspace settings shell. Extending pages set {% block page_title %}Webhooks{% endblock %}; the title reads "Webhooks · Workspace settings · Brand".{% endcomment %}
+{% block title %}{% block page_title %}Settings{% endblock %} · {{ request.workspace.name }} settings · {{ brand_name }}{% endblock %}
+{% block nav_label %}Workspace settings{% endblock %}
+
 {% block page_header %}{% endblock %}
 
 {% block sidebar_nav %}
