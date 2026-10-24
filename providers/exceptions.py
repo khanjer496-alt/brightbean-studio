@@ -44,6 +44,10 @@ class ProviderError(Exception):
 
     ``retryable=False`` marks the error as permanent: the publish engine
     fails the post immediately instead of scheduling backoff retries.
+
+    ``user_message`` is a sentence the provider wrote for the person who will
+    read it, for an error whose ``message`` quotes a response body. When set,
+    ``apps.social_accounts.error_messages`` shows it instead of its generic copy.
     """
 
     def __init__(
@@ -52,10 +56,12 @@ class ProviderError(Exception):
         platform: str = "",
         raw_response: dict | None = None,
         retryable: bool = True,
+        user_message: str | None = None,
     ):
         self.platform = platform
         self.raw_response = raw_response or {}
         self.retryable = retryable
+        self.user_message = user_message
         super().__init__(message)
 
 
@@ -83,6 +89,16 @@ class TokenExpiredError(ProviderError):
     ):
         self.status_code = status_code
         super().__init__(message, **kwargs)
+
+
+class ReconnectRequiredError(TokenExpiredError):
+    """The credential is dead for good: no retry can help, only the user reconnecting can.
+
+    The narrower sibling of :class:`TokenExpiredError`, which also covers a token
+    that merely looks expired and may yet be refreshed. Raise this only when the
+    platform said so (a revoked grant, a refresh token it rejected) - the publish
+    engine fails the post at once and flags the account for reconnection.
+    """
 
 
 class RateLimitError(ProviderError):
@@ -146,14 +162,37 @@ class APIError(ProviderError):
         message: str,
         status_code: int | None = None,
         ambiguous_write: bool = False,
+        transient: bool = False,
         **kwargs,
     ):
         self.status_code = status_code
+        # True when the platform itself called the failure momentary (Meta's
+        # ``is_transient``), whatever HTTP status it rode in on: the copy says
+        # "temporarily unavailable" rather than "rejected", and a health check
+        # leaves the account's status alone.
+        self.transient = transient
         # True when a mutating request may have reached the platform but the
         # client could not prove whether it committed. The publisher must not
         # blindly retry these errors or it can create duplicate live posts.
         self.ambiguous_write = ambiguous_write
         super().__init__(message, **kwargs)
+
+
+class AuthRejectedError(APIError, ReconnectRequiredError):
+    """The platform answered an API call by saying the credential itself is dead.
+
+    A :class:`ReconnectRequiredError` for every consumer that routes on the reconnect
+    path, and an :class:`APIError` for the ones that catch the HTTP failure of a
+    call (analytics, inbox) and read ``status_code``/``raw_response`` off it.
+    Raised by a provider's ``_error_for_response`` for a body that names an
+    expired, revoked or invalidated token on a status that would not otherwise
+    say so (Meta sends them as HTTP 400).
+    """
+
+    def __init__(self, message: str, status_code: int | None = None, **kwargs):
+        super().__init__(message, status_code=status_code, **kwargs)
+        # TokenExpiredError.__init__ runs after APIError's and resets this.
+        self.status_code = status_code
 
 
 class MessagingError(APIError):

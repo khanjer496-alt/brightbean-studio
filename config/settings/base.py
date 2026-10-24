@@ -784,6 +784,16 @@ PUBLISHER_PUBLISH_CONFIRM_TIMEOUT = env.int("PUBLISHER_PUBLISH_CONFIRM_TIMEOUT",
 PUBLISHER_MAX_CONCURRENT_PUBLISHES = env.int("PUBLISHER_MAX_CONCURRENT_PUBLISHES", default=10)
 PUBLISHER_MAX_CONCURRENT_POSTS = env.int("PUBLISHER_MAX_CONCURRENT_POSTS", default=4)
 PUBLISHER_MAX_CONCURRENT_PLATFORM_PUBLISHES = env.int("PUBLISHER_MAX_CONCURRENT_PLATFORM_PUBLISHES", default=6)
+# After an outage the publisher finds every post it missed. A channel with more than BACKLOG_THRESHOLD
+# posts that are more than BACKLOG_GRACE_MINUTES late has them sent a minute apart, in the order they were
+# due, instead of all at once.
+PUBLISHER_BACKLOG_GRACE_MINUTES = env.int("PUBLISHER_BACKLOG_GRACE_MINUTES", default=15)
+PUBLISHER_BACKLOG_THRESHOLD = env.int("PUBLISHER_BACKLOG_THRESHOLD", default=3)
+# How long to wait for Instagram to finish ingesting a photo and a video before the attempt is retried.
+# A retry picks the same container back up, so a slow Reel is waited on rather than rebuilt. Keep the video
+# wait under PUBLISHER_STALE_PUBLISHING_TIMEOUT, or the stale sweep calls a slow publish dead.
+INSTAGRAM_CONTAINER_POLL_TIMEOUT = env.int("INSTAGRAM_CONTAINER_POLL_TIMEOUT", default=120)
+INSTAGRAM_VIDEO_CONTAINER_POLL_TIMEOUT = env.int("INSTAGRAM_VIDEO_CONTAINER_POLL_TIMEOUT", default=600)
 
 # Inbox polling. The cycle itself runs every 5 minutes (see
 # apps.inbox.tasks.INBOX_SYNC_INTERVAL_SECONDS) and that stays the floor for

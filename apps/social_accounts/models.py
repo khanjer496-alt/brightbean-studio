@@ -64,6 +64,10 @@ class SocialAccount(models.Model):
     oauth_access_token = EncryptedTextField(blank=True, default="")
     oauth_refresh_token = EncryptedTextField(blank=True, default="")
     token_expires_at = models.DateTimeField(blank=True, null=True)
+    # When the refresh token itself lapses, for the platforms that tell us (TikTok, Pinterest, LinkedIn).
+    # Past it the account can no longer renew its access token and only a reconnect brings it back, so the
+    # health check warns ahead of it. Null when the platform doesn't say.
+    refresh_token_expires_at = models.DateTimeField(blank=True, null=True)
     # Facebook-login Instagram insights need the user's credential. The
     # primary token remains the Page credential used by publishing and inbox.
     oauth_facebook_user_access_token = EncryptedTextField(blank=True, default="")
@@ -126,6 +130,10 @@ class SocialAccount(models.Model):
     )
     last_health_check_at = models.DateTimeField(blank=True, null=True)
     last_error = models.TextField(blank=True, default="")
+    # Since when every health check has failed for a reason that says nothing about the grant (the platform
+    # is down, a timeout, a rate limit). Lets a long outage be reported without ever condemning the account.
+    # Null while checks pass.
+    health_failing_since = models.DateTimeField(blank=True, null=True)
 
     connected_at = models.DateTimeField(auto_now_add=True)
     youtube_authorized_by = models.ForeignKey(
@@ -366,6 +374,14 @@ class SocialAccount(models.Model):
 
         return self.token_expires_at < timezone.now() + window
 
+    def refresh_token_expires_within(self, window) -> bool:
+        """Whether the refresh token lapses within ``window`` (False when the platform never said)."""
+        if not self.refresh_token_expires_at:
+            return False
+        from django.utils import timezone
+
+        return self.refresh_token_expires_at < timezone.now() + window
+
     @property
     def is_token_expiring_soon(self) -> bool:
         """Token expires within 7 days."""
@@ -433,10 +449,22 @@ class SocialAccount(models.Model):
                                 current.oauth_refresh_token = new_tokens.refresh_token
                             if new_tokens.expires_in:
                                 current.token_expires_at = timezone.now() + timedelta(seconds=new_tokens.expires_in)
+                            if isinstance(new_tokens.refresh_expires_in, int | float) and new_tokens.refresh_expires_in:
+                                current.refresh_token_expires_at = timezone.now() + timedelta(
+                                    seconds=new_tokens.refresh_expires_in
+                                )
                             current.connection_status = self.ConnectionStatus.CONNECTED
                             current._skip_analytics_backfill = not enqueue_backfill
-                            current.save(using=using, update_fields=[*token_fields, "connection_status", "updated_at"])
-                state_fields = [*token_fields, "connection_status"]
+                            current.save(
+                                using=using,
+                                update_fields=[
+                                    *token_fields,
+                                    "refresh_token_expires_at",
+                                    "connection_status",
+                                    "updated_at",
+                                ],
+                            )
+                state_fields = [*token_fields, "refresh_token_expires_at", "connection_status"]
                 if self.platform == "instagram":
                     # save() invalidates Instagram analytics on a rotation.
                     # Keep the caller's generation and cached verdicts in sync

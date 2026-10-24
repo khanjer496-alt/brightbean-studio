@@ -386,6 +386,7 @@ class YouTubeProvider(SocialProvider):
                 "client_secret": self.credentials["client_secret"],
                 "grant_type": "refresh_token",
             },
+            ambiguous_on_failure=False,
         )
         body = resp.json()
         if "access_token" not in body:

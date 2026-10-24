@@ -7,12 +7,12 @@ uses the Facebook OAuth flow with Instagram-specific scopes.
 from __future__ import annotations
 
 import logging
-import time
 from datetime import datetime
 from urllib.parse import urlencode
 
 from .base import SocialProvider
 from .exceptions import APIError, MessagingError, OAuthError, ProviderError, PublishError, WebhookChannelError
+from .instagram_containers import InstagramContainers
 from .instagram_discovery import business_discovery_metrics
 from .instagram_options import INSTAGRAM_POST_SETTINGS, container_options, validate_instagram_settings
 from .meta_accounts import fetch_me_accounts, page_can_publish
@@ -21,6 +21,7 @@ from .meta_comments import (
     find_own_instagram_comment,
     resolve_comment_reply_target,
 )
+from .meta_errors import MetaGraphErrors
 from .meta_insights import fetch_insights_safe
 from .meta_messaging import (
     InstagramMessageBatch,
@@ -97,11 +98,6 @@ INSTAGRAM_MEDIA_FIELDS = [
     "comments_count",
 ]
 
-# Polling settings for container status checks
-CONTAINER_POLL_INTERVAL = 2  # seconds
-CONTAINER_POLL_TIMEOUT = 120  # seconds
-
-
 # What Instagram's content publishing API accepts, per post type. Shared with
 # ``InstagramLoginProvider``, which publishes through the same endpoints.
 # https://developers.facebook.com/docs/instagram-platform/instagram-graph-api/reference/ig-user/media
@@ -156,7 +152,7 @@ INSTAGRAM_MEDIA_RULES = {
 }
 
 
-class InstagramProvider(SocialProvider):
+class InstagramProvider(MetaGraphErrors, InstagramContainers, SocialProvider):
     """Instagram Graph API provider (via Facebook Graph API v25.0)."""
 
     supports_grid_preview = True
@@ -458,11 +454,16 @@ class InstagramProvider(SocialProvider):
             container_options(content.extra, content.post_type, is_video=is_video, platform=self.platform_name)
         )
 
-        # Step 1: create container
-        container_id = self._create_container(access_token, ig_user_id, payload)
-
-        # Step 2: wait for container to be ready
-        self._wait_for_container(access_token, container_id)
+        # Steps 1 and 2: a container that Meta has finished ingesting. A retry
+        # picks up the one an earlier attempt made instead of building another.
+        container_id = self._prepare_container(
+            access_token,
+            content,
+            "single",
+            payload,
+            lambda: self._create_container(access_token, ig_user_id, payload),
+            is_video=is_video,
+        )
 
         # Step 3: publish
         return self._publish_container(access_token, ig_user_id, container_id)
@@ -481,8 +482,14 @@ class InstagramProvider(SocialProvider):
             else:
                 child_payload["image_url"] = url
 
-            child_id = self._create_container(access_token, ig_user_id, child_payload)
-            self._wait_for_container(access_token, child_id)
+            child_id = self._prepare_container(
+                access_token,
+                content,
+                f"child-{index}",
+                child_payload,
+                lambda payload=child_payload: self._create_container(access_token, ig_user_id, payload),
+                is_video=content.is_video(index),
+            )
             child_ids.append(child_id)
 
         # Create carousel container
@@ -496,8 +503,14 @@ class InstagramProvider(SocialProvider):
             container_options(content.extra, content.post_type, is_video=False, platform=self.platform_name)
         )
 
-        carousel_id = self._create_container(access_token, ig_user_id, carousel_payload)
-        self._wait_for_container(access_token, carousel_id)
+        carousel_id = self._prepare_container(
+            access_token,
+            content,
+            "carousel",
+            carousel_payload,
+            lambda: self._create_container(access_token, ig_user_id, carousel_payload),
+            is_video=any(content.is_video(i) for i in range(len(content.media_urls))),
+        )
 
         return self._publish_container(access_token, ig_user_id, carousel_id)
 
@@ -507,6 +520,7 @@ class InstagramProvider(SocialProvider):
             f"{BASE_URL}/{ig_user_id}/media",
             access_token=access_token,
             json=payload,
+            ambiguous_on_failure=False,
         )
         data = resp.json()
         container_id = data.get("id")
@@ -518,32 +532,8 @@ class InstagramProvider(SocialProvider):
             )
         return container_id
 
-    def _wait_for_container(self, access_token: str, container_id: str) -> None:
-        """Poll container status until FINISHED or error."""
-
-        def finished() -> bool:
-            resp = self._request(
-                "GET",
-                f"{BASE_URL}/{container_id}",
-                access_token=access_token,
-                params={"fields": "status_code,status"},
-            )
-            data = resp.json()
-            status = data.get("status_code", "")
-            if status == "ERROR":
-                raise PublishError(
-                    f"Instagram container failed: {data.get('status', 'unknown error')}",
-                    platform=self.platform_name,
-                    raw_response=data,
-                )
-            return status == "FINISHED"
-
-        self._poll_until(
-            finished,
-            deadline=time.monotonic() + CONTAINER_POLL_TIMEOUT,
-            interval=CONTAINER_POLL_INTERVAL,
-            on_timeout=lambda: PublishError("Instagram container processing timed out", platform=self.platform_name),
-        )
+    def _container_status_url(self, container_id: str) -> str:
+        return f"{BASE_URL}/{container_id}"
 
     def _publish_container(self, access_token: str, ig_user_id: str, container_id: str) -> PublishResult:
         resp = self._request(

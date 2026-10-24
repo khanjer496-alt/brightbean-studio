@@ -169,6 +169,7 @@ class PinterestProvider(SocialProvider):
             access_token=body["access_token"],
             refresh_token=body.get("refresh_token"),
             expires_in=body.get("expires_in"),
+            refresh_expires_in=body.get("refresh_token_expires_in"),
             scope=body.get("scope"),
             raw_response=body,
         )
@@ -182,6 +183,7 @@ class PinterestProvider(SocialProvider):
                 "refresh_token": refresh_token,
                 "grant_type": "refresh_token",
             },
+            ambiguous_on_failure=False,
         )
         body = resp.json()
         if "access_token" not in body:
@@ -194,6 +196,7 @@ class PinterestProvider(SocialProvider):
             access_token=body["access_token"],
             refresh_token=body.get("refresh_token", refresh_token),
             expires_in=body.get("expires_in"),
+            refresh_expires_in=body.get("refresh_token_expires_in"),
             scope=body.get("scope"),
             raw_response=body,
         )
@@ -299,6 +302,7 @@ class PinterestProvider(SocialProvider):
             f"{API_BASE}/media",
             access_token=access_token,
             json={"media_type": "video"},
+            ambiguous_on_failure=False,
         )
         media_body = media_resp.json()
         media_id = media_body.get("media_id", "")
@@ -318,6 +322,7 @@ class PinterestProvider(SocialProvider):
                     },
                     data=video,
                     timeout=120.0,
+                    ambiguous_on_failure=False,
                 )
 
         # Step 3: Create pin referencing media_id

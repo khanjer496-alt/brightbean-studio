@@ -174,6 +174,7 @@ class TumblrProvider(SocialProvider):
                 "client_id": self.credentials["client_id"],
                 "client_secret": self.credentials["client_secret"],
             },
+            ambiguous_on_failure=False,
         )
         body = resp.json()
         if "access_token" not in body:

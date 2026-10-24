@@ -10,6 +10,7 @@ from .base import SocialProvider
 from .exceptions import APIError, OAuthError, ProviderError, PublishError
 from .meta_accounts import fetch_me_accounts, page_can_publish
 from .meta_comments import parse_graph_time
+from .meta_errors import MetaGraphErrors
 from .meta_insights import fetch_insights_safe, parse_insights_response
 from .meta_messaging import (
     build_send_payload,
@@ -142,7 +143,7 @@ FACEBOOK_MEDIA_RULES = {
 }
 
 
-class FacebookProvider(SocialProvider):
+class FacebookProvider(MetaGraphErrors, SocialProvider):
     """Facebook Graph API v25.0 provider."""
 
     media_rules = FACEBOOK_MEDIA_RULES
@@ -455,11 +456,13 @@ class FacebookProvider(SocialProvider):
         photo_ids: list[str] = []
         try:
             for url in urls:
+                # published=False: the photo is invisible until the feed post below attaches it.
                 data = self._request(
                     "POST",
                     f"{BASE_URL}/{page_id}/photos",
                     access_token=access_token,
                     json={"url": url, "published": False},
+                    ambiguous_on_failure=False,
                 ).json()
                 photo_id = data.get("id")
                 if not photo_id:
@@ -579,6 +582,7 @@ class FacebookProvider(SocialProvider):
             f"{BASE_URL}/{page_id}/video_reels",
             access_token=access_token,
             data={"upload_phase": "start"},
+            ambiguous_on_failure=False,
         ).json()
         video_id = start_data.get("video_id")
         upload_url = start_data.get("upload_url")
@@ -604,6 +608,7 @@ class FacebookProvider(SocialProvider):
                 "Authorization": f"OAuth {access_token}",
                 "file_url": content.media_urls[0],
             },
+            ambiguous_on_failure=False,
         )
         self._raise_for_reel_phase(self._safe_json(upload_resp), "upload the Reel video")
 
@@ -674,7 +679,11 @@ class FacebookProvider(SocialProvider):
                     retryable=False,
                 )
             start_data = self._request(
-                "POST", f"{BASE_URL}/{page_id}/video_stories", access_token=access_token, data={"upload_phase": "start"}
+                "POST",
+                f"{BASE_URL}/{page_id}/video_stories",
+                access_token=access_token,
+                data={"upload_phase": "start"},
+                ambiguous_on_failure=False,
             ).json()
             video_id = start_data.get("video_id")
             upload_url = start_data.get("upload_url")
@@ -688,6 +697,7 @@ class FacebookProvider(SocialProvider):
                 "POST",
                 upload_url,
                 headers={"Authorization": f"OAuth {access_token}", "file_url": url},
+                ambiguous_on_failure=False,
             )
             self._raise_for_reel_phase(self._safe_json(upload_resp), "upload the Story video")
             data = self._request(
@@ -704,6 +714,7 @@ class FacebookProvider(SocialProvider):
                 f"{BASE_URL}/{page_id}/photos",
                 access_token=access_token,
                 json={"url": url, "published": False},
+                ambiguous_on_failure=False,
             ).json()
             media_id = photo.get("id")
             if not media_id:

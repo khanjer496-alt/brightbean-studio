@@ -304,6 +304,7 @@ class TikTokProvider(SocialProvider):
             access_token=body["access_token"],
             refresh_token=body.get("refresh_token"),
             expires_in=body.get("expires_in"),
+            refresh_expires_in=body.get("refresh_expires_in"),
             scope=body.get("scope"),
             raw_response=body,
         )
@@ -318,6 +319,7 @@ class TikTokProvider(SocialProvider):
                 "refresh_token": refresh_token,
                 "grant_type": "refresh_token",
             },
+            ambiguous_on_failure=False,
         )
         body = resp.json()
         if "access_token" not in body:
@@ -330,6 +332,7 @@ class TikTokProvider(SocialProvider):
             access_token=body["access_token"],
             refresh_token=body.get("refresh_token"),
             expires_in=body.get("expires_in"),
+            refresh_expires_in=body.get("refresh_expires_in"),
             scope=body.get("scope"),
             raw_response=body,
         )
@@ -377,6 +380,7 @@ class TikTokProvider(SocialProvider):
             f"{API_BASE}/post/publish/creator_info/query/",
             access_token=access_token,
             json={},
+            ambiguous_on_failure=False,
         )
         return resp.json().get("data", {}) or {}
 
@@ -492,10 +496,18 @@ class TikTokProvider(SocialProvider):
             )
         return privacy_level
 
-    def _init_video_publish(self, access_token: str, payload: dict, *, path: str = "/post/publish/video/init/") -> dict:
+    def _init_video_publish(
+        self,
+        access_token: str,
+        payload: dict,
+        *,
+        path: str = "/post/publish/video/init/",
+        ambiguous_on_failure: bool = True,
+    ) -> dict:
         """POST to ``path`` (the direct-post video init unless told otherwise) and return the parsed body.
 
         ``/post/publish/inbox/video/init/`` is the MEDIA_UPLOAD variant: it takes ``source_info`` only.
+        ``ambiguous_on_failure=False`` is for a FILE_UPLOAD init, which only opens an upload session.
 
         Permanent TikTok error codes are re-raised as non-retryable
         PublishErrors via :meth:`_raise_classified_publish_error`.
@@ -506,6 +518,7 @@ class TikTokProvider(SocialProvider):
                 f"{API_BASE}{path}",
                 access_token=access_token,
                 json=payload,
+                ambiguous_on_failure=ambiguous_on_failure,
             )
         except APIError as exc:
             self._raise_classified_publish_error(exc)
@@ -666,7 +679,11 @@ class TikTokProvider(SocialProvider):
         }
         if not inbox:
             payload["post_info"] = self._build_post_info(content, privacy_level)
-        init_body = self._init_video_publish(access_token, payload, path=self._video_init_path(inbox))
+        # Opening the session posts nothing; the PUT below is what hands TikTok the video to publish, so
+        # that stays ambiguous when its response is lost.
+        init_body = self._init_video_publish(
+            access_token, payload, path=self._video_init_path(inbox), ambiguous_on_failure=False
+        )
         upload_url = init_body.get("data", {}).get("upload_url")
         publish_id = init_body.get("data", {}).get("publish_id", "")
 
@@ -743,6 +760,7 @@ class TikTokProvider(SocialProvider):
             f"{API_BASE}/post/publish/status/fetch/",
             access_token=access_token,
             json={"publish_id": publish_id},
+            ambiguous_on_failure=False,
         )
         return resp.json().get("data", {}) or {}
 
@@ -813,6 +831,7 @@ class TikTokProvider(SocialProvider):
             access_token=access_token,
             params={"fields": "id,view_count,like_count,comment_count,share_count"},
             json={"filters": {"video_ids": [video_id]}},
+            ambiguous_on_failure=False,
         )
         body = resp.json()
         videos = body.get("data", {}).get("videos", []) or []

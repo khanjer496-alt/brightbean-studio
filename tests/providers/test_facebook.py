@@ -51,12 +51,14 @@ def test_publish_multi_photo_post_stages_photos_then_publishes_feed_post():
                 "https://graph.facebook.com/v25.0/page-1/photos",
                 access_token="page-token",
                 json={"url": "https://cdn.example.com/one.jpg", "published": False},
+                ambiguous_on_failure=False,
             ),
             call(
                 "POST",
                 "https://graph.facebook.com/v25.0/page-1/photos",
                 access_token="page-token",
                 json={"url": "https://cdn.example.com/two.jpg", "published": False},
+                ambiguous_on_failure=False,
             ),
             call(
                 "POST",
@@ -870,6 +872,7 @@ def test_publish_reel_uses_start_hosted_upload_and_finish_flow():
             "https://graph.facebook.com/v25.0/page-1/video_reels",
             access_token="page-token",
             data={"upload_phase": "start"},
+            ambiguous_on_failure=False,
         ),
         call(
             "POST",
@@ -878,6 +881,7 @@ def test_publish_reel_uses_start_hosted_upload_and_finish_flow():
                 "Authorization": "OAuth page-token",
                 "file_url": "https://cdn.example.com/reel.mp4?sig=abc",
             },
+            ambiguous_on_failure=False,
         ),
         call(
             "POST",
@@ -1560,6 +1564,7 @@ def test_publish_photo_story_stages_unpublished_photo_then_photo_stories():
                 "https://graph.facebook.com/v25.0/page-1/photos",
                 access_token="page-token",
                 json={"url": "https://cdn.example.com/s.jpg", "published": False},
+                ambiguous_on_failure=False,
             ),
             call(
                 "POST",
@@ -1598,6 +1603,7 @@ def test_publish_video_story_uses_video_stories_start_upload_finish():
         "https://graph.facebook.com/v25.0/page-1/video_stories",
         access_token="page-token",
         data={"upload_phase": "start"},
+        ambiguous_on_failure=False,
     )
     assert calls[1].kwargs["headers"] == {
         "Authorization": "OAuth page-token",

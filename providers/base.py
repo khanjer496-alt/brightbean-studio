@@ -838,10 +838,19 @@ class SocialProvider(ABC):
         data: dict | bytes | Iterable[bytes] | IO[bytes] | None = None,
         files: dict | list | None = None,
         timeout: float = REQUEST_TIMEOUT,
+        ambiguous_on_failure: bool = True,
     ) -> httpx.Response:
         """Make an HTTP request with standard error handling.
 
         Raises APIError on 4xx/5xx, RateLimitError on 429.
+
+        A mutating request that times out, drops, or answers 5xx has an unknown
+        outcome, and the publish engine refuses to retry an unknown outcome
+        because the write may have created a live post. That is the safe default.
+        ``ambiguous_on_failure=False`` is how a provider says "this call cannot
+        create anything visible" - a container or upload session, a chunk of an
+        upload, a token refresh, a status poll - so a lost response is an
+        ordinary retry. Only the call that commits the post stays ambiguous.
         """
         req_headers = {}
         if access_token:
@@ -880,12 +889,12 @@ class SocialProvider(ABC):
                 f"{self.platform_name} request failed before a response was received",
                 status_code=None,
                 platform=self.platform_name,
-                ambiguous_write=is_mutating,
+                ambiguous_write=is_mutating and ambiguous_on_failure,
             ) from exc
 
         if response.status_code >= 400:
             error = self._error_for_response(response)
-            if is_mutating and response.status_code >= 500 and isinstance(error, APIError):
+            if is_mutating and ambiguous_on_failure and response.status_code >= 500 and isinstance(error, APIError):
                 # A 5xx response to a mutating request does not prove the
                 # platform rolled the write back. Treat it as ambiguous so a
                 # retry cannot silently duplicate a live post.

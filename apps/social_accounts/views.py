@@ -519,6 +519,7 @@ def oauth_callback(request, platform):
             access_token=tokens.access_token,
             refresh_token=tokens.refresh_token,
             expires_in=tokens.expires_in,
+            refresh_expires_in=tokens.refresh_expires_in,
             instance_url=extra_creds.get("instance_url", ""),
             platform_data=(profile.extra or {}).get("account_data"),
         )
@@ -1715,6 +1716,7 @@ def _create_or_update_account(
     access_token,
     refresh_token=None,
     expires_in=None,
+    refresh_expires_in=None,
     instance_url="",
     webhook_target_id="",
     facebook_user_access_token=None,
@@ -1733,6 +1735,7 @@ def _create_or_update_account(
     token_expires_at = None
     if expires_in:
         token_expires_at = timezone.now() + timedelta(seconds=expires_in)
+    refresh_token_expires_at = timezone.now() + timedelta(seconds=refresh_expires_in) if refresh_expires_in else None
 
     analytics_defaults = {}
     if platform_data is not None:
@@ -1787,6 +1790,7 @@ def _create_or_update_account(
             "oauth_access_token": access_token,
             "oauth_refresh_token": refresh_token or "",
             "token_expires_at": token_expires_at,
+            "refresh_token_expires_at": refresh_token_expires_at,
             "instance_url": instance_url,
             "webhook_target_id": webhook_target_id or "",
             "messaging_access": messaging_access,
