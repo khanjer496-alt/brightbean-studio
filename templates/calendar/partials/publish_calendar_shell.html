@@ -19,12 +19,12 @@ Toolbar: nav arrows + period + Today + view dropdown | right: filter dropdowns.
             <a href="{% url 'calendar:calendar' workspace_id=workspace.id %}?mode=calendar&view={{ view_type }}&date={{ prev_date }}"
                aria-label="Previous {{ view_type|default:'month' }}"
                class="size-8 rounded-md text-stone-500 hover:text-stone-700 hover:bg-stone-100 flex items-center justify-center transition-all duration-150">
-                <svg class="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
+                <svg class="w-4 h-4 pd-icon-flip-rtl" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/></svg>
             </a>
             <a href="{% url 'calendar:calendar' workspace_id=workspace.id %}?mode=calendar&view={{ view_type }}&date={{ next_date }}"
                aria-label="Next {{ view_type|default:'month' }}"
                class="size-8 rounded-md text-stone-500 hover:text-stone-700 hover:bg-stone-100 flex items-center justify-center transition-all duration-150">
-                <svg class="w-4 h-4" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+                <svg class="w-4 h-4 pd-icon-flip-rtl" aria-hidden="true" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
             </a>
         </div>
 

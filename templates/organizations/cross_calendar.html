@@ -113,11 +113,11 @@
         <div class="flex items-center gap-2">
             <a href="?view={{ view_type }}&date={{ prev_date }}{% for sid in selected_workspace_ids %}&workspace={{ sid }}{% endfor %}{% if request.GET.channel %}&channel={{ request.GET.channel }}{% endif %}{% if request.GET.tag %}&tag={{ request.GET.tag }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}"
                aria-label="Previous period" class="w-7 h-7 flex items-center justify-center rounded-md text-ink-3 hover:text-ink hover:bg-surface-2 transition-colors focus-visible:ring-2 focus-visible:ring-accent">
-                <svg aria-hidden="true" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
+                <svg aria-hidden="true" class="w-4 h-4 pd-icon-flip-rtl" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 19l-7-7 7-7"/></svg>
             </a>
             <a href="?view={{ view_type }}&date={{ next_date }}{% for sid in selected_workspace_ids %}&workspace={{ sid }}{% endfor %}{% if request.GET.channel %}&channel={{ request.GET.channel }}{% endif %}{% if request.GET.tag %}&tag={{ request.GET.tag }}{% endif %}{% if request.GET.status %}&status={{ request.GET.status }}{% endif %}"
                aria-label="Next period" class="w-7 h-7 flex items-center justify-center rounded-md text-ink-3 hover:text-ink hover:bg-surface-2 transition-colors focus-visible:ring-2 focus-visible:ring-accent">
-                <svg aria-hidden="true" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+                <svg aria-hidden="true" class="w-4 h-4 pd-icon-flip-rtl" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
             </a>
         </div>
 
